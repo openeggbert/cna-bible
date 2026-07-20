@@ -183,7 +183,7 @@ ever needed).
 | 37 | free-direct Deep Dive | 65 | ~2 (no change) | **Stays marginal per author confirmation 2026-07-20 — do not expand** | N/A — intentionally frozen |
 | 38 | Windows/Wine | 137 (was 103) | 45 | Real shell-invocation worked examples for the MinGW-w64 toolchain and the DXVK self-verifying gate (including its two escape hatches), grounded in the actual scripts | **In progress (~4 of ~45 pages)** |
 | 39 | Web/Emscripten | 121 (was 88) | 40 | Real shell-invocation worked examples for the Emscripten-specific compile/link flags and the confirmed CANVAS build success story, grounded in the actual CMakeLists.txt/cmake/UnitTests.cmake | **In progress (~3 of ~40 pages)** |
-| 40 | Android/NDK | 82 | 40 | Deeper build/deploy detail | Not started |
+| 40 | Android/NDK | 123 (was 82) | 40 | Real shell-invocation worked examples for the NDK cross-compile/llvm-nm verification and the emulator boot/install/sensor-injection sequence, grounded in the project's own build notes | **In progress (~4 of ~40 pages)** |
 | 41 | Verification Methodology | 68 | 35 | More worked audit examples | Not started |
 | 42 | Migration Guide | 102 | 55 | Full worked porting walkthroughs | Not started |
 | 43 | Blupi Case Study | 116 | 55 | Deeper call-site audit detail | Not started |
@@ -961,3 +961,19 @@ stays frozen by explicit author decision, not left incomplete.
   lines (~3 to ~3 of a ~40-page target). Volume recompiled clean (287 pages total, 0 undefined
   references, 0 duplicate-label warnings); all four of the chapter's own pages verified by
   rendering to PNG and reading them back.
+- **2026-07-20 (same session, "pokracuj"):** Chapter 40 (Android/NDK) — first expansion pass.
+  Same tooling-narrative shape as Chapters 38-39: real shell/build invocations, not C++ API
+  worked examples. Read `docs/devices-build.md` directly (the `cna` repo's own real Android
+  cross-compile and emulator-verification notes), grounding every command in the project's
+  actual recorded session rather than reconstructing a plausible-looking one. No major new
+  finding beyond what the prose already stated precisely (this chapter's honest-regression
+  narrative was already unusually exact). Added two worked examples: the real, exact NDK
+  cross-compile invocation (`-DCMAKE_TOOLCHAIN_FILE=.../android.toolchain.cmake
+  -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 -DCNA_BUILD_TESTS=OFF`) plus the
+  matching `llvm-nm` verification that an Android-specific code path actually compiled in; and
+  the full real emulator boot/`adb install`/`adb shell am start`/liveness-check/sensor-injection
+  command sequence (`sensor set acceleration ...`, `sensor set magnetic-field ...`) exactly as
+  the project's own verification session ran it. Chapter grows from 82 to 123 lines (~3 to ~4
+  of a ~40-page target). Volume recompiled clean (289 pages total, 0 undefined references, 0
+  duplicate-label warnings); all four of the chapter's own pages verified by rendering to PNG
+  and reading them back.

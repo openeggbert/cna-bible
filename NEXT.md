@@ -18,10 +18,10 @@ Full renumbering table is in `PLAN.md`'s merge session-log entry.
 **Part V (Ch.25-32) and Part VI (Ch.33-37) are both fully swept** — every chapter in both
 parts has a first expansion pass now, except Chapter 37 (free-direct Deep Dive), which stays
 explicitly frozen per the author's own 2026-07-20 confirmation ("stays marginal") — not left
-incomplete, deliberately skipped. **Chapters 38-39 (Windows/Wine, Web/Emscripten), the first
-two Part VIII chapters, also got a first pass this session.** Full per-chapter detail (exact
-line counts, headers/scripts read, every finding and example) lives in `PLAN.md`'s session
-log — this file only summarizes.
+incomplete, deliberately skipped. **Chapters 38-40 (Windows/Wine, Web/Emscripten,
+Android/NDK), the first three Part VIII chapters, also got a first pass this session.** Full
+per-chapter detail (exact line counts, headers/scripts read, every finding and example) lives
+in `PLAN.md`'s session log — this file only summarizes.
 
 The pattern nearly every chapter this session followed: read the real headers/`.cpp`/scripts
 for classes or tools already named in the chapter's prose, add worked examples grounded in
@@ -33,15 +33,15 @@ and Chapter 34 had a **stale PLAN.md table-row description** (said "TimeSpan/Eve
 Stream" but the chapter's real content is String/StringBuilder/Stream/audit-history) — check a
 chapter's actual `\chapter{}` title/content against PLAN.md's own row before trusting the row.
 
-None of the 14 chapters touched this session (25-36, 38-39) are at their final page targets
+None of the 15 chapters touched this session (25-36, 38-40) are at their final page targets
 yet (roughly 3-10 of a 30-70-page target each) — this was a breadth pass, not a depth pass.
 
-Volume currently compiles to **287 pages, 0 undefined references, 0 duplicate-label
+Volume currently compiles to **289 pages, 0 undefined references, 0 duplicate-label
 warnings** (index count not re-checked this session — verify before quoting it).
 
 ### The `/`-spacing overfull-hbox defect class — three known variants, all with proven fixes
 
-Every chapter touched this session (25 through 36, and 38-39) has needed at least one of these.
+Every chapter touched this session (25 through 36, and 38-40) has needed at least one of these.
 Treat this as a **routine check on every batch**, not a one-off — run the Python regex pass
 (`re.sub(r'\}/(\\texttt\{|\\cnaclass\{)', r'} / \1', text)`) over any file you touch before the
 first build of a batch, then manually grep for `}/%` afterward (the regex doesn't catch it):
@@ -71,13 +71,14 @@ never by printed folio number) then reading the PNG back with the Read tool.
 
 ## What to do next
 
-1. **Finish Part VIII: Chapters 40-41** (Android/NDK, Verification Methodology) — same
-   approach as 38/39: check whether each is API-reference-shaped (add worked examples grounded
-   in real headers) or tooling/narrative-shaped like 38/39 (add real shell/build invocations
-   grounded in the actual scripts/CMake/CI config — both 38 and 39 turned out to be this
-   shape). Read the real source before assuming which kind it is.
+1. **Finish Part VIII: Chapter 41** (Verification Methodology) — the last untouched Part VIII
+   chapter. Same approach as 38/39/40: check whether it's API-reference-shaped (add worked
+   examples grounded in real headers) or tooling/narrative-shaped like 38/39/40 turned out to
+   be (add real shell/build invocations grounded in the actual scripts/CMake/docs — all three
+   so far have been this shape). Read the real source before assuming which kind it is. Once
+   41 is done, Part VIII (Ch.38-41) is fully swept.
 2. **Then Part IX** (Chapters 42-48): Porting/practice/roadmap — none touched yet this session.
-3. **Alternatively, return to Part V, VI, 38, or 39 for real depth**: every chapter touched
+3. **Alternatively, return to Part V, VI, or 38-40 for real depth**: every chapter touched
    this session has a first pass now, but all are still well short of their page targets.
    Don't re-run the "which classes/tools exist" grep again (already done at least once per
    chapter) — look for narrower gaps instead: worked-example depth per topic, cross-checking

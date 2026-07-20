@@ -13,9 +13,28 @@ The first is a plain CMake cross-compile using the NDK's own toolchain file dire
 Gradle involved at all --- producing just the \texttt{CNA} static library, not the test suite,
 since GoogleTest has never been configured for the NDK toolchain in this project's history.
 Confirming that platform-conditional Android code paths (Chapter~\ref{ch:devices-sensors}'s
-Android-specific \cnaclass{Compass}/\cnaclass{Motion} backends, for instance) actually
+Android-specific \cnaclass{Compass} / \cnaclass{Motion} backends, for instance) actually
 \emph{compile} under this path uses the NDK's own \texttt{llvm-nm} tool directly, since a
 host Linux \texttt{nm} cannot read ARM64 object files.
+
+\begin{lstlisting}[style=cnashell]
+# Worked example: the real, exact NDK cross-compile invocation this
+# project's own build notes record -- compile-only, no APK, no test suite.
+cmake -S . -B cmake-build-android -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE="$HOME/Android/Sdk/ndk/30.0.14904198/build/cmake/android.toolchain.cmake" \
+  -DANDROID_ABI=arm64-v8a \
+  -DANDROID_PLATFORM=android-24 \
+  -DCNA_BUILD_TESTS=OFF
+
+cmake --build cmake-build-android --target CNA -j"$(nproc)"
+
+# Confirming an Android-specific code path actually got compiled in --
+# a host Linux `nm` produces empty/wrong output against these ARM64
+# object files, so the NDK's own llvm-nm is required, not a substitute.
+"$HOME/Android/Sdk/ndk/30.0.14904198/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm" -C \
+    cmake-build-android/CMakeFiles/CNA.dir/src/Microsoft/Devices/Sensors/Accelerometer.cpp.o \
+    | grep -i landscape
+\end{lstlisting}
 
 The second path is a full Gradle-based Android application project, generated from SDL's own
 project-creation template, then rewired so its native build step adds CNA's own root CMake
@@ -68,15 +87,37 @@ console (a specific acceleration vector, a specific magnetic-field vector) produ
 visible on-screen response, live evidence that SDL3's Android sensor event pipeline delivers
 real events end to end, not merely that the app launched without crashing.
 
+\begin{lstlisting}[style=cnashell]
+# Worked example: the exact emulator boot, install, launch, and
+# sensor-injection commands this verification actually used.
+~/Android/Sdk/emulator/emulator -avd Medium_Phone -no-window -no-audio \
+    -gpu swiftshader_indirect -no-snapshot
+# adb devices -> emulator-5554  device  (boots in ~1-2 minutes)
+
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb shell am start \
+    -n com.openeggbert.cna.demodevices/com.openeggbert.cna.demodevices.DemodevicesActivity
+
+adb shell pidof com.openeggbert.cna.demodevices   # a live PID confirms it's still running
+adb shell screencap                                # confirms real UI, not a blank/crashed screen
+
+# Injecting synthetic sensor values through the emulator's own console --
+# the live, on-screen DrawEventFlash() response is what actually proves
+# SDL3's Android sensor pipeline delivers real events end to end.
+# (from the emulator console, not adb)
+sensor set acceleration 0:9.81:3.0
+sensor set magnetic-field 30:5:40
+\end{lstlisting}
+
 Two honest limits on this result are worth stating directly. First, this is evidence for the
 devices/sensors demo specifically --- \texttt{SDL\_RENDERER} (Android's own default graphics
 backend, since Android's own CMake system name is \texttt{"Android"}, not \texttt{"Linux"},
 so it never falls into \texttt{EASYGL}'s Linux-default branch) has never actually been run on
 this or any emulator or device, and its buildability is separately unverified for the reason
 already given above. Second, the emulator's own virtual sensor set has no rotation-vector
-sensor, so the Android-specific \cnaclass{Compass}/\cnaclass{Motion} backends
+sensor, so the Android-specific \cnaclass{Compass} / \cnaclass{Motion} backends
 (Chapter~\ref{ch:devices-sensors}) were confirmed only to compile, link, and launch
 successfully --- never actually exercised with injected sensor values the way
-\cnaclass{Accelerometer}/\cnaclass{Gyroscope} were. No physical Android device has been used
+\cnaclass{Accelerometer} / \cnaclass{Gyroscope} were. No physical Android device has been used
 for anything in this project's history at all; every claim in this chapter concerns the
 emulator specifically.
