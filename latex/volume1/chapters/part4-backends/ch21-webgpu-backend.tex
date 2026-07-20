@@ -1,4 +1,108 @@
 \chapter{The WebGPU Backend}
 \label{ch:webgpu-backend}
 
-\emph{[Placeholder --- full content pending in this book's next writing pass. See \texttt{PROGRESS.md} at the repository root for the current writing status.]}
+\texttt{WEBGPU} is CNA's fifth graphics backend, and its youngest: the project owner
+explicitly lifted a former prohibition on this backend and authorized its implementation.
+It targets native \texttt{wgpu-native} (pinned to version 29.0.1.1), selected the same way
+as every other backend via \texttt{-DCNA\_GRAPHICS\_BACKEND=WEBGPU}. Its own tracking plan
+spans fourteen phases and over 130 individually numbered tasks --- large enough that this
+chapter covers its trajectory rather than every task.
+
+\section{What ``experimental'' concretely means here}
+
+Unlike the four backends covered in the previous three chapters, \texttt{WEBGPU} is
+deliberately excluded from the cross-backend feature matrix used throughout
+Chapters~\ref{ch:sdl-renderer}--\ref{ch:vulkan-backend}, on the matrix's own stated grounds
+that its feature surface was not yet broad enough for a meaningful side-by-side comparison at
+the time that matrix was written. This chapter instead draws on the backend's own dedicated
+documentation and milestone history.
+
+\section{The native 2D baseline}
+
+Early milestones established device/surface setup, clear/present, a working
+\cnaclass{Texture2D} path, vertex/index buffer uploads, and a WGSL-based
+\cnaclass{SpriteBatch} implementation. A 120-frame clear-and-present lifecycle test, and a
+manually-reviewed \cnaclass{SpriteBatch} validation scene (covering cropping, tint/alpha,
+rotation, flips, filtering, and all three address modes), both passed before the native 2D
+baseline was declared closed. The most instructive milestone here, though, is an independent
+one: a real, independently-developed XNA-style game (a \emph{Windows Phone Speedy Blupi}
+port, from the \texttt{mobile-eggbert} sibling repository) was run against this backend on a
+real desktop, reached its main menu, rendered its \cnaclass{SpriteBatch} content
+pixel-correctly, and played through a real animated cutscene --- with progress bar and
+cross-fade --- triggered by a simulated button click, with no WebGPU validation errors of any
+kind. This is a genuinely different, and stronger, kind of proof than any of this backend's
+own purpose-built test scenes: an unmodified, independently-authored game simply working.
+
+\section{A bug a manual screenshot review missed, and a pixel assertion caught}
+
+One specific finding is worth naming as a methodological lesson in its own right: the
+SpriteBatch pipeline's blend factors did not actually match the non-premultiplied output the
+shader itself produced, so a translucent sprite --- one with an alpha value strictly between
+fully transparent and fully opaque --- rendered fully opaque instead. This was completely
+invisible to the earlier manual screenshot review covering rotation, flips, and filtering; it
+was only caught once a real pixel-value assertion replaced ``does this look right in a
+screenshot.'' The fix matched Vulkan's own blend-factor pairing. This is the same lesson
+Chapter~\ref{ch:spritebatch} drew from SDL\_Renderer's ignored-transform-matrix bug: a
+rendering pipeline can look entirely correct in every way a human screenshot review checks,
+and still be measurably wrong.
+
+\section{3D: real depth testing, a real gap found while adding it}
+
+The first 3D draw path (\texttt{DrawColoredPrimitives}/\texttt{DrawIndexedColoredPrimitives})
+was verified with a genuine near/far depth-ordering test rather than trusting draw order
+alone. Building it surfaced a real, previously-invisible gap: applying a
+\cnaclass{DepthStencilState} had no effect on this backend at all before this point --- the
+apply-state entry point was entirely unimplemented, meaning
+\texttt{GraphicsDevice.DepthStencilState} had silently done nothing on WebGPU up to that
+point. From there, \cnaclass{PbrEffect} (a real glTF~2.0 metallic-roughness BRDF, ported line
+for line from EasyGL's own GLSL implementation) and skinned variants of both
+\cnaclass{SkinnedEffect} and \texttt{PbrEffect} (bone-palette skinning up to 72 bones, again
+ported directly from EasyGL) were added and both pass their dedicated test suites in full.
+
+\section{Render targets, environment mapping, instancing, and mip generation}
+
+\cnaclass{RenderTarget2D} support combines depth and stencil into a single format regardless
+of what was requested (the same simplification Vulkan makes, Chapter~\ref{ch:vulkan-backend}),
+and needed a real type-safety fix when sampling a render target back as an ordinary texture.
+MSAA support, once implemented, initially appeared to fail its own dedicated test --- but
+investigation found the infrastructure was already correct, and the reported failure was a
+defect in the \emph{test itself} (a missing \texttt{RasterizerState::CullNone}), not in the
+MSAA implementation. \cnaclass{EnvironmentMapEffect} and genuine hardware instancing were
+added together, with instancing implemented as a real per-instance vertex stream needing no
+bind-group changes, unlike the effect families that do require one per draw.
+\cnaclass{RenderTargetCube} support surfaced a new, cross-cutting, still-unfixed bug worth
+flagging directly: sprite geometry is computed from the back buffer's own logical dimensions
+unconditionally, never from whichever render target is currently bound --- meaning a
+\cnaclass{SpriteBatch::Draw()} call into a smaller or differently-sized off-screen target may
+not actually cover it the way a caller would expect. Mip generation for \cnaclass{Texture2D}
+and \cnaclass{TextureCube} is implemented as a genuine filtered downsample (a series of
+full-screen-triangle render passes, since \texttt{wgpu-native} v29 has no direct
+blit-image-equivalent call) --- and, notably, this backend auto-regenerates mip content on
+every level-0 write to a plain \cnaclass{Texture2D}/\cnaclass{TextureCube}, which neither real
+XNA/FNA nor any other CNA backend does (every other backend only regenerates mips on
+render-target unbind). This is documented explicitly as a deliberate divergence that makes
+this specific behavior strictly \emph{better} than every other backend's, while still being
+genuinely different --- worth knowing if you are relying on mip regeneration timing to match
+across backends.
+
+\section{What remains open}
+
+Several gaps are shared with every other CNA backend rather than unique to this one: no
+backend anywhere in the project does real block-compressed texture upload, and
+\texttt{Texture2D::GetData()} readback from an arbitrary texture remains unimplemented here
+too. Specific to this backend: multiple simultaneous render targets, the stencil half of
+\cnaclass{DepthStencilState} (the depth half is done), full \cnaclass{BlendState}/%
+\cnaclass{RasterizerState} culling and wireframe mapping, viewport/scissor state, custom
+\cnaclass{SpriteBatch} effects, and custom WGSL effects authored outside the stock-effect
+set. Browser/Emscripten WebGPU is entirely out of scope so far --- this backend is native
+\texttt{wgpu-native} only.
+
+\section{Verification methodology, and how it differs from D3D9's}
+
+This backend's own verification runs on a native automated CTest suite (gracefully skipping
+where no Wayland/X11 display is available) plus a battery of dedicated pixel-assertion tests
+per feature area, and the one independent real-game integration test described above. It is
+explicitly \emph{not} covered by the oracle-versus-real-XNA methodology
+Chapter~\ref{ch:direct3d-backends} describes for \texttt{D3D9}/\texttt{D3D11}/\texttt{D3D12}
+--- that comparison against a genuine, running XNA~4.0 reference is reserved for the three
+Direct3D backends specifically, not applied here.

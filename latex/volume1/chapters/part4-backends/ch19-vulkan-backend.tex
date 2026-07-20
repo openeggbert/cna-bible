@@ -1,4 +1,110 @@
 \chapter{The Vulkan Backend}
 \label{ch:vulkan-backend}
 
-\emph{[Placeholder --- full content pending in this book's next writing pass. See \texttt{PROGRESS.md} at the repository root for the current writing status.]}
+Vulkan is CNA's second-most-mature backend by the project's own account, and the backend
+whose history best illustrates a recurring theme in this Part: a class of bug where an
+interface method accepts every parameter it is supposed to, but the implementation behind it
+quietly discards most of them.
+
+\section{Current test baseline}
+
+At the time of writing, the full unit suite passes 4{,}371 of 4{,}373 tests (with two
+hardware-dependent skips), and the Vulkan-specific \texttt{ctest} suite passes 126 of 127.
+The single remaining failure, \texttt{Vulkan\_DepthBias}, is a narrow one: only the most
+extreme tested magnitude of depth bias produces no observable effect
+(\S\ref{sec:vulkan-depthbias}), a symptom shared with an equivalent finding on
+\texttt{D3D9}. Historically this backend also carried five failing \cnaclass{BlendState}
+tests and three segfaulting skinned-model content tests --- both fully resolved, with no
+test exclusions needed to reach the current clean baseline.
+
+\section{BlendState: from ``almost entirely fake'' to fully real}
+
+The single most serious historical bug on this backend, in the project's own words, is that
+its blend-state implementation was ``almost entirely fake'': one hardcoded blend equation was
+applied regardless of what \cnaclass{BlendState} actually requested, confirmed failing across
+five independent pixel tests before the fix. The fix replaced this with a genuine
+per-\cnaclass{Blend}/\cnaclass{BlendFunction} mapping, applied consistently across all nine
+of this backend's own pipeline-creation call sites --- meaning the fix had to be threaded
+through every place a graphics pipeline object gets built, not just one central function.
+
+\section{Stencil testing: the same ``discarded parameters'' bug shape}
+
+\cnaclass{DepthStencilState} (Chapter~\ref{ch:state-objects}) had an almost identical
+history. The backend's own state-application entry point accepted fifteen parameters but
+genuinely stored only two of them (the depth-enable and depth-write flags) --- every
+stencil-related parameter passed through the call was simply discarded, and the pipeline's
+own stencil-test-enable flag was never set at all, on any pipeline. Five separate,
+independently-run checks (the enable flag itself, the stencil masks, front-face operations,
+two-sided stencil mode, and reference-stencil propagation) each separately confirmed this
+failure mode. The fix added real per-pipeline depth-compare operations, full front- and
+back-face \texttt{VkStencilOpState} configuration, and dynamic-state reference/mask values ---
+and, as a direct side effect of the same fix, connected \texttt{ReferenceStencil}'s
+independent-override path (Chapter~\ref{ch:state-objects}) on Vulkan specifically, something
+still broken on EasyGL and BGFX. A second, smaller bug found in the same investigation: depth
+format selection tried a stencil-\emph{less} format before it tried any stencil-capable
+alternative.
+
+\section{OcclusionQuery: from never-wired to a genuinely discriminating query}
+
+Before its fix, occlusion queries on this backend were not merely inaccurate --- they were
+never connected to anything at all. This backend defers 3D and 2D draws into a pending-batch
+snapshot, recorded into real Vulkan commands only once per frame, well after
+\texttt{Begin()}/\texttt{End()} had already returned synchronously; queries therefore always
+reported zero, regardless of what was actually visible. The fix required resolving three
+genuinely non-obvious design questions: how to tag an individual pending draw with the query
+that should observe it; whether a single query may legitimately span multiple draw calls
+(resolved: yes, as long as they share one render pass, tracked via contiguous-run detection,
+with an explicit, documented limitation that a query spanning a render-pass \emph{boundary}
+is not correctly summed --- a real capability gap against what a real device could do, stated
+plainly rather than silently assumed); and how per-frame query-pool resets need to be
+sequenced before any render pass begins. Verified in both directions --- a visible quad
+producing a positive pixel count, an occluded quad behind a nearer opaque object producing
+none --- plus a genuine multi-draw-span case (two non-overlapping half-quads inside one
+\texttt{Begin}/\texttt{End} span, summing correctly), discriminating for real in this
+project's own software Vulkan implementation.
+
+\section{Remaining limitation}
+\label{sec:vulkan-depthbias}
+
+Exactly one genuine, unresolved gap remains on this backend at the time of writing: an
+isolated \cnaclass{RasterizerState.DepthBias} extreme-magnitude sub-case, where real hardware
+bias produced no observable effect at any tested magnitude in this project's own sandboxed
+environment --- suspected to be an environment or driver limitation shared with an equivalent
+finding made independently on \texttt{D3D9} (Chapter~\ref{ch:direct3d-backends}), rather than
+a Vulkan-specific defect.
+
+\section{A confirmed non-gap: device-feature gating}
+
+Not every investigation into this backend found a bug. A dedicated check of whether optional
+device features (\texttt{fillModeNonSolid}, needed for wireframe rendering, and
+\texttt{samplerAnisotropy}) are properly negotiated before being requested found the gating
+already correctly implemented --- both are queried via \texttt{vkGetPhysicalDeviceFeatures}
+before being enabled, with a graceful fallback if the underlying device lacks either one.
+This is included here deliberately: a book that only ever reports bugs found would give a
+skewed picture of a backend whose overall health is, in fact, good.
+
+\section{Notable feature-matrix specifics}
+
+A cube-map render target's MSAA support is real but indirect: rather than a genuinely
+multisampled cube attachment, it is implemented as an ordinary (non-cube) multisampled 2D
+texture array paired with a separately cube-flagged resolve texture. Multiple render targets
+are capped at four by shared, cross-backend code mirroring FNA's own
+\texttt{MAX\_RENDERTARGET\_BINDINGS} constant --- notably \emph{not} because Vulkan's own
+device capability is the limiting factor, since a typical device supports eight. Uploading
+\texttt{Texture2D} data at a mip level above zero is a silent no-op on this backend (a shared
+finding with Chapter~\ref{ch:state-objects}'s sampler-state coverage). Forwarding a real,
+non-\texttt{Color} \cnaclass{SurfaceFormat} shares the identical blocked/architectural
+limitation already covered for EasyGL in Chapter~\ref{ch:easygl-backend} --- both backends
+are blocked by the same upstream \texttt{Texture::ValidateFormat} contract, not by anything
+Vulkan-specific.
+
+\section{A documented, not a hidden, coverage gap}
+
+One honest gap in \emph{testing}, not rendering: at the time of writing there is no dedicated
+pixel test for \cnaclass{SpriteBatch}'s sort-mode/rotation/scale/crop/flip behavior, for
+\cnaclass{SpriteFont} glyph placement, or for a multi-mesh \cnaclass{Model} hierarchy on this
+backend specifically --- confirmed by directly searching the test suite for matching test
+names and finding none, despite basic \cnaclass{SpriteBatch}/2D-demo smoke tests passing.
+This does not mean the underlying shared C\texttt{++} code is wrong (it is the same code
+every other backend runs), only that this specific backend has not had these specific
+features independently re-verified against its own rendering path.

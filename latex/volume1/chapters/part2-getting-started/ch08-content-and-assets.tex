@@ -1,4 +1,76 @@
 \chapter{Content and Assets}
 \label{ch:content-and-assets}
 
-\emph{[Placeholder --- full content pending in this book's next writing pass. See \texttt{PROGRESS.md} at the repository root for the current writing status.]}
+Real XNA's content model and CNA's are different in one foundational way, and that
+difference is a deliberate design choice this book has already flagged twice in passing
+(Chapter~\ref{ch:what-is-cna}, Chapter~\ref{ch:first-game}). This chapter is where it gets a
+full explanation.
+
+\section{No \texttt{.xnb} content pipeline, by design}
+
+Real XNA never ships raw asset files inside a game. A separate, offline content-pipeline
+build step compiles every texture, model, font, and effect into a proprietary binary format
+--- \texttt{.xnb} --- which the runtime's \cnaclass{ContentManager} loads via
+\texttt{Load<T>()}. FNA reimplements a real \texttt{.xnb} reader, precisely so unmodified,
+historical XNA content keeps working unchanged. CNA takes a different, explicitly-stated
+path instead: it loads raw asset files directly (a \texttt{.png}, a \texttt{.json}
+descriptor, a \texttt{.dds}) rather than a compiled binary blob. This is named in the
+project's own README as a deliberate design choice, not an unfinished feature --- the same
+status as the \texttt{.fx} bytecode gap from Chapter~\ref{ch:shader-fx-gap}, but a separate
+gap with a separate story.
+
+\section{Two loaders exist, and it matters which one your asset goes through}
+
+Chapter~\ref{ch:models-meshes} already covered this in detail for \cnaclass{Model}
+specifically, and the pattern generalizes: for several asset types, CNA actually has
+\emph{two} independent loading paths, and \texttt{ContentManager} tries the more capable one
+first.
+
+For \cnaclass{Model}, a real, wire-compatible \texttt{.xnb} \texttt{ModelReader} exists ---
+genuinely compatible with real XNA/MonoGame/FNA-compiled model assets, reconstructing the
+full bone hierarchy, per-mesh parent-bone assignment, a real bounding sphere, and correct
+shared-resource deduplication across meshes. This is not a partial or aspirational reader;
+where it applies, none of this chapter's caveats apply. Only when that real reader does not
+recognize an asset does \texttt{ContentManager} fall back to an older, loose-file
+\texttt{.model.json} loader, and it is this second loader that carries every one of the real
+gaps catalogued in Chapter~\ref{ch:models-meshes}: a flattened single-bone hierarchy, no
+per-mesh parent-bone assignment, a permanently degenerate bounding sphere, and no shared
+resource graph across meshes sharing geometry.
+
+This same two-tier shape --- a genuine, more-capable loader tried first, an older, simpler
+loader as fallback --- recurs elsewhere in the content system, and the practical implication
+for a porting engineer is the same each time: \emph{which} loader your asset actually goes
+through matters more than what the target class's API surface promises in the abstract.
+
+\section{JSON descriptors: the shape of the fallback path}
+
+Where CNA does not have a real binary-compatible reader for an asset type, the fallback
+convention is a hand-authored JSON descriptor sitting alongside the raw asset file ---
+readable, editable by hand, and versioned in an ordinary source tree rather than requiring a
+separate content-pipeline build step to regenerate. This is a genuinely different authoring
+workflow from real XNA's content pipeline, and Volume~II's migration chapter returns to what
+it means in practice: porting an existing XNA/FNA game means translating its compiled
+\texttt{.xnb} assets into this raw-file-plus-JSON shape (or, for \cnaclass{Model}
+specifically, discovering that the real \texttt{.xnb} reader already accepts the original
+asset unmodified), rather than assuming every asset ports as a literal file copy.
+
+\section{A worked example: content in Chapter~\ref{ch:first-game}'s smallest program}
+
+The one-line \texttt{Texture2D::FromStream}-style construction in
+Chapter~\ref{ch:first-game}'s minimal game --- \texttt{Texture2D("assets/logo.png",
+getGraphicsDeviceProperty())} --- is possible precisely because of this chapter's design
+choice: \texttt{"assets/logo.png"} is a literal, directly loadable file path, not a compiled
+content-pipeline output identifier the way a real XNA \texttt{Content.Load<Texture2D>%
+("logo")} call would be. This is simpler for a small, from-scratch CNA project, and it is
+exactly the substitution a porting engineer has to reverse when bringing an existing XNA
+asset pipeline's output over --- covered in full in Volume~II.
+
+\section{Where this leaves the rest of Part~III}
+
+Every class in the chapters ahead --- \cnaclass{Texture2D}, \cnaclass{Model}, the stock
+effects --- is describable purely in terms of its runtime API, independent of how an
+instance of it actually got constructed. This chapter's distinction matters specifically at
+the boundary between ``I have an asset file'' and ``I have a live CNA object,'' which is
+exactly the boundary Volume~II's migration guide and \texttt{cna-samples}/\texttt{cna-examples}
+chapter come back to when the asset in question was originally authored for real XNA rather
+than for CNA from scratch.

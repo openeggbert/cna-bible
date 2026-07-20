@@ -1,4 +1,133 @@
 \chapter{Backend Architecture}
 \label{ch:backend-architecture}
 
-\emph{[Placeholder --- full content pending in this book's next writing pass. See \texttt{PROGRESS.md} at the repository root for the current writing status.]}
+Every backend chapter that follows implements the same contract. This chapter covers that
+contract once --- the interfaces, the shared parameter struct, and the build-time selection
+mechanism --- so the nine backend-specific chapters ahead can spend their time on what
+actually differs, not on repeating the shape they all share.
+
+\section{One header, not several}
+
+Despite \cnaclass{IGraphicsBackend} being described throughout this book as ``the backend
+contract layer,'' it is worth being precise: the entire contract lives in a single header,
+\texttt{include/CNA/Internal/Backends/Common/IGraphicsBackend.hpp} --- roughly a thousand
+lines, not a family of separate \texttt{ISpriteBatchBackend.hpp}/\texttt{ITextureBackend.hpp}
+files. Eleven interface classes live inside it, all in
+\texttt{namespace CNA::Internal::Backends}:
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Interface} & \textbf{Owns} \\
+\midrule
+\texttt{IVertexBufferBackend} & Vertex data upload, streaming hints, declaration \\
+\texttt{IIndexBufferBackend} & 16/32-bit index data upload \\
+\texttt{IOcclusionQueryBackend} & Begin/End/IsComplete/PixelCount \\
+\texttt{ITextureCubeBackend} & Per-face texture data \\
+\texttt{ITexture3DBackend} & Per-slice volume texture data \\
+\texttt{ITextureBackend} & 2D texture data, GL interop, CPU shadow \\
+\texttt{IRenderTargetBackend} & Extends \texttt{ITextureBackend}: bind/unbind as target \\
+\texttt{IRenderTargetCubeBackend} & Extends \texttt{ITextureCubeBackend}: per-face target binding \\
+\texttt{IEffectBackend} & Shader program compile/bind, uniform/texture setters \\
+\texttt{ISpriteBatchBackend} & Begin/End, transform, three \texttt{Draw} overloads \\
+\texttt{IGraphicsBackend} & Everything else --- see below \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\cnaclass{IGraphicsBackend} itself is the large one: device lifecycle
+(\texttt{Clear}/\texttt{Present}/viewport and presentation-mode management), native handle
+access (\texttt{GetWindowInternal()}/\texttt{GetRendererInternal()} --- both pure virtual,
+and both carry a comment flagging the \texttt{SDL\_Window*}/\texttt{SDL\_Renderer*} return
+types as ``should be abstracted later''), resource factories for every GPU object type in
+Part~III, render-target binding, per-state-object apply methods, the full 3D draw dispatch
+(\texttt{DrawColoredPrimitives}, the effect-aware \texttt{DrawPrimitivesEx} family, instanced
+draws), and a capability-query mechanism (\S\ref{sec:graphicscapability} below). A single,
+project-wide design choice worth internalizing before reading any backend chapter: nearly
+every optional method on this interface \textbf{defaults to a safe no-op or a null return}
+rather than requiring every backend to implement everything. \texttt{CreateEffectBackend()}
+defaults to \texttt{nullptr} (``backends that do not support programmable shaders'');
+\texttt{CreateOcclusionQuery()} defaults to \texttt{nullptr}; every state-application method
+defaults to doing nothing at all. This is a deliberate ``graceful capability degradation''
+design, and every backend chapter's own ``degrades/gap/blocked'' distinctions in Part~IV rest on it: a feature
+that silently degrades to a no-op reads differently in an audit than one that throws, even
+though both mean ``not implemented here.''
+
+\section{GpuDrawParams: already covered, worth remembering here}
+
+Chapter~\ref{ch:stock-effects} already introduced \cnaclass{GpuDrawParams} in full --- the
+single struct \texttt{Effect::FillGpuDrawParams()} populates and every backend's
+\texttt{DrawPrimitivesEx}/\texttt{DrawIndexedPrimitivesEx} consumes. It is worth restating
+here only because it is the concrete mechanism by which ``a stock effect draws identically
+across eleven backends'' is actually achieved: the effect layer never talks to a backend
+directly about lights, fog, or skinning palettes --- it fills one struct, and each backend's
+own draw dispatch decides how to turn that struct into real GPU state.
+
+\section{GraphicsCapability: ask, don't catch}
+\label{sec:graphicscapability}
+
+Rather than requiring game code to attempt an operation and catch an exception to discover
+whether a backend supports it, \cnaclass{GraphicsCapability} is a small enum ---
+\texttt{ThreeD}, \texttt{DepthStencilBuffer}, \texttt{MultiSampleAntiAliasing},
+\texttt{MultipleRenderTargets}, \texttt{AnisotropicFiltering}, \texttt{WireFrame},
+\texttt{OcclusionQuery}, \texttt{CustomEffects} --- queryable via
+\texttt{GraphicsDevice::SupportsCapability(GraphicsCapability)}. The default implementation
+returns \texttt{true} for everything; a 2D-only backend like \texttt{SDL\_RENDERER}
+(Chapter~\ref{ch:sdl-renderer}) overrides this to honestly report what it cannot do, rather
+than accepting a 3D draw call and throwing only once the call actually arrives.
+
+\section{Build-time selection}
+
+\texttt{cmake/BackendSelection.cmake} is where the backend list from
+Chapter~\ref{ch:building-cna} is actually enumerated: the \texttt{CNA\_GRAPHICS\_BACKEND}
+cache variable's \texttt{STRINGS} property lists all fourteen recognized values
+(\texttt{SDL\_RENDERER}, \texttt{EASYGL}, \texttt{BGFX}, \texttt{VULKAN}, \texttt{WEBGPU},
+\texttt{HEADLESS}, \texttt{SOFTWARE}, \texttt{D3D11}, \texttt{D3D12}, \texttt{CANVAS},
+\texttt{ASCII}, \texttt{DX3}, \texttt{D3D9}, and an additional experimental
+\texttt{SDL\_GPU} not otherwise covered in this book), and thirteen corresponding boolean
+options exist alongside it --- if more than one is somehow set \texttt{ON} at once,
+configuration fails outright with ``Exactly one backend option must be ON.'' The default is
+itself platform-conditional: \texttt{EASYGL} on Linux or Emscripten, \texttt{SDL\_RENDERER}
+everywhere else.
+
+Several backends carry hard, configure-time platform gates rather than soft warnings:
+\texttt{D3D9}/\texttt{D3D11}/\texttt{D3D12} fail configuration outright unless
+\texttt{CMAKE\_SYSTEM\_NAME} is \texttt{Windows} (native or MinGW-w64 cross-compiled) ---
+the comment in the CMake script is blunt about why: ``d3d11.h/d3d12.h/dxgi.h do not exist
+elsewhere.'' \texttt{CANVAS} fails configuration outright unless building under Emscripten,
+since HTML \texttt{<canvas>} is a browser DOM API with no meaning anywhere else.
+\texttt{EASYGL} and \texttt{BGFX} both emit a soft warning (not a hard failure) if configured
+outside Linux. \texttt{EASYGL} and \texttt{DX3} both require their respective sibling
+checkouts (\texttt{../easy-gl}, \texttt{../free-direct}) to exist at all, hard-erroring
+otherwise; \texttt{BGFX} instead fetches \texttt{bkaradzic/bgfx.cmake} directly via CMake's
+\texttt{FetchContent}.
+
+\texttt{cmake/BackendLibraries.cmake} wires the resulting per-backend link libraries and
+contains two architectural details worth knowing before Chapter~\ref{ch:canvas-ascii-backends}:
+the \texttt{ASCII} backend is built by reusing \texttt{SDL\_RENDERER}'s own real \texttt{.cpp}
+sources as a separate static library, compiled \emph{without} \texttt{CNA\_BACKEND\_SDL\_RENDERER}
+defined so its own \texttt{CreateGraphicsBackend()} factory is compiled out and cannot clash
+with ASCII's own factory --- confirming in build-system terms what
+Chapter~\ref{ch:canvas-ascii-backends} states in prose: ASCII is composition around
+SDL\_Renderer, not a reimplementation. And \texttt{D3D9}'s effect-compilation code
+(\texttt{D3D9EffectBackend}/\texttt{D3D9ConstantTable}) is deliberately isolated into its own
+static library specifically so that only that isolated library links against
+\texttt{d3dcompiler} --- keeping the stock D3D9 rendering pipeline itself free of that
+dependency, unlike \texttt{D3D11}/\texttt{D3D12}, which link \texttt{d3dcompiler}
+unconditionally into their whole backend target.
+
+\section{One factory function per backend}
+
+Whichever backend is selected at configure time compiles exactly one implementation of
+\texttt{std::unique\_ptr<IGraphicsBackend> CreateGraphicsBackend(const
+GraphicsBackendCreateArgs\&)}, gated behind a \texttt{\#ifdef CNA\_BACKEND\_*} matching the
+compile definition \texttt{BackendSelection.cmake} set. \cnaclass{GraphicsBackendCreateArgs}
+itself carries the window handle, virtual resolution, presentation mode, context-recovery
+flag, multisample count, swap interval, and --- as \texttt{NOXNA} additions introduced
+alongside the \texttt{D3D9} backend --- back-buffer/depth-stencil format, fullscreen flag,
+and graphics profile, each documented as a field ``every existing backend except D3D9 may
+ignore'': a direct, structural acknowledgment that \texttt{D3D9} is the one backend that
+actually consults these values the way a real device negotiation would.
+
+With the shared contract established, the next nine chapters cover what each backend
+actually does with it.

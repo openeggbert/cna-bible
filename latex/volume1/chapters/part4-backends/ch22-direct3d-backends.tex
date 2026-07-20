@@ -1,4 +1,152 @@
 \chapter{The Direct3D 9/11/12 Backends}
 \label{ch:direct3d-backends}
 
-\emph{[Placeholder --- full content pending in this book's next writing pass. See \texttt{PROGRESS.md} at the repository root for the current writing status.]}
+All three of CNA's Windows-only Direct3D backends share one development loop:
+cross-compiled from this project's own Debian machine using the same MinGW-w64 toolchain
+Chapter~\ref{ch:building-cna}'s Windows cross-build section already introduced, then run and
+verified under Wine on a real GPU --- \texttt{D3D9} and \texttt{D3D11} through DXVK,
+\texttt{D3D12} through a different translation layer, vkd3d-proton, in its own separate Wine
+prefix. None of the three has been verified on real Windows hardware yet; that remains open
+for all three alike, tracked as its own \texttt{needs\_human} task in each backend's plan.
+
+\section{D3D9: the one backend that targets pixel authenticity, not just parity}
+
+\texttt{D3D9} is architecturally different in ambition from every other backend in this book.
+Its own documentation states the goal directly: ``pixel-for-pixel indistinguishability from
+the original XNA~4.0 runtime itself, not just `renders plausibly.''' It runs Microsoft's own
+vendored, verbatim XNA~4.0 Stock Effects HLSL, compiled through the real
+\texttt{d3dcompiler\_47.dll} rather than a reimplementation of it.
+
+\subsection{The oracle: a real XNA~4.0 runtime as ground truth}
+
+A dedicated tool, \texttt{tools/xna-oracle/}, stands up a genuine, running XNA~4.0 runtime
+under Wine --- real GAC assemblies, compiled by the real in-prefix \texttt{csc.exe} --- and
+renders the same declarative scene file through both that real runtime and CNA's \texttt{D3D9}
+backend, diffing the two resulting images at zero tolerance: an exact match, not an
+approximate one. Both sides of the comparison run through the same DXVK translation layer on
+the same GPU, which is precisely what makes the comparison a test of CNA's own rendering
+correctness rather than of two different graphics stacks. At the time of writing, this
+corpus had grown to 36 scenes, with 0 of 36 diverging.
+
+\subsection{What is real}
+
+Full device lifecycle via plain \texttt{Direct3DCreate9} (not D3D9Ex, a deliberate choice),
+with genuine \texttt{DeviceLost}/\texttt{DeviceResetting}/\texttt{DeviceReset} handling; all
+five XNA stock effects, with 61 of 66 compiled shader variants byte-identical to Microsoft's
+own shipped bytecode (the remaining five differ only by HLSL compiler version, and are
+separately proven equivalent through the oracle rather than merely assumed so); a real,
+oracle- and mutation-verified \texttt{SpriteEffect.fx}, including the half-pixel offset
+Direct3D~9 is notorious for --- caught before it could become a false-positive ``closed''
+claim, because the offset's absence is invisible on a $1\times1$ test texture and only shows
+up at a larger size; and \cnaclass{GraphicsProfile.Reach}/\texttt{.HiDef} enforcement that is
+\emph{real} here, consulting an actual \texttt{D3DCAPS9} structure --- the only CNA backend
+where that distinction reflects a genuine capability query rather than a decorative property,
+as Chapter~\ref{ch:graphicsdevice} already noted. Render targets sampled back as ordinary
+textures, and the \texttt{PreferPerPixelLighting}/specular gaps from
+Chapter~\ref{ch:stock-effects}'s \cnaclass{GpuDrawParams} discussion, were both real, open
+problems earlier in this backend's history and are now fixed --- the specular fix in
+particular proved four of five \texttt{PixelLighting} bytecode variants pixel-perfect via the
+oracle; the fifth, an untextured vertex-lit variant, remains permanently unreachable, blocked
+by the same missing position-only vertex layout that limits the untextured lit bucket on
+every backend.
+
+\subsection{What is not, and the one caveat that applies to every number above}
+
+Every \cnaclass{SurfaceFormat} besides \texttt{Color} remains unsupported (a shared,
+cross-backend limitation from Chapter~\ref{ch:textures-rendertargets}, not a D3D9-specific
+one); \texttt{Texture3D} has no oracle or GPU round-trip coverage at all --- only its
+\cnaclass{GraphicsProfile} size-limit behavior is tested; \cnaclass{OcclusionQuery} is not
+built for this backend at all, the same gap D3D12 carries; and
+\cnaclass{SpriteSortMode.Immediate}/\texttt{.Texture} were confirmed not viable as
+deterministic oracle scenes at all --- \texttt{Immediate} is not something a raster diff can
+observe, and \texttt{Texture} sorts by an implementation-defined \texttt{GetHashCode()},
+which no two implementations are obligated to agree on. The caveat that applies to every
+result in this section: \texttt{D3DCAPS9} itself is synthesized by DXVK on this dev loop, not
+reported by genuine XNA-era driver hardware --- real-Windows-hardware verification remains
+open, as stated above.
+
+\subsection{Two real bugs the oracle methodology itself found}
+
+Both are worth naming because they demonstrate what a pixel-exact reference actually buys
+you over ordinary unit testing. First, a sort-mode Z-clipping bug: \texttt{zFarPlane=1}
+mapped a nonzero \cnaclass{SpriteBatch} layer depth outside Direct3D~9's own valid clip-space
+Z range, silently clipping away any sprite with a nonzero layer depth entirely --- fixed by
+using \texttt{zFarPlane=-1} instead. Second, and more interesting because it is not
+\texttt{D3D9}-specific at all: \cnaclass{GraphicsProfile} never actually reached the real
+device, because \texttt{Game}'s own \cnaclass{GraphicsDevice} was eagerly default-constructed
+(hardcoded to \texttt{Reach}) before \cnaclass{GraphicsDeviceManager} even existed to apply a
+game's requested profile --- meaning a game setting \texttt{GraphicsProfile = HiDef;
+ApplyChanges();} had no path to the live device at all. This is a shared, cross-backend bug,
+only \emph{discovered} while building \texttt{D3D9}'s own tests, because \texttt{D3D9} is the
+one backend where the profile actually matters enough to notice.
+
+\section{D3D11: the first native, dependency-free Windows path}
+
+\texttt{D3D11} is CNA's first backend built directly on native Direct3D~11, verified in the
+same MinGW-w64-plus-Wine-plus-DXVK loop as \texttt{D3D9}. It proves out a real
+\texttt{ID3D11Device}/\texttt{ID3D11DeviceContext} pipeline: buffers, textures, and render
+targets (including MSAA and multiple render targets), state objects, all ten stock HLSL
+shader variants across the five stock effects, a real \cnaclass{SpriteBatch}, and --- unique
+to this backend and \texttt{D3D12} --- a runtime-\texttt{D3DCompile()}-backed
+\texttt{ShaderEffect} path for custom shaders, already introduced in
+Chapter~\ref{ch:shader-fx-gap}. All of this is pixel-verified via real GPU readback, not
+merely ``returned \texttt{S\_OK}.''
+
+Device-lost/removed recovery here is honestly scoped as \emph{detection-only}: the
+device-removed check is real and correctly wired, but has genuinely never fired in this dev
+loop, since no real device removal has occurred under Wine+DXVK testing --- full recovery
+remains unverified, not because the code is wrong, but because the triggering condition has
+never actually happened. One real, structural bug is worth recounting for what it reveals
+about static linking: an early build hit an \texttt{undefined reference to Effect::Apply()}
+link failure, traced to a genuine circular dependency (the D3D11 \cnaclass{SpriteBatch}
+backend calls back into \texttt{Effect::Apply()}, which lives in the main CNA library, which
+itself depends on the backend). MinGW's single-pass archive resolution never revisited the
+already-searched \texttt{libCNA.a} to satisfy it. The fix was an explicit repeated
+\texttt{target\_link\_libraries(\ldots{} CNA)} for the D3D11/D3D12 targets, deliberately
+exploiting CMake's own documented support for a static-library link cycle --- and the bug was
+confirmed genuinely pre-existing (via \texttt{git stash}, it reproduced identically on the
+base commit), not something the D3D11 work itself introduced.
+
+\section{D3D12: built on D3D11's own foundation, and an honest split verification story}
+
+\texttt{D3D12} deliberately reuses \texttt{D3D11}'s own HLSL/DXBC bytecode, format and state
+mapping tables, and constant-buffer layouts --- \texttt{D3DCommon} from
+Chapter~\ref{ch:backend-architecture} is exactly this shared foundation. It proves out a real
+device, command queues, descriptor heaps, command lists, fences with genuine two-frame
+back-pressure, a real per-resource barrier-transition tracker, pipeline state objects with
+runtime-settable state, root signatures, real per-slot dynamic sampler state, buffers, 2D/cube/%
+3D textures, real render targets (including multiple render targets with real mip-chain
+generation and device-queried MSAA), real occlusion queries, all ten stock shader variants
+(reusing \texttt{D3D11}'s own compiled bytecode directly, not re-deriving it), a real
+\cnaclass{SpriteBatch} with the same runtime-compiled custom-shader support as
+\texttt{D3D11}, and a real, functionally-proven device-removed recovery path.
+
+The single most important structural fact about this backend's own verification is worth
+stating plainly, because it qualifies every number above: \textbf{the routine CTest suite for
+this backend is entirely off-screen}. Real swap-chain creation and \texttt{Present()} through
+a live window are proven, but only through a separate, manual diagnostic tool run through a
+Proton-managed launch --- never through the routine, automated CTest run, because a full
+Proton bootstrap was judged too heavy and slow for a normal test run in this dev loop.
+
+\subsection{A genuine architecture mismatch, not a CNA bug}
+
+Swap-chain creation under \emph{plain} Wine (as opposed to a Proton-managed launch) crashes
+outright, reproduced twice with a full symbolized backtrace pointing to a null-pointer read
+inside Wine's own \texttt{dxgi.dll}. The root cause, once found, is genuinely external to
+CNA: a mismatch between Debian's own system \texttt{dxgi.dll} and vkd3d-proton's separately
+overridden \texttt{d3d12.dll} --- two DLLs that were never meant to be paired this way. Once
+launched through Proton properly, which supplies the matched DLL pair vkd3d-proton actually
+expects, swap-chain creation and a genuine ten-frame clear-and-present loop through a real
+window both succeed cleanly, verified twice with zero crashes.
+
+\subsection{Explicitly corrected claims}
+
+\texttt{D3D12}'s own documentation is unusually direct about its own earlier revisions being
+stale: runtime-settable \cnaclass{BlendState}/\cnaclass{DepthStencilState}/%
+\cnaclass{RasterizerState} feeding real pipeline-state objects, sixteen-slot dynamic sampler
+state, real public render-target and render-target-cube backends (including multiple render
+targets), real \cnaclass{Texture3D}, and real \cnaclass{TextureCube::GetData()} were all
+previously described as open gaps in earlier documentation passes and are now all real and
+closed --- with the documentation's own closing line telling a reader to re-verify any
+\emph{other} specific claim against the project's own live tracking file before trusting it,
+rather than this book's snapshot alone.

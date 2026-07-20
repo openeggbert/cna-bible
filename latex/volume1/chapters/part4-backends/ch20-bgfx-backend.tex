@@ -1,4 +1,87 @@
 \chapter{The BGFX Backend}
 \label{ch:bgfx-backend}
 
-\emph{[Placeholder --- full content pending in this book's next writing pass. See \texttt{PROGRESS.md} at the repository root for the current writing status.]}
+\texttt{BGFX} integrates the third-party \texttt{bkaradzic/bgfx} rendering library (fetched
+directly via CMake's \texttt{FetchContent}, Chapter~\ref{ch:backend-architecture}) behind the
+same contract every other backend implements, using bgfx's own native API --- window and
+platform initialization, texture creation, sprite draws, frame submission --- rather than
+routing through SDL\_Renderer.
+
+\section{Test baseline and the Phase 72 closure}
+
+At the time of writing, the full unit suite passes 4{,}375 of 4{,}377 tests (two hardware
+skips), and the backend-specific \texttt{ctest} suite passes 103 of 105. The two remaining
+failures are both environment ceilings, not code defects: one render-target MSAA-resolve test
+fails because this project's own headless \texttt{Xvfb} display has no DRI3 support to
+resolve against, and one render-target-cube depth-format test (a
+\texttt{Depth24Stencil8}-attached cube face producing no color output) has been investigated
+three separate times without finding a root cause, and remains formally deferred rather than
+silently dropped. A first complete, row-by-row triage of this backend originally found
+thirty-eight real gaps; thirty-seven were fixed in a single closing session, leaving only the
+depth-bias item covered below --- which was itself subsequently fixed too, closing the phase
+in full.
+
+\section{DepthBias: a real gap in the underlying library, not just CNA}
+
+\cnaclass{RasterizerState.DepthBias} is the one feature in this chapter whose fix required
+working around a genuine absence in bgfx itself, confirmed by reading bgfx's own vendored
+source directly: its high-level state API has no depth-bias mechanism of any kind --- no
+corresponding flag in its own headers, and no \texttt{glPolygonOffset} call anywhere in its
+vendored OpenGL renderer backend. The fix emulates the feature entirely at the CNA level, via
+a per-draw vertex-shader Z-offset (a new \texttt{u\_depthBias} uniform threaded through every
+3D vertex shader). \texttt{SlopeScaleDepthBias}, by contrast, remains \emph{deliberately}
+unimplemented --- a project-owner decision, not an oversight --- because a true
+per-fragment, screen-space-slope computation would force every 3D shader off the GPU's
+early-Z optimization path, a cost judged not worth paying for this specific, rarely-used
+parameter.
+
+\section{Render-target readback crashes: one root cause, five fixes}
+
+Five of six render-target-related \texttt{glReadPixels}/\texttt{Xvfb} crashes were traced to
+a single, shared root cause: bgfx processes its internal views in ascending ID order every
+frame, which means any render-target view is always the \emph{last} one processed --- and
+therefore still GL-bound at the exact moment \texttt{glReadPixels()} fires for a screenshot.
+The fix adds a dedicated ``flush'' view, touched immediately before every screenshot
+specifically to force the correct view to be current first. Only the render-target-cube
+depth-format crash mentioned above has a different, still-unidentified root cause and was
+not resolved by this fix.
+
+\section{A real, found-and-fixed rendering bug: silent black meshes}
+
+One bug is worth naming for how invisible it was until specifically tested: this backend's
+graphics-backend class never overrode the effect-aware indexed-draw entry point at all. Any
+indexed draw bound to an \cnaclass{Effect} whose vertex format lacked a \texttt{Color}
+attribute --- which describes essentially any \cnaclass{Model} loaded through
+\texttt{ContentManager} (Chapter~\ref{ch:models-meshes}) --- silently fell back to the base
+class's default implementation, discarding the entire \cnaclass{GpuDrawParams} struct and
+reading an unbound color attribute (which GL defaults to black). The practical, visible
+consequence: any loaded 3D model rendered as a solid black silhouette on this backend,
+regardless of its real diffuse color, texture, or lighting --- fixed by adding a real
+override.
+
+\section{OcclusionQuery: a real implementation whose correctness cannot be fully proven here}
+
+\cnaclass{OcclusionQuery} was previously a pure no-op on this backend; the fix wires the
+query handle into bgfx's own dedicated submit-with-occlusion-query overload, across all
+twelve 3D-draw submission call sites --- no separate correlation/tagging machinery was
+needed the way Vulkan's fix required, since bgfx submits synchronously. Two honestly-documented
+caveats remain: first, pixel/query correctness genuinely \emph{cannot} be established in this
+project's own sandbox, because sabotaging the fix back to a pure no-op produces identical
+\texttt{IsComplete()}/\texttt{PixelCount()} output to the fixed version --- the sandbox's own
+software Mesa driver returns a non-null result even for a query that was never submitted
+anywhere at all, a real ceiling of the software renderer itself, not a CNA defect. Second,
+bgfx's own official usage example attaches an occlusion measurement to a separate, dedicated
+view specifically so the query is not polluted by other geometry sharing the same depth
+buffer; CNA's current fix instead shares whichever view the game's own 3D draw already
+targets --- a real, acknowledged architecture gap against true scene-depth query correctness,
+not yet attempted.
+
+\section{Where this leaves the backend}
+
+The project's own closing assessment for this backend is unusually clean: ``BGFX's only
+remaining code-level gap is [the depth-bias item], already flagged for a project-owner
+decision; the other two items are sandbox/environment ceilings\ldots not further BGFX
+backend code work.'' Read alongside Chapter~\ref{ch:easygl-backend} and
+Chapter~\ref{ch:vulkan-backend}, BGFX is the backend whose remaining open items are most
+cleanly separated into ``needs a decision'' and ``needs a different test environment,'' rather
+than ``needs more engineering.''

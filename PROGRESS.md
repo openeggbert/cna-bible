@@ -4,8 +4,8 @@ Two-volume LaTeX technical book about the `openeggbert/cna` ecosystem. Source li
 `latex/volume1/` and `latex/volume2/`. Build with:
 
 ```bash
-cd latex && make volume1   # -> volume1/main.pdf
-cd latex && make volume2   # -> volume2/main.pdf
+cd latex && make volume1   # -> volume1/main.pdf  (106 pages, complete)
+cd latex && make volume2   # -> volume2/main.pdf  (in progress)
 ```
 
 ## Scope note
@@ -18,46 +18,57 @@ counted as done.
 
 **free-direct scope (per author instruction 2026-07-20): capped at ~5-10 pages total across
 both volumes.** It is a marginal/peripheral dependency for CNA (backs only the DX3 backend),
-not a deep dive on par with sharp-runtime or easy-gl. Vol.I Ch.24 (DX3 backend) and Vol.II
-Ch.11 (free-direct in depth) should stay concise and combined should not exceed that budget.
+not a deep dive on par with sharp-runtime or easy-gl. Vol.I Ch.24 (DX3 backend, ~2 pages) and
+Vol.II Ch.12 (free-direct in depth) together must stay within that budget.
 
-## Volume I — The Core Framework and the Graphics Machine
+## Volume I — The Core Framework and the Graphics Machine — **COMPLETE (106 pages)**
 
-### Part I — The CNA Ecosystem
-- [x] Ch.1 What Is CNA? — written, source-grounded (README, CLAUDE.md)
-- [x] Ch.2 The Ecosystem Map — written (all 6 sibling repo READMEs read directly)
-- [x] Ch.3 Design Philosophy and House Style — written (full CLAUDE.md porting-rules pass)
-
-### Part II — Getting Started
-- [x] Ch.4 Building CNA — written (full README build-instructions pass)
-- [x] Ch.5 Your First CNA Game — written (README usage example, annotated)
-- [x] Ch.6 The Game Loop — written (Game/GameTime/GameComponent/GameWindow/GraphicsDeviceManager, source-grounded)
-- [x] Ch.7 Math and Core Geometry Types — written (Vector/Matrix/Quaternion/Color/bounding volumes/Curve, source-grounded)
-- [ ] Ch.8 Content and Assets — placeholder
-
-### Part III — The Graphics Machine
-- [x] Ch.9 GraphicsDevice — written, source-grounded
-- [x] Ch.10 SpriteBatch — written, source-grounded
-- [x] Ch.11 Textures, Render Targets and Surfaces — written, source-grounded
-- [ ] Ch.12-15 — placeholders (models/meshes, stock effects, state objects, shader/.fx gap)
-
-### Part IV — The Backends
-- [ ] Ch.16–24 — placeholders (backend architecture + 9 individual backend chapters).
-      Extensive research notes already gathered for all of these (interface layer, CMake
-      backend selection, and per-backend docs for SDL_Renderer/EasyGL/Vulkan/BGFX/WebGPU/
-      D3D9/D3D11/D3D12/Canvas/ASCII/DX3) — writing pass pending.
-      **Ch.24 (DX3/free-direct) must stay short per the free-direct scope note above.**
+All 24 chapters across all 4 parts are written, source-grounded, and compile cleanly:
+- Part I: Ecosystem & design philosophy (Ch.1-3)
+- Part II: Getting started, game loop, math types, content model (Ch.4-8)
+- Part III: Graphics core — GraphicsDevice, SpriteBatch, textures/RTs, models, stock
+  effects, state objects, shader/.fx gap (Ch.9-15)
+- Part IV: All 9 backend chapters — architecture, SDL_Renderer, EasyGL, Vulkan, BGFX,
+  WebGPU, D3D9/11/12, Canvas+ASCII, DX3 (Ch.16-24)
 
 ## Volume II — The Ecosystem, the Platforms, and the Practice
 
-All chapters currently placeholders (Parts I–V + 3 appendices).
-**Ch.11 (free-direct in depth) must stay short per the free-direct scope note above.**
+Structure updated to add a dedicated Media chapter (was missing). Current chapter numbering:
 
-## Research notes gathered (not yet all turned into chapters)
+### Part I — Input, Audio, Media, Devices, Networking and Services
+- [ ] Ch.1 Input — placeholder; **full research notes gathered** (Keyboard/Mouse/GamePad/
+      Touch/Gestures + CNA::Input NOXNA extensions Joysticks/Sensors/Power/Haptics,
+      docs/input-*.md, real bugs found)
+- [ ] Ch.2 Audio — placeholder; **full research notes gathered** (SoundEffect family,
+      AudioEngine/SoundBank/WaveBank/Cue XACT model over SDL3_mixer, NEXTaudio.md findings)
+- [ ] Ch.3 Media — placeholder; **full research notes gathered** (Song/Album/Playlist/
+      MediaPlayer/VideoPlayer — note: README's "14 shells" claim is STALE, NEXTmedia.md
+      shows 224/231 tasks done, real implementations)
+- [ ] Ch.4 Devices/Sensors — placeholder (not yet researched)
+- [ ] Ch.5 GamerServices — placeholder; **full research notes gathered** (Gamer/
+      SignedInGamer/Leaderboards/Achievements real+local, Guide mostly stub w/ 2 real
+      overlay UIs)
+- [ ] Ch.6 Networking — placeholder; **full research notes gathered** (NetworkSession/ENet,
+      SystemLink real, PlayerMatch/Ranked stub, real bugs found+fixed)
+- [ ] Ch.7 Avatar — placeholder; **full research notes gathered** (base API faithfully
+      inert per decompiled XNA assembly; SkinnedModelEXT is the separate real-rendering
+      extension)
 
-Three research passes completed, covering:
-1. Core framework types (Game/GameTime/math/curves) — used for Vol.I Ch.6–7 (done)
-2. Graphics core API (GraphicsDevice/SpriteBatch/textures/models/effects/state) — partially
-   used (Ch.9-11 done); still needed for Ch.12-15 (models, stock effects, state objects,
-   shader/.fx gap)
-3. Backend architecture + all per-backend docs — still needed for Ch.16-24
+### Part II — Sharp Runtime (Ch.8-10) — placeholders, not yet researched
+### Part III — easy-gl and free-direct (Ch.11-12) — placeholders, not yet researched.
+      **Ch.12 free-direct must stay short — see scope note above.**
+### Part IV — Cross-platform engineering (Ch.13-16) — placeholders, not yet researched
+### Part V — Porting, practice, roadmap (Ch.17-23) + 3 appendices — placeholders, not yet researched
+
+## Research notes gathered so far (raw material banked, ready to turn into chapters)
+
+1. Core framework types (Game/GameTime/math/curves) — used, Vol.I Ch.6-7 done
+2. Graphics core API (GraphicsDevice/SpriteBatch/textures/models/effects/state) — used,
+   Vol.I Ch.9-15 done
+3. Backend architecture + all 11 backend docs — used, Vol.I Ch.16-24 done
+4. Input/Audio/Media/Net — gathered, not yet written (Vol.II Ch.1/2/3/6)
+5. GamerServices/Avatar — gathered, not yet written (Vol.II Ch.5/7)
+
+Still needed: Devices/Sensors research, sharp-runtime research, easy-gl/free-direct
+research, cross-platform (Windows/Wine, Emscripten, Android, verification methodology)
+research, and porting/practice/roadmap material.

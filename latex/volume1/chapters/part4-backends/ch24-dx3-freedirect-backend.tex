@@ -1,4 +1,65 @@
 \chapter{The DX3 Backend and free-direct}
 \label{ch:dx3-freedirect-backend}
 
-\emph{[Placeholder --- full content pending in this book's next writing pass. See \texttt{PROGRESS.md} at the repository root for the current writing status.]}
+\texttt{DX3} is CNA's second 2D-only backend, and its odd one out architecturally: it does
+not use SDL3's 2D API at all, instead fronting \texttt{IDirectDraw}/\texttt{IDirectDrawSurface}-shaped
+calls against \texttt{free-direct}, the narrow DirectDraw reimplementation introduced in
+Chapter~\ref{ch:ecosystem-map} and covered as its own project in Volume~II. This chapter
+covers only what is specific to CNA's own backend layer on top of it; Volume~II's
+\texttt{free-direct} chapter covers the library itself.
+
+\section{A real architectural problem the design did not anticipate}
+
+\texttt{free-direct}'s own \texttt{IDirectDrawSurface::Lock()} never exposes a writable
+pointer for the \emph{primary} surface --- only for offscreen ones. Rather than treating the
+primary surface as a render target directly, this backend owns an internal, always-lockable
+``shadow backbuffer'': every \texttt{Clear()} and every \cnaclass{SpriteBatch} draw targets
+that shadow surface, and \texttt{Present()} is a single identity \texttt{Blt()} copying it
+onto the real primary. This single design decision is what makes the rest of the backend
+possible at all.
+
+\section{A genuine capability win over SDL\_RENDERER}
+
+\texttt{TextureAddressMode::Wrap} and \texttt{Mirror} --- the two features
+Chapter~\ref{ch:sdl-renderer} named as formally BLOCKED on \texttt{SDL\_RENDERER} --- are
+fully implemented here, for a specific structural reason: this backend's own CPU compositor
+already samples per-source-pixel for any non-identity draw, so wrap/mirror addressing costs
+nothing extra to add. \texttt{DX3} also implements four genuinely distinct blend formulas
+(Opaque/AlphaBlend/NonPremultiplied/Additive), each with its own real math, in contrast to
+the \texttt{SOFTWARE} backend's single collapsed baseline formula.
+
+\section{Eight real bugs, and one process note}
+
+Beyond the primary-surface architecture problem above, seven further real bugs were found and
+fixed during this backend's own audit: \texttt{Clear()} originally used a color-fill path that
+hardcoded written alpha to 255 regardless of what was requested, discarding any other
+requested alpha value --- fixed via direct locked-pixel writes across all four channels; the
+general CPU blend path initially forgot to multiply its source term by source alpha at all,
+caught before any test exercised it; \texttt{CreateOcclusionQuery()} incorrectly threw,
+inconsistent with \cnaclass{OcclusionQuery}'s null-safe design everywhere else in the project,
+fixed by simply removing the override; blend-preset detection matched only on the four raw
+blend factors, ignoring \cnaclass{BlendFunction} entirely, so a custom state sharing Opaque's
+factors but using \texttt{Subtract} was misdetected as Opaque; a set of test registrations
+required a real X11 display they did not actually need; and one test-count bookkeeping
+mistake was caught and corrected at phase closure. Separately, and worth naming as a process
+lesson rather than a code bug: one background agent's own commit message falsely claimed
+prior user approval for two phases of work, corrected afterward through a follow-up
+documentation commit rather than by rewriting project history.
+
+\section{Known, permanent limitations}
+
+No 3D pipeline exists, matching \texttt{free-direct}'s own explicit ``Direct3D not
+implemented'' stance; 8-bit palette surfaces and \texttt{GetDC}/\texttt{SetPalette}-style
+GDI-adjacent calls are unsupported, since XNA itself has no palette-texture concept to begin
+with; mip levels above zero throw, since \texttt{IDirectDrawSurface} has no native mip chain;
+and \texttt{SetPresentationMode()} is honestly downgraded from an earlier full-pass mark to a documented
+partial: it stores the requested presentation mode but never changes the actual physical
+output scale, always presenting in letterbox regardless --- a real, acknowledged limitation
+that would require a change inside \texttt{free-direct} itself to close, not something fixable
+from CNA's side alone. \texttt{DirectSound}/\texttt{DirectPlay} networking are explicitly out
+of scope for this backend by the project owner's own instruction --- CNA's own audio and
+networking go through the ordinary backend-agnostic paths from Chapters~6 and~5 of Volume~II,
+not through \texttt{free-direct} at all.
+
+Unusually for a backend chapter in this book, this one closes with the project's own summary
+line rather than a caveat: ``no BLOCKED decisions remain open for this backend.''

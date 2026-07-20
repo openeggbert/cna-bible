@@ -1,4 +1,115 @@
 \chapter{The SDL\_RENDERER Backend}
 \label{ch:sdl-renderer}
 
-\emph{[Placeholder --- full content pending in this book's next writing pass. See \texttt{PROGRESS.md} at the repository root for the current writing status.]}
+\texttt{SDL\_RENDERER} is CNA's simplest backend, its most exhaustively audited, and the one
+whose scope is narrowest by explicit design: a 2D-only rendering path built directly on
+SDL3's own 2D texture-blit renderer, with no 3D pipeline, no programmable shader stage, no
+depth/stencil buffer, and no multisample antialiasing at all.
+
+\section{Scope, by design}
+
+Every 3D-facing entry point on this backend --- \texttt{CreateVertexBuffer},
+\texttt{DrawColoredPrimitives}, and the rest of the 3D draw dispatch from
+Chapter~\ref{ch:backend-architecture} --- throws immediately, with a consistent
+\texttt{"SDL\_Renderer does not support 3D"} message. This is not treated as a bug: a
+systematic full-suite run confirms exactly thirteen known, expected pre-existing test
+failures, every one of them this exact throw, matching the backend's documented scope
+precisely. A custom \cnaclass{Effect} passed to \texttt{SpriteBatch::Begin(effect)} also
+throws, for the same underlying reason --- there is no shader stage to run it on.
+
+\section{The Phase 70 audit: fifteen real bugs, two still open}
+
+The single most thorough backend audit in the project (Tasks~666--731, 65 tasks total)
+found and fixed fifteen real bugs, spanning almost every area \cnaclass{SpriteBatch}
+touches:
+
+\begin{itemize}
+  \item \textbf{SpriteBatch (2 bugs).} \texttt{SDL\_RenderTextureRotated}'s rotation-pivot
+        convention did not match XNA's own --- fixed by offsetting the destination
+        rectangle. The \texttt{transformMatrix} argument to \texttt{Begin()} was silently
+        ignored in its entirety --- fixed via a new path using
+        \texttt{SDL\_RenderTextureAffine}, used only for a genuinely non-identity transform
+        (Chapter~\ref{ch:spritebatch} covers both in full).
+  \item \textbf{SpriteFont (1 bug, shared across every backend).} The
+        \cnaclass{SpriteEffects} flip bug described in Chapter~\ref{ch:spritebatch} ---
+        fixed once, in the shared \texttt{SpriteBatch.cpp}, benefiting every backend at
+        once rather than being an SDL\_Renderer-specific fix.
+  \item \textbf{BlendState (2 bugs).} Only \texttt{Opaque} and \texttt{Additive} were
+        specially handled; every other preset mapped incorrectly. Separately,
+        \texttt{SpriteBatch::Begin()} was unconditionally clobbering whatever blend mode had
+        already been set, every single call.
+  \item \textbf{SamplerState (1 bug).} Four of nine \cnaclass{TextureFilter} values were
+        silently downgraded to nearest-neighbor sampling rather than mapping to their real
+        \texttt{SDL\_ScaleMode} equivalent.
+  \item \textbf{RenderTarget2D (4 bugs).} A shared depth-clear code path crashed outright
+        when asked to clear the depth buffer of a render target with
+        \texttt{DepthFormat::None} (i.e., no depth buffer at all, which is every render
+        target on this 2D-only backend). A second bug performed an unchecked, unsafe
+        downcast between two sibling backend classes when sampling a render target as an
+        ordinary texture --- a genuine memory-safety hazard, not merely a logic error. The
+        requested \texttt{DepthFormat} itself is honestly acknowledged as emulated: it is
+        silently accepted and echoed back, but no functional depth test exists behind it at
+        all on this backend. A new \texttt{HasRealDepthBuffer()} check was added specifically
+        so calling code can ask, rather than assume.
+  \item \textbf{Viewport (1 bug).} \texttt{PresentInterval::Two} silently collapsed to
+        \texttt{PresentInterval::One} rather than being honored or rejected.
+  \item \textbf{Disposed-resource guards (3 bugs).} A missing disposed-texture check inside
+        the internal sprite-push path; a missing equivalent check in
+        \texttt{SetRenderTargets}; and a dangling backend pointer left behind after
+        \texttt{RenderTarget2D::Dispose()}.
+  \item \textbf{OcclusionQuery (1 bug).} Construction previously succeeded silently even with
+        a null backend --- now throws, consistent with the 2D-only-backend pattern of
+        failing loudly at construction rather than producing a query object that can never
+        do anything.
+\end{itemize}
+
+\section{Two blocked decisions, and why they are genuinely blocked}
+
+Two gaps remain open specifically because closing them requires a project-owner
+architecture decision, not more engineering effort:
+
+\begin{description}
+  \item[\texttt{TextureAddressMode::Wrap}/\texttt{Mirror} via \texttt{SpriteBatch}.]
+        \texttt{SDL\_RenderTexture}'s own \texttt{srcrect} handling has exactly one fixed,
+        clamp-like behavior at the edges. SDL3 does expose
+        \texttt{SDL\_SetRenderTextureAddressMode}, but it only affects
+        \texttt{SDL\_RenderGeometry} --- an entirely different draw call than the one this
+        backend's \texttt{Draw()} actually issues. Three concrete options were identified and
+        none chosen: throw unconditionally whenever \texttt{Wrap}/\texttt{Mirror} is
+        requested, rewrite \texttt{Draw()} onto \texttt{SDL\_RenderGeometry} project-wide, or
+        a hybrid that only throws when the source rectangle actually exceeds the texture's
+        bounds (the common case where it does not would keep working, coincidentally, under
+        the existing clamp-like behavior).
+  \item[\texttt{Texture3D}/\texttt{TextureCube} construction.] These currently succeed
+        silently with a null backend rather than throwing. Prototyping a fix that makes
+        construction throw instead was found to have a 94-test blast radius (33 tests in one
+        file, 42 in another, 19 in a third) --- large enough that the change was left
+        unresolved rather than made unilaterally.
+\end{description}
+
+\section{What is honestly emulated versus what is real}
+
+Beyond the \texttt{DepthFormat} case above, \texttt{TextureAddressMode::Clamp} is flagged as
+working ``by coincidence'' --- it matches \texttt{SDL\_RenderTexture}'s own fixed
+out-of-bounds behavior, not because any real sampler-state value is being honored.
+\texttt{MultiSampleCount} is accepted and ignored, always reporting zero. Fullscreen
+toggling round-trips correctly at the API level, but the audit is explicit that genuine
+OS-level fullscreen state cannot actually be verified inside this project's own headless
+\texttt{Xvfb} test environment. \texttt{Clear} honoring \texttt{ClearOptions::Stencil} is a
+cross-backend no-op here too (Task~871, still open, matching Chapter~\ref{ch:state-objects}'s
+finding for the hardware backends). Five real, multi-frame compatibility samples --- a 2D
+demo, a bouncing-sprite physics scene, a keyboard-driven sprite, a two-glyph
+\cnaclass{SpriteFont} test, and an animated spritesheet --- are registered as genuine
+\texttt{ctest} entries rather than left as manual verification, giving this backend
+end-to-end coverage beyond its unit-level pixel tests.
+
+\section{Reading the feature matrix for this backend}
+
+\texttt{docs/graphics-backend-feature-matrix.md}'s own snapshot for
+\texttt{SDL\_RENDERER} shows a 67-of-67 integration-test pass rate; the custom-\cnaclass{Effect}
+throw-by-design is the matrix's own explicit gap marker, alongside SDL\_Renderer's two named
+BLOCKED rows (\texttt{Wrap}/\texttt{Mirror}, and \texttt{Texture3D}/\texttt{TextureCube}
+construction) --- the same two items covered above, and, notably, two of only four
+project-wide entries anywhere in the whole feature matrix that carry the ``blocked, needs a
+project-owner decision'' status rather than either a solid pass or an openly acknowledged,
+still-being-worked gap.

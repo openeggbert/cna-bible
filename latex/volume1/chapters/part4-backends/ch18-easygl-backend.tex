@@ -1,4 +1,100 @@
 \chapter{The EASYGL Backend}
 \label{ch:easygl-backend}
 
-\emph{[Placeholder --- full content pending in this book's next writing pass. See \texttt{PROGRESS.md} at the repository root for the current writing status.]}
+\texttt{EASYGL} is CNA's default backend on Linux and Emscripten, built on the sibling
+\texttt{easy-gl} project introduced in Chapter~\ref{ch:ecosystem-map} and covered as a
+project in its own right in Volume~II. It is also, by the project's own account, the most
+mature backend overall --- broadest 3D feature coverage, mostly passing marks across the
+entire cross-backend feature matrix.
+
+\section{A documentation staleness warning, taken seriously}
+
+Before any specific claim in this chapter: \texttt{docs/easygl\_bugs.md}, the primary
+per-bug record for this backend, carries its own explicit staleness banner. It was last
+fully written weeks before this book's own source material was gathered, and states plainly
+that it ``has not been re-audited against thousands of lines of EasyGL changes since.'' Only
+two of its rows have been independently re-confirmed as fixed; everything else is
+``spot-checked, not exhaustively re-verified.'' This chapter treats that banner as
+Chapter~\ref{ch:what-is-cna} asked this book to treat every dated claim: reproduced because
+it is evidence of real methodology, not because it is guaranteed current.
+
+\section{Confirmed fixed since the original bug list}
+
+Two fixes are independently re-confirmed current: real anisotropic filtering (the requested
+\texttt{maxAnisotropy} now genuinely reaches the GPU, gated on the
+\texttt{GL\_EXT\_texture\_filter\_anisotropic} extension), and a real, parameterized
+\texttt{depthFormat} for cube render targets, replacing what had been a hardcoded
+``always has depth'' boolean.
+
+\section{Confirmed pre-existing gaps}
+
+A multi-render-target configuration with more than one attachment leaks the previous
+framebuffer object, because unbinding any single render target resets a shared ``MRT ready''
+flag regardless of how many targets are actually bound --- the suspected cause of a known,
+still-failing MRT test. Separately, an upstream \texttt{easy-gl} GL-state-desync bug (not a
+CNA defect) causes one of \texttt{easy-gl}'s own resource smoke tests to fail.
+
+Several platform ceilings are inherent to OpenGL ES~3.0 rather than fixable in CNA at all:
+\cnaclass{FillMode::WireFrame} is silently ignored, because GLES3 has no
+\texttt{glPolygonMode} to call; \texttt{glDrawElementsBaseVertex} is called unconditionally
+without checking for the extension that actually guarantees it (only certain on GLES~3.2,
+not the 3.0 baseline this backend otherwise targets) --- on a device lacking the extension,
+an indexed draw with a non-zero base vertex can silently render the wrong geometry or crash;
+and \cnaclass{OcclusionQuery::PixelCount()} can only ever return 0 or 1 on this driver
+profile, because GLES3 exposes only \texttt{GL\_ANY\_SAMPLES\_PASSED}, a boolean visibility
+test, not a true sample count.
+
+Two further, real behavioral divergences are documented rather than silently accepted: fog
+is computed from clip-space Z rather than true view-space depth, which diverges from XNA at
+oblique viewing angles; and \texttt{DrawColoredPrimitives}/\texttt{DrawIndexedColoredPrimitives}
+always render through one hardcoded-transform shader program, entirely ignoring whatever
+\cnaclass{GpuDrawParams} the effect layer actually supplied.
+
+Missing features confirmed still open include: the \texttt{preserveContents} flag on render
+target creation (always behaves as \texttt{DiscardContents}); \texttt{Texture2D::SetData}
+uploads never regenerating mipmaps (only the render-target-unbind path does, a separate code
+path); \texttt{Texture3D}/\texttt{TextureCube} both ignoring their requested
+\cnaclass{SurfaceFormat} (always RGBA8) and their \texttt{mipMap} request; neither type being
+registered with the GL-context-loss recovery mechanism the way ordinary 2D textures are;
+\texttt{EasyGLEffectBackend::Unbind()} being a pure no-op; \texttt{ApplyBlendState} never
+calling \texttt{glColorMask}, so \cnaclass{ColorWriteChannels} has no effect at all; two-sided
+stencil incorrectly reusing the front-face read mask for the back face too; and
+\cnaclass{SpriteBatch} carrying a 65{,}535-index limit from its \texttt{uint16\_t} index
+type, silently wrapping or corrupting any batch exceeding roughly 16{,}383 quads.
+\texttt{VertexBuffer::GetData}/\texttt{IndexBuffer::GetData} are not implemented at all on
+this backend, for either buffer type --- there is currently no interface method to even
+express a readback request, not just a missing implementation of one.
+
+One gap is formally BLOCKED rather than merely open: forwarding a real, non-\texttt{Color}
+\cnaclass{SurfaceFormat} all the way to the GPU conflicts directly with an already-shipped,
+already-tested contract on \texttt{Texture::ValidateFormat} (Chapter~\ref{ch:textures-rendertargets})
+--- closing this gap would require revisiting a decision the project has already committed
+tests against, not simply writing new code.
+
+\section{The D3D9 oracle cross-measurement: a genuinely different kind of test}
+
+A separate, one-off investigation ran EasyGL against the same 31-scene oracle corpus built
+for the \texttt{D3D9} backend's own pixel-for-pixel verification against real XNA~4.0
+(Chapter~\ref{ch:direct3d-backends}). The result: 10 of 31 scenes matched pixel-for-pixel;
+21 diverged. This was deliberately \emph{not} promoted to a permanent, ongoing test, because
+an EasyGL-versus-real-XNA comparison runs through an entirely different GPU driver stack than
+the DXVK-versus-DXVK comparison \texttt{D3D9}'s own oracle performs --- meaning any diff
+conflates genuine rendering differences with ordinary driver differences, and cannot cleanly
+attribute a mismatch to one or the other. Of the 21 divergent scenes, the investigation
+separated three distinct patterns: seventeen were silhouette-edge-only rasterization-convention
+differences (an inherent property of any two different GPU rasterizers, not a bug);
+two were whole-primitive but imperceptible, 1--2-out-of-255 rounding differences consistent
+with ordinary GPU/driver floating-point noise; and two were real, large, whole-primitive
+bugs worth naming specifically: a negative-\texttt{FogEnd} configuration rendered as solid
+black on EasyGL where D3D9 correctly renders a white-to-black gradient, and an
+environment-map Fresnel term failed to interpolate correctly (Gouraud-style) across a
+primitive on EasyGL --- a concrete, independent confirmation of a divergence
+Chapter~\ref{ch:stock-effects} already predicted from the effect-level audit alone.
+
+\section{Test baseline}
+
+The feature matrix records exactly three known pre-existing test failures for this backend:
+the two-attachment MRT test, a reference-stencil test, and the upstream \texttt{easy-gl}
+resource smoke-test issue already covered above --- against a full suite exceeding 4{,}500
+tests overall, giving a sense of how narrow the genuinely open surface is relative to the
+backend's total scope.

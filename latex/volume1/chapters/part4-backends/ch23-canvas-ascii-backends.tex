@@ -1,4 +1,139 @@
 \chapter{The Canvas and ASCII Backends}
 \label{ch:canvas-ascii-backends}
 
-\emph{[Placeholder --- full content pending in this book's next writing pass. See \texttt{PROGRESS.md} at the repository root for the current writing status.]}
+These two backends share a family resemblance --- both are 2D-only, in the same spirit as
+\texttt{SDL\_RENDERER} --- but arrive there by opposite routes: \texttt{CANVAS} replaces
+SDL's own rendering entirely with a browser API, while \texttt{ASCII} is, quite literally, a
+thin decorator wrapped around \texttt{SDL\_RENDERER}'s own real implementation.
+
+\section{CANVAS: real code, an honest verification ceiling}
+
+\texttt{CANVAS} is Emscripten-only, targeting the HTML \texttt{CanvasRenderingContext2D} API
+(\texttt{drawImage}/\texttt{putImageData}/\texttt{fillRect}) instead of SDL3's own 2D blit
+API. The single fact that qualifies every other claim in this section: this project's own
+development environment has \emph{no real browser and no real DOM}. The \texttt{node}
+runtime that executes this backend's compiled test suite provides no
+\texttt{CanvasRenderingContext2D} at all, and \texttt{SDL\_Init(SDL\_INIT\_VIDEO)} itself
+throws under Emscripten running in \texttt{node} --- confirmed directly, not assumed. Every
+checkmark in this backend's own documentation therefore means ``implemented, code-reviewed,
+and passing structural (non-pixel) test coverage,'' not ``pixel-verified in a real browser''
+--- a narrower claim than every backend in the previous chapters, and stated as such rather
+than blurred.
+
+\subsection{Five real bugs found in an external review, before any real browser existed to test in}
+
+An external code review found and fixed five distinct bugs purely by reasoning about Canvas
+2D compositing semantics against the CSS Compositing specification, without ever running the
+code in a browser:
+
+\begin{enumerate}
+  \item \cnaclass{BlendState.Opaque} cleared the \emph{entire} canvas, not just the drawn
+        sprite --- a direct consequence of using \texttt{globalCompositeOperation = 'copy'}
+        with no clip region, which wipes everything outside the shape actually drawn, per the
+        Porter-Duff \texttt{copy} operator's own definition. Fixed by clipping to the exact
+        drawn rectangle before compositing.
+  \item \texttt{AlphaBlend} and \texttt{NonPremultiplied} were treated as identical, on the
+        original reasoning that this backend's own textures are never genuinely
+        premultiplied --- an assumption that does not hold project-wide, since
+        \texttt{SDL\_RENDERER}'s own test suite deliberately constructs premultiplied test
+        data. Fixed with a real per-pixel un-premultiply pass applied only to the
+        \texttt{AlphaBlend} case.
+  \item RGB tint visibly darkened or lightened semi-transparent edges, traced to an
+        alpha-squared error in the original multiply-plus-destination-in compositing trick,
+        confirmed wrong against the CSS Compositing specification's own blend formula. Fixed
+        with a direct per-pixel RGB multiply that leaves the alpha channel untouched.
+  \item Invalid combinations of wrap/mirror address modes were silently skipped rather than
+        raising an error --- a direct contradiction of this project's own ``throw rather than
+        guess'' convention (Chapter~\ref{ch:design-philosophy}). Fixed by moving the
+        validation into C\texttt{++} itself, throwing a real \texttt{std::runtime\_error}
+        before the call ever reaches JavaScript at all.
+  \item A cached mirrored-tile pattern was never invalidated after a pixel update --- fixed
+        in two separate passes, first for an explicit \texttt{Texture2D::SetData} call, then
+        again for the case of a bound \cnaclass{RenderTarget2D} whose pixels change through
+        direct draws while still bound, a path that never goes through \texttt{SetData} at
+        all and so was missed by the first fix.
+\end{enumerate}
+
+A closely related sixth fix: \texttt{Clear()} was blending against old canvas content under a
+leftover composite mode, and permanently reset the canvas transform rather than
+saving/restoring it --- both corrected together.
+
+\subsection{Not-fully-native features, honestly labeled}
+
+\cnaclass{TextureAddressMode::Wrap} is implemented via \texttt{ctx.createPattern(source,
+'repeat')}, applied only when the source rectangle actually exceeds the texture's bounds;
+\texttt{Mirror} uses a lazily-built, cached $2\times2$ pre-tiled mirrored canvas. Both carry
+the same real-browser verification caveat as everything else in this section. Mixed per-axis
+combinations (wrap on one axis, mirror or clamp on another) throw by design, per the fix
+above.
+
+\subsection{What real browser verification would still require}
+
+The backend's own documentation includes a full thirteen-item manual browser verification
+checklist --- explicitly left entirely unchecked, described as ``the closest honest
+equivalent to SDL\_RENDERER's own pixel-verified completeness table,'' pending a human
+running it in a real browser (for instance via Emscripten's \texttt{emrun}).
+
+\section{ASCII: composition, not reimplementation}
+
+\texttt{ASCII} is not a real terminal or TTY backend --- it renders inside an ordinary SDL
+window, exactly like \texttt{SDL\_RENDERER}, and is architecturally, in the project's own
+words, ``a thin decorator around SDL\_RENDERER's own \texttt{SdlGraphicsBackend}.'' A game
+draws normally into a private offscreen target; \texttt{Present()} reads that frame back,
+quantizes it into a grid of glyph-plus-color cells, and draws the resulting grid onto the
+real window using the internal \cnaclass{ISpriteBatchBackend}/\cnaclass{ITextureBackend}
+pair directly --- deliberately \emph{not} going through the public \cnaclass{SpriteFont} API,
+consistent with the project's own rule that backend internals stay below, and hidden from,
+the public XNA-facing API surface.
+
+\subsection{A genuinely distinctive claim: no blocked decisions, no environment gate}
+
+This backend's own completeness documentation makes a claim none of the others in this
+chapter or the previous ones can: ``no BLOCKED section and no \texttt{needs\_human} gate
+anywhere --- every row below is automated and pixel-verified in this dev environment\ldots
+including real-window \texttt{Present()} output.'' Because it inherits \texttt{SDL\_RENDERER}'s
+own implementation wholesale for everything a game actually draws --- \cnaclass{SpriteBatch},
+\cnaclass{Texture2D}, \cnaclass{SpriteFont}, \cnaclass{BlendState}, \cnaclass{SamplerState},
+render targets --- it also inherits that backend's entire, exhaustively-verified completeness
+table transparently, without needing to repeat it. The one partial exception:
+\texttt{SetRenderTarget(nullptr)} is intercepted and redirected to the private game-target
+buffer rather than the literal window backbuffer, ``so the game can never accidentally draw
+straight onto the real window.''
+
+\subsection{The quantizer, and a deliberately hand-authored font}
+
+Glyph selection works by standard luminance ranking (the usual $0.299R + 0.587G + 0.114B$
+formula), mapped onto a ten-character density ramp (\texttt{" .:-=+*\#\%@"}) by linear rank ---
+verified to be strictly increasing in visual density. Two runtime modes,
+\texttt{BLACKWHITE} and \texttt{COLOR}, are selected via the \texttt{CNA\_ASCII\_MODE}
+environment variable, with a runtime-configurable cell size (default $8\times8$) via
+\texttt{SetCellSize()}/\texttt{GetCellSize()}. The glyph font itself is a deliberate,
+hand-authored $8\times8$ pixel bitmap for exactly the ten ramp characters --- explicitly not
+a vendored font file or classic code-page glyph set, a choice made specifically to avoid
+introducing any new asset or license dependency at all. A dirty-cell diffing optimization is
+explicitly not implemented, and explicitly not treated as a correctness gap either --- left
+for later only if performance ever actually demands it.
+
+\subsection{One real, found-and-fixed bug}
+
+Background fills plus glyph tinting never actually went through
+\texttt{GraphicsDevice.BlendState} at all, so the underlying SDL renderer's blend mode
+defaulted to a non-alpha-aware mode --- background fills were effectively invisible, because
+an ``off'' glyph pixel simply overwrote the background with whatever raw black RGB value it
+stored. Fixed by forcing real \cnaclass{BlendState.AlphaBlend} factors before every grid draw,
+independent of whatever \cnaclass{BlendState} the game itself had set.
+
+\subsection{A methodology finding, not a bug}
+
+Reading pixels back immediately after a real \texttt{Present()} call returns stale or
+garbage content, because \texttt{SDL\_RENDERER}/OpenGL present via a genuine double-buffer
+swap, not a copy --- there is nothing left to read where the just-presented frame was. The
+fix is test-only: a \texttt{DrawQuantizedGridForTesting()} entry point that skips the swap,
+paired with a \texttt{ReadRealBackbufferForTesting()} accessor --- real game code always goes
+through the genuine \texttt{Present()} path, unaffected by either.
+
+\subsection{Input, unmodified}
+
+Input on this backend required zero new code at all --- verified twice, independently: once
+through the existing backend-agnostic mouse test suite, and once through a new, dedicated
+input test written specifically for this backend, passing in full.
