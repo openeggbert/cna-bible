@@ -17,6 +17,42 @@ failures, every one of them this exact throw, matching the backend's documented 
 precisely. A custom \cnaclass{Effect} passed to \texttt{SpriteBatch::Begin(effect)} also
 throws, for the same underlying reason --- there is no shader stage to run it on.
 
+\subsection{A worked example: the one backend that answers every capability honestly}
+
+Chapter~\ref{ch:backend-architecture}'s \cnaclass{GraphicsCapability} mechanism defaults to
+answering \texttt{true} for everything unless a backend overrides it --- and reading
+\texttt{SdlGraphicsBackend.hpp} directly shows this backend takes the blanket, honest opposite
+stance rather than enumerating exceptions one at a time:
+
+\begin{lstlisting}
+bool SupportsCapability(GraphicsCapability /*capability*/) const override
+{
+    // 2D-only by design: none of the capabilities GraphicsCapability currently
+    // enumerates are supported on this backend.
+    return false;
+}
+\end{lstlisting}
+
+Every single \cnaclass{GraphicsCapability} value --- not just \texttt{ThreeD}, but
+\texttt{DepthStencilBuffer}, \texttt{Multi\allowbreak{}Sample\allowbreak{}AntiAliasing},
+\texttt{OcclusionQuery}, all
+eight --- returns \texttt{false} on \texttt{SDL\_RENDERER}, unconditionally. This makes it the
+one backend in the whole project where \texttt{SupportsCapability} genuinely never needs a
+per-feature audit the way Chapter~\ref{ch:backend-architecture}'s own
+\cnaclass{MultipleRenderTargets} finding showed was necessary elsewhere --- a real, useful
+asymmetry to know before trusting any other backend's answer the same way:
+
+\begin{lstlisting}
+if (device.SupportsCapability(GraphicsCapability::ThreeD)) {
+    DrawModel(model, world, view, projection);
+} else {
+    // Reached on SDL_RENDERER (and CANVAS) -- checking first here is strictly better
+    // than letting CreateVertexBuffer() or DrawColoredPrimitives() throw
+    // "SDL_Renderer does not support 3D" and catching it after the fact.
+    DrawFlatPlaceholderSprite();
+}
+\end{lstlisting}
+
 \section{The Phase 70 audit: fifteen real bugs, two still open}
 
 The single most thorough backend audit in the project (Tasks~666--731, 65 tasks total)
@@ -69,18 +105,18 @@ Two gaps remain open specifically because closing them requires a project-owner
 architecture decision, not more engineering effort:
 
 \begin{description}
-  \item[\texttt{TextureAddressMode::Wrap}/\texttt{Mirror} via \texttt{SpriteBatch}.]
+  \item[\texttt{TextureAddressMode::Wrap} / \texttt{Mirror} via \texttt{SpriteBatch}.]
         \texttt{SDL\_RenderTexture}'s own \texttt{srcrect} handling has exactly one fixed,
         clamp-like behavior at the edges. SDL3 does expose
         \texttt{SDL\_SetRenderTextureAddressMode}, but it only affects
         \texttt{SDL\_RenderGeometry} --- an entirely different draw call than the one this
         backend's \texttt{Draw()} actually issues. Three concrete options were identified and
-        none chosen: throw unconditionally whenever \texttt{Wrap}/\texttt{Mirror} is
+        none chosen: throw unconditionally whenever \texttt{Wrap} / \texttt{Mirror} is
         requested, rewrite \texttt{Draw()} onto \texttt{SDL\_RenderGeometry} project-wide, or
         a hybrid that only throws when the source rectangle actually exceeds the texture's
         bounds (the common case where it does not would keep working, coincidentally, under
         the existing clamp-like behavior).
-  \item[\texttt{Texture3D}/\texttt{TextureCube} construction.] These currently succeed
+  \item[\texttt{Texture3D} / \texttt{TextureCube} construction.] These currently succeed
         silently with a null backend rather than throwing. Prototyping a fix that makes
         construction throw instead was found to have a 94-test blast radius (33 tests in one
         file, 42 in another, 19 in a third) --- large enough that the change was left
@@ -108,7 +144,7 @@ end-to-end coverage beyond its unit-level pixel tests.
 \texttt{docs/graphics-backend-feature-matrix.md}'s own snapshot for
 \texttt{SDL\_RENDERER} shows a 67-of-67 integration-test pass rate; the custom-\cnaclass{Effect}
 throw-by-design is the matrix's own explicit gap marker, alongside SDL\_Renderer's two named
-BLOCKED rows (\texttt{Wrap}/\texttt{Mirror}, and \texttt{Texture3D}/\texttt{TextureCube}
+BLOCKED rows (\texttt{Wrap} / \texttt{Mirror}, and \texttt{Texture3D} / \texttt{TextureCube}
 construction) --- the same two items covered above, and, notably, two of only four
 project-wide entries anywhere in the whole feature matrix that carry the ``blocked, needs a
 project-owner decision'' status rather than either a solid pass or an openly acknowledged,
