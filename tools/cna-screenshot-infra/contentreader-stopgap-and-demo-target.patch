@@ -1,8 +1,8 @@
 diff --git a/cmake/Tests/SoftwareTests.cmake b/cmake/Tests/SoftwareTests.cmake
-index 8b9429a..295eab6 100644
+index 8b9429a..381307c 100644
 --- a/cmake/Tests/SoftwareTests.cmake
 +++ b/cmake/Tests/SoftwareTests.cmake
-@@ -43,4 +43,18 @@ if(CNA_BUILD_TESTS AND CNA_GRAPHICS_BACKEND STREQUAL "SOFTWARE")
+@@ -43,4 +43,23 @@ if(CNA_BUILD_TESTS AND CNA_GRAPHICS_BACKEND STREQUAL "SOFTWARE")
      # not registered as a ctest (see cna_diag_compare's own comment above), just a plain
      # executable a developer/script runs by hand.
      cna_software_test(cna_diag_software examples/cross_backend_diagnostic_scene.cpp)
@@ -20,6 +20,11 @@ index 8b9429a..295eab6 100644
 +    # draw into an offscreen RenderTarget2D, restore the back buffer, then draw the render
 +    # target's own contents back as a picture-in-picture inset via SpriteBatch.
 +    cna_software_test(cna_rendertarget_roundtrip_demo examples/rendertarget_roundtrip_demo.cpp)
++
++    # Book worked example (Vol.I Ch.7, Math and Core Types): numerically and visually confirms
++    # a Matrix::CreateRotationZ rotation and the equivalent Quaternion::CreateFromAxisAngle ->
++    # Matrix::CreateFromQuaternion rotation produce the same result.
++    cna_software_test(cna_quaternion_vs_matrix_demo examples/quaternion_vs_matrix_demo.cpp)
  endif()
 diff --git a/include/Microsoft/Xna/Framework/Content/ContentReader.hpp b/include/Microsoft/Xna/Framework/Content/ContentReader.hpp
 index ce07c41..38e0144 100644

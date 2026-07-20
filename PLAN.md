@@ -134,7 +134,7 @@ question silently.
 | 4 | Building CNA | 173 | 35 | Full CMake option reference, per-platform build walkthroughs | Not started |
 | 5 | First Game | 131 | 40 | Multiple complete worked example programs, step-by-step | Not started |
 | 6 | Game Loop | 216 | 40 | Full `Game`/`GameTime`/`GameWindow` method-by-method docs + examples | Not started |
-| 7 | Math and Core Types | 758 (was 270) | 110 | All 11 type-families now have a full method/constructor reference (Vector2/3/4, Matrix, Quaternion, Plane, Ray, Rectangle, Point, Color, MathHelper, 3 Bounding types, Curve/CurveKey) plus worked examples per group and 2 real screenshots | **In progress (~22 of ~110 pages; every type-family covered at least once, depth can still grow further)** |
+| 7 | Math and Core Types | 840 (was 270) | 110 | All 11 type-families have full reference + worked examples; Quaternion, Color, and Curve now have a *second* worked example each (Quaternion/Matrix numeric+visual equivalence proof, Color premultiplied-alpha conversion, Curve Cycle-vs-Oscillate-vs-CycleOffset) | **In progress (~24 of ~110 pages)** |
 | 8 | Content and Assets | 125 | 55 | Full `ContentManager` API + CNJ/XNB worked walkthroughs | Not started |
 | 9 | GraphicsDevice | 790 (was 171) | 90 | Full method-by-method docs for the 887-line header; two real, verified backend-specific gaps found and documented (SpriteBatch can't sample a RenderTarget2D; SupportsCapability(MultipleRenderTargets) always returns true even where MRT silently fails); full private-implementation lifecycle section (window/backend/virtual-resolution) traced from GraphicsDevice.cpp, ties directly to Ch.6's PresentationMode | **In progress (~21 of ~90 pages)** |
 | 10 | SpriteBatch | 130 | 55 | Every `Begin`/`Draw`/`DrawString` overload documented + examples | Not started |
@@ -315,3 +315,18 @@ Ch.13 that is now frozen at ~2 pages per the author's confirmation above).
   not just more prose for its own sake. Chapter grows from 722 to 790 lines (~19 to ~21 of a
   ~90-page target). Volume I recompiled clean (135 pages total, 641 index entries, 0 undefined
   references).
+- **2026-07-20 (same session, back to Chapter 7 per author instruction):** Added a fourth
+  screenshot demo (`cna_quaternion_vs_matrix_demo`, registered in the same CMake patch) that
+  numerically and visually verifies `Matrix::CreateRotationZ(30°)` and the equivalent
+  `Quaternion::CreateFromAxisAngle(Vector3::Backward, 30°) -> Matrix::CreateFromQuaternion`
+  path produce identical results: max absolute difference across all 16 matrix components
+  measured exactly `0`, and a transformed test point matched to 6 decimal places via both
+  paths. Deliberately did not embed a second screenshot for this (it would be pixel-identical
+  to the existing Figure 7.1) — cited the numeric proof and the existing figure instead, an
+  explicit choice to avoid a redundant image. Added two more worked examples: Color's
+  `FromNonPremultiplied` (why constructing a `Color` directly from straight-alpha data produces
+  the wrong blended result under CNA's premultiplied-alpha pipeline) and Curve's
+  `Cycle`/`Oscillate`/`CycleOffset` loop types (the three are easy to confuse from their names
+  alone; explained precisely which produces a snap vs. a ping-pong vs. an accumulating repeat).
+  Chapter grows from 758 to 840 lines (~22 to ~24 of a ~110-page target). Volume I recompiled
+  clean (137 pages total, 643 index entries, 0 undefined references).

@@ -302,6 +302,41 @@ currentFacing = Quaternion::Slerp(currentFacing, targetFacing, turnAmount);
 const Matrix orientation = Matrix::CreateFromQuaternion(currentFacing);
 \end{lstlisting}
 
+\paragraph{A second worked example: proving Quaternion and Matrix rotations actually agree.}
+\S\ref{sec:matrix-full-reference}'s worked example rotated a triangle with
+\texttt{Matrix::CreateRotationZ}; \cnaclass{Matrix}'s own \texttt{CreateFromQuaternion} means
+the same 30-degree rotation can equally be built starting from a \cnaclass{Quaternion} instead
+--- and it is worth actually checking, not just asserting, that both paths agree, rather than
+trusting the two APIs are equivalent purely because their documentation says so.
+
+\begin{lstlisting}
+const float angle = MathHelper::ToRadians(30.0f);
+const Matrix matrixWorld = Matrix::CreateRotationZ(angle);
+
+// Vector3::Backward is (0,0,1) -- the axis that makes CreateFromAxisAngle's
+// right-hand rotation match CreateRotationZ's own convention exactly.
+const Quaternion q = Quaternion::CreateFromAxisAngle(Vector3::Backward, angle);
+const Matrix quaternionWorld = Matrix::CreateFromQuaternion(q);
+
+const Vector3 testPoint(0.7f, 0.3f, 0.0f);
+const Vector3 viaMatrix     = Vector3::Transform(testPoint, matrixWorld);
+const Vector3 viaQuaternion = Vector3::Transform(testPoint, quaternionWorld);
+// viaMatrix and viaQuaternion are identical, component for component.
+\end{lstlisting}
+
+Built and run against this book's own \texttt{SOFTWARE}-backend tooling (the same headless
+pipeline behind Figure~\ref{fig:ch07-matrix-rotation}), this comparison is not an
+approximation: the maximum absolute difference across all sixteen components of
+\texttt{matrixWorld} versus \texttt{quaternionWorld} measured exactly \texttt{0}, and the
+transformed test point matched to six decimal places
+(\texttt{(0.456218, 0.609808, 0.000000)} via both paths). Re-rendering the identical scene
+from \S\ref{sec:matrix-full-reference} with \texttt{fx.World = quaternionWorld} in place of
+the original \texttt{Matrix::CreateRotationZ} result reproduces
+Figure~\ref{fig:ch07-matrix-rotation} pixel-for-pixel --- confirmed by direct comparison, not
+merely expected --- which is why this book does not reproduce the same image a second time
+here: the interesting result is the exact numeric agreement itself, not a second look at an
+identical picture.
+
 \subsection{Full method reference: Plane}
 
 \begin{description}
@@ -467,6 +502,23 @@ as a CNA-only convenience not present in XNA/FNA.
   \texttt{scale}; \texttt{NOXNA operator*(float, const Color\&)} adds the commutative
   scalar-first form alongside the standard \texttt{Color * float}.
 \end{description}
+
+\begin{lstlisting}
+// Worked example: why FromNonPremultiplied matters -- a naive Color
+// constructed directly from a straight-alpha source produces the wrong
+// blended result, since CNA's Color (and its BlendState::AlphaBlend
+// default, Chapter 14) assumes premultiplied alpha throughout.
+
+// WRONG: treats straight-alpha data as if it were already premultiplied.
+const Color wrong(200, 80, 40, 128);   // half-transparent orange, straight alpha
+
+// RIGHT: FromNonPremultiplied scales the color channels by alpha first,
+// producing a Color that blends correctly with CNA's premultiplied pipeline.
+const Color right = Color::FromNonPremultiplied(200, 80, 40, 128);
+// right's packed RGB channels are roughly half of wrong's -- (100, 40, 20)
+// scaled by the 128/255 alpha fraction -- while wrong's channels are left
+// at their original, too-bright straight-alpha values.
+\end{lstlisting}
 
 \section{MathHelper: constants and helpers, some public only because C\texttt{++} has no assembly visibility}
 
@@ -678,6 +730,36 @@ heightCurve.setPostLoopProperty(CurveLoopType::Constant);
 // Each frame:
 const float cameraHeight = heightCurve.Evaluate(elapsedFlythroughSeconds);
 \end{lstlisting}
+
+\paragraph{A second worked example: the difference between Cycle and Oscillate.}
+The flythrough above deliberately used \texttt{CurveLoopType::Constant} for both
+\texttt{PreLoop} and \texttt{PostLoop} --- evaluating past either end simply holds the nearest
+key's value, appropriate for a one-shot camera move. A looping effect (an idle animation, a
+bobbing collectible) instead wants \texttt{Cycle} or \texttt{Oscillate}, and the difference
+between the two is easy to get backwards from the names alone:
+
+\begin{lstlisting}
+Curve bobHeight;
+bobHeight.getKeysProperty().Add(CurveKey(0.0f, 0.0f));
+bobHeight.getKeysProperty().Add(CurveKey(0.5f, 1.0f));
+bobHeight.ComputeTangents(CurveTangent::Smooth);
+
+// Cycle: repeats the same 0 -> 1 rise every 0.5 seconds -- a sawtooth-like
+// repeat, jumping from 1 straight back to 0 at each cycle boundary.
+bobHeight.setPostLoopProperty(CurveLoopType::Cycle);
+
+// Oscillate: ping-pongs instead -- 0 -> 1 -> 0 -> 1 -> ..., reversing
+// direction each cycle rather than jumping. The natural choice for a
+// bobbing/breathing effect, where Cycle would produce a visible snap.
+bobHeight.setPostLoopProperty(CurveLoopType::Oscillate);
+\end{lstlisting}
+
+\texttt{CycleOffset} is a third, easily-confused variant worth naming precisely: like
+\texttt{Cycle}, it repeats rather than ping-pongs, but it additionally accumulates the
+difference between the curve's first and last key value on every repeat --- the right choice
+for a monotonically increasing quantity sampled from a looping source curve (distance
+traveled along a repeating path segment, for instance), where \texttt{Cycle} alone would
+incorrectly reset back to the first key's value at every loop boundary.
 
 \section{Worked example: a real Matrix-driven world/view/projection chain}
 \label{sec:worked-examples}

@@ -57,6 +57,14 @@ screenshot.
   is a real, specific, live-discovered gap in the `SOFTWARE` backend specifically (not verified
   on any other backend) — write it up honestly in the book as a finding, per this project's own
   "screenshots real or not at all" rule; do not silently work around it or hide the broken inset.
+- `quaternion_vs_matrix_demo.cpp` (same directory) is a fourth worked example, for Vol.I Ch.7
+  (Math and Core Types): numerically and visually confirms that `Matrix::CreateRotationZ(30°)`
+  and the equivalent `Quaternion::CreateFromAxisAngle(Vector3::Backward, 30°) ->
+  Matrix::CreateFromQuaternion` path produce identical results (max absolute difference across
+  all 16 matrix components: exactly `0`; a transformed test point matched to 6 decimal places
+  via both paths). The rendered screenshot is pixel-identical to `math_rotation_demo.cpp`'s own
+  output, so the book cites the numeric proof and the existing figure rather than embedding a
+  redundant duplicate image — a deliberate choice, not an oversight.
 - **Other backends**: `HEADLESS` exists but is logic-only (never rasterizes a real pixel, just
   reports the last `Clear()` color) — not useful for a screenshot. `CANVAS` is
   Emscripten/browser-only. `ASCII` decorates `SDL_RENDERER` and still needs a real X11 window.

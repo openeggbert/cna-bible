@@ -14,56 +14,58 @@ cna-extended staying marginal; screenshots real-or-nothing) are resolved — don
 
 **Two chapters are in progress, both real committed progress, neither at its full target:**
 
-- **Vol.I Ch.9 (GraphicsDevice)**: 171 → 790 lines (~4 → ~21 of a ~90-page target). This
-  chapter has had three consecutive deepening passes this session and is now genuinely rich:
-  - Full method coverage for the entire public surface (properties, Clear/Present/Reset,
-    render targets, vertex/index buffers, all `DrawUserPrimitives` overloads, back-buffer
-    readback, all `NOXNA` helpers).
-  - **Two real, verified, backend-specific gaps found from direct source reading**, not
-    assumed: (1) `SpriteBatch` can't correctly sample a `RenderTarget2D` on `SOFTWARE`
-    (`dynamic_cast` fails silently for a sibling class); (2) `SupportsCapability
-    (MultipleRenderTargets)` returns `true` universally since no backend's override actually
-    checks it, so it doesn't guard against the very MRT gap it exists to catch.
-  - A new "Private implementation" section tracing all 8 private lifecycle methods
-    (`createOrAttachWindow`, `createBackend`, `destroyNativeResources`,
-    `UpdateViewportFromWindow`, `SetVirtualResolution`, `SetPresentationMode`,
-    `applyPresentationParametersToWindow`, `applySamplerStatesToBackend`) directly from
-    `GraphicsDevice.cpp`'s real bodies — including the actual mechanism behind Chapter 6's
-    `PresentationMode` enum, a genuine cross-chapter tie-in.
-  - Four worked examples with two real screenshots.
+- **Vol.I Ch.7 (Math and Core Types)**: 270 → 840 lines (~4 → ~24 of a ~110-page target). All
+  11 type-families have a full reference and at least one worked example; three of them now
+  have a *second* worked example added in the most recent pass:
+  - Quaternion: a numeric+visual equivalence proof that `Matrix::CreateRotationZ(30°)` and
+    `Quaternion::CreateFromAxisAngle(Vector3::Backward, 30°) -> Matrix::CreateFromQuaternion`
+    produce identical results (max abs difference across all 16 components: exactly `0`;
+    transformed test point matches to 6 decimals). Deliberately does **not** embed a duplicate
+    screenshot — it's pixel-identical to the existing Matrix rotation figure, so the text cites
+    the numeric proof and the existing figure instead.
+  - Color: a `FromNonPremultiplied` worked example contrasting a "WRONG" naive `Color`
+    construction from straight-alpha values against the "RIGHT" premultiplied conversion.
+  - Curve: a worked example distinguishing `CurveLoopType::Cycle` vs `Oscillate` vs
+    `CycleOffset` (snap-repeat vs. ping-pong vs. accumulating-repeat) — an easily-confused set
+    of semantics.
+  - The demo behind the Quaternion proof (`quaternion_vs_matrix_demo.cpp`) is saved in
+    `tools/cna-screenshot-infra/` along with everything needed to rebuild it.
+  - **This chapter still has real untapped room** (Vector2/3/4, Plane, Ray, Rectangle, Point,
+    MathHelper, and Bounding volumes have only one worked example each so far) — a good
+    candidate for a fourth deepening pass if returning to it.
+- **Vol.I Ch.9 (GraphicsDevice)**: 171 → 790 lines (~4 → ~21 of a ~90-page target), unchanged
+  since the prior session's third deepening pass. Full method coverage for the entire public
+  surface; two real, verified, backend-specific gaps found from direct source reading
+  (`SpriteBatch`/`RenderTarget2D` sampling on `SOFTWARE`; `SupportsCapability
+  (MultipleRenderTargets)` never actually checked by any backend); a "Private implementation"
+  section tracing all 8 private lifecycle methods; four worked examples with two real
+  screenshots. This chapter was already assessed as "close to done at this depth" last
+  session — further growth here should mean genuinely new ground (e.g. GraphicsAdapter/
+  DisplayMode/multi-monitor), not re-explaining what's already there.
 
-  **This chapter is close to feeling "done at this level of depth"** even though it's only
-  ~21 of ~90 target pages — further growth from here should mean covering genuinely new ground
-  (e.g. GraphicsAdapter/DisplayMode could go deeper, or cross-referencing more Part IV backend
-  specifics), not re-explaining what's already there. Worth considering moving to a different
-  chapter next rather than mining Ch.9 for a fourth pass.
-- **Vol.I Ch.7 (Math and Core Types)**: 270 → 758 lines (~4 → ~22 of a ~110-page target). All
-  11 type-families have a full reference and at least one worked example.
-
-Volume I currently compiles to 135 pages, 641 index entries, 0 undefined references.
+Volume I currently compiles to **137 pages, 643 index entries, 0 undefined references**.
 **Volume II has not been touched in the expansion pass at all yet.**
 
-Three screenshot demos exist in `tools/cna-screenshot-infra/`, one CMake patch covers all
-three. **Repeated lesson from this session**: when a worked example's screenshot shows
-something unexpected, investigate before assuming a demo-code mistake — it found two real bugs
-this session. Trace the actual backend source before writing up a finding; don't speculate.
+Four screenshot demos now exist in `tools/cna-screenshot-infra/` (`software_screenshot_demo`,
+`math_rotation_demo`, `rendertarget_roundtrip_demo`, `quaternion_vs_matrix_demo`), one CMake
+patch covers all four. **Repeated lesson from this session**: when a worked example's
+screenshot shows something unexpected, investigate before assuming a demo-code mistake — it
+found two real bugs earlier this session. Trace the actual backend source before writing up a
+finding; don't speculate.
 
 ## What to do next
 
-Given Ch.9 has now had three deepening passes and is starting to show diminishing returns per
-additional pass, the strongest next moves are:
+Given both Ch.7 and Ch.9 have each had multiple deepening passes and both still have real
+untapped room, but Volume II remains completely untouched, the strongest next moves are:
 
-1. **Deepen Chapter 7 further** toward ~110 pages (currently ~22) — a second, different worked
-   example per type (Quaternion-vs-Matrix comparison, Color premultiplied-alpha conversion,
-   Curve's Cycle/Oscillate loop types) — this chapter has more untapped room than Ch.9 does
-   right now.
-2. **Start a new chapter** — Chapter 13 (Stock Effects, ~80-page target) is the next largest
-   untouched Volume I Part III target, and both Ch.7/Ch.9's worked examples already use
-   `BasicEffect` in passing. Volume II hasn't been touched at all — starting there (e.g. Ch.1
-   Input System, ~70-page target) would be the first real progress on that volume, and is
-   probably the single highest-value thing to do next given Volume II is currently at 0% of
-   its own Phase 1 progress.
-3. **Push Chapter 9 a fourth time** only if a genuinely new angle presents itself (e.g. a
+1. **Start Volume II** — it is at 0% of its own Phase 1 progress and is the single highest-value
+   thing to do next. Ch.1 (Input System, ~70-page target) is a reasonable opening chapter.
+2. **Deepen Chapter 7 further** toward ~110 pages (currently ~24) — Vector2/3/4, Plane, Ray,
+   Rectangle, Point, MathHelper, and Bounding volumes each still have only one worked example.
+3. **Start a new Volume I chapter** — Chapter 13 (Stock Effects, ~80-page target) is the next
+   largest untouched Volume I Part III target; Ch.7/Ch.9's worked examples already use
+   `BasicEffect` in passing, so there's a natural bridge.
+4. **Push Chapter 9 a fourth time** only if a genuinely new angle presents itself (e.g. a
    deeper `GraphicsAdapter`/multi-monitor worked example) — don't pad it just to hit the page
    number.
 
