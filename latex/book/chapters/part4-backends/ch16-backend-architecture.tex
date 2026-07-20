@@ -10,8 +10,8 @@ actually differs, not on repeating the shape they all share.
 
 Despite \cnaclass{IGraphicsBackend} being described throughout this book as ``the backend
 contract layer,'' it is worth being precise: the entire contract lives in a single header,
-\texttt{include/CNA/Internal/Backends/Common/IGraphicsBackend.hpp} --- roughly a thousand
-lines, not a family of separate \texttt{ISpriteBatchBackend.hpp}/\texttt{ITextureBackend.hpp}
+\texttt{include/\allowbreak{}CNA/\allowbreak{}Internal/\allowbreak{}Backends/\allowbreak{}Common/\allowbreak{}IGraphicsBackend.hpp} --- roughly a thousand
+lines, not a family of separate \texttt{ISpriteBatchBackend.hpp} / \texttt{ITextureBackend.hpp}
 files. Eleven interface classes live inside it, all in
 \texttt{namespace CNA::Internal::Backends}:
 
@@ -36,9 +36,9 @@ files. Eleven interface classes live inside it, all in
 \end{center}
 
 \cnaclass{IGraphicsBackend} itself is the large one: device lifecycle
-(\texttt{Clear}/\texttt{Present}/viewport and presentation-mode management), native handle
-access (\texttt{GetWindowInternal()}/\texttt{GetRendererInternal()} --- both pure virtual,
-and both carry a comment flagging the \texttt{SDL\_Window*}/\texttt{SDL\_Renderer*} return
+(\texttt{Clear} / \texttt{Present}/viewport and presentation-mode management), native handle
+access (\texttt{GetWindowInternal()} / \texttt{GetRendererInternal()} --- both pure virtual,
+and both carry a comment flagging the \texttt{SDL\_Window*} / \texttt{SDL\_Renderer*} return
 types as ``should be abstracted later''), resource factories for every GPU object type in
 Part~III, render-target binding, per-state-object apply methods, the full 3D draw dispatch
 (\texttt{DrawColoredPrimitives}, the effect-aware \texttt{DrawPrimitivesEx} family, instanced
@@ -53,11 +53,31 @@ design, and every backend chapter's own ``degrades/gap/blocked'' distinctions in
 that silently degrades to a no-op reads differently in an audit than one that throws, even
 though both mean ``not implemented here.''
 
+\subsection{ISpriteBatchBackend, and where Chapter~\ref{ch:spritebatch}'s transform bug actually lived}
+
+Only five of \cnaclass{ISpriteBatchBackend}'s nine methods are pure virtual ---
+\texttt{Begin()}, \texttt{End()}, and the three \texttt{Draw} overloads
+(\texttt{float x, float y}; destination-plus-source-rectangle; and a fully-parameterized
+rotation/origin/effects/depth form). \texttt{SetTransformMatrix}, \texttt{SetCustomEffect},
+\texttt{SetSamplerFilter}, and \texttt{SetSamplerAddressMode} all default to a plain, silent
+no-op body in the interface itself. This is the exact mechanism behind
+Chapter~\ref{ch:spritebatch}'s own worst SDL\_RENDERER finding: a backend that simply never
+overrides \texttt{SetTransformMatrix} is not violating the interface contract in any way a
+compiler could catch --- it is using the interface exactly as designed, ``graceful capability
+degradation'' silently reached its most literal form, a \texttt{Begin(transformMatrix)} call
+whose matrix argument reaches the backend and is discarded with zero indication anything was
+skipped. Reading this interface's own defaults is why that bug reads as an architecturally
+expected failure mode, not a surprising one, and it also names a real, genuine gap in the
+capability-query mechanism covered next: \cnaclass{GraphicsCapability} (below) has no value at
+all for ``does this backend actually honor a \cnaclass{SpriteBatch} transform matrix,'' so a
+caller has no way to \emph{ask} before hitting this specific silent no-op --- unlike the eight
+capabilities that mechanism does cover.
+
 \section{GpuDrawParams: already covered, worth remembering here}
 
 Chapter~\ref{ch:stock-effects} already introduced \cnaclass{GpuDrawParams} in full --- the
 single struct \texttt{Effect::FillGpuDrawParams()} populates and every backend's
-\texttt{DrawPrimitivesEx}/\texttt{DrawIndexedPrimitivesEx} consumes. It is worth restating
+\texttt{DrawPrimitivesEx} / \texttt{DrawIndexedPrimitivesEx} consumes. It is worth restating
 here only because it is the concrete mechanism by which ``a stock effect draws identically
 across eleven backends'' is actually achieved: the effect layer never talks to a backend
 directly about lights, fog, or skinning palettes --- it fills one struct, and each backend's
@@ -71,10 +91,31 @@ whether a backend supports it, \cnaclass{GraphicsCapability} is a small enum ---
 \texttt{ThreeD}, \texttt{DepthStencilBuffer}, \texttt{MultiSampleAntiAliasing},
 \texttt{MultipleRenderTargets}, \texttt{AnisotropicFiltering}, \texttt{WireFrame},
 \texttt{OcclusionQuery}, \texttt{CustomEffects} --- queryable via
-\texttt{GraphicsDevice::SupportsCapability(GraphicsCapability)}. The default implementation
+\texttt{GraphicsDevice::\allowbreak{}SupportsCapability\allowbreak{}(GraphicsCapability)}. The default implementation
 returns \texttt{true} for everything; a 2D-only backend like \texttt{SDL\_RENDERER}
 (Chapter~\ref{ch:sdl-renderer}) overrides this to honestly report what it cannot do, rather
 than accepting a 3D draw call and throwing only once the call actually arrives.
+
+\begin{lstlisting}
+if (device.SupportsCapability(GraphicsCapability::ThreeD)) {
+    DrawSceneWith3DModels();
+} else {
+    DrawFlat2DFallbackScene(); // e.g. running on SDL_RENDERER or CANVAS
+}
+
+if (!device.SupportsCapability(GraphicsCapability::OcclusionQuery)) {
+    // Skip GPU occlusion culling entirely rather than constructing an OcclusionQuery
+    // that CreateOcclusionQuery() would only return nullptr for anyway.
+}
+\end{lstlisting}
+
+This is precisely the ``ask, don't catch'' pattern this section's own title promises, and a
+Chapter~\ref{ch:graphicsdevice} finding is worth recalling here as the reason it must be used
+deliberately rather than assumed reliable everywhere: \cnaclass{MultipleRenderTargets}
+is one of the eight values this mechanism covers, but no backend's \texttt{SupportsCapability}
+override actually gates on it, so it silently returns \texttt{true} even on backends (like
+\texttt{SOFTWARE}) where a real MRT draw demonstrably fails --- a capability flag that exists,
+but that this specific query cannot yet be trusted to answer honestly for.
 
 \section{Build-time selection}
 
@@ -91,7 +132,7 @@ itself platform-conditional: \texttt{EASYGL} on Linux or Emscripten, \texttt{SDL
 everywhere else.
 
 Several backends carry hard, configure-time platform gates rather than soft warnings:
-\texttt{D3D9}/\texttt{D3D11}/\texttt{D3D12} fail configuration outright unless
+\texttt{D3D9} / \texttt{D3D11} / \texttt{D3D12} fail configuration outright unless
 \texttt{CMAKE\_SYSTEM\_NAME} is \texttt{Windows} (native or MinGW-w64 cross-compiled) ---
 the comment in the CMake script is blunt about why: ``d3d11.h/d3d12.h/dxgi.h do not exist
 elsewhere.'' \texttt{CANVAS} fails configuration outright unless building under Emscripten,
@@ -110,16 +151,16 @@ defined so its own \texttt{CreateGraphicsBackend()} factory is compiled out and 
 with ASCII's own factory --- confirming in build-system terms what
 Chapter~\ref{ch:canvas-ascii-backends} states in prose: ASCII is composition around
 SDL\_Renderer, not a reimplementation. And \texttt{D3D9}'s effect-compilation code
-(\texttt{D3D9EffectBackend}/\texttt{D3D9ConstantTable}) is deliberately isolated into its own
+(\texttt{D3D9EffectBackend} / \texttt{D3D9ConstantTable}) is deliberately isolated into its own
 static library specifically so that only that isolated library links against
 \texttt{d3dcompiler} --- keeping the stock D3D9 rendering pipeline itself free of that
-dependency, unlike \texttt{D3D11}/\texttt{D3D12}, which link \texttt{d3dcompiler}
+dependency, unlike \texttt{D3D11} / \texttt{D3D12}, which link \texttt{d3dcompiler}
 unconditionally into their whole backend target.
 
 \section{One factory function per backend}
 
 Whichever backend is selected at configure time compiles exactly one implementation of
-\texttt{std::unique\_ptr<IGraphicsBackend> CreateGraphicsBackend(const
+\texttt{std::unique\_ptr\allowbreak{}<IGraphicsBackend>\allowbreak{} CreateGraphicsBackend(const
 GraphicsBackendCreateArgs\&)}, gated behind a \texttt{\#ifdef CNA\_BACKEND\_*} matching the
 compile definition \texttt{BackendSelection.cmake} set. \cnaclass{GraphicsBackendCreateArgs}
 itself carries the window handle, virtual resolution, presentation mode, context-recovery
