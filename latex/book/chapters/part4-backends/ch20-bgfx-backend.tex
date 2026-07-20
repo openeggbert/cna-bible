@@ -37,7 +37,7 @@ parameter.
 
 \section{Render-target readback crashes: one root cause, five fixes}
 
-Five of six render-target-related \texttt{glReadPixels}/\texttt{Xvfb} crashes were traced to
+Five of six render-target-related \texttt{glReadPixels} / \texttt{Xvfb} crashes were traced to
 a single, shared root cause: bgfx processes its internal views in ascending ID order every
 frame, which means any render-target view is always the \emph{last} one processed --- and
 therefore still GL-bound at the exact moment \texttt{glReadPixels()} fires for a screenshot.
@@ -59,6 +59,34 @@ consequence: any loaded 3D model rendered as a solid black silhouette on this ba
 regardless of its real diffuse color, texture, or lighting --- fixed by adding a real
 override.
 
+\subsection{A worked example: recognizing the trigger condition before hitting it}
+
+The black-mesh bug's real trigger condition --- a vertex format with no \texttt{Color}
+attribute, which is essentially every \cnaclass{Model} loaded from content rather than
+hand-authored with vertex colors baked in --- is checkable directly against a real
+\cnaclass{VertexDeclaration}, grounded in \texttt{VertexElement}'s real accessor:
+
+\begin{lstlisting}
+bool HasColorAttribute(const VertexDeclaration& decl)
+{
+    for (const VertexElement& element : decl.GetVertexElements()) {
+        if (element.getVertexElementUsageProperty() == VertexElementUsage::Color) {
+            return true;
+        }
+    }
+    return false;
+}
+\end{lstlisting}
+
+Before this bug's fix, any effect-aware indexed draw where \texttt{HasColorAttribute} would
+have returned \texttt{false} was exactly the condition that silently rendered solid black on
+this backend --- which, per the finding above, covers essentially every ordinary
+\cnaclass{Model} draw, since a typical imported mesh carries position/normal/texture-coordinate
+data but no per-vertex color. This is precisely why the bug was invisible for so long despite
+being this common: nothing about it depended on an unusual asset or an edge-case vertex
+layout, only on whether anyone had specifically pixel-tested a textured, unlit 3D model on
+this one backend.
+
 \section{OcclusionQuery: a real implementation whose correctness cannot be fully proven here}
 
 \cnaclass{OcclusionQuery} was previously a pure no-op on this backend; the fix wires the
@@ -67,7 +95,7 @@ twelve 3D-draw submission call sites --- no separate correlation/tagging machine
 needed the way Vulkan's fix required, since bgfx submits synchronously. Two honestly-documented
 caveats remain: first, pixel/query correctness genuinely \emph{cannot} be established in this
 project's own sandbox, because sabotaging the fix back to a pure no-op produces identical
-\texttt{IsComplete()}/\texttt{PixelCount()} output to the fixed version --- the sandbox's own
+\texttt{IsComplete()} / \texttt{PixelCount()} output to the fixed version --- the sandbox's own
 software Mesa driver returns a non-null result even for a query that was never submitted
 anywhere at all, a real ceiling of the software renderer itself, not a CNA defect. Second,
 bgfx's own official usage example attaches an occlusion measurement to a separate, dedicated
