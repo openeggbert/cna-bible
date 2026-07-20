@@ -74,23 +74,55 @@ done.
   every time work stops, so the next session (which may not share this conversation's context)
   can pick up correctly.
 
-## Open conflicts to flag (do not resolve silently)
+## Resolved: free-direct and cna-extended stay marginal (author confirmation, 2026-07-20)
 
-Two earlier, explicit author instructions from this same project narrow scope in a way that
-now conflicts with "every chapter must expand":
+The author confirmed explicitly: **free-direct and cna-extended stay marginal in the book**,
+overriding the blanket "every chapter must expand" instruction for these two specifically.
 
-1. **Vol. II Ch.13 (free-direct deep dive)** was explicitly capped by the author at ~2 pages,
-   as part of a combined "5–10 pages total for free-direct across both volumes" instruction.
-   Expanding it to a full ~35-page chapter directly contradicts that.
-2. **cna-extended**, in Vol. II Appendix C, was explicitly kept to "one paragraph, not a
-   dedicated chapter, only marginal coverage" by author instruction.
+1. **Vol. II Ch.13 (free-direct deep dive)** stays at its current, already-capped size (~2
+   pages, part of the original "5–10 pages total for free-direct across both volumes"
+   instruction) — **not** expanded to the ~35-page Phase 1 target below. The table row below
+   is kept for reference but its target is now "no change."
+2. **cna-extended**, in Vol. II Appendix C, stays "one paragraph, not a dedicated chapter" —
+   no change needed there either; it was never going to be touched by this expansion pass
+   regardless (appendices aren't chapters), so this is just confirmation, not a new decision.
 
-**Default unless told otherwise:** honor the newer, blanket "every chapter must expand"
-instruction for Ch.13 specifically (it is a real chapter with a real class surface to
-document — `free-direct`'s own DirectDraw/DirectSound/DirectPlay API), but leave the
-cna-extended appendix paragraph as-is (it was never a chapter, and "expand every chapter"
-doesn't obviously reach a one-paragraph appendix aside). Flag this row in the table below so
-the author can override either default at any time.
+This was an open conflict flagged in this file until the author resolved it directly.
+
+## Screenshot feasibility check (2026-07-20)
+
+A background research pass confirmed real, in-environment screenshots are achievable for at
+least one backend. Full findings, a reusable patch, and step-by-step reproduction instructions
+are saved in `tools/cna-screenshot-infra/` (read that directory's `README.md` before any
+session attempts to build CNA or capture a screenshot — `/workspace/cna` itself does not
+persist across sessions, so the patch there needs reapplying to a fresh clone each time).
+
+- **CNA's `SOFTWARE` backend is the realistic path.** It's a real CPU rasterizer (edge
+  functions, perspective-correct interpolation, depth test) that never touches SDL
+  video/X11/a GPU — confirmed working with no `DISPLAY` set at all. A demo program built
+  against it and run headlessly produced a genuine, visually-correct 256×256 RGBA PNG.
+- CNA already has golden-image test infrastructure (`SaveBackBufferScreenshotEXT`,
+  `Texture2D::SaveAsPng`, ~17 checked-in reference PNGs) to build real per-chapter examples on.
+- CNA's checked-out HEAD did not compile without a small, diagnostic-quality stopgap fix to
+  `ContentReader::ReadDecimal()`/`ReadChar()` (never implemented, but called by two content
+  type readers) — saved as a patch in `tools/cna-screenshot-infra/`, worth a one-line honest
+  mention in Chapter 4 ("Building CNA") if still reproducible when that chapter is actually
+  written, framed as a real, current gap rather than a permanent characteristic.
+- `EASYGL`/`SDL_RENDERER` screenshots are plausible via `Xvfb` + Mesa llvmpipe (packages were
+  already available) but this was **not actually tried** — untested, not confirmed feasible.
+- **D3D9/D3D11/D3D12/BGFX are Windows/GPU-only and unrealistic to screenshot in this container
+  at all.** Their chapters (Vol. I Ch.20, Ch.22) should say so plainly rather than force a fake
+  image — per this file's own "real or not at all" rule above.
+- `CANVAS` (Emscripten/browser-only) and `ASCII` (needs a real X11 window, same as
+  `SDL_RENDERER`) are lower-priority screenshot candidates; `HEADLESS` cannot produce one at
+  all (it never rasterizes a real pixel).
+
+**Practical per-chapter implication, folded into the table below:** Vol. I chapters most
+likely to get a real screenshot are Ch.9–14 (GraphicsDevice/SpriteBatch/Textures/Models/Stock
+Effects/State Objects, all backend-agnostic enough to render via SOFTWARE) and Ch.17/18
+(SDL_Renderer/EasyGL, via the untested-but-plausible Xvfb path). Ch.19–22 (Vulkan/BGFX/WebGPU/
+Direct3D) should state explicitly why no real screenshot was attempted rather than skip the
+question silently.
 
 ## Volume I — target ~1,300 pages (24 chapters + Appendix A)
 
@@ -140,7 +172,7 @@ the author can override either default at any time.
 | 10 | Sharp Runtime Namespaces | 90 | 70 | Full docs for TimeSpan/EventHandler/Stream/collections + examples | Not started |
 | 11 | Parity Philosophy | 111 | 35 | More worked deviation examples | Not started |
 | 12 | EasyGL Deep Dive | 112 | 55 | Deeper coverage | Not started |
-| 13 | free-direct Deep Dive | 65 | 35 | **See open conflict note above before expanding** | Not started |
+| 13 | free-direct Deep Dive | 65 | ~2 (no change) | **Stays marginal per author confirmation 2026-07-20 — do not expand** | N/A — intentionally frozen |
 | 14 | Windows/Wine | 103 | 45 | Deeper verification detail | Not started |
 | 15 | Web/Emscripten | 88 | 40 | Deeper build/deploy detail | Not started |
 | 16 | Android/NDK | 82 | 40 | Deeper build/deploy detail | Not started |
@@ -158,7 +190,8 @@ the author can override either default at any time.
 | D | NOXNA Catalog | 114 | 20 | More entries | Not started |
 | E | API Quick Reference | 155 | 25 | Modest expansion, stays a reference | Not started |
 
-**Volume II subtotal: ~1,195 pages.**
+**Volume II subtotal: ~1,163 pages** (the 1,195 estimate above included a ~35-page target for
+Ch.13 that is now frozen at ~2 pages per the author's confirmation above).
 
 ## Session log
 
@@ -171,3 +204,15 @@ the author can override either default at any time.
   Chapter 9 (GraphicsDevice), the two largest, most mechanically tractable targets (full method
   documentation pulled directly from already-read headers), to establish the expanded-chapter
   template other chapters will follow.
+- **2026-07-20 (same session, follow-up):** Author added two requirements: every chapter needs
+  real code examples (already implied, now explicit), and graphics chapters should have real
+  screenshots of running examples where feasible — with an explicit rule that screenshots must
+  be genuine captures, never fabricated. Ran a background feasibility check: confirmed CNA's
+  `SOFTWARE` backend can render and screenshot headlessly with no `DISPLAY`/GPU at all; found
+  and patched (locally, saved to `tools/cna-screenshot-infra/`) a real pre-existing build gap
+  in `ContentReader`; produced and visually verified one real sample PNG. Findings and a
+  reproduction guide saved to `tools/cna-screenshot-infra/README.md`. Author separately
+  confirmed free-direct (Vol.II Ch.13) and cna-extended stay marginal, resolving the conflict
+  flagged earlier — Ch.13's target reverted to "no change," Vol. II subtotal adjusted to
+  ~1,163 pages. Execution of the actual chapter expansions still has not started; that remains
+  the very next step for whichever session picks this up next.

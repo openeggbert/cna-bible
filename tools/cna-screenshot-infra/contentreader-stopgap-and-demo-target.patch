@@ -1,0 +1,85 @@
+diff --git a/cmake/Tests/SoftwareTests.cmake b/cmake/Tests/SoftwareTests.cmake
+index 8b9429a..1b786c0 100644
+--- a/cmake/Tests/SoftwareTests.cmake
++++ b/cmake/Tests/SoftwareTests.cmake
+@@ -43,4 +43,9 @@ if(CNA_BUILD_TESTS AND CNA_GRAPHICS_BACKEND STREQUAL "SOFTWARE")
+     # not registered as a ctest (see cna_diag_compare's own comment above), just a plain
+     # executable a developer/script runs by hand.
+     cna_software_test(cna_diag_software examples/cross_backend_diagnostic_scene.cpp)
++
++    # Ad hoc diagnostic (not a permanent test, not registered as a ctest) -- see the file's own
++    # header comment: renders a real scene and saves it as a PNG, for the "can we get a real
++    # screenshot in a headless container" feasibility check.
++    cna_software_test(cna_software_screenshot_demo examples/software_screenshot_demo.cpp)
+ endif()
+diff --git a/include/Microsoft/Xna/Framework/Content/ContentReader.hpp b/include/Microsoft/Xna/Framework/Content/ContentReader.hpp
+index ce07c41..38e0144 100644
+--- a/include/Microsoft/Xna/Framework/Content/ContentReader.hpp
++++ b/include/Microsoft/Xna/Framework/Content/ContentReader.hpp
+@@ -22,6 +22,9 @@
+ #include "Microsoft/Xna/Framework/Vector4.hpp"
+ #include "System/IDisposable.hpp"
+ #include "System/IO/BinaryReader.hpp"
++#if !defined(_MSC_VER)
++#include "System/Decimal.hpp"
++#endif
+ 
+ namespace Microsoft::Xna::Framework::Content
+ {
+@@ -117,6 +120,27 @@ namespace Microsoft::Xna::Framework::Content
+         /** @brief FNA's `ContentReader.ReadColor()`. */
+         [[nodiscard]] Color ReadColor();
+ 
++        /**
++         * @brief NOXNA stopgap for FNA's `BinaryReader.ReadChar()` (needed by the `System.Char`
++         * .xnb primitive reader). sharp-runtime's `BinaryReader` deliberately has no
++         * Encoding/Decoder-based char support (see its own header comment) -- this reads a
++         * single raw byte and widens it, which is only correct for asset data in the low ASCII
++         * range. Added purely to unblock a build-feasibility check; not verified against real
++         * FNA's actual encoding behavior for non-ASCII characters.
++         */
++        [[nodiscard]] char16_t ReadChar();
++
++#if !defined(_MSC_VER)
++        /**
++         * @brief NOXNA stopgap for FNA's `ContentReader.ReadDecimal()` (needed by the
++         * `System.Decimal` .xnb primitive reader). Reads the same 4x little-endian Int32 layout
++         * .NET's `decimal` binary representation uses (lo, mid, hi, flags), matching
++         * `System::Decimal(intcs lo, intcs mid, intcs hi, bool isNegative, bytecs scale)`.
++         * Guarded out on MSVC to match `System::Decimal` itself (requires `unsigned __int128`).
++         */
++        [[nodiscard]] System::Decimal ReadDecimal();
++#endif
++
+         /**
+          * @brief FNA's `T ReadExternalReference<T>()`: reads a relative-path string naming a
+          *        sibling asset and loads it through the owning `ContentManager` (plan_xnb.md
+diff --git a/src/Microsoft/Xna/Framework/Content/ContentReader.cpp b/src/Microsoft/Xna/Framework/Content/ContentReader.cpp
+index 1ec7c68..2c8e1e2 100644
+--- a/src/Microsoft/Xna/Framework/Content/ContentReader.cpp
++++ b/src/Microsoft/Xna/Framework/Content/ContentReader.cpp
+@@ -143,6 +143,24 @@ namespace Microsoft::Xna::Framework::Content
+         return Color(r, g, b, a);
+     }
+ 
++    char16_t ContentReader::ReadChar()
++    {
++        return static_cast<char16_t>(ReadByte());
++    }
++
++#if !defined(_MSC_VER)
++    System::Decimal ContentReader::ReadDecimal()
++    {
++        const int32_t lo = ReadInt32();
++        const int32_t mid = ReadInt32();
++        const int32_t hi = ReadInt32();
++        const int32_t flags = ReadInt32();
++        const auto scale = static_cast<uint8_t>((flags >> 16) & 0xFF);
++        const bool isNegative = (flags & static_cast<int32_t>(0x80000000)) != 0;
++        return System::Decimal(lo, mid, hi, isNegative, scale);
++    }
++#endif
++
+     BoundingSphere ContentReader::ReadBoundingSphere()
+     {
+         const Vector3 center = ReadVector3();
