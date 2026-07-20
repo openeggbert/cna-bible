@@ -46,14 +46,14 @@ test, not a true sample count.
 
 Two further, real behavioral divergences are documented rather than silently accepted: fog
 is computed from clip-space Z rather than true view-space depth, which diverges from XNA at
-oblique viewing angles; and \texttt{DrawColoredPrimitives}/\texttt{DrawIndexedColoredPrimitives}
+oblique viewing angles; and \texttt{DrawColoredPrimitives} / \texttt{DrawIndexedColoredPrimitives}
 always render through one hardcoded-transform shader program, entirely ignoring whatever
 \cnaclass{GpuDrawParams} the effect layer actually supplied.
 
 Missing features confirmed still open include: the \texttt{preserveContents} flag on render
 target creation (always behaves as \texttt{DiscardContents}); \texttt{Texture2D::SetData}
 uploads never regenerating mipmaps (only the render-target-unbind path does, a separate code
-path); \texttt{Texture3D}/\texttt{TextureCube} both ignoring their requested
+path); \texttt{Texture3D} / \texttt{TextureCube} both ignoring their requested
 \cnaclass{SurfaceFormat} (always RGBA8) and their \texttt{mipMap} request; neither type being
 registered with the GL-context-loss recovery mechanism the way ordinary 2D textures are;
 \texttt{EasyGLEffectBackend::Unbind()} being a pure no-op; \texttt{ApplyBlendState} never
@@ -61,7 +61,7 @@ calling \texttt{glColorMask}, so \cnaclass{ColorWriteChannels} has no effect at 
 stencil incorrectly reusing the front-face read mask for the back face too; and
 \cnaclass{SpriteBatch} carrying a 65{,}535-index limit from its \texttt{uint16\_t} index
 type, silently wrapping or corrupting any batch exceeding roughly 16{,}383 quads.
-\texttt{VertexBuffer::GetData}/\texttt{IndexBuffer::GetData} are not implemented at all on
+\texttt{VertexBuffer::GetData} / \texttt{IndexBuffer::GetData} are not implemented at all on
 this backend, for either buffer type --- there is currently no interface method to even
 express a readback request, not just a missing implementation of one.
 
@@ -70,6 +70,32 @@ One gap is formally BLOCKED rather than merely open: forwarding a real, non-\tex
 already-tested contract on \texttt{Texture::ValidateFormat} (Chapter~\ref{ch:textures-rendertargets})
 --- closing this gap would require revisiting a decision the project has already committed
 tests against, not simply writing new code.
+
+\subsection{A worked example: finding the real SpriteBatch quad ceiling}
+
+The \texttt{uint16\_t} index-type finding above is worth turning into an actual number, since
+``roughly 16{,}383 quads'' is a real, checkable threshold a game can hit without realizing it
+if it draws enough distinct sprites inside one \texttt{Begin()} / \texttt{End()} pair (a
+particle system, a large tile map batched in one call, a text-heavy UI drawn glyph by glyph):
+
+\begin{lstlisting}
+constexpr int kMaxUint16Value = 65535;         // uint16_t's own maximum representable index
+constexpr int kVerticesPerQuad = 4;            // one quad = 4 unique vertices, 2 triangles
+constexpr int kMaxQuadsBeforeWrap = (kMaxUint16Value + 1) / kVerticesPerQuad; // = 16384
+\end{lstlisting}
+
+The one-off discrepancy between this computed 16{,}384 and the chapter's own ``roughly
+16{,}383'' figure is itself worth internalizing rather than smoothing over: exactly where the
+wraparound first becomes \emph{visibly} corrupt versus merely at its theoretical limit depends
+on \cnaclass{SpriteSortMode} and batch-flush timing details this specific finding does not
+fully pin down --- treat 16{,}384 as the hard ceiling derived from the index type itself, and
+anything close to it as already in the danger zone worth testing directly rather than assuming
+safe. A game that might legitimately approach this --- a bullet-hell shooter, a particle-heavy
+effect, a very large uniformly-tiled background drawn one \texttt{Draw()} call per tile
+instead of one call per texture atlas --- has two real mitigations: split the single
+\cnaclass{SpriteBatch} \texttt{Begin()} / \texttt{End()} pair into multiple smaller batches well
+under the ceiling, or batch fewer, larger draws (one atlas texture covering many tiles) so the
+quad count per batch stays low regardless of how much is actually drawn on screen.
 
 \section{The D3D9 oracle cross-measurement: a genuinely different kind of test}
 
