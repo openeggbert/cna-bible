@@ -179,7 +179,7 @@ ever needed).
 | 33 | Sharp Runtime Overview | 167 (was 116) | 40 | Worked examples for MulticastAction token-based removal and Task::ContinueWith's synchronous-execution contract, grounded in real headers | **In progress (~5 of ~40 pages)** |
 | 34 | Sharp Runtime Namespaces | 162 (was 90) | 70 | **Table description is stale** — the chapter's real title/scope is "Strings, Streams, and a Real Audit History" (String/StringBuilder, Stream, and the two post-stabilization audit narratives); TimeSpan/EventHandler are already covered in Chapter 33, not here. Added worked examples for String/StringBuilder, a minimal Stream subclass, and the Convert::ToInt32 rounding-bug repro | **In progress (~5 of ~70 pages)** |
 | 35 | Parity Philosophy | 134 (was 111) | 35 | Worked example contrasting the three delegate tiers (Action/Func alias, System::Delegate::Combine/Remove, MulticastAction), grounded in real headers | **In progress (~6 of ~35 pages)** |
-| 36 | EasyGL Deep Dive | 112 | 55 | Deeper coverage | Not started |
+| 36 | EasyGL Deep Dive | 151 (was 112) | 55 | Worked examples for Device's per-feature capability gating and the Program::uniform_block_index/Framebuffer typed-reference fixes, grounded in real headers; also fixed two pre-existing single-long-identifier overfull-hbox defects | **In progress (~5 of ~55 pages)** |
 | 37 | free-direct Deep Dive | 65 | ~2 (no change) | **Stays marginal per author confirmation 2026-07-20 — do not expand** | N/A — intentionally frozen |
 | 38 | Windows/Wine | 103 | 45 | Deeper verification detail | Not started |
 | 39 | Web/Emscripten | 88 | 40 | Deeper build/deploy detail | Not started |
@@ -903,3 +903,26 @@ current real total of 266 pages.
   111 to 134 lines (~4 to ~6 of a ~35-page target). Volume recompiled clean (285 pages total, 0
   undefined references, 0 duplicate-label warnings); all six of the chapter's own pages
   verified by rendering to PNG and reading them back.
+- **2026-07-20 (same session, "pokracuj"):** Chapter 36 (easy-gl Deep Dive) — first expansion
+  pass, and the last chapter in Part VI to get one (Chapter 37/free-direct stays explicitly
+  frozen per the author's 2026-07-20 confirmation, not expanded). Same gap shape as most of
+  this session's chapters: dense, accurate prose but zero worked examples. Read
+  `Capabilities.hpp`, `Feature.hpp`, `Device.hpp`, `Program.hpp`, and `Framebuffer.hpp`
+  directly (the last two cross-checked against `Framebuffer.cpp`'s own real test usage to
+  confirm exact enumerator names like `FramebufferAttachment::Depth`, since the enum
+  definitions themselves live in the sibling `meta-gl` repo, not cloned this session — a
+  worked example was adjusted mid-pass to use only enumerator names directly confirmed in this
+  codebase's own source, not guessed at). Added two worked examples: `Device::supports`/
+  `require` querying the real per-feature capability table directly (`TessellationShader`,
+  `FramebufferObject`), and the `Program::uniform_block_index`/`Framebuffer` typed-reference
+  fixes shown together in one snippet. While proactively checking this chapter for the
+  single-long-identifier overfull-hbox variant, found and fixed **two** instances — one in this
+  session's own new content (`Program::uniform_block_index()`) and one pre-existing from before
+  this session (`Config::enable_debug_logging`) — both fixed with the established
+  own-paragraph-break technique and confirmed via PNG re-render. Chapter grows from 112 to 151
+  lines (~4 to ~5 of a ~55-page target). Volume recompiled clean (285 pages total, 0 undefined
+  references, 0 duplicate-label warnings); all four of the chapter's own pages verified by
+  rendering to PNG and reading them back.
+
+**Part VI (Chapters 33-37) is now fully swept**: 33-36 all have a first expansion pass; 37
+stays frozen by explicit author decision, not left incomplete.

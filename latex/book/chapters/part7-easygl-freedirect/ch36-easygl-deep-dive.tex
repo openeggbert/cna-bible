@@ -60,19 +60,57 @@ numerically \emph{lower}. Direct State Access, by contrast, is not modeled for G
 since it is a desktop-only OpenGL~4.5 capability with no GLES equivalent whatsoever. This
 per-feature table --- not a single ``is this GLES'' branch --- is exactly the mechanism
 Chapter~\ref{ch:easygl-backend} described CNA's own \texttt{EASYGL} backend
-relying on via \texttt{device.supports(...)}/\texttt{device.require(...)}.
+relying on via \texttt{device.supports(...)} / \texttt{device.require(...)}.
+
+\begin{lstlisting}
+// Worked example: querying the per-feature table directly, rather than
+// branching on Device::capabilities().is_opengles() and guessing.
+if (device.supports(easygl::Feature::TessellationShader))
+{
+    ConfigurePatchPipeline();
+}
+else
+{
+    UseFallbackSubdivision();  // e.g. desktop GL < 4.0, or GLES < 3.2
+}
+
+// Device::require() throws immediately if the feature is genuinely
+// missing, matching Device::initialize()'s own "fail loudly at startup,
+// not mid-frame" posture for its hard-required baseline capabilities.
+device.require(easygl::Feature::FramebufferObject);
+\end{lstlisting}
 
 \section{Real design fixes, and one genuine breaking change worth knowing}
 
 \texttt{easy-gl}'s own planning documents record several real, reasoned design corrections.
+
 \texttt{Program::uniform\_block\_index()} originally returned GL's own raw
 \texttt{GL\_INVALID\_INDEX} sentinel on a failed lookup, forcing every caller to know and
 compare against a raw GL constant; it now returns \texttt{std::optional<unsigned int>}
 instead, so a caller never needs to include a GL header at all just to check for failure.
 Several resource classes (\cnaclass{Framebuffer}, \cnaclass{ProgramPipeline},
 \cnaclass{TransformFeedback}) were changed from accepting a raw \texttt{unsigned int} GL
-handle to accepting a real \cnaclass{Texture}/\cnaclass{Program} reference directly, removing
+handle to accepting a real \cnaclass{Texture} / \cnaclass{Program} reference directly, removing
 a whole class of ``passed the wrong handle type by mistake'' bug at the API boundary.
+
+\begin{lstlisting}
+// Worked example: both fixes in the same worked snippet. No raw GL
+// constant comparison, and no raw GLuint handle to mix up with an
+// unrelated resource's handle by mistake.
+if (std::optional<unsigned int> blockIndex = shaderProgram.uniform_block_index("Lighting"))
+{
+    shaderProgram.set_uniform_block_binding(*blockIndex, /* bindingPoint */ 0);
+}
+// else: no "Lighting" uniform block in this program -- handled without
+// ever needing to know or compare against GL_INVALID_INDEX directly.
+
+Framebuffer gbuffer;
+gbuffer.attach_texture_2d(FramebufferTarget::Framebuffer, FramebufferAttachment::Depth,
+                           TextureTarget::Texture2D, depthTexture, /* level */ 0);
+// depthTexture is a real Texture&, not a bare GLuint -- passing a
+// Renderbuffer's handle here by mistake is now a compile error, not a
+// runtime GL_INVALID_OPERATION discovered later.
+\end{lstlisting}
 
 One specific, genuine breaking behavioral change is worth knowing if you are porting code
 against an older version of this library: \texttt{Device::clear()} used to call
@@ -94,15 +132,16 @@ GPU or display is worth describing directly: a fake \texttt{GLGetProcAddressFn} 
 returns hand-written function pointers only for the handful of GL entry points
 \texttt{Device::initialize()} actually calls, returning literal hardcoded strings (for
 instance, \texttt{"OpenGL ES 3.0"}) and literal hardcoded enum values in place of real driver
-responses. This lets the entire \cnaclass{ContextInfo}/\cnaclass{Capabilities} detection
+responses. This lets the entire \cnaclass{ContextInfo} / \cnaclass{Capabilities} detection
 pipeline run and be asserted against genuinely, entirely off-GPU --- every other GL function
 pointer the loader might be asked for resolves to a non-null but non-callable sentinel, so a
 test can exercise detection logic without ever risking an actual GPU call.
 
 \section{Two known, honestly stated limitations}
 
-Two gaps are worth knowing about directly rather than assuming closed. First,
-\texttt{Config::enable\_debug\_logging} currently does nothing at all --- no
+Two gaps are worth knowing about directly rather than assuming closed.
+
+First, \texttt{Config::enable\_debug\_logging} currently does nothing at all --- no
 \texttt{log\_callback} field yet exists on \texttt{Config} to actually receive the output,
 despite the flag existing to request it. Second, \cnaclass{Query::result\_u64()} is
 implemented using the 32-bit \texttt{glGetQueryObjectuiv} internally, because the underlying

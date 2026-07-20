@@ -15,8 +15,10 @@ what's happened since — trust the conversation over this file in that case.
 numbering). Chapters 25–48 = former Volume II (Parts V–IX, renumbered +24). Appendices A–F.
 Full renumbering table is in `PLAN.md`'s merge session-log entry.
 
-**All eight Part V chapters (25-32) have a first real expansion pass**, and **Chapters 33-35
-(three of Part VI's five chapters) now do too.** Full per-chapter detail (exact line counts, which
+**All eight Part V chapters (25-32) have a first real expansion pass**, and **Part VI
+(Chapters 33-37) is now fully swept too** — 33-36 all got a first pass this session; 37
+(free-direct Deep Dive) stays explicitly frozen per the author's own 2026-07-20 confirmation,
+not left incomplete. Full per-chapter detail (exact line counts, which
 headers were read, every verified finding and worked example added) lives in `PLAN.md`'s
 session log — this file only summarizes. The pattern every one of these nine chapters
 followed: read the real headers/`.cpp` files for classes already named in the chapter's prose,
@@ -57,12 +59,24 @@ delegate tiers (`ActionT` alias, `Delegate::Combine`/`Remove`, `MulticastAction`
 removal) side by side against the same kind of problem each solves. No major new finding this
 pass; the existing prose was already unusually precise.
 
+**Chapter 36 (easy-gl Deep Dive)** got a first pass too: 112 → 151 lines, ~4 → ~5 of a
+~55-page target. Read `Capabilities.hpp`, `Feature.hpp`, `Device.hpp`, `Program.hpp`, and
+`Framebuffer.hpp` directly — cross-checked exact enumerator names (e.g.
+`FramebufferAttachment::Depth`) against `Framebuffer.cpp`'s own real test usage, since the enum
+definitions live in the sibling `meta-gl` repo which wasn't cloned this session; a worked
+example was adjusted mid-pass rather than guessing at an unverified enumerator name. Added two
+worked examples (`Device::supports`/`require` querying the real per-feature capability table;
+`Program::uniform_block_index`/`Framebuffer` typed-reference fixes shown together). **Found and
+fixed two instances of the single-long-identifier overfull-hbox variant while proactively
+checking this chapter** — one in this session's own new content, one pre-existing from before
+this session — both via the established own-paragraph-break technique, confirmed by re-render.
+
 Volume currently compiles to **285 pages, 0 undefined references, 0 duplicate-label
 warnings** (index count not re-checked this session — verify before quoting it).
 
 ### The `/`-spacing overfull-hbox defect class — three known variants, all with proven fixes
 
-Every chapter touched this session (25 through 35) has needed at least one of these. Treat
+Every chapter touched this session (25 through 36) has needed at least one of these. Treat
 this as a **routine check on every batch**, not a one-off — run the Python regex pass
 (`re.sub(r'\}/(\\texttt\{|\\cnaclass\{)', r'} / \1', text)`) over any file you touch before the
 first build of a batch, then manually grep for `}/%` afterward (the regex doesn't catch it):
@@ -79,7 +93,11 @@ first build of a batch, then manually grep for `}/%` afterward (the regex doesn'
    space on its line — REGARDLESS of spacing fixes around it. **The fix that works**:
    restructure so the sentence/clause containing the long identifier starts fresh (its own
    sentence, paragraph, or list-item continuation), maximizing its available line width from
-   its very first character.
+   its very first character. **This variant can be lurking in PRE-EXISTING content, not just
+   what you just added** — Chapter 36 this session had one in a paragraph nobody had touched
+   in this expansion pass at all. When you PNG-render a chapter's pages to check your own new
+   additions, read the WHOLE page, not just the part you added — you may catch an old bug for
+   free.
 
 **Verification bar, unchanged**: `grep -i overfull main.log` alone is not reliable evidence
 either way. The only real verification is `pdftoppm -png -f N -l N -r 100 main.pdf
@@ -90,20 +108,17 @@ first build — the routine is working.
 
 ## What to do next
 
-1. **Finish Part VI: Chapter 36 (EasyGL Deep Dive)** — same approach: read the real headers for
-   classes already named in the prose, check whether the gap is "add worked examples" (as it
-   has been for most chapters this session) or something else, add 1-3 worked examples plus at
-   least one new verified finding, and check PLAN.md's own table-row description against the
-   chapter's actual `\chapter{}` title/content before trusting it (Chapter 34 turned out to
-   have a stale description this session). **Chapter 37 (free-direct Deep Dive) is explicitly
-   frozen per author confirmation on 2026-07-20 — "stays marginal," do NOT expand it**; skip it
-   entirely regardless of how thin it looks. Once 36 is done, Part VI is fully swept (37 stays
-   frozen by design, not left incomplete).
-2. **After Part VI, continue to Parts VII-IX** (Chapters 38-48): Cross-platform engineering,
-   Porting/practice/roadmap — none touched yet this session.
-3. **Alternatively, return to Part V for real depth**: every Ch.25-32 chapter has a first pass
-   now, but all are still well short of their page targets. Don't re-run the "which classes
-   exist" grep again (already done at least once per chapter) — look for narrower gaps instead:
+1. **Continue to Parts VIII-IX** (Chapters 38-48): Cross-platform engineering (38-41),
+   Porting/practice/roadmap (42-48) — none touched yet this session. Same approach: read the
+   real headers/source for classes already named in the prose, check whether the gap is "add
+   worked examples" (as it has been for nearly every chapter this session) or something else,
+   add 1-3 worked examples plus at least one new verified finding, and check PLAN.md's own
+   table-row description against the chapter's actual `\chapter{}` title/content before
+   trusting it (Chapter 34 turned out to have a stale description this session).
+2. **Alternatively, return to Part V or VI for real depth**: every Ch.25-36 chapter (all of
+   Part V, all of Part VI except the frozen Ch.37) has a first pass now, but all are still well
+   short of their page targets. Don't re-run the "which classes exist" grep again (already done
+   at least once per chapter) — look for narrower gaps instead:
    worked-example depth per topic, cross-checking against `docs/*.md`/`CHECKLIST.md`/
    `plan_*.md` files in the real repo for anything a header-only pass would miss.
 4. **Deepen Chapter 9 (GraphicsDevice)** further, or start Chapter 13 (Stock Effects) — both
