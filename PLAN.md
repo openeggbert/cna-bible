@@ -169,7 +169,7 @@ ever needed).
 | # | Chapter | Current (lines) | Target (pages) | Approach | Status |
 |---|---------|-----------------:|----------------:|----------|--------|
 | 25 | Input System | 534 (was 170) | 70 | Full method references + worked examples for KeyboardState/Keyboard's EXT scancode surface, MouseState/Mouse's relative-mouse-mode EXT surface, GamePadState/the three GamePadDeadZone modes, TouchCollection/TouchLocation/GestureSample, TextInputEXT (IME-aware composition), and all five NOXNA-only device subsystems (Clipboard/Joysticks/Sensors/Power/Haptics) | **In progress (~10 of ~70 pages)** |
-| 26 | Audio System | 317 (was 118) | 60 | Full method references + worked examples for SoundEffect, SoundEffectInstance/Apply3D 3D audio, DynamicSoundEffectInstance streaming, the AudioEngine/SoundBank/WaveBank/Cue XACT playback model, and Microphone capture | **In progress (~8 of ~60 pages)** |
+| 26 | Audio System | 378 (was 118) | 60 | Full method references + worked examples for SoundEffect, SoundEffectInstance/Apply3D 3D audio, DynamicSoundEffectInstance streaming, the AudioEngine/SoundBank/WaveBank/Cue XACT playback model, Microphone capture, AudioCategory retroactive volume, AudioEngine::RendererDetails, SoundEffect::FromStream, and the three audio exception types | **In progress (~8 of ~60 pages)** |
 | 27 | Media | 103 | 45 | Full Song/MediaPlayer/MediaLibrary docs + examples | Not started |
 | 28 | Devices and Sensors | 115 | 45 | Full sensor API docs + examples | Not started |
 | 29 | GamerServices | 117 | 55 | Full Achievement/Leaderboard/Gamer docs + examples | Not started |
@@ -664,3 +664,37 @@ current real total of 266 pages.
   from the prior two entries. Chapter grows from 118 to 317 lines (~4 to ~8 of a ~60-page
   target). Volume recompiled clean (276 pages total, 1164 index entries, 0 undefined
   references, 0 duplicate-label warnings).
+- **2026-07-20 (same session, "jak moc tam pises o audio? ma to byt bible tedy ma tam byt
+  vyskyt vseho"):** a direct response to the author checking whether Chapter 26's first pass
+  was actually living up to the "bible = comprehensive" standard. Answered honestly (the
+  317-line/~8-page first pass was real but nowhere near the ~60-page target), then re-grepped
+  the real headers against the chapter's prose to find concrete, still-missing surface rather
+  than padding with restated content. Found and closed four genuine gaps: `AudioCategory`,
+  with a worked example showing `SetVolume` retroactively re-applying to already-playing cues
+  in that category (confirmed via a "T-4D" tagged source comment), not just future `Play()`
+  calls; `AudioEngine::RendererDetails`, with a verified finding read directly from
+  `RendererDetail.hpp`'s own source comment — production code only ever constructs the single
+  hardcoded SDL3\_mixer renderer, a second instance existing only in test code to exercise the
+  not-equal comparison path, so the enumeration always yields exactly one entry in practice
+  regardless of real attached hardware; `SoundEffect::FromStream`, the one construction path
+  that parses a complete WAV container (RIFF header included) from a `std::istream`, in
+  explicit contrast to every other constructor's headerless-PCM requirement; and the
+  namespace's three exception types (`InstancePlayLimitException`, `NoAudioHardwareException`,
+  `NoMicrophoneConnectedException`), with a verified asymmetry — two of the three derive from
+  a COM-interop-style external exception base matching real XNA's own choice, but
+  `NoMicrophoneConnectedException` derives from a plain exception base instead. Hit the
+  session's most stubborn instance yet of the `/`-spacing overfull-hbox defect class while
+  writing the exception-types paragraph: a single long `\cnaclass{NoMicrophoneConnectedException}`
+  token (31 characters) caused a severe, visibly-confirmed text cutoff (up to 128.66667pt)
+  that survived three different fix attempts (proactive `/`-spacing regex pass; shortening an
+  adjacent long fully-qualified name; restructuring which exceptions were named together) —
+  the technique that finally worked, applied to the one sentence that was still cut off after
+  the other three attempts, was giving that sentence its own paragraph break so the long
+  identifier gets a full line width from its very first character, confirmed fixed by
+  rendering page 170 to PNG and reading it back. Along the way, caught and corrected a factual
+  slip in a first draft (misattributed which exception derives from which base class) via a
+  fresh `grep -n "class.*Exception.*:"` header check before finalizing. Chapter grows from 317
+  to 378 lines (still ~8 of a ~60-page target — this pass closed real gaps but did not yet
+  reach the page target; more chapters/sections of real API surface remain to be checked
+  against the header for further gaps in a future pass). Volume recompiled clean (277 pages
+  total, 1173 index entries, 0 undefined references, 0 duplicate-label warnings).

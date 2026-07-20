@@ -14,56 +14,80 @@ be stale relative to what's happened since — trust the conversation over this 
 numbering). Chapters 25–48 = former Volume II (Parts V–IX, renumbered +24). Appendices A–F.
 Full renumbering table is in `PLAN.md`'s merge session-log entry.
 
-**Two former-Volume-II chapters now have a first real expansion pass**: Chapter 25 (Input
-System, 170 → 534 lines, ~4 → ~10 of a ~70-page target) and, this session, **Chapter 26 (Audio
-System, 118 → 317 lines, ~4 → ~8 of a ~60-page target)**. Both follow the same pattern: full
-method references + worked examples for every named class, each grounded in a direct
-header/source read, with real verified findings (not just API summaries) called out
-explicitly.
+**Chapter 25 (Input System)** has a first expansion pass: 170 → 534 lines, ~4 → ~10 of a
+~70-page target.
 
-### What Chapter 26 got this session
+**Chapter 26 (Audio System)** has now had TWO passes this session: an initial pass (118 → 317
+lines) and, directly in response to the author asking "how much are you actually writing about
+audio — this is supposed to be a bible, so everything should be covered", a gap-filling pass
+(317 → 378 lines) that re-grepped the real headers against the chapter's prose and closed four
+concrete gaps: `AudioCategory` (retroactive `SetVolume` on already-playing cues, worked
+example), `AudioEngine::RendererDetails` (verified finding: production code only ever
+constructs one hardcoded SDL3_mixer renderer, so enumeration always yields exactly one entry
+in practice), `SoundEffect::FromStream` (the one construction path that wants a full WAV
+container, not headerless PCM), and the namespace's three exception types (verified asymmetry:
+`InstancePlayLimitException`/`NoAudioHardwareException` derive from a COM-interop-style
+external exception base, `NoMicrophoneConnectedException` derives from plain `Exception`
+instead). **Honest status: still only ~8 of a ~60-page target** — this pass added real,
+previously-missing API surface, but did not close the size gap. More of the chapter's stated
+scope (XACT internals, the full 3D audio math, the bug-fix narrative sections) already exists;
+what's more likely still thin is depth/worked-examples per topic, not missing topics — a fresh
+gap-discovery pass would need to check chapter-external things like error-handling patterns,
+performance guidance, or platform-specific audio backend notes, not just "which classes are
+named."
 
-- **`SoundEffect`**: four static process-wide mixing knobs, three constructor families.
-  Worked example: loading from raw headerless PCM.
-- **`SoundEffectInstance`/`Apply3D`**: a verified finding read from `SoundEffectInstance.cpp`
-  — calling `Apply3D` even once permanently latches an internal `is3D` flag that never resets,
-  so its derived attenuation/pan/Doppler values keep governing output on every later call.
-  Worked example: a 3D explosion sound tracking a moving listener.
-- **`DynamicSoundEffectInstance`**: the pull-based `BufferNeeded`/`SubmitBuffer` streaming
-  model. Worked example: a procedurally generated tone.
-- **`AudioEngine`/`SoundBank`/`WaveBank`/`Cue`**: the XACT object model, distinguishing
-  `GetCue` (caller-owned) from `PlayCue` (bank-owned, fire-and-forget). Worked example: a
-  footstep cue driven by a global XACT runtime variable, plus a held looping engine sound.
-- **`Microphone`**: a verified finding that `BufferDuration`'s constraint is enforced by
-  actually throwing, not just documented. Worked example: mic capture piped into playback.
+Both chapters follow the same pattern: full method references + worked examples for every
+named class, each grounded in a direct header/source read, with real verified findings (not
+just API summaries) called out explicitly.
 
-Caught and fixed a real constructor-signature mistake in a first draft (`SoundBank`/`WaveBank`
-take `AudioEngine*`, not a reference) before finalizing.
-
-Volume currently compiles to **276 pages, 1164 index entries, 0 undefined references, 0
+Volume currently compiles to **277 pages, 1173 index entries, 0 undefined references, 0
 duplicate-label warnings**.
 
-### The `/`-spacing overfull-hbox defect class — now a routine check
+### The `/`-spacing overfull-hbox defect class — now three known variants, all with proven fixes
 
-Three consecutive chapters (25, and now 26) have needed the same fix: a
-`\texttt{A}/\texttt{B}` chain with no space around the slash is one unbreakable LaTeX token,
-and when long enough this causes overfull-hbox warnings, sometimes severe enough to visibly
-cut text off the page edge. **This is now a routine step, not a one-off fix**:
-1. Before the first build of any batch, `grep -n '}/\\texttt{\|}/\\cnaclass{'` on the file(s)
-   you edited and add a space (`} / \texttt{`) to any long chain.
-2. Also watch for the sneakier `}/%`-newline-continuation variant (doesn't match that grep).
-3. After building, `grep -i overfull main.log` for the file/line range you touched. This
-   session confirmed (again) that a residual warning under ~40pt does not reliably mean a
-   visible defect — render the actual page to PNG and read it back before spending more time
-   chasing a warning that may already look fine.
+Every chapter touched so far (25, 26) has needed at least one of these fixes. Treat this as a
+**routine check on every batch**, not a one-off:
+
+1. **Chain variant**: `\texttt{A}/\texttt{B}` (or `\cnaclass{}`) with no space around the slash
+   is one unbreakable LaTeX token; long enough, it overflows the line. Fix: proactively
+   `grep -n '}/\\texttt{\|}/\\cnaclass{'` before the first build of a batch and add a space
+   (`} / \texttt{`) to any long chain.
+2. **Newline-continuation variant**: `\texttt{A}/%` followed by a newline-continued
+   `\texttt{B}` — the `%` suppresses the newline's implicit space, and this does NOT match the
+   grep above. Only caught by reading the actual source around any overfull warning's line
+   range.
+3. **Single-long-identifier variant** (discovered and finally fully fixed this session): even
+   ONE very long `\texttt{}`/`\cnaclass{}`-wrapped identifier (e.g. `NoMicrophoneConnectedException`,
+   31 chars) can cause severe, visibly-confirmed cutoff if it lands with too little remaining
+   space on its line — REGARDLESS of spacing fixes around it. This is not fixable by adding
+   spaces. **The fix that worked**: restructure the paragraph so the sentence containing the
+   long identifier starts fresh (preceded by a blank line = new paragraph), maximizing its
+   available line width from its very first character. Confirmed on ch26's exception-types
+   paragraph after three other fix attempts (spacing, shortening an adjacent name, regrouping
+   which identifiers were named together) reduced but did not eliminate a 128pt+ overfull
+   warning and real visible cutoff on page 170 — only the paragraph-break technique actually
+   fixed it, verified by re-rendering the page to PNG and reading it back.
+
+**Verification bar, unchanged from before**: `grep -i overfull main.log` alone is not reliable
+evidence either way — this session again saw warnings under ~40pt render perfectly clean, and
+saw a warning drop numerically (128pt → 118pt) from a fix that did NOT actually resolve the
+visible defect. The only real verification is `pdftoppm -png -f N -l N -r 100 main.pdf
+/tmp/.../pageN` (find N by content search: `pdftotext -f N -l N main.pdf - | grep <text>`,
+never by printed folio number) then reading the PNG back with the Read tool.
 
 ## What to do next
 
 1. **Move to Chapter 27 (Media)** or another Part V–IX chapter (28 Devices/Sensors, 29
    GamerServices, 30 Networking, 31 Avatar, 32 Storage) — same systematic approach.
-2. **Deepen Chapter 9 (GraphicsDevice)** further, or start Chapter 13 (Stock Effects) — both
+2. **If returning to Chapter 26 for further depth**, don't re-run the "which classes exist"
+   grep again (already done twice this session) — instead look for narrower gaps: are there
+   real worked examples for every accepted-deviation item in the 26.5 section? Is the
+   memory-safety-bugs section (26.6 or wherever it landed) as concrete/grounded as the rest?
+   Cross-check against `docs/*.md` or `CHECKLIST.md` files in the real repo for anything the
+   header-only grep approach would miss (e.g. platform-specific backend notes).
+3. **Deepen Chapter 9 (GraphicsDevice)** further, or start Chapter 13 (Stock Effects) — both
    still open Part I–IV targets, untouched for several sessions now.
-3. Chapter 7 (Math and Core Types) is at ~33 of a ~110-page target after three sessions — a
+4. Chapter 7 (Math and Core Types) is at ~33 of a ~110-page target after three sessions — a
    legitimate target but needs fresh gap-discovery, not a ready-made list.
 
 **Verify the numbers above against `git log` and actual file line counts before trusting them
@@ -88,8 +112,9 @@ at face value.**
   exists and you're touching that paragraph anyway.
 - Verify hand-derived numeric/algebraic claims with an actual computation before writing them
   into the book. Also double-check constructor/method signatures against the real header
-  before writing a worked example that calls them — this session caught a
-  reference-vs-pointer mistake this way before it shipped.
+  before writing a worked example that calls them.
 - To find genuine gaps in an already-"complete-looking" chapter, systematically grep the real
   header for every type/class it covers and diff against what the chapter's prose actually
-  mentions.
+  mentions — but once that pass is done once, a second pass on the same chapter needs a
+  different angle (worked-example depth, docs/CHECKLIST cross-check, platform notes), not the
+  same class-name grep repeated.

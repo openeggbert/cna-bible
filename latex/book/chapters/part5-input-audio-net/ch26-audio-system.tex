@@ -210,6 +210,67 @@ delete engineLoop;
 engine.Update();
 \end{lstlisting}
 
+\subsection{AudioCategory: a detail easy to get wrong}
+
+\cnaclass{AudioCategory}'s own class-level doc comment states a precise, checkable behavior
+worth calling out on its own, since it is easy to assume otherwise: \texttt{SetVolume(volume)}
+does not merely set a baseline for \emph{future} \texttt{Play()} calls in that category --- it
+retroactively re-applies to every cue in the category that is already playing, immediately.
+A gameplay system that fades a category's volume down over several frames (rather than
+snapping it in one call) genuinely audibly attenuates whatever is already playing, frame by
+frame, not just whatever starts playing next.
+
+\begin{lstlisting}
+// Worked example: ducking music volume while a cutscene dialogue cue
+// plays, then restoring it -- SetVolume's retroactive behavior is
+// exactly what makes a smooth per-frame fade of already-playing music
+// possible, rather than only affecting cues that start after the call.
+AudioCategory music = engine.GetCategory("Music");
+music.SetVolume(duckedVolume);   // audibly fades already-playing music now
+
+dialogueCue->Play();
+// ... later, once the dialogue cue finishes:
+music.SetVolume(1.0f);           // restores full volume, again retroactively
+\end{lstlisting}
+
+\cnaclass{AudioEngine::RendererDetails} (a \texttt{std::vector<RendererDetail>}, each exposing
+a \texttt{FriendlyName} / \texttt{RendererId} pair) exists to enumerate available audio output
+renderers, mirroring real XNA's own multi-renderer-aware API shape --- but reading
+\texttt{RendererDetail.hpp}'s own source comment directly shows this is currently a shape
+without substance in CNA specifically: ``production code only ever constructs the single
+hardcoded SDL3\_mixer renderer'' (a second, distinct instance exists only in test code, to
+exercise \texttt{Equals} / \texttt{operator==}'s not-equal path at all). Application code that
+enumerates \texttt{RendererDetails} expecting a real per-device choice, the way a Windows XAudio2
+game might see one entry per real audio device, will find exactly one entry, always the same
+one, regardless of what audio hardware is actually attached.
+
+\subsection{SoundEffect::FromStream, and the exception types this namespace defines}
+
+Beyond the raw-buffer and asset-name constructors already covered,
+\texttt{SoundEffect::FromStream(stream)} is a fourth, static loading path: it parses a
+complete WAV \emph{container} (RIFF header included) directly from a
+\texttt{std::istream}, returning an owning pointer the caller is responsible for deleting ---
+the one \cnaclass{SoundEffect} construction path that \emph{wants} the container header,
+in explicit contrast to every other constructor's headerless-PCM requirement named earlier in
+this section.
+
+This namespace defines three of its own exception types, each thrown for a distinct real
+condition rather than as a single generic audio-error catch-all.
+\cnaclass{InstancePlayLimitException} is thrown when a category's simultaneous-instance limit
+is exceeded --- one of the accepted-deviation instance-limit behaviors covered below.
+
+\cnaclass{NoAudioHardwareException} and \cnaclass{NoMicrophoneConnectedException} are thrown
+when no playback or capture device is available, respectively; both wrap a plain error message
+and an optional inner exception, matching the standard .NET exception-chaining constructor
+shape --- but not from the same base class. Two of the three,
+\cnaclass{InstancePlayLimitException} and \cnaclass{NoAudioHardwareException}, derive from a
+COM-interop-style external exception base, matching real XNA's own choice to model those two
+conditions as externally-originating errors.
+
+\cnaclass{NoMicrophoneConnectedException}, the third, derives from a plain exception base
+instead --- a real, if minor, asymmetry across three otherwise structurally similar
+exception types.
+
 \section{A real user-reported bug, and the audit it triggered}
 
 The most recent, and most consequential, audit of this namespace was not routine --- it was
@@ -233,7 +294,7 @@ the source sample rate is declared correctly.
 
 A separate, real stereo-panning bug was found and fixed for \cnaclass{SoundEffectInstance}:
 a hard pan used to eliminate the opposite channel entirely rather than crossfeed-blending it
-down, corrected for the \texttt{Play}/\texttt{Apply3D} / pan-setter paths --- but the static,
+down, corrected for the \texttt{Play} / \texttt{Apply3D} / pan-setter paths --- but the static,
 fire-and-forget \texttt{SoundEffect::Play(volume, pitch, pan)} convenience helper still
 carries the old, unfixed behavior, tracked separately rather than silently left inconsistent
 without a record.
