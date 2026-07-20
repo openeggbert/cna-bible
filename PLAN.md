@@ -134,7 +134,7 @@ question silently.
 | 4 | Building CNA | 173 | 35 | Full CMake option reference, per-platform build walkthroughs | Not started |
 | 5 | First Game | 131 | 40 | Multiple complete worked example programs, step-by-step | Not started |
 | 6 | Game Loop | 216 | 40 | Full `Game`/`GameTime`/`GameWindow` method-by-method docs + examples | Not started |
-| 7 | Math and Core Types | 471 (was 270) | 110 | Vector2/3/4 + Matrix fully expanded (full method reference + worked examples + real screenshot); Quaternion/Point/Rectangle/Color/Plane/Ray/3 Bounding types/MathHelper/Curve still at original narrative-summary depth | **In progress (~4 of 11 type-families fully expanded)** |
+| 7 | Math and Core Types | 758 (was 270) | 110 | All 11 type-families now have a full method/constructor reference (Vector2/3/4, Matrix, Quaternion, Plane, Ray, Rectangle, Point, Color, MathHelper, 3 Bounding types, Curve/CurveKey) plus worked examples per group and 2 real screenshots | **In progress (~22 of ~110 pages; every type-family covered at least once, depth can still grow further)** |
 | 8 | Content and Assets | 125 | 55 | Full `ContentManager` API + CNJ/XNB worked walkthroughs | Not started |
 | 9 | GraphicsDevice | 556 (was 171) | 90 | Full method-by-method docs for the 887-line header | **In progress (~13 of ~90 pages, first pass done)** |
 | 10 | SpriteBatch | 130 | 55 | Every `Begin`/`Draw`/`DrawString` overload documented + examples | Not started |
@@ -249,3 +249,15 @@ Ch.13 that is now frozen at ~2 pages per the author's confirmation above).
   Bounding types) plus MathHelper and Curve/CurveKey are **not yet** expanded to the same
   depth — still at their original narrative-summary level. Volume I recompiled clean (127
   pages total, 598 index entries, 0 undefined references).
+- **2026-07-20 (same session, Chapter 7 completed to first-pass depth):** Continued straight
+  through the remaining 7 type-families rather than stopping at Vector/Matrix: added full
+  method/constructor references for Quaternion, Plane, Ray, Rectangle, Color, MathHelper, and
+  the shared BoundingBox/BoundingSphere/BoundingFrustum operation set, each with a worked code
+  example (Slerp-based turning, ray/sphere picking, rectangle clamping, frustum culling, a
+  Curve-driven camera flythrough). Every one of the 11 type-families this chapter covers now
+  has at least a full method reference and one worked example — the chapter is no longer
+  lopsided toward just Vector/Matrix. Chapter grew from 471 to 758 lines (~22 of ~110 target
+  pages — real depth added throughout, but there is still plenty of room to go deeper per type
+  before the page target is actually reached; treat "every type covered once" as this pass's
+  real accomplishment, not "chapter complete"). Volume I recompiled clean (131 pages total,
+  632 index entries, 0 undefined references).

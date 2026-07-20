@@ -249,6 +249,114 @@ the intersection distance if one exists, \texttt{std::nullopt} otherwise --- aga
 \cnaclass{BoundingFrustum}, each with a by-ref \texttt{std::optional<float>\&} output-parameter
 twin as well.
 
+\subsection{Full method reference: Quaternion}
+\label{sec:quaternion-full-reference}
+
+\begin{description}
+\item[\texttt{Concatenate(value1, value2)}] composes two rotations so that \texttt{value1} is
+  applied first, then \texttt{value2} --- quaternion multiplication order matters, and this
+  static method exists specifically so the ``apply first / apply second'' reading is explicit
+  at the call site rather than relying on the reader to remember which side of
+  \texttt{operator*} means what.
+\item[\texttt{Conjugate(value)}] the static, value-returning form of negating the vector part
+  only (\texttt{X}, \texttt{Y}, \texttt{Z}) while leaving \texttt{W} unchanged --- distinct from
+  the instance method \texttt{void Conjugate()}, which does the same thing to \texttt{*this} in
+  place.
+\item[\texttt{CreateFromAxisAngle(axis, angle)}] builds a rotation quaternion from an arbitrary
+  axis and an angle in radians --- the quaternion counterpart to
+  \cnaclass{Matrix}'s own \texttt{CreateFromAxisAngle}.
+\item[\texttt{CreateFromRotationMatrix(matrix)}] extracts the equivalent quaternion from a
+  \cnaclass{Matrix}'s rotation component --- the inverse operation of
+  \cnaclass{Matrix}'s own \texttt{CreateFromQuaternion}.
+\item[\texttt{CreateFromYawPitchRoll(yaw, pitch, roll)}] builds a rotation quaternion directly
+  from the three Euler angles, without an intermediate \cnaclass{Matrix}.
+\item[\texttt{Inverse(quaternion)}] the multiplicative inverse --- for a unit-length rotation
+  quaternion, numerically close to (but not defined identically as) \texttt{Conjugate}.
+\item[\texttt{Lerp(quaternion1, quaternion2, amount)}] normalized linear interpolation between
+  two rotations --- fast, but the interpolation rate is not perfectly uniform in angle the way
+  \texttt{Slerp} is.
+\item[\texttt{Slerp(quaternion1, quaternion2, amount)}] spherical linear interpolation ---
+  uniform angular velocity across the interpolation, at higher computational cost than
+  \texttt{Lerp}; the correct choice for animation blending where consistent rotation speed
+  actually matters.
+\item[\texttt{Dot(quaternion1, quaternion2)}] the quaternion dot product, returned as
+  \texttt{float}.
+\item[\texttt{Add}/\texttt{Subtract}/\texttt{Multiply}/\texttt{Divide}/\texttt{Negate}] the same
+  component-wise arithmetic family the vector types provide, operating on all four
+  \texttt{X}/\texttt{Y}/\texttt{Z}/\texttt{W} components; \texttt{Multiply} additionally has a
+  quaternion-by-\texttt{float} scalar overload alongside the quaternion-by-quaternion form.
+\item[\texttt{Normalize(quaternion)}] the static, value-returning form; the instance method
+  \texttt{void Normalize()} normalizes \texttt{*this} in place.
+\end{description}
+
+\begin{lstlisting}
+// Worked example: Slerp between two facing directions over one second,
+// the standard technique for smoothly turning a character or camera.
+Quaternion currentFacing = Quaternion::CreateFromYawPitchRoll(0.0f, 0.0f, 0.0f);
+const Quaternion targetFacing =
+    Quaternion::CreateFromYawPitchRoll(MathHelper::PiOver2, 0.0f, 0.0f);
+
+const float turnAmount = std::min(1.0f, turnSpeed * deltaSeconds);
+currentFacing = Quaternion::Slerp(currentFacing, targetFacing, turnAmount);
+
+const Matrix orientation = Matrix::CreateFromQuaternion(currentFacing);
+\end{lstlisting}
+
+\subsection{Full method reference: Plane}
+
+\begin{description}
+\item[\texttt{Plane(Vector4 value)}] constructs from a \cnaclass{Vector4} whose \texttt{XYZ}
+  is the normal and \texttt{W} is the distance.
+\item[\texttt{Plane(Vector3 normal, float d)}] the explicit normal-plus-distance form.
+\item[\texttt{Plane(Vector3 a, Vector3 b, Vector3 c)}] constructs the plane that contains all
+  three given points.
+\item[\texttt{Plane(float a, float b, float c, float d)}] constructs directly from the four raw
+  scalar coefficients of the plane equation $ax + by + cz + d = 0$.
+\item[\texttt{Dot(value)}] the dot product of the plane (as a 4-vector: normal plus distance)
+  and a \cnaclass{Vector4}.
+\item[\texttt{DotCoordinate(value)}] the dot product of the plane's normal with a 3D
+  \emph{point}, plus the plane's distance --- the form to use for testing which side of the
+  plane a position lies on.
+\item[\texttt{DotNormal(value)}] the dot product of the plane's normal with a 3D
+  \emph{direction} only, ignoring distance entirely --- the form to use for testing a direction
+  vector (e.g.\ whether a ray's direction points toward or away from the plane) rather than a
+  position.
+\item[\texttt{Intersects(BoundingBox)} / \texttt{Intersects(BoundingSphere)} /
+  \texttt{Intersects(const BoundingFrustum\&)}] each returns a \cnaclass{PlaneIntersectionType}
+  (\S\ref{sec:bounding-volumes-full-reference} below).
+\item[\texttt{Normalize(value)}] the static, value-returning form of normalizing both the
+  normal vector and rescaling \texttt{D} to match; the instance method \texttt{void
+  Normalize()} does the same to \texttt{*this} in place.
+\item[\texttt{Transform(plane, matrix)} / \texttt{Transform(plane, rotation)}] transforms a
+  \emph{normalized} plane by a \cnaclass{Matrix} or \cnaclass{Quaternion} --- the plane must
+  already be normalized for the result to be correct, since transforming an unnormalized
+  plane's normal and distance independently does not commute with normalization.
+\end{description}
+
+\subsection{Full method reference: Ray}
+
+\begin{description}
+\item[\texttt{Ray(Vector3 position, Vector3 direction)}] the only non-default constructor ---
+  \texttt{Position} and \texttt{Direction} are both public fields, not properties.
+\item[\texttt{Intersects(BoundingBox)} / \texttt{Intersects(BoundingSphere)} /
+  \texttt{Intersects(Plane)} / \texttt{Intersects(const BoundingFrustum\&)}] each returns
+  \texttt{std::optional<float>} --- the distance along the ray to the first intersection, or
+  \texttt{std::nullopt} if the ray misses entirely. Each has a by-ref
+  \texttt{std::optional<float>\& result} output-parameter twin.
+\end{description}
+
+\begin{lstlisting}
+// Worked example: mouse picking against a bounding sphere -- construct a
+// ray from the camera through a screen point, then test for a hit.
+Ray pickRay(cameraPosition, pickDirection);   // pickDirection already normalized
+
+if (const std::optional<float> hitDistance = pickRay.Intersects(targetSphere))
+{
+    const Vector3 hitPoint = pickRay.Position + pickRay.Direction * (*hitDistance);
+    // ... react to the hit at hitPoint ...
+}
+\end{lstlisting}
+
 \section{Rectangle and Point}
 
 \cnaclass{Rectangle} stores \texttt{intcs X, Y, Width, Height} --- the
@@ -269,6 +377,39 @@ Point} operators are present here regardless of whether the original XNA assembl
 operator surface defines them identically --- a detail worth a direct \texttt{xna4-spec}
 diff (Volume~II's \texttt{xna4-spec} auditing chapter) rather than an assumption, if exact
 operator-surface parity matters for your use case.
+
+\subsection{Full method reference: Rectangle}
+
+\begin{description}
+\item[\texttt{Contains(x, y)}] tests whether the integer coordinates \texttt{(x, y)} lie
+  inside the rectangle; \texttt{Contains(Point)} and \texttt{Contains(Rectangle)} test a point
+  or full containment of another rectangle respectively --- all three have a by-ref
+  \texttt{bool\& result} output-parameter twin.
+\item[\texttt{Offset(Point)} / \texttt{Offset(offsetX, offsetY)}] translate the rectangle in
+  place by the given amount.
+\item[\texttt{Inflate(horizontalValue, verticalValue)}] expands (or, with negative values,
+  shrinks) the rectangle in place by the given amount on \emph{each} side --- a rectangle
+  inflated by \texttt{(10, 10)} grows by 20 total in width and height, not 10.
+\item[\texttt{Intersects(Rectangle)}] returns whether two rectangles overlap at all, with a
+  by-ref \texttt{bool\& result} twin.
+\item[\texttt{Intersect(value1, value2)}] returns the overlapping sub-rectangle of two inputs,
+  or \texttt{Rectangle::Empty} if they don't overlap; \texttt{Union(value1, value2)} returns
+  the smallest rectangle containing both inputs. Both are \texttt{static} and have a
+  \texttt{Rectangle\& result} output-parameter twin.
+\end{description}
+
+\begin{lstlisting}
+// Worked example: keep a moving sprite's bounding rectangle inside the
+// screen bounds, clamping rather than stopping outright.
+Rectangle spriteBounds(x, y, spriteWidth, spriteHeight);
+const Rectangle screenBounds(0, 0, screenWidth, screenHeight);
+
+if (!screenBounds.Contains(spriteBounds))
+{
+    spriteBounds.X = std::clamp(spriteBounds.X, 0, screenWidth  - spriteBounds.Width);
+    spriteBounds.Y = std::clamp(spriteBounds.Y, 0, screenHeight - spriteBounds.Height);
+}
+\end{lstlisting}
 
 \section{Color: 140 named constants and one packed layout}
 
@@ -293,6 +434,40 @@ float)} round out the static surface; a \texttt{NOXNA} commutative \texttt{float
 operator is added alongside the standard \texttt{Color * float}, again explicitly documented
 as a CNA-only convenience not present in XNA/FNA.
 
+\subsection{Full method and constructor reference: Color}
+
+\begin{description}
+\item[\texttt{Color(const Vector4\& color)}] \texttt{explicit} --- each component clamped to
+  $[0,1]$ then scaled to $[0,255]$.
+\item[\texttt{Color(const Vector3\& color)}] \texttt{explicit} --- alpha forced fully opaque
+  (255).
+\item[\texttt{Color(float r, float g, float b)} / \texttt{Color(float r, float g, float b,
+  float alpha)}] components in $[0,1]$; the three-argument form forces alpha to opaque.
+\item[\texttt{Color(intcs r, intcs g, intcs b)} / \texttt{Color(intcs r, intcs g, intcs b,
+  intcs alpha)}] components in $[0,255]$, clamped; same opaque-alpha default for the
+  three-argument form.
+\item[\texttt{Color(bytecs r, bytecs g, bytecs b)} / \texttt{Color(bytecs r, bytecs g, bytecs
+  b, bytecs alpha)}] \texttt{NOXNA} --- explicitly documented as a CNA convenience overload,
+  not part of the XNA 4.0 API, for callers that already have byte-typed components on hand and
+  want to skip the implicit \texttt{intcs} conversion.
+\item[\texttt{R}/\texttt{G}/\texttt{B}/\texttt{A}] each a \texttt{bytecs} property pair
+  (get/set), reading and writing one channel of the packed \texttt{PackedValue} directly.
+\item[\texttt{ToVector3()} / \texttt{ToVector4()}] convert back to floating-point $[0,1]$
+  component form --- the inverse of the \cnaclass{Vector3}/\cnaclass{Vector4} constructors
+  above.
+\item[\texttt{Lerp(value1, value2, amount)}] linear interpolation between two colors,
+  component-wise, with \texttt{amount} clamped to $[0,1]$ (unlike the vector types'
+  \texttt{Lerp}, which extrapolates unclamped).
+\item[\texttt{FromNonPremultiplied(vector)} / \texttt{FromNonPremultiplied(r, g, b, a)}]
+  converts straight (non-premultiplied) alpha color data into CNA's premultiplied-alpha
+  \cnaclass{Color} representation --- the conversion every texture importer that reads a
+  straight-alpha source image format needs to apply before storing pixel data as
+  \cnaclass{Color}.
+\item[\texttt{Multiply(value, scale)}] scales all four channels (including alpha) by
+  \texttt{scale}; \texttt{NOXNA operator*(float, const Color\&)} adds the commutative
+  scalar-first form alongside the standard \texttt{Color * float}.
+\end{description}
+
 \section{MathHelper: constants and helpers, some public only because C\texttt{++} has no assembly visibility}
 
 \cnaclass{MathHelper} is static-only (its default constructor is \texttt{= delete}, tagged
@@ -310,6 +485,47 @@ a graphics-relevant helper hiding in a math-only-looking class: it returns the c
 MSAA sample-count power-of-two at or below the requested value, mirroring FNA's own internal
 MSAA helper, and is used wherever a backend needs to clamp a requested multisample count to
 something the underlying graphics API actually supports.
+
+\subsection{Full method reference: MathHelper}
+
+Every method below operates on plain \texttt{float} (or, for the two integer-specific entries,
+\texttt{intcs}) scalars --- \cnaclass{MathHelper} is where the vector types' own per-component
+operations bottom out, one dimension at a time.
+
+\begin{description}
+\item[\texttt{Barycentric(value1, value2, value3, amount1, amount2)}] the scalar form of the
+  same barycentric-coordinate conversion \S\ref{sec:vector-full-reference} described for
+  vectors --- called once per component when a vector overload needs it.
+\item[\texttt{CatmullRom(value1, value2, value3, value4, amount)}] scalar Catmull-Rom spline
+  interpolation through four control values.
+\item[\texttt{Clamp(value, min, max)}] the \texttt{float} overload; a second overload,
+  \texttt{Clamp(intcs value, intcs min, intcs max)}, does the same for integers --- both public
+  only because, per the header's own comment, C\texttt{++} has no way to hide a framework-internal
+  helper the way FNA hides it as C\# \texttt{internal}.
+\item[\texttt{Distance(value1, value2)}] the absolute difference between two scalars ---
+  the one-dimensional case of the vector types' own \texttt{Distance}.
+\item[\texttt{Hermite(value1, tangent1, value2, tangent2, amount)}] scalar Hermite spline
+  interpolation.
+\item[\texttt{Lerp(value1, value2, amount)}] scalar linear interpolation, unclamped (matching
+  the vector types' own \texttt{Lerp}, not \cnaclass{Color}'s clamped one).
+\item[\texttt{Max(value1, value2)} / \texttt{Min(value1, value2)}] scalar maximum/minimum.
+\item[\texttt{SmoothStep(value1, value2, amount)}] scalar smoothed interpolation.
+\item[\texttt{ToDegrees(radians)} / \texttt{ToRadians(degrees)}] the standard angle-unit
+  conversions --- used throughout this chapter's own worked examples (e.g.\
+  \texttt{MathHelper::ToRadians(30.0f)} in \S\ref{sec:worked-examples}'s \cnaclass{Matrix}
+  example).
+\item[\texttt{WrapAngle(angle)}] wraps an angle in radians into the range $(-\pi, \pi]$ ---
+  useful after accumulating a rotation over many frames, where the raw angle would otherwise
+  grow without bound.
+\item[\texttt{WithinEpsilon(floatA, floatB)}] returns whether two floats are closer than
+  \texttt{MachineEpsilonFloat} --- the framework's standard ``close enough to treat as equal''
+  test, used internally by several of the vector/matrix/quaternion types' own equality checks.
+\item[\texttt{ClosestMSAAPower(value)}] returns the largest power-of-two MSAA sample count at
+  or below \texttt{value} --- a graphics-specific helper (Chapter~\ref{ch:graphicsdevice}
+  covers where multisample count is actually consumed) that happens to live in this otherwise
+  purely mathematical class, again because FNA's own \texttt{internal} visibility has no C\texttt{++}
+  equivalent to hide it behind.
+\end{description}
 
 \section{Bounding volumes: Box, Sphere, Frustum}
 \label{sec:bounding-volumes}
@@ -356,6 +572,62 @@ frustum corner as the intersection of three planes) implement this derivation; e
 (\texttt{operator==}/\texttt{!=}) is defined purely in terms of the underlying \texttt{Matrix},
 not the cached corners/planes, since the latter are wholly determined by the former.
 
+\subsection{Full method reference: the shared bounding-volume operation set}
+\label{sec:bounding-volumes-full-reference}
+
+Every entry below exists on all three types (\cnaclass{BoundingBox}, \cnaclass{BoundingSphere},
+\cnaclass{BoundingFrustum}) unless a type is named explicitly, each with a value-returning form
+and a by-ref output-parameter twin.
+
+\begin{description}
+\item[\texttt{Contains(BoundingBox)} / \texttt{Contains(BoundingSphere)} /
+  \texttt{Contains(const BoundingFrustum\&)} / \texttt{Contains(Vector3)}] returns a
+  \cnaclass{ContainmentType} --- \texttt{Disjoint} (no overlap at all), \texttt{Intersects}
+  (partial overlap), or \texttt{Contains} (the argument lies entirely within \texttt{*this}).
+\item[\texttt{Intersects(BoundingBox)} / \texttt{Intersects(BoundingSphere)} /
+  \texttt{Intersects(const BoundingFrustum\&)}] returns a plain \texttt{bool} --- true for
+  either partial or full overlap, collapsing \cnaclass{ContainmentType}'s three-way distinction
+  down to a simple yes/no.
+\item[\texttt{Intersects(Plane)}] returns \cnaclass{PlaneIntersectionType} ---
+  \texttt{Front}/\texttt{Back} (the whole volume lies entirely on one side, no actual crossing)
+  or \texttt{Intersecting} (the plane genuinely cuts through the volume).
+\item[\texttt{Intersects(Ray)}] returns \texttt{std::optional<float>}, matching \cnaclass{Ray}'s
+  own \texttt{Intersects} overloads from \S\ref{sec:quaternion-full-reference} above exactly
+  (they are, in fact, the same underlying test called from either type).
+\item[\texttt{GetCorners()}] (\cnaclass{BoundingBox} and \cnaclass{BoundingFrustum} only ---
+  \cnaclass{BoundingSphere} has no meaningful discrete corner set) returns the volume's eight
+  corners, either as a freshly-allocated \texttt{std::vector<Vector3>} or written into a
+  caller-supplied one that must already hold at least \texttt{CornerCount} (8) elements.
+\item[\texttt{CreateFromBoundingBox(box)} / \texttt{CreateFromPoints(points)} /
+  \texttt{CreateFromFrustum(frustum)}] (\cnaclass{BoundingSphere} only) --- three ways to
+  construct the smallest sphere enclosing a box, a point cloud, or a frustum respectively.
+\item[\texttt{CreateFromPoints(points)}] (\cnaclass{BoundingBox} too) --- the smallest
+  axis-aligned box enclosing an arbitrary point cloud.
+\item[\texttt{CreateFromSphere(sphere)}] (\cnaclass{BoundingBox} only) --- the smallest box
+  enclosing a given sphere.
+\item[\texttt{CreateMerged(original, additional)}] (\cnaclass{BoundingBox} and
+  \cnaclass{BoundingSphere}) --- the smallest volume of the same kind enclosing both inputs.
+\item[\texttt{Transform(matrix)}] (\cnaclass{BoundingSphere} only) --- applies translation and
+  uniform scale from a \cnaclass{Matrix}; per its own doc comment, a shearing or non-uniform
+  scale does not turn the sphere into an ellipsoid, since \cnaclass{BoundingSphere} cannot
+  represent one.
+\end{description}
+
+\begin{lstlisting}
+// Worked example: frustum culling -- skip drawing any object whose
+// bounding sphere the camera frustum cannot possibly see.
+const BoundingFrustum cameraFrustum(view * projection);
+
+for (const SceneObject& object : sceneObjects)
+{
+    if (cameraFrustum.Intersects(object.GetBoundingSphere()))
+    {
+        object.Draw();
+    }
+    // else: entirely outside the view frustum, skip drawing it this frame.
+}
+\end{lstlisting}
+
 \section{Curves: Curve, CurveKey, and their supporting enums}
 
 \cnaclass{Curve} holds an ordered \cnaclass{CurveKeyCollection} of \cnaclass{CurveKey} points
@@ -391,6 +663,21 @@ adds the same \texttt{NOXNA} C\texttt{++}-iterator convenience surface
 (\texttt{iterator}/\texttt{const\_iterator}/\texttt{begin}/\texttt{end}/\texttt{cbegin}/%
 \texttt{cend}) already seen on \cnaclass{GameComponentCollection} in
 Chapter~\ref{ch:game-loop}.
+
+\begin{lstlisting}
+// Worked example: a Curve driving a camera's height over a 4-second
+// flythrough, easing in and out rather than moving at constant speed.
+Curve heightCurve;
+heightCurve.getKeysProperty().Add(CurveKey(0.0f, 10.0f));
+heightCurve.getKeysProperty().Add(CurveKey(2.0f, 40.0f));
+heightCurve.getKeysProperty().Add(CurveKey(4.0f, 10.0f));
+heightCurve.ComputeTangents(CurveTangent::Smooth);
+heightCurve.setPreLoopProperty(CurveLoopType::Constant);
+heightCurve.setPostLoopProperty(CurveLoopType::Constant);
+
+// Each frame:
+const float cameraHeight = heightCurve.Evaluate(elapsedFlythroughSeconds);
+\end{lstlisting}
 
 \section{Worked example: a real Matrix-driven world/view/projection chain}
 \label{sec:worked-examples}

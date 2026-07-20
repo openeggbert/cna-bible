@@ -9,53 +9,54 @@ be stale relative to what's happened since — trust the conversation over this 
 ## Where things stand right now (end of session, 2026-07-20)
 
 `CLAUDE.md` (durable project guide) exists. `PLAN.md` has the full expansion plan (Phase 1
-targets ~1,305 pages Vol.I / ~1,163 pages Vol.II) and is being kept current. Both earlier scope
-conflicts (free-direct/cna-extended staying marginal; screenshots real-or-nothing) are
-resolved — don't re-litigate them, see `PLAN.md`'s "Resolved" section if you need the reasoning.
+targets ~1,305 pages Vol.I / ~1,163 pages Vol.II). Both earlier scope conflicts (free-direct/
+cna-extended staying marginal; screenshots real-or-nothing) are resolved — don't re-litigate.
 
-**Two chapters are now in progress, both real, verified, committed progress — neither complete:**
+**Two chapters are in progress, both real committed progress, neither at its full target:**
 
-- **Vol.I Ch.9 (GraphicsDevice)**: 171 → 556 lines (~4 → ~13 of a ~90-page target). Full
-  coverage added for render targets, vertex/index buffer binding, the 17-overload
-  `DrawUserPrimitives`/`DrawUserIndexedPrimitives` family, back-buffer readback, all `NOXNA`
-  helpers. One worked example with a real screenshot
-  (`latex/volume1/images/ch09-drawprimitives-software.png`).
-- **Vol.I Ch.7 (Math and Core Types)**: 270 → 471 lines. Only `Vector2`/`Vector3`/`Vector4`
-  (documented once, since all three share the same method set) and `Matrix` are now fully
-  expanded with a complete method/factory reference. **Quaternion, Point, Rectangle, Color,
-  Plane, Ray, the three Bounding types (Box/Sphere/Frustum), MathHelper, and Curve/CurveKey are
-  still at the original narrative-summary depth** — this is the single biggest concrete gap to
-  close next in this chapter. One worked example with a real screenshot
-  (`latex/volume1/images/ch07-matrix-rotation-software.png`, a real
-  `CreateRotationZ`/`CreateLookAt`/`CreatePerspectiveFieldOfView` chain, visually confirmed
-  genuinely rotated).
+- **Vol.I Ch.9 (GraphicsDevice)**: 171 → 556 lines (~4 → ~13 of a ~90-page target). Render
+  targets, vertex/index buffer binding, the 17-overload `DrawUserPrimitives`/
+  `DrawUserIndexedPrimitives` family, back-buffer readback, all `NOXNA` helpers all fully
+  documented now. One worked example with a real screenshot.
+- **Vol.I Ch.7 (Math and Core Types)**: 270 → 758 lines (~4 → ~22 of a ~110-page target).
+  **All 11 type-families now have a full method/constructor reference and at least one worked
+  example** — Vector2/3/4, Matrix, Quaternion, Plane, Ray, Rectangle, Point, Color, MathHelper,
+  the three Bounding types, and Curve/CurveKey. Two real screenshots (a rotated triangle via
+  Matrix, embedded in the Matrix worked example). This chapter is no longer lopsided toward
+  just Vector/Matrix, but every type-family could still go considerably deeper before hitting
+  110 pages — more worked examples per type, more edge-case/gotcha coverage, is the way to get
+  there, not new type-families (there aren't any left uncovered).
 
-Volume I currently compiles to 127 pages, 598 index entries, 0 undefined references.
-Volume II has not been touched in the expansion pass yet at all.
+Volume I currently compiles to 131 pages, 632 index entries, 0 undefined references.
+**Volume II has not been touched in the expansion pass at all yet.**
 
-Two screenshot demos now exist and are preserved in `tools/cna-screenshot-infra/`
-(`software_screenshot_demo.cpp` for Ch.9, `math_rotation_demo.cpp` for Ch.7), both registered
-as CMake targets via one patch file covering both. Adding a third demo for a future chapter
-just means: write the `.cpp`, add one `cna_software_test(...)` line to
-`cmake/Tests/SoftwareTests.cmake`, reconfigure, build, run headlessly, copy the PNG into
-`latex/volumeN/images/`, regenerate the patch file so the next session's fresh clone gets it
-too. Full steps are in `tools/cna-screenshot-infra/README.md`.
+Two screenshot demos exist, preserved in `tools/cna-screenshot-infra/`
+(`software_screenshot_demo.cpp` for Ch.9, `math_rotation_demo.cpp` for Ch.7), registered as
+CMake targets via one patch file covering both. Adding a third: write the `.cpp`, add one
+`cna_software_test(...)` line to `cmake/Tests/SoftwareTests.cmake`, reconfigure, build, run
+headlessly, copy the PNG into `latex/volumeN/images/`, regenerate the patch file. Full steps
+in `tools/cna-screenshot-infra/README.md`.
 
 ## What to do next
 
-In order of what's most tractable, per `PLAN.md`:
+Three reasonable directions, roughly in order of how much real, un-padded content each one has
+left to add before diminishing returns set in:
 
-1. **Finish Chapter 7's remaining 7 type-families** (Quaternion, Point, Rectangle, Color,
-   Plane, Ray, Bounding volumes) plus MathHelper and Curve — same treatment as Vector/Matrix
-   got: full method reference kept alongside the existing narrative, at least one more worked
-   example (a bounding-volume intersection test, or a Quaternion-driven rotation, would both
-   be natural and could reuse the same `SOFTWARE`-backend screenshot technique).
-2. **Push Chapter 9 further** toward its ~90-page target (currently ~13) — a render-target
-   round trip actually built and screenshotted (not just the code snippet already in the
-   chapter) would be the next concrete piece.
+1. **Push Chapter 9 (GraphicsDevice) further** toward ~90 pages (currently ~13) — a
+   render-target round trip actually built and screenshotted (not just the code snippet
+   already in the chapter), a multi-render-target example, and deeper per-backend behavior
+   notes (Part IV chapters already have some of this material to cross-reference) are the
+   next concrete pieces, not repetition of what's already there.
+2. **Deepen Chapter 7 (Math and Core Types) further** toward ~110 pages (currently ~22) — every
+   type has one worked example now; a second, different worked example per type (e.g., a
+   Quaternion+Matrix comparison for the same rotation, a Color premultiplied-alpha worked
+   example, a Curve with Cycle/Oscillate loop types demonstrated) would add real depth without
+   repeating what's there.
 3. **Start a new chapter** — Chapter 13 (Stock Effects, target ~80 pages) is the next largest
-   untouched target in Volume I Part III, and the worked examples in Ch.7/Ch.9 already
-   demonstrate `BasicEffect` in passing, which Ch.13 could build on directly.
+   untouched target in Volume I Part III, and both Ch.7's and Ch.9's worked examples already
+   use `BasicEffect` in passing, which Ch.13 could build on directly. Alternatively, Volume II
+   hasn't been touched at all — starting there (e.g. Ch.1 Input System, ~70-page target) would
+   be the first real progress on that volume.
 
 **Verify the numbers above against `git log` and actual file line counts before trusting them
 at face value** — if a session ran after this note was written and didn't update this file,
