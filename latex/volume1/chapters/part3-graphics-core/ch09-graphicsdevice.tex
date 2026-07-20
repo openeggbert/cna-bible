@@ -1,0 +1,171 @@
+\chapter{GraphicsDevice and the Rendering Pipeline}
+\label{ch:graphicsdevice}
+
+\cnaclass{GraphicsDevice} is the hub every other class in this Part draws through. This
+chapter covers its own 887-line header directly, then the resource base class
+(\cnaclass{GraphicsResource}) every texture, buffer, and state object inherits, and the
+disposal ordering discipline that keeps a multi-backend rendering pipeline from ever calling
+into an already-destroyed graphics context.
+
+\section{Construction: one real constructor, one CNA addition}
+
+\cnaclass{GraphicsDevice} inherits \texttt{System::Object} and \texttt{System::IDisposable},
+is non-copyable and non-movable, and offers exactly two constructors: the real XNA one,
+\texttt{GraphicsDevice(GraphicsAdapter\&, GraphicsProfile, const PresentationParameters\&)},
+and a \texttt{NOXNA} parameterless \texttt{GraphicsDevice()} for headless/no-window contexts.
+Six events match FNA's surface exactly: \texttt{Disposing}, \texttt{DeviceLost} (never
+actually raised on desktop), \texttt{DeviceReset}, \texttt{DeviceResetting},
+\texttt{ResourceCreated}, \texttt{ResourceDestroyed}.
+
+\section{The property surface}
+
+Nineteen properties cover the device's full observable state: \texttt{IsDisposed},
+\texttt{GraphicsDeviceStatus}, \texttt{Adapter}, \texttt{GraphicsProfile},
+\texttt{PresentationParameters}, \texttt{DisplayMode}, \texttt{Textures},
+\texttt{SamplerStates}, \texttt{VertexTextures}, \texttt{VertexSamplerStates},
+\texttt{BlendState}, \texttt{DepthStencilState}, \texttt{RasterizerState},
+\texttt{ScissorRectangle}, \texttt{Viewport}, \texttt{BlendFactor}, \texttt{MultiSampleMask},
+\texttt{ReferenceStencil}, \texttt{Indices}. One internal detail worth flagging up front,
+because it recurs throughout Part~IV: \texttt{deviceStatus\_} is only ever driven away from
+\texttt{Normal} by the \texttt{D3D9} backend's real device-lifecycle callback
+(Chapter~\ref{ch:direct3d-backends}) --- every other backend never touches it, so
+\texttt{GraphicsDeviceStatus} stays \texttt{Normal} for the whole life of the process on any
+other backend.
+
+\section{Clear, Present, Reset}
+
+\texttt{Clear(Color)} and the full \texttt{Clear(ClearOptions, Color, float depth, int
+stencil)} are both present, alongside two unmarked (arguably under-tagged) CNA convenience
+overloads, \texttt{Clear(float,float,float,float)} and \texttt{Clear(Color, float depth)}.
+FNA's \texttt{Clear(ClearOptions, Vector4, float, int)} overload (color as a
+\texttt{Vector4} rather than a \texttt{Color}) is the one XNA overload genuinely missing.
+\texttt{Present()} exists only in its no-argument form --- FNA's 3-argument
+\texttt{Present(Rectangle?, Rectangle?, IntPtr)} overload (source/destination rectangles and
+an override window handle) is absent. \texttt{Reset()} comes in three forms (no args, new
+\cnaclass{PresentationParameters}, new parameters plus a new \cnaclass{GraphicsAdapter}) plus
+a fourth NOXNA pointer-adapter overload.
+
+\begin{sourcenote}
+\textbf{From the FNA-fidelity audit (\texttt{docs/graphicsdevice-fna-audit.md}):} the three
+concrete gaps against FNA's public surface are the \texttt{Present} 3-arg overload, the
+\texttt{Clear(ClearOptions, Vector4, ...)} overload, and \texttt{GetRenderTargetsNoAllocEXT}.
+Several convenience overloads and aliases (the two extra \texttt{Clear} forms above, plus
+\texttt{SetIndexBuffer}/\texttt{GetIndexBuffer}/\texttt{GetVertexBuffer} aliases) exist without
+their expected \texttt{NOXNA} tag --- a real, specific instance of
+Chapter~\ref{ch:design-philosophy}'s \texttt{NOXNA}-discipline being imperfectly applied, worth
+knowing about if you are relying on the \texttt{NOXNA} build check to catch every non-XNA
+member mechanically.
+\end{sourcenote}
+
+\section{Draw calls: concrete overloads where FNA has generics}
+
+\texttt{DrawPrimitives}, \texttt{DrawIndexedPrimitives}, and \texttt{DrawInstancedPrimitives}
+are all present with FNA-matching signatures. FNA's \texttt{DrawUserPrimitives<T>}/%
+\texttt{DrawUserIndexedPrimitives<T>} generic methods --- which in C\# work against any
+\texttt{struct} implementing \texttt{IVertexType} --- become, in CNA, a fixed set of
+concretely-typed overloads (\texttt{VertexPositionColor}, \texttt{VertexPositionColorTexture},
+\texttt{VertexPositionTexture}, \texttt{VertexPositionNormalTexture}), plus a raw
+\texttt{void*} fallback and an explicit-\cnaclass{VertexDeclaration} overload for anything
+outside that fixed set. This is a direct consequence of C\texttt{++} template instantiation
+requiring concrete call sites rather than C\#'s runtime generic dispatch --- and is the same
+underlying constraint behind \texttt{GetBackBufferData}'s narrowing to \texttt{Color} only
+(no generic pixel-format element type).
+
+\section{Resource tracking and disposal ordering}
+\label{sec:resource-lifetime}
+
+\cnaclass{GraphicsDevice} maintains a private, non-owning
+\texttt{std::vector<GraphicsResource*> resources\_}, mutated only through
+\texttt{AddResourceReference}/\texttt{RemoveResourceReference} --- both NOXNA, both existing
+purely so the device can guarantee a specific disposal order. \texttt{ResourceCreated} fires
+immediately after registration; \texttt{ResourceDestroyed} fires \emph{before}
+de-registration, carrying a \texttt{Name}/\texttt{Tag} snapshot captured while the resource is
+still valid. Removal is swap-and-pop (O(1), order not preserved) --- deliberate, since nothing
+about resource tracking depends on iteration order.
+
+The disposal sequence this buys is the single most important invariant in this chapter:
+calling \texttt{GraphicsDevice::Dispose()} copies and clears \texttt{resources\_}, disposes
+every tracked resource \emph{first}, and only then tears down the native backend context
+(SDL/Vulkan/GL). No graphics-API call can ever be issued against an already-destroyed
+context, because every resource that might issue one is disposed strictly before the context
+that would receive it.
+
+\begin{sourcenote}
+\textbf{A documentation trap worth naming explicitly.} \texttt{docs/graphicsresource-fna-audit.md}
+states, as an open gap, that ``device resource tracking: not implemented'' and that a
+\texttt{GraphicsDeviceResetting()} callback is missing. Both claims are stale --- the resource
+tracking mechanism described in this section, and the \texttt{DeviceResetting} event on
+\cnaclass{GraphicsDevice} itself, both demonstrably exist in the current header. This looks
+like exactly the kind of documentation drift Chapter~\ref{ch:what-is-cna} warned about:
+treat a specific, checkable claim in \texttt{docs/} with the same ``verify against current
+source, not memory'' discipline the project asks of itself, even when the claim comes from
+the project's own documentation.
+\end{sourcenote}
+
+\subsection{Per-backend disposal caveats}
+
+The ordering guarantee above is a CNA-wide invariant, but what actually happens to a native
+GPU handle on disposal is backend-specific, and \texttt{docs/graphics-resource-lifetime.md}
+is candid about the sharp edges: on \textbf{EasyGL}, disposing a bound
+\cnaclass{RenderTarget2D} without first unbinding it can leave a dangling framebuffer
+attachment, and there is currently no GL context-loss recovery; on \textbf{Vulkan},
+destroying a render target still referenced by an in-flight frame is undefined behavior ---
+there is no \texttt{vkDeviceWaitIdle} guard at that call site; on \textbf{Bgfx},
+\texttt{bgfx::destroy()} only \emph{queues} destruction for the next \texttt{bgfx::frame()},
+so \texttt{bgfx::shutdown()} must never run before every resource backend has actually been
+destroyed. None of these are exercised by ordinary game code following the
+\texttt{Begin}/\texttt{Draw}/\texttt{End} pattern from earlier chapters, but they matter if
+your own code manages render-target lifetime manually across frame boundaries.
+
+\section{GraphicsResource: the shared base}
+
+Every texture, buffer, and state object in this Part inherits \cnaclass{GraphicsResource},
+which itself inherits \texttt{System::Object}/\texttt{System::IDisposable} and provides
+\texttt{Disposing}, a get-only \texttt{GraphicsDevice}, \texttt{IsDisposed}, a virtual
+\texttt{Name}, and a raw, caller-owned \texttt{Tag} (\texttt{System::Object*}).
+\texttt{ToString()} returns \texttt{Name} if set, otherwise the type name. Its protected
+constructor, \texttt{GraphicsResource(GraphicsDevice* device = nullptr)}, accepts a null
+device deliberately --- the four state-object classes in Chapter~\ref{ch:state-objects} each
+ship static preset instances (\cnaclass{BlendState::Opaque},
+\cnaclass{RasterizerState::CullNone}, and so on) that exist before any real device does, and
+those presets simply skip tracking/registration/events entirely.
+
+A subtlety worth internalizing: GPU handles are freed on \texttt{Dispose()}, not on the
+C\texttt{++} destructor. The destructor does call \texttt{Dispose(false)} as a safety net,
+but that path deliberately skips the \texttt{Disposing}/\texttt{ResourceDestroyed} events ---
+matching the standard C\# \texttt{IDisposable} finalizer-vs-explicit-dispose distinction, now
+expressed in C\texttt{++} terms. Move semantics transfer \texttt{unique\_ptr}-owned GPU state
+correctly but do \emph{not} update the device's tracking-list pointer entry, which means
+moving a resource that is currently tracked by a live \cnaclass{GraphicsDevice} to a new
+memory address is unsafe and unsupported --- construct in place, or move before the resource
+is ever registered.
+
+\section{GraphicsAdapter, DisplayMode, and the exception types}
+
+\cnaclass{GraphicsAdapter} exposes \texttt{CurrentDisplayMode}, \texttt{SupportedDisplayModes},
+\texttt{Description}, and a static, re-evaluated-every-call \texttt{DefaultAdapter} --- do not
+cache it across a call to the static \texttt{AdaptersChanged()}. Two properties are honestly
+limited on this platform: \texttt{DeviceId}/\texttt{VendorId} are queried through Linux
+\texttt{sysfs} where available and return \texttt{0} otherwise, while
+\texttt{Revision}/\texttt{SubSystemId} are always \texttt{0} --- SDL3 has no query surface for
+either. \cnaclass{DisplayMode} pairs \texttt{Width}/\texttt{Height}/\texttt{Format} with a
+computed \texttt{AspectRatio}; \cnaclass{DisplayModeCollection} supports both integer indexing
+and a \cnaclass{SurfaceFormat}-filtered \texttt{operator[]}. \cnaclass{GraphicsDeviceStatus}
+is the three-value enum (\texttt{Normal}, \texttt{Lost}, \texttt{NotReset}) already introduced
+above; \cnaclass{GraphicsProfile} is the familiar XNA \texttt{Reach}/\texttt{HiDef} pair, whose
+\emph{only} backend that actually consults a real device capability structure for it is
+\texttt{D3D9} (Chapter~\ref{ch:direct3d-backends}) --- everywhere else the profile is present
+in the API but decorative. \cnaclass{DeviceLostException},
+\cnaclass{DeviceNotResetException}, and \cnaclass{NoSuitableGraphicsDeviceException} are all
+thin \texttt{std::runtime\_error} subclasses with default and custom-message constructors.
+
+\section{ClearOptions: one confirmed cross-backend gap}
+
+\cnaclass{ClearOptions} is a three-value flags enum (\texttt{Target=1}, \texttt{DepthBuffer=2},
+\texttt{Stencil=4}) with the full bitwise operator set hand-implemented, the same pattern seen
+on \cnaclass{DisplayOrientation} in Chapter~\ref{ch:game-loop}. One flag is a confirmed,
+still-open gap at the time of writing: \texttt{ClearOptions::Stencil} is a no-op on EasyGL and
+Vulkan (Task~871), with Bgfx unverified --- clearing the stencil buffer this way currently
+does nothing on the two backends where it has actually been checked. This is a small, concrete
+example of the kind of specific, checkable claim Chapter~\ref{ch:what-is-cna} promised this
+book would preserve rather than round off to ``clearing works.''

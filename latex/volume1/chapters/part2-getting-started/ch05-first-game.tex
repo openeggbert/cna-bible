@@ -1,0 +1,131 @@
+\chapter{Your First CNA Game}
+\label{ch:first-game}
+
+This chapter walks through the smallest complete CNA program --- the minimal XNA-style game
+skeleton given in CNA's own README --- line by line, as a concrete anchor for the framework
+concepts explained more fully in the chapters that follow.
+
+\section{The whole program}
+
+\begin{lstlisting}
+#include <memory>
+
+#include "Microsoft/Xna/Framework/Game.hpp"
+#include "Microsoft/Xna/Framework/Color.hpp"
+#include "Microsoft/Xna/Framework/Graphics/GraphicsDeviceManager.hpp"
+#include "Microsoft/Xna/Framework/Graphics/SpriteBatch.hpp"
+#include "Microsoft/Xna/Framework/Graphics/Texture2D.hpp"
+
+using namespace Microsoft::Xna::Framework;
+using namespace Microsoft::Xna::Framework::Graphics;
+
+class MyGame final : public Game {
+public:
+    MyGame()
+        : graphics_(this)
+    {
+    }
+
+protected:
+    void LoadContent() override
+    {
+        spriteBatch_ = std::make_unique<SpriteBatch>(getGraphicsDeviceProperty());
+        logo_ = std::make_unique<Texture2D>("assets/logo.png", getGraphicsDeviceProperty());
+    }
+
+    void Update(GameTime& gameTime) override
+    {
+        (void)gameTime;
+        // Update game state here.
+    }
+
+    void Draw(const GameTime& gameTime) override
+    {
+        (void)gameTime;
+
+        auto& device = getGraphicsDeviceProperty();
+        device.Clear(CornflowerBlue);
+
+        spriteBatch_->Begin();
+        spriteBatch_->Draw(*logo_, 100.0f, 80.0f);
+        spriteBatch_->End();
+
+        device.Present();
+    }
+
+private:
+    GraphicsDeviceManager graphics_;
+    std::unique_ptr<SpriteBatch> spriteBatch_;
+    std::unique_ptr<Texture2D> logo_;
+};
+
+int main()
+{
+    MyGame game;
+    game.Run();
+    return 0;
+}
+\end{lstlisting}
+
+\section{Reading it top to bottom}
+
+\textbf{The includes are the API surface, and nothing else.} Every header included is a real
+XNA~4.0 header, under the real XNA namespace path --- there is no CNA-specific include
+required just to boot a game. This is the API-mirroring goal from
+Chapter~\ref{ch:design-philosophy} made visible: a developer who has written XNA or FNA code
+before can read this file without learning a single CNA-specific concept first.
+
+\textbf{\texttt{MyGame} inherits \cnaclass{Game}, and owns a
+\cnaclass{GraphicsDeviceManager} constructed against itself.} This is the standard XNA
+ownership pattern: \cnaclass{GraphicsDeviceManager} is what actually creates and owns the
+\cnaclass{GraphicsDevice}, negotiating with the platform window and the selected graphics
+backend on the game's behalf; the game class itself never constructs a
+\cnaclass{GraphicsDevice} directly. Chapter~\ref{ch:game-loop} covers
+\cnaclass{GraphicsDeviceManager}'s role in the boot sequence in full, and
+Chapter~\ref{ch:graphicsdevice} covers what the resulting \cnaclass{GraphicsDevice} exposes.
+
+\textbf{\texttt{LoadContent()} is where GPU-backed resources are created, not the
+constructor.} By the time \texttt{LoadContent()} runs, the graphics backend has already been
+selected and initialized by \cnaclass{GraphicsDeviceManager}, so it is safe to construct a
+\cnaclass{SpriteBatch} against \texttt{getGraphicsDeviceProperty()} and to load a
+\cnaclass{Texture2D} from a file path. Constructing either of these in \texttt{MyGame}'s own
+constructor would run before a graphics backend exists to own them. This ordering
+constraint --- and CNA's raw-asset-plus-JSON-descriptor content model that makes
+\texttt{"assets/logo.png"} a literal, directly loadable file path rather than a compiled
+\texttt{.xnb} content-pipeline output --- is covered fully in
+Chapter~\ref{ch:content-and-assets}.
+
+\textbf{\texttt{Update(GameTime\&)} and \texttt{Draw(const GameTime\&)} are the two halves of
+every frame, and note the constness difference.} \texttt{Update} takes a mutable
+\texttt{GameTime\&} (some XNA game loops advance simulation-only clocks here);
+\texttt{Draw} takes a \texttt{const GameTime\&}, since rendering should not mutate timing
+state. Chapter~\ref{ch:game-loop} covers the full \cnaclass{Game} lifecycle this pair of
+overrides plugs into --- \texttt{Initialize()}, \texttt{LoadContent()}, the
+\texttt{Update}/\texttt{Draw} loop itself, and shutdown.
+
+\textbf{The draw call is the canonical \cnaclass{SpriteBatch} triad:
+\texttt{Begin()}/\texttt{Draw(...)}/\texttt{End()}.} \cnaclass{GraphicsDevice::Clear} takes a
+named XNA color constant (\cnaclass{Color::CornflowerBlue} --- traditionally XNA's default
+clear color in generated project templates, preserved here rather than swapped for something
+``more CNA''), and \cnaclass{GraphicsDevice::Present()} is the final call of the frame,
+regardless of which of the eleven backends from Part~IV is actually doing the presenting.
+Chapter~\ref{ch:spritebatch} covers the full \cnaclass{SpriteBatch} API, including the
+overloads of \texttt{Draw} beyond the two-float-position form used here.
+
+\textbf{\texttt{main()} is exactly two lines of game-specific code.} Construct the game,
+call \texttt{Run()}. Everything about window creation, backend initialization, the timing
+loop, and shutdown lives inside \cnaclass{Game::Run()} --- covered in
+Chapter~\ref{ch:game-loop} --- not in application code. This is deliberate: it is the same
+shape a real XNA \texttt{Program.cs}'s \texttt{Main} method has, preserved so that porting an
+existing XNA game's entry point is close to a mechanical translation.
+
+\section{What happens if you change the backend}
+
+Nothing in the file above mentions a graphics backend at all --- that is the entire point of
+Chapter~\ref{ch:backend-architecture}'s abstraction layer. Recompiling this exact,
+unmodified source file with \texttt{-DCNA\_GRAPHICS\_BACKEND=VULKAN} instead of
+\texttt{EASYGL} produces a program that opens a Vulkan-backed window, uploads
+\texttt{assets/logo.png} through the Vulkan texture path, and issues the same
+\cnaclass{SpriteBatch} draw call through Vulkan command buffers instead of OpenGL calls ---
+with the game-facing source unchanged. Part~IV of this volume is dedicated to what actually
+differs underneath that unchanged surface, backend by backend.

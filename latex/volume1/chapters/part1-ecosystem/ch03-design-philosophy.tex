@@ -1,0 +1,256 @@
+\chapter{Design Philosophy and House Style}
+\label{ch:design-philosophy}
+
+Every worked example in the rest of this book silently assumes a set of conventions that CNA
+enforces on itself through its \texttt{CLAUDE.md} porting rules and \texttt{CHECKLIST.md}.
+This chapter makes those conventions explicit, once, so that later chapters can simply use
+them.
+
+\section{The prime directive: match FNA, not taste}
+
+CNA's porting rules name a single authoritative behavioral reference: a local FNA source
+tree. The instruction is blunt: ``Do not treat old CNA code or AI-generated stubs as
+authoritative if they conflict with the FNA reference API.'' Concretely, this means:
+
+\begin{itemize}
+  \item Class names, struct names, enum names, method names, operator names, and constant
+        names must match XNA/FNA \emph{exactly}. A method is not renamed to be ``more
+        C\texttt{++}-like'' if that would diverge from the reference.
+  \item Behavior is matched over personal preference: packed value layouts (\cnaclass{Color}
+        stores its channels as \texttt{AABBGGRR}), clamping behavior, integer cast behavior,
+        operator behavior, method overloads, default values, and exception behavior where
+        practical, all follow FNA even when a different choice would look cleaner in
+        isolation.
+  \item C\texttt{++} member declaration order mirrors the original C\# source order where
+        practical, specifically to keep diff-based review tractable against the reference.
+\end{itemize}
+
+This is the single idea that makes the rest of the house style legible: every convention
+below exists to answer the same question --- \emph{how do you represent a C\# concept in
+C\texttt{++} without losing the ability to diff against the original?}
+
+\section{Two namespaces, two jobs}
+
+CNA code lives in exactly one of two namespace families, and the rule for which one is
+absolute:
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Namespace} & \textbf{Contains} \\
+\midrule
+\cnans{Microsoft::Xna::Framework::*} & Real XNA 4.0 types, matching the reference exactly \\
+\cnans{CNA::*} & Project-specific extensions, helpers, internal backends \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Original XNA types are never moved into the \texttt{CNA} namespace, and the reverse is
+equally firm: anything that is not part of the real XNA~4.0 API must not silently live inside
+\cnans{Microsoft::Xna::Framework} unmarked. That is what the \texttt{NOXNA} marker exists for.
+
+\section{The \texttt{NOXNA} tag: a compiler-enforced honesty check}
+\label{sec:noxna}
+
+\texttt{NOXNA} is an empty marker macro, defined in \texttt{include/CNA/CNAHelper.hpp}, whose
+only job is to visibly tag a declaration inside the XNA namespace tree as \emph{not} part of
+the original XNA~4.0 API --- a rumble-and-gyro extension on \cnaclass{GamePad}, a
+\texttt{GetTypeName()} override, a raw joystick API, a haptics subsystem. Two concrete
+examples from the real codebase:
+
+\begin{lstlisting}
+// A real XNA 4.0 override, unmarked:
+[[nodiscard]] bool Equals(const Color& other) const;
+
+// A CNA-only addition living in the same class, explicitly marked:
+NOXNA [[nodiscard]] const std::string& GetTypeName() const override;
+\end{lstlisting}
+
+What makes this more than a documentation convention is the \texttt{NOXNA} CMake build
+option described in Chapter~\ref{ch:what-is-cna}: with it enabled, every declaration inside
+the XNA namespace tree that is \emph{not} tagged \texttt{NOXNA} is checked against the
+expected XNA surface, and drift shows up as a \texttt{[[deprecated]]} warning under
+\texttt{-Werror} --- turning ``did we accidentally leak a project-specific extension into the
+public XNA-compatible surface'' from a code-review judgment call into a build failure.
+
+\section{C\# properties, translated consistently}
+
+C\# auto-properties (\texttt{public byte R \{ get; set; \}}) become a fixed pair of C\texttt{++}
+methods, never a public field, unless the surrounding type has already established a
+field-style convention:
+
+\begin{lstlisting}
+// C#:  public byte R { get; set; }
+
+// C++:
+[[nodiscard]] bytecs getRProperty() const;
+void setRProperty(bytecs value);
+\end{lstlisting}
+
+\section{SharpRuntime type aliases: never a raw C\texttt{++} primitive in the XNA surface}
+
+Wherever C\# source uses a .NET primitive type name, CNA code uses the corresponding
+\texttt{sharp-runtime} alias rather than a raw C\texttt{++} fundamental type, specifically so
+that the XNA-facing surface keeps a visible, greppable link back to its .NET origin:
+
+\begin{center}
+\begin{tabular}{llll}
+\toprule
+\textbf{C\# type} & \textbf{sharp-runtime alias} & \textbf{Underlying C\texttt{++} type} \\
+\midrule
+\texttt{byte}   & \texttt{bytecs} / \texttt{Byte}   & \texttt{uint8\_t} \\
+\texttt{sbyte}  & \texttt{sbytecs} / \texttt{SByte} & \texttt{int8\_t} \\
+\texttt{short}  & \texttt{shortcs} / \texttt{Int16} & \texttt{int16\_t} \\
+\texttt{ushort} & \texttt{ushortcs} / \texttt{UInt16} & \texttt{uint16\_t} \\
+\texttt{int}    & \texttt{intcs} / \texttt{Int32}   & \texttt{int32\_t} \\
+\texttt{uint}   & \texttt{uintcs} / \texttt{UInt32} & \texttt{uint32\_t} \\
+\texttt{long}   & \texttt{longcs} / \texttt{Int64}  & \texttt{int64\_t} \\
+\texttt{ulong}  & \texttt{ulongcs} / \texttt{UInt64} & \texttt{uint64\_t} \\
+\texttt{float}  & \texttt{Single}                   & \texttt{float} \\
+\texttt{string} & \texttt{String}                   & \texttt{std::string} \\
+\texttt{char}   & \texttt{charcs}                   & \texttt{char16\_t} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+If a needed alias does not yet exist, the rule is to add a minimal stub to
+\texttt{sharp-runtime} first --- never to reach for a raw C\texttt{++} type directly in the
+XNA API surface as a shortcut. This is the same missing-dependency discipline covered in
+\S\ref{sec:missing-deps} below.
+
+\section{Events, as \texttt{System::EventHandler<T>}}
+
+C\# events and delegates are modeled uniformly through \texttt{sharp-runtime}'s
+\texttt{System::EventHandler<T>}, never through an ad-hoc project-specific callback type:
+
+\begin{lstlisting}
+// Declaration, matching C# "public event EventHandler<T> Name;"
+System::EventHandler<ExitingEventArgs> Exiting;
+
+// Subscription
+Exiting += [](System::Object* sender, const ExitingEventArgs& e) { /* ... */ };
+
+// Raising
+Exiting.Raise(this, args);   // or Exiting.Invoke(this, args);
+\end{lstlisting}
+
+\section{Interfaces as abstract base classes, IDisposable as a pattern}
+
+C\# interface relationships become C\texttt{++} abstract base classes --- for example
+\cnaclass{Color} implementing \texttt{IEquatable<Color>} and \texttt{IPackedVector} in C\#
+becomes \texttt{struct Color : public Graphics::PackedVector::IPackedVectorT<UInt32>} in
+CNA. Where an exact mapping is not practical, the rule is to implement equivalent behavior
+and document the intentional deviation in the pull request description --- explicitly
+\emph{not} as a source comment, keeping the deviation visible to reviewers without cluttering
+the header for every future reader.
+
+\texttt{IDisposable} follows a fixed pattern backed by \texttt{sharp-runtime}'s
+\texttt{System::IDisposable}:
+
+\begin{lstlisting}
+class Foo : public System::IDisposable {
+public:
+    void Dispose() override;
+protected:
+    void Dispose(bool disposing);   // only when the pattern requires it
+};
+\end{lstlisting}
+
+with an \texttt{isDisposed\_} guard checked before any operation, throwing
+\texttt{std::runtime\_error} on use-after-dispose.
+
+\section{Visibility is chosen, not defaulted}
+
+C\# \texttt{internal} members do not automatically become C\texttt{++} \texttt{public} just
+because C\texttt{++} lacks an \texttt{internal} keyword --- they become \texttt{private},
+\texttt{protected}, live in a detail/internal namespace, or are omitted from the port
+entirely. The house style calls out a concrete anti-example: a C\# \texttt{internal
+DebugDisplayString} helper should not become a public C\texttt{++} API method just because it
+was easy to leave public.
+
+\section{File structure mirrors namespace, always}
+
+Declarations live in \texttt{.hpp} under \texttt{include/}; implementation lives in
+\texttt{.cpp} under \texttt{src/}; and the directory path mirrors the namespace path exactly:
+
+\begin{lstlisting}
+include/Microsoft/Xna/Framework/Graphics/Texture2D.hpp
+src/Microsoft/Xna/Framework/Graphics/Texture2D.cpp
+\end{lstlisting}
+
+Non-template implementations do not live in headers. The same mirroring rule is why this
+book can describe ``the Graphics namespace'' and ``the 106 headers under
+\texttt{include/Microsoft/Xna/Framework/Graphics/}'' as the same thing throughout Part~III.
+
+\section{No backward-compatibility shims}
+
+If correcting an API breaks an old demo, the demo is fixed --- CNA does not carry a
+convenience alias just to keep outdated call sites compiling. The house style gives its own
+canonical wrong/right pair:
+
+\begin{lstlisting}
+// Wrong: an old-CNA-era shortcut kept around for compatibility
+inline const Color CornflowerBlue(/* ... */);
+
+// Correct: the real, single source of truth
+Color::CornflowerBlue
+\end{lstlisting}
+
+\section{Documentation: full Doxygen, or nothing}
+
+Every public method, constructor, property accessor, operator, and constant in every
+\texttt{.hpp} file must carry a Doxygen block --- bare \texttt{///} line comments are never
+acceptable on a public declaration (they remain acceptable only for brief inline notes inside
+a method body). The intent of the original C\# XML doc comments (\texttt{<summary>},
+\texttt{<param>}, \texttt{<returns>}) is preserved, often verbatim from FNA where the wording
+already fits, but never marked with a comment like ``taken from FNA'' --- provenance belongs
+in the porting record, not scattered through the header.
+
+\section{Missing dependencies: stub correctly, never invent}
+\label{sec:missing-deps}
+
+When a file being ported references a type that does not exist yet, the rule is layered:
+if the missing type belongs to the .NET runtime (\texttt{System.*} or a primitive alias), it
+is added to \texttt{sharp-runtime} first, following the same minimal-stub discipline
+described in Chapter~\ref{ch:ecosystem-map}. Otherwise, a minimal, \emph{correctly named}
+stub is added directly in CNA, in the correct final namespace, sufficient only to compile ---
+never a large unrelated system built just to satisfy one missing dependency. Every stub
+introduced this way is reported in the task or PR description, so it is never silently
+forgotten as ``real'' once the build goes green.
+
+\section{The per-file porting checklist, in miniature}
+
+\texttt{CHECKLIST.md} governs the full requirements for porting one FNA source file to CNA;
+the house rules single out its non-negotiable minimum:
+
+\begin{itemize}
+  \item An SPDX \texttt{MS-PL} license identifier at the top of both the \texttt{.hpp} and
+        the \texttt{.cpp}.
+  \item \texttt{\#include "CNA/CNAHelper.hpp"} in the header, whenever \texttt{NOXNA} is used
+        anywhere in that file.
+  \item Every method body checked line-by-line against the FNA equivalent, with every
+        intentional deviation documented in a source comment (not silently absorbed).
+  \item Every concrete class inheriting \texttt{System::Object} overrides
+        \texttt{GetTypeName()}, tagged \texttt{NOXNA}, returning the fully-qualified .NET
+        name (e.g.\ \texttt{"Microsoft.Xna.Framework.Game"}).
+  \item A unit test for every public method, operator, and constant --- with out-ref
+        overloads tested separately from their value-returning counterparts, and static
+        factory methods (\cnaclass{CreateFromPoints}, \cnaclass{CreateMerged},
+        \cnaclass{CreateFromSphere}, \ldots) each getting a dedicated test.
+\end{itemize}
+
+A file is ``done in one pass'' --- the house style explicitly rejects a
+``make-and-forget-partially'' workflow where checklist items are deferred to a later,
+unscheduled pass.
+
+\section{Why this chapter earns its place in a ``bible''}
+
+None of the conventions above are unique or clever in isolation --- type-alias tables and
+Doxygen mandates exist in a thousand C\texttt{++} style guides. What is unusual is how tightly
+they are all in service of one measurable goal: keeping a large, multi-backend,
+multi-platform C\texttt{++} codebase auditable against a real external reference (FNA, real
+XNA~4.0, \texttt{xna4-spec}) at every layer --- namespace, visibility, member order, type
+alias, and a compiler flag that turns ``did we leak a non-XNA type into the XNA surface''
+into a build error instead of a hoped-for code-review catch. The rest of this book takes
+these conventions as read; when a later chapter says a class ``matches FNA exactly,'' this is
+the mechanism that claim rests on.

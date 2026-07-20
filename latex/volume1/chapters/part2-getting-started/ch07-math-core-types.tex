@@ -1,0 +1,270 @@
+\chapter{Math and Core Geometry Types}
+\label{ch:math-core-types}
+
+Every CNA class covered later in this book --- \cnaclass{SpriteBatch}, \cnaclass{Model},
+every stock effect, every backend --- passes values of the types in this chapter across its
+API. They live directly under \texttt{include/Microsoft/Xna/Framework/} (not in the
+\texttt{Graphics} sub-namespace), are all value types (C\texttt{++} \texttt{struct}s, matching
+XNA's own \texttt{struct} semantics rather than reference-type classes, with the sole
+exception of \cnaclass{BoundingFrustum}, discussed below), and each carries a private
+\texttt{getDebugDisplayStringProperty()} and \texttt{CheckForNaNs()} helper ported from FNA's
+own debug-visualizer tooling.
+
+\section{Vectors: Vector2, Vector3, Vector4}
+
+The three vector types share one shape: public fields (\texttt{X}, \texttt{Y}, and as
+applicable \texttt{Z}, \texttt{W}), a set of static constants (\texttt{Zero}, \texttt{One},
+\texttt{UnitX}/\texttt{UnitY}/\ldots), a default zero-initializing constructor, a per-component
+constructor, and an \texttt{explicit} single-scalar broadcast constructor
+(\texttt{Vector2(float value)} sets both components to \texttt{value}). \cnaclass{Vector3} and
+\cnaclass{Vector4} additionally provide composing constructors from lower-dimensional vectors
+plus extra scalars --- \texttt{Vector3(Vector2, float z)}, \texttt{Vector4(Vector3, float w)},
+\texttt{Vector4(Vector2, float z, float w)} --- letting code build a higher-dimensional
+vector out of a lower one without manually unpacking components.
+
+\cnaclass{Vector3} alone defines direction constants --- \texttt{Up}, \texttt{Down},
+\texttt{Right}, \texttt{Left}, \texttt{Forward}, \texttt{Backward} --- with an explicit doc
+comment that \texttt{Forward}/\texttt{Backward} assume a \emph{right-handed} coordinate
+system (\texttt{Forward = (0,0,-1)}, \texttt{Backward = (0,0,1)}), a detail worth remembering
+whenever this book's later chapters discuss camera or model transforms.
+
+Every static method that can meaningfully be either ``return a new value'' or ``write into an
+existing one'' is provided \emph{both} ways --- a value-returning overload and an output-ref
+overload writing into a \texttt{result\&} parameter --- mirroring XNA's own C\# \texttt{ref}
+method-overload convention exactly: \texttt{Add}, \texttt{Clamp}, \texttt{Distance}/%
+\texttt{DistanceSquared}, \texttt{Divide}, \texttt{Dot}, \texttt{Lerp}, \texttt{Max}/%
+\texttt{Min}, \texttt{Multiply}, \texttt{Negate}, \texttt{Normalize}, \texttt{Reflect},
+\texttt{SmoothStep}, \texttt{Subtract}, and the curve-interpolation pair
+\texttt{Barycentric}/\texttt{CatmullRom}/\texttt{Hermite}. \texttt{Transform} additionally
+comes in by-\cnaclass{Matrix} and by-\cnaclass{Quaternion} forms, each with single-value and
+full-array/range overloads; \texttt{TransformNormal} (Vector2/Vector3 only) applies a matrix
+transform with translation stripped out, the form correct for transforming surface normals
+rather than positions. Operators (\texttt{==}, \texttt{!=}, unary/binary \texttt{-},
+component-wise and scalar \texttt{*}/\texttt{/}, and \texttt{+}) are implemented as
+\texttt{friend} functions; \cnaclass{Vector3} alone adds \texttt{NOXNA} in-place
+\texttt{operator+=}/\texttt{operator-=} convenience overloads beyond the strict XNA surface.
+
+Both \cnaclass{Matrix} and \cnaclass{Quaternion} are only forward-declared in these headers
+rather than included, specifically to avoid a circular include --- \texttt{Matrix.hpp} and
+\texttt{Quaternion.hpp} both depend on the vector types in the other direction.
+
+\section{Matrix: a 4x4, and one CNA-specific bridge method}
+
+\cnaclass{Matrix} stores sixteen public \texttt{float} fields named \texttt{M11}
+through \texttt{M44} (row-major naming: \texttt{M<row><col>}), with direction-vector
+convenience accessors --- \texttt{getBackwardProperty}/\texttt{setBackwardProperty} (the
+third row), \texttt{getForwardProperty} (negated third row), \texttt{getUpProperty} (second
+row), \texttt{getDownProperty} (negated second row), \texttt{getLeftProperty}/%
+\texttt{getRightProperty} (negated/plain first row), and
+\texttt{getTranslationProperty}/\texttt{setTranslationProperty} (the fourth row). Unlike the
+vector types' \texttt{Zero}/\texttt{One} fields, \texttt{Identity} is exposed as a static
+\emph{function}, \texttt{getIdentityProperty()}, not a field constant.
+
+The static factory surface is the largest of any type in this chapter: billboard and
+constrained-billboard construction, axis-angle and quaternion and yaw/pitch/roll rotation,
+look-at, orthographic (centered and off-center), perspective (plain, field-of-view, and
+off-center), per-axis rotation (\texttt{CreateRotationX/Y/Z}), scale (scalar, per-axis, and
+\cnaclass{Vector3} overloads), shadow, translation (scalar and \cnaclass{Vector3}
+overloads), reflection, and world-matrix construction --- each, again, with a value-returning
+and an output-ref overload. Arithmetic statics (\texttt{Add}, \texttt{Divide},
+\texttt{Invert}, \texttt{Lerp}, \texttt{Multiply}, \texttt{Negate}, \texttt{Subtract},
+\texttt{Transpose}) and the instance method \texttt{Decompose(scale\&, rotation\&,
+translation\&) -> bool} round out the surface.
+
+One method exists purely to bridge XNA's conceptual row-major matrix into the graphics
+backends covered in Part~IV of this volume: \texttt{NOXNA void ToColumnMajor(float
+out[16]) const}, documented as returning ``this matrix in the transposed column-major form
+expected by OpenGL-style uniform uploads.'' OpenGL and Vulkan-style shader uniform layouts
+expect column-major data; without this bridge, every backend's \cnaclass{Effect}/shader
+implementation would need to re-derive the same transpose independently. Centralizing it on
+\cnaclass{Matrix} itself is a small but telling example of where CNA allows itself exactly
+one, clearly-marked graphics-motivated extension on an otherwise pure math type, rather than
+scattering the same transpose logic across eleven backend implementations.
+
+\section{Quaternion, Plane, and Ray}
+
+\cnaclass{Quaternion} follows the same value/output-ref-pair convention as the vectors:
+\texttt{Add}, \texttt{Concatenate} (value1 followed by value2 --- order matters for
+quaternion composition), \texttt{Conjugate}, \texttt{CreateFromAxisAngle}/%
+\texttt{CreateFromRotationMatrix}/\texttt{CreateFromYawPitchRoll}, \texttt{Divide},
+\texttt{Dot}, \texttt{Inverse}, \texttt{Lerp} (normalized), \texttt{Slerp},
+\texttt{Multiply} (quaternion-by-quaternion and quaternion-by-scalar), \texttt{Negate}, and
+\texttt{Normalize}, plus its single static constant, \texttt{Identity}.
+
+\cnaclass{Plane} stores a \texttt{Vector3 Normal} and a \texttt{float D} (distance from
+origin), with constructors from a \cnaclass{Vector4} (XYZ as normal, W as distance), from an
+explicit normal-plus-distance pair, from three points, or from four raw scalars.
+\texttt{DotCoordinate}/\texttt{DotNormal} implement the two distinct dot-product forms a
+plane test needs; \texttt{Intersects} overloads against \cnaclass{BoundingBox},
+\cnaclass{BoundingSphere}, and \cnaclass{BoundingFrustum} all return
+\cnaclass{PlaneIntersectionType} (\S\ref{sec:bounding-volumes}). \cnaclass{Plane} declares
+\texttt{friend class BoundingFrustum}, because frustum plane extraction
+(\S\ref{sec:bounding-volumes}) needs to construct and normalize planes directly rather than
+only through \cnaclass{Plane}'s public surface.
+
+\cnaclass{Ray} is the one type in this chapter whose XNA-to-C\texttt{++} translation is more
+idiomatic than literal: XNA's \texttt{Intersects} methods return a nullable
+\texttt{float?} in C\#; CNA's equivalents return \texttt{std::optional<float>} directly ---
+the intersection distance if one exists, \texttt{std::nullopt} otherwise --- against
+\cnaclass{BoundingBox}, \cnaclass{BoundingSphere}, \cnaclass{Plane}, and
+\cnaclass{BoundingFrustum}, each with a by-ref \texttt{std::optional<float>\&} output-parameter
+twin as well.
+
+\section{Rectangle and Point}
+
+\cnaclass{Rectangle} stores \texttt{intcs X, Y, Width, Height} --- the
+\texttt{SharpRuntime} \texttt{intcs} alias from Chapter~\ref{ch:design-philosophy}'s type-alias
+table, not a raw C\texttt{++} \texttt{int} --- with derived get-only properties
+\texttt{Left}/\texttt{Right}/\texttt{Top}/\texttt{Bottom}, a get/set \texttt{Location}
+(\cnaclass{Point}), and a get-only \texttt{Center} (\cnaclass{Point}, ``rounded down for odd
+sizes''). \texttt{Contains} and \texttt{Intersects} each come in value-returning and
+output-ref forms against a coordinate pair, a \cnaclass{Point}, or another
+\cnaclass{Rectangle}; \texttt{Offset} and \texttt{Inflate} mutate in place; static
+\texttt{Intersect}/\texttt{Union} compute a new rectangle from two inputs.
+
+\cnaclass{Point} is the integer counterpart to \cnaclass{Vector2} --- \texttt{intcs X, Y} ---
+with component-wise \texttt{+}, \texttt{-}, \texttt{*}, and \texttt{/} operators implemented
+as friend functions. Note for anyone diffing against a stricter reading of the real XNA~4.0
+\cnaclass{Point} surface: CNA's component-wise \texttt{Point * Point} and \texttt{Point /
+Point} operators are present here regardless of whether the original XNA assembly's public
+operator surface defines them identically --- a detail worth a direct \texttt{xna4-spec}
+diff (Volume~II's \texttt{xna4-spec} auditing chapter) rather than an assumption, if exact
+operator-surface parity matters for your use case.
+
+\section{Color: 140 named constants and one packed layout}
+
+\cnaclass{Color} implements CNA's \texttt{Graphics::PackedVector::IPackedVectorT<UInt32>}
+and \texttt{System::IEquatable<Color>}, storing its four \texttt{bytecs} channels
+(\texttt{R}, \texttt{G}, \texttt{B}, \texttt{A}) packed into a single \texttt{PackedValue}
+(\texttt{UInt32}) in \texttt{AABBGGRR} byte order --- a layout detail
+Chapter~\ref{ch:design-philosophy} names explicitly as one of the ``behavior fidelity''
+details CNA is required to preserve exactly, since backend code and any raw-bytes
+interoperability depends on it.
+
+Roughly 140 named XNA/X11 web-color static constants are defined --- \texttt{Transparent},
+\texttt{AliceBlue}, ..., \texttt{YellowGreen}, including \texttt{CornflowerBlue}, the
+traditional XNA project-template clear color already seen in
+Chapter~\ref{ch:first-game} --- each documented with its exact RGBA byte values. Construction
+accepts a \cnaclass{Vector4} (clamped to $[0,1]$, scaled to $[0,255]$), a \cnaclass{Vector3}
+(alpha forced to 255), three or four \texttt{float}s in $[0,1]$, or three or four
+\texttt{intcs} in $[0,255]$ (clamped) --- plus two \texttt{NOXNA}-marked byte-based
+constructors explicitly documented as ``not part of the XNA 4.0 API. CNA convenience
+overload.'' \texttt{Lerp}, \texttt{FromNonPremultiplied}, and \texttt{Multiply(Color,
+float)} round out the static surface; a \texttt{NOXNA} commutative \texttt{float * Color}
+operator is added alongside the standard \texttt{Color * float}, again explicitly documented
+as a CNA-only convenience not present in XNA/FNA.
+
+\section{MathHelper: constants and helpers, some public only because C\texttt{++} has no assembly visibility}
+
+\cnaclass{MathHelper} is static-only (its default constructor is \texttt{= delete}, tagged
+\texttt{NOXNA}), providing \texttt{Pi}/\texttt{PiOver2}/\texttt{PiOver4}/\texttt{TwoPi}/%
+\texttt{E}/\texttt{Log10E}/\texttt{Log2E} as \texttt{constexpr float} constants, plus
+\texttt{MachineEpsilonFloat} computed once via a private \texttt{GetMachineEpsilonFloat()}.
+Its own header comment is unusually direct about a translation artifact: ``FNA marks the
+four members below as `internal'; C++ has no assembly-scope visibility, so they are public
+here. Other framework types (e.g.\ Vector2, Matrix) rely on them.'' Those four --- an integer
+\texttt{Clamp} overload, \texttt{WithinEpsilon}, \texttt{ClosestMSAAPower}, and
+\texttt{MachineEpsilonFloat} itself --- are effectively framework-internal helpers that
+simply have no way to be hidden from a caller in C\texttt{++} the way FNA hides them from
+other assemblies in C\#. \texttt{ClosestMSAAPower(intcs)} in particular is worth flagging as
+a graphics-relevant helper hiding in a math-only-looking class: it returns the closest valid
+MSAA sample-count power-of-two at or below the requested value, mirroring FNA's own internal
+MSAA helper, and is used wherever a backend needs to clamp a requested multisample count to
+something the underlying graphics API actually supports.
+
+\section{Bounding volumes: Box, Sphere, Frustum}
+\label{sec:bounding-volumes}
+
+\cnaclass{BoundingBox}, \cnaclass{BoundingSphere}, and \cnaclass{BoundingFrustum} share a
+consistent overload pattern: \texttt{Contains} against every other bounding-volume type and
+against a raw \cnaclass{Vector3} returns \cnaclass{ContainmentType} (\texttt{Disjoint},
+\texttt{Contains}, or \texttt{Intersects}); \texttt{Intersects} against a \cnaclass{Plane}
+returns \cnaclass{PlaneIntersectionType} (\texttt{Front}, \texttt{Back}, or
+\texttt{Intersecting} --- the doc comments clarify that \texttt{Front}/\texttt{Back} mean
+the volume lies entirely within one half-space with no actual crossing, while
+\texttt{Intersecting} means the plane genuinely cuts through the volume); and
+\texttt{Intersects} against a \cnaclass{Ray} returns \texttt{std::optional<float>}. Both
+value-returning and output-ref forms exist throughout, matching the vector/matrix convention.
+
+\cnaclass{BoundingBox} stores \texttt{Vector3 Min, Max} and a \texttt{CornerCount = 8}
+constant; \texttt{GetCorners()} has both a value-returning form and a fill-existing-vector
+form (documented as requiring the vector to already hold at least \texttt{CornerCount}
+elements). \cnaclass{CHECKLIST.md}'s own known-deviations table flags one project-wide
+inconsistency that happens to touch this class: \texttt{BoundingBox.cpp} throws
+\texttt{System::ArgumentOutOfRangeException} directly for an out-of-range indexer access, the
+same choice \texttt{VertexBuffer.cpp} and \texttt{NetworkSessionProperties.cpp} make ---
+whereas \texttt{Input::Touch::TouchCollection} deliberately throws \texttt{std::out\_of\_range}
+instead for the analogous case. The checklist names this explicitly as a known, unresolved,
+project-wide inconsistency rather than a bug specific to any one file --- worth knowing if
+your own code catches a specific exception type at one of these call sites.
+
+\cnaclass{BoundingSphere} stores \texttt{Vector3 Center} and \texttt{float Radius}, with a
+\texttt{Transform(Matrix)} method whose doc comment is precise about a real geometric
+limitation: it applies only translation and (uniform) scale from the given matrix, matching
+XNA's own semantics --- a sphere transformed by a shearing or non-uniform-scale matrix does
+not become an ellipsoid, because \cnaclass{BoundingSphere} has no representation for one.
+
+\cnaclass{BoundingFrustum} is the one bounding-volume type implemented as a C\texttt{++}
+\texttt{class} rather than a \texttt{struct}, because unlike the other two it owns real
+cached derived state: constructed from a single combined view-projection \cnaclass{Matrix},
+it privately caches an \texttt{std::array<Vector3, 8>} of corners and an
+\texttt{std::array<Plane, 6>} of the six extracted clip planes (\texttt{Near}, \texttt{Far},
+\texttt{Left}, \texttt{Right}, \texttt{Top}, \texttt{Bottom}, each exposed as a get-only
+\cnaclass{Plane} property), recomputed whenever its \texttt{Matrix} property is reassigned.
+Private helpers \texttt{CreateCorners()}, \texttt{CreatePlanes()}, a static
+\texttt{NormalizePlane(Plane\&)}, and a static \texttt{IntersectionPoint(...)} (finding a
+frustum corner as the intersection of three planes) implement this derivation; equality
+(\texttt{operator==}/\texttt{!=}) is defined purely in terms of the underlying \texttt{Matrix},
+not the cached corners/planes, since the latter are wholly determined by the former.
+
+\section{Curves: Curve, CurveKey, and their supporting enums}
+
+\cnaclass{Curve} holds an ordered \cnaclass{CurveKeyCollection} of \cnaclass{CurveKey} points
+and evaluates the resulting piecewise curve at an arbitrary position via
+\texttt{Evaluate(float) -> float}; \texttt{IsConstant} reports whether the curve has zero or
+one keys (in which case evaluation is trivially constant). Two independently-settable
+\cnaclass{CurveLoopType} properties, \texttt{PreLoop} and \texttt{PostLoop}, govern what
+happens when \texttt{Evaluate} is asked for a position before the first key or after the
+last one: \texttt{Constant} clamps to the boundary key's value, \texttt{Linear} extrapolates
+linearly, \texttt{Cycle} wraps the curve's own span, \texttt{CycleOffset} wraps \emph{and}
+adds the accumulated first/last-key value difference per cycle (useful for a monotonically
+increasing quantity like distance traveled along a looping path), and \texttt{Oscillate}
+ping-pongs direction each cycle. A private \texttt{GetCurvePosition(float) -> float},
+together with \texttt{GetNumberOfCycle(float) -> int}, implements this remapping before the
+underlying piecewise evaluation runs.
+
+Tangent handling is exposed at three granularities: \texttt{ComputeTangents(CurveTangent)}
+sets both in and out tangents for every key to the same \cnaclass{CurveTangent} mode;
+\texttt{ComputeTangents(CurveTangent in, CurveTangent out)} sets them independently for every
+key; and \texttt{ComputeTangent(keyIndex, ...)} (both single-mode and in/out-mode overloads)
+recomputes tangents for one specific key. The three \cnaclass{CurveTangent} modes are
+\texttt{Flat} (tangent forced to zero), \texttt{Linear} (tangent equal to the difference to
+the neighboring key's value), and \texttt{Smooth} (derived from both neighboring keys).
+
+Each \cnaclass{CurveKey} carries an immutable \texttt{Position} (set only at construction),
+a mutable \texttt{Value}, mutable \texttt{TangentIn}/\texttt{TangentOut}, and a
+\cnaclass{CurveContinuity} (\texttt{Smooth} --- interpolate normally between this key and the
+next --- or \texttt{Step}, where any position between this key and the next simply returns
+this key's value, no interpolation). \cnaclass{CurveKeyCollection} keeps its keys sorted by
+position at all times --- its \texttt{Add} method is documented as ``adds a key while
+preserving ascending position order,'' i.e.\ an insertion-sorted add, not an append --- and
+adds the same \texttt{NOXNA} C\texttt{++}-iterator convenience surface
+(\texttt{iterator}/\texttt{const\_iterator}/\texttt{begin}/\texttt{end}/\texttt{cbegin}/%
+\texttt{cend}) already seen on \cnaclass{GameComponentCollection} in
+Chapter~\ref{ch:game-loop}.
+
+\section{A note on scope: this chapter versus NEXT.md}
+
+It is worth being explicit about what this chapter does \emph{not} claim. CNA's root-level
+\texttt{NEXT.md} --- described in Chapter~\ref{ch:what-is-cna} as the single most reliable,
+actively-maintained bug list in the repository --- is almost entirely occupied by the Audio
+subsystem (XACT/FAudio parity work) and by graphics-backend porting phases; where it mentions
+\texttt{Matrix}, \texttt{Vector2}/\texttt{3}, or \texttt{Plane} by name, it is nearly always in
+the context of a \emph{backend's} shader or transform implementation (for example, a D3D9
+matrix-transform bug affecting \cnaclass{SpriteBatch} layer-depth sorting, covered in
+Chapter~\ref{ch:direct3d-backends}), not the core \cnaclass{Microsoft::Xna::Framework} types
+covered in this chapter. As of the source material this book draws from, none of
+\cnaclass{GameTime}, \cnaclass{Curve}/\cnaclass{CurveKey}, \cnaclass{GameComponent}, or the
+math/bounding-volume types themselves carry any open, named bug in \texttt{NEXT.md} --- their
+stability is precisely why this chapter can describe them as settled reference material rather
+than work in progress.

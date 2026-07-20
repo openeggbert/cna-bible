@@ -1,0 +1,216 @@
+\chapter{The Game Loop}
+\label{ch:game-loop}
+
+Chapter~\ref{ch:first-game} showed \texttt{Update}/\texttt{Draw} as two overridden methods
+without asking what drives them. This chapter opens up \cnaclass{Game} itself --- the class
+every CNA game inherits from --- and the small constellation of supporting types
+(\cnaclass{GameTime}, \cnaclass{GameComponent}, \cnaclass{GameWindow},
+\cnaclass{GameServiceContainer}) that make the loop work.
+
+\section{Game: base class, not framework-owned entry point}
+
+\cnaclass{Game} inherits \texttt{System::Object} and \texttt{System::IDisposable}, and its
+own Doxygen brief describes it precisely: ``base class that provides the XNA-style game
+loop, services, window, content and components.'' Four events --- \texttt{Activated},
+\texttt{Deactivated}, \texttt{Disposed}, \texttt{Exiting} --- are all typed
+\texttt{System::EventHandler<System::EventArgs>}. This is worth pausing on for
+\texttt{Exiting} specifically: CNA does declare a dedicated \cnaclass{ExitingEventArgs} class
+(matching real XNA's public API surface), but \texttt{Game::Exiting} itself is typed against
+plain \texttt{EventArgs}, not \texttt{EventHandler<ExitingEventArgs>} --- and grepping the
+tree confirms \cnaclass{ExitingEventArgs} is otherwise unreferenced outside its own
+translation unit. This looks like an inconsistency until you check real XNA itself, which
+has exactly the same quirk: \texttt{Game.Exiting} is declared \texttt{EventHandler<EventArgs>}
+in the real assembly too, despite a dedicated \texttt{ExitingEventArgs} type existing.
+CNA preserves this faithfully rather than ``fixing'' it --- a small, concrete example of
+Chapter~\ref{ch:design-philosophy}'s ``match FNA, not taste'' rule in action.
+
+\subsection{Properties, and one that is deliberately not settable from outside}
+
+\cnaclass{Game} exposes its state through the project's uniform
+\texttt{getXProperty()}/\texttt{setXProperty()} convention: \texttt{Components},
+\texttt{Content}, \texttt{GraphicsDevice} (get-only, sourced from the graphics device
+service --- there is no \texttt{setGraphicsDeviceProperty}), \texttt{InactiveSleepTime},
+\texttt{IsFixedTimeStep}, \texttt{IsMouseVisible}, \texttt{LaunchParameters},
+\texttt{TargetElapsedTime}, \texttt{Services}, \texttt{Window}. One property is more
+restricted than the rest: \texttt{IsActive} is get-only publicly, with its setter kept
+private --- ``only \texttt{Game} itself may change the active state,'' matching FNA's own
+\texttt{internal set}. C\texttt{++} has no exact equivalent of C\#'s assembly-internal
+visibility, so a private setter reachable only from within \cnaclass{Game}'s own
+\texttt{OnActivated}/\texttt{OnDeactivated} handlers is the closest faithful translation.
+
+\subsection{The override points}
+
+A concrete game overrides a fixed set of protected virtuals: \texttt{Initialize()},
+\texttt{LoadContent()}, \texttt{UnloadContent()}, \texttt{Update(GameTime\&)},
+\texttt{Draw(const GameTime\&)}, \texttt{BeginRun()}/\texttt{EndRun()}, and
+\texttt{BeginDraw()}/\texttt{EndDraw()} --- the last of which matters more than it looks:
+\texttt{BeginDraw()} returning \texttt{false} skips both \texttt{Draw} and \texttt{EndDraw}
+for that frame entirely, the mechanism \cnaclass{GraphicsDeviceManager}
+(\S\ref{sec:graphicsdevicemanager-in-loop}) uses to suppress rendering when no device is
+available yet. A game can also override \texttt{ShowMissingRequirementMessage(const
+std::exception\&)} and the protected \texttt{Dispose(bool disposing)}.
+
+\subsection{The timing loop, ported wholesale from FNA}
+
+\texttt{Game}'s private implementation carries over FNA's adaptive-sleep-precision timing
+loop directly: a 128-entry ring buffer of \texttt{previousSleepTimes\_} (masked with
+\texttt{SLEEP\_TIME\_MASK} rather than a modulo), a running
+\texttt{worstCaseSleepPrecision\_} estimate updated by \texttt{UpdateEstimatedSleepPrecision()},
+and \texttt{AdvanceElapsedTime()} driving the actual frame pacing against
+\texttt{TargetElapsedTime}, capped by a static \texttt{MaxElapsedTime}. Two pairs of
+component-list vectors --- \texttt{updateableComponents\_}/\texttt{currentlyUpdatingComponents\_}
+and \texttt{drawableComponents\_}/\texttt{currentlyDrawingComponents\_} --- exist specifically
+to guard against a component mutating the component collection (adding or removing itself, or
+another component) \emph{during} its own \texttt{Update}/\texttt{Draw} call, a re-entrancy
+hazard FNA's own implementation guards against the same way.
+
+One platform-conditional block is CNA-specific rather than ported: under
+\texttt{\#if defined(\_\_EMSCRIPTEN\_\_)}, \texttt{Game} gains a private
+\texttt{EmscriptenLoopState} struct and an \texttt{EmscriptenMainLoopCallback()}, because a
+blocking \texttt{while} loop is not a viable main-loop shape in a browser --- Emscripten
+instead requires yielding control back to the browser's own event loop via a registered
+callback. Volume~II's Web/Emscripten chapter covers this in full.
+
+\subsection{Two small, explicitly-marked CNA extensions}
+
+Two \texttt{NOXNA}-tagged additions live directly on \cnaclass{Game}: a public
+\texttt{RunApplication} flag (documented as ``internal loop flag matching the FNA/XNA
+\texttt{Game} implementation shape''), and a pair of compatibility helpers,
+\texttt{getTargetFPSProperty()} and \texttt{getTargetMsFrameTimeProperty()}, plus a static
+\texttt{fpsToMillisecondsPerFrame(intcs)} --- documented as existing specifically because
+``existing CNA examples'' already depend on an FPS-based way to talk about frame timing,
+alongside the real XNA \texttt{TargetElapsedTime} \texttt{TimeSpan}.
+
+\section{GameTime: three fields, one privileged writer}
+
+\cnaclass{GameTime} is deliberately small: \texttt{TotalGameTime} and
+\texttt{ElapsedGameTime} (both \texttt{TimeSpan}, publicly get-only), and
+\texttt{IsRunningSlowly} (bool, publicly get-only). All three setters are \texttt{private},
+with \texttt{friend class Game} --- no code outside \cnaclass{Game} itself may mutate a
+\cnaclass{GameTime} once constructed, which is exactly the invariant the two-line
+\texttt{Update}/\texttt{Draw} signatures from Chapter~\ref{ch:first-game} rely on: a
+\cnaclass{GameTime} handed to your \texttt{Update} override is a value your code can read
+freely but never falsify.
+
+\section{GameComponent and DrawableGameComponent: the update/draw ordering contract}
+
+\cnaclass{GameComponent} implements \texttt{IGameComponent}, \texttt{IUpdateable}, and
+\texttt{System::IComparable<GameComponent>} in one base: a component knows its owning
+\cnaclass{Game} (get-only), can be individually \texttt{Enabled}, has an
+\texttt{UpdateOrder}, and compares to other components \emph{by} update order via
+\texttt{CompareTo} --- which is what lets \cnaclass{GameComponentCollection} keep components
+processed in a stable, predictable sequence rather than insertion order.
+\cnaclass{DrawableGameComponent} layers \texttt{IDrawable} on top, adding
+\texttt{GraphicsDevice} (get-only), \texttt{DrawOrder}, and \texttt{Visible}, and --- notably
+--- overrides \texttt{Initialize()} specifically so that content loads lazily once a graphics
+device actually exists, via a private \texttt{OnDeviceCreated} handler hooked to graphics
+device creation. This mirrors the same ordering constraint from
+Chapter~\ref{ch:first-game}: GPU-backed resources can only be created once a device exists,
+and \cnaclass{DrawableGameComponent} enforces that automatically for components instead of
+leaving it to each component author to get right.
+
+\cnaclass{IGameComponent} itself is minimal --- one pure-virtual \texttt{Initialize()} ---
+and \texttt{IUpdateable}/\texttt{IDrawable} are the interface pair that
+\cnaclass{GameComponent}/\cnaclass{DrawableGameComponent} implement concretely: get/set
+enabled-or-visible state, an ordering value, a changed-event pair, and the actual
+\texttt{Update}/\texttt{Draw} method.
+
+\section{GameComponentCollection: an event-raising collection, plus a real C\texttt{++} iterator surface}
+
+\cnaclass{GameComponentCollection} raises \texttt{ComponentAdded}/\texttt{ComponentRemoved}
+events (typed \texttt{EventHandler<GameComponentCollectionEventArgs>}) around the usual
+collection operations (\texttt{Add}, \texttt{Insert}, \texttt{Remove}, \texttt{RemoveAt},
+\texttt{Clear}, \texttt{IndexOf}, \texttt{operator[]}). Because C\# 's
+\texttt{IEnumerable<IGameComponent>} has no direct C\texttt{++} equivalent, the collection
+adds an explicitly \texttt{NOXNA}-tagged set of \texttt{size\_type}/\texttt{iterator}/%
+\texttt{const\_iterator} aliases and \texttt{begin()}/\texttt{end()} overloads --- a small,
+representative example of how CNA extends an XNA collection type just enough to be usable
+with range-based \texttt{for} and the standard library, without touching its XNA-facing
+surface.
+
+\section{GameServiceContainer: type-keyed lookup without C\# reflection}
+
+C\#'s \cnaclass{GameServiceContainer} is a dictionary keyed by \texttt{System.Type}. C\texttt{++}
+has no runtime reflection to build an equivalent dictionary directly, so CNA's
+\texttt{AddService<TService>}/\texttt{GetService<TService>}/\texttt{RemoveService<TService>}
+template methods key a \texttt{std::unordered\_map<std::type\_index, void*>} by
+\texttt{typeid}, delegating to non-template overloads underneath. Copy construction and copy
+assignment are explicitly deleted (``services are registered by pointer identity''), while
+move construction and move assignment are defaulted --- a small but precise statement about
+ownership: a \cnaclass{GameServiceContainer} can be relocated, but never silently duplicated
+into a second set of service pointers.
+
+\section{GameWindow: one concrete class where FNA has a hierarchy}
+\label{sec:gamewindow}
+
+CNA's own class comment for \cnaclass{GameWindow} states the deviation from FNA plainly:
+``FNA defines \texttt{GameWindow} as abstract with per-platform subclasses; CNA collapses
+that hierarchy into one concrete SDL-backed class.'' Where FNA needs a
+\texttt{WinFormsGameWindow}, an SDL2-backed window subclass, and so on, CNA needs exactly one,
+because SDL3 already is the cross-platform windowing abstraction --- there is no per-platform
+subclassing left to do. \cnaclass{GameWindow} exposes the expected XNA surface
+(\texttt{AllowUserResizing}, \texttt{ClientBounds}, \texttt{CurrentOrientation},
+\texttt{Handle}, \texttt{ScreenDeviceName}, \texttt{Title}, and the
+\texttt{ClientSizeChanged}/\texttt{OrientationChanged}/\texttt{ScreenDeviceNameChanged}
+events), plus a small set of explicitly-named \texttt{EXT}-suffixed CNA extensions:
+\texttt{GetNativeSdlWindowEXT()} (documented as ``never for use in the strict XNA-facing API
+surface itself,'' but needed so e.g.\ \texttt{CNA::Devices::DisplayInfo} can query SDL3
+content-scale/safe-area state), \texttt{IsBorderlessEXTProperty}, and
+\texttt{MinimizeEXT()}/\texttt{RestoreEXT()} (``CNA extension --- XNA has no minimize/restore
+API of its own''). The \texttt{EXT} suffix convention here is a sibling of \texttt{NOXNA}: both
+mark non-XNA additions, but \texttt{EXT} specifically marks methods bolted onto an otherwise
+XNA-shaped class, kept visually distinct from the XNA members around them.
+
+\section{GraphicsDeviceManager's role in the loop}
+\label{sec:graphicsdevicemanager-in-loop}
+
+\cnaclass{GraphicsDeviceManager} --- already seen owning device creation in
+Chapter~\ref{ch:first-game} --- implements \cnaclass{IGraphicsDeviceManager}'s two-method
+contract (\texttt{BeginDraw() -> bool}, \texttt{CreateDevice()}, plus \texttt{EndDraw()}),
+which is exactly what \cnaclass{Game::BeginDraw()}/\texttt{EndDraw()} delegate to: if
+\texttt{GraphicsDeviceManager::BeginDraw()} returns \texttt{false} (no device available yet),
+\texttt{Game} skips \texttt{Draw}/\texttt{EndDraw} for that frame rather than crashing on a
+null device. Its five events (\texttt{DeviceCreated}, \texttt{DeviceDisposing},
+\texttt{DeviceReset}, \texttt{DeviceResetting}, \texttt{PreparingDeviceSettings}) and its
+protected \texttt{FindBestDevice}/\texttt{RankDevices}/\texttt{CanResetDevice} virtuals
+preserve FNA/XNA's device-selection extensibility hooks --- a subclass can override
+\texttt{RankDevices} to prefer, say, a higher-resolution adapter, exactly as in real XNA.
+
+One CNA-specific extension lives directly alongside this class rather than inside it: a
+\texttt{NOXNA enum class PresentationMode} with five values ---
+\texttt{Letterbox}, \texttt{Overscan}, \texttt{Stretch}, \texttt{NativeBackBuffer},
+\texttt{FixedHeightDynamicWidth} --- controlling how the game's back buffer is scaled to the
+actual display when the two don't match in aspect ratio, exposed through
+\texttt{getPreferredPresentationModeProperty()}/\texttt{setPreferredPresentationModeProperty()}.
+Real XNA never had to solve this problem in the same way, since the Xbox 360 and a Windows
+desktop of that era rarely presented CNA's variety of target displays (a browser canvas, an
+Android device in either orientation, an arbitrary desktop window); this is a genuinely new
+subsystem, clearly marked as such rather than folded silently into the XNA-facing API.
+
+\section{Supporting cast: LaunchParameters, TitleContainer, TitleLocation, FrameworkDispatcher}
+
+Four smaller types round out the framework layer. \cnaclass{LaunchParameters} parses process
+\texttt{argv} into key/value pairs and --- a CNA-specific representational choice --- inherits
+publicly from \texttt{std::unordered\_map<std::string,std::string>} rather than wrapping one,
+so a \cnaclass{LaunchParameters} instance \emph{is} a standard associative container as well
+as an XNA-shaped one. \cnaclass{TitleContainer} is a static-only class providing
+\texttt{OpenStream(path) -> std::unique\_ptr<System::IO::Stream>}, the entry point for
+reading title content files portably. \cnaclass{TitleLocation} resolves and caches the base
+path content is resolved relative to, exposing it under two accessor names --- both
+\texttt{getPathProperty()} and a bare \texttt{Path()} return the same value, the latter kept
+specifically ``to match XNA property name'' alongside CNA's own \texttt{getXProperty}
+convention. \cnaclass{FrameworkDispatcher}, also static-only, drives framework-level polling
+(dynamic audio streams, media, touch input) through a single \texttt{Update()} entry point
+that a game is expected to call once per frame; internally it tracks registered
+\texttt{Audio::DynamicSoundEffectInstance*} streams behind a mutex --- a thread-safety
+addition beyond FNA's own single-threaded assumption.
+
+\section{What this buys a porting engineer}
+
+None of the types in this chapter are exotic on their own. What matters, if you are porting
+an existing XNA or FNA game (Volume~II's migration chapter returns to this in practical
+detail), is that the entire timing/component/service/window layer a real XNA game's
+\texttt{Game}-derived class depends on is present, member-for-member, under the same names.
+A \texttt{Game} subclass that only used the public, documented XNA surface --- not FNA's own
+internal/assembly-private details --- should port to CNA by translating syntax, not by
+redesigning its structure.
