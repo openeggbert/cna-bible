@@ -14,7 +14,7 @@ be stale relative to what's happened since — trust the conversation over this 
 numbering). Chapters 25–48 = former Volume II (Parts V–IX, renumbered +24). Appendices A–F.
 Full renumbering table is in `PLAN.md`'s merge session-log entry.
 
-**Five former-Volume-II chapters now have a first real expansion pass**, all following the
+**Six former-Volume-II chapters now have a first real expansion pass**, all following the
 same pattern (full method references + worked examples for every named class, each grounded in
 a direct header/source read, with real verified findings called out explicitly, not just API
 summaries):
@@ -55,13 +55,20 @@ summaries):
   `setRatingProperty` (showing "assigning Rating is the whole commit step" in code, not just
   prose); and a full `Guide::BeginShowMessageBox`/`RenderPendingMessageBoxEXT`/
   `EndShowMessageBox` round-trip.
+- **Chapter 30 (Networking)**, this session: 125 → 170 lines, ~4 → ~5 of a ~70-page target.
+  Same gap shape again — dense, accurate prose, zero worked examples. Read `NetworkSession.hpp`,
+  `GamerJoinedEventArgs.hpp`, `LocalNetworkGamer.hpp`, `PacketWriter.hpp`, `PacketReader.hpp`
+  directly. Added two worked examples: the documented `GamerJoined`-replay-on-subscribe gap and
+  its "call `Update()` once right after subscribing" workaround, now shown in code; and the
+  `PacketReader`/`PacketWriter` `Color` read/write asymmetry (4 bytes write, 4 floats read) as
+  an actual send/receive round-trip.
 
 Volume currently compiles to **281 pages, 0 undefined references, 0 duplicate-label
 warnings** (index count not re-checked this session — verify before quoting it).
 
 ### The `/`-spacing overfull-hbox defect class — three known variants, all with proven fixes
 
-Every chapter touched so far (25, 26, 27, 28, 29) has needed at least one of these. Treat this as a
+Every chapter touched so far (25, 26, 27, 28, 29, 30) has needed at least one of these. Treat this as a
 **routine check on every batch**, not a one-off — run the Python regex pass
 (`re.sub(r'\}/(\\texttt\{|\\cnaclass\{)', r'} / \1', text)`) over any file you touch before the
 first build of a batch:
@@ -90,14 +97,17 @@ second round needed, which is a good sign the routine is actually working now.
 
 ## What to do next
 
-1. **Move to another Part V–IX chapter**: 30 (Networking), 31 (Avatar), 32 (Storage) — same
-   systematic approach (read the real headers directly, add full method references + worked
-   examples, watch for the three overfull-hbox variants above). Check each one's existing
-   prose density first — 28 and 29 both turned out to need "add worked examples" rather than
-   "add missing API coverage," which is a faster pass once you recognize the shape; but don't
-   assume 30/31/32 are the same until you've actually read them.
-2. **If returning to Chapter 25, 26, 27, 28, or 29 for further depth**, don't re-run the "which
-   classes exist" grep again (already done at least once each) — look for narrower gaps
+1. **Move to another Part V–IX chapter**: 31 (Avatar), 32 (Storage) — same systematic approach
+   (read the real headers directly, add full method references + worked examples, watch for
+   the three overfull-hbox variants above). Chapters 28/29/30 all turned out to need "add
+   worked examples" rather than "add missing API coverage" — check 31/32's existing prose
+   density first; if the same shape holds, the pass is: read the real headers for classes
+   already named in the prose, find 2-3 genuinely worked-example-shaped gaps (a lifecycle, a
+   send/receive round-trip, a state-machine walkthrough), ground each in real signatures, and
+   watch for one new real detail worth adding along the way (there's been at least one per
+   chapter so far).
+2. **If returning to Chapter 25, 26, 27, 28, 29, or 30 for further depth**, don't re-run the
+   "which classes exist" grep again (already done at least once each) — look for narrower gaps
    instead: worked-example depth per topic, cross-checking against `docs/*.md`/`CHECKLIST.md`/
    `plan_*.md` files in the real repo for anything a header-only pass would miss.
 3. **Deepen Chapter 9 (GraphicsDevice)** further, or start Chapter 13 (Stock Effects) — both

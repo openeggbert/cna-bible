@@ -173,7 +173,7 @@ ever needed).
 | 27 | Media | 300 (was 103) | 45 | Full method references + worked examples for Song, the AudioTagParser tag-reading pipeline, MediaQueue's ownership model, MediaPlayer playback/shuffle/repeat internals, VideoPlayer multi-track switching (three real bugs found by external review), and the GetVisualizationData FFT pipeline (lock-free ring buffer + from-scratch radix-2 FFT) | **In progress (~6 of ~45 pages)** |
 | 28 | Devices and Sensors | 208 (was 115) | 45 | Worked examples for Accelerometer/VibrateController/Camera grounded in real headers, plus the SetCurrentValueAndMarkDataValid race-closing finding and the vibrate intensity-zero-is-not-Stop() finding | **In progress (~6 of ~45 pages)** |
 | 29 | GamerServices | 169 (was 117) | 55 | Worked examples for SignedInGamer achievements/presence, LeaderboardWriter scoring, and Guide's real overlay message-box UI, grounded in real headers | **In progress (~5 of ~55 pages)** |
-| 30 | Networking | 125 | 70 | Full NetworkSession/NetworkGamer docs + worked multi-peer examples | Not started |
+| 30 | Networking | 170 (was 125) | 70 | Worked examples for NetworkSession creation/GamerJoined lifecycle and PacketWriter/PacketReader send-receive with the Color asymmetry gotcha, grounded in real headers | **In progress (~5 of ~70 pages)** |
 | 31 | Avatar | 131 | 55 | Full Avatar/SkinnedModelEXT docs + examples | Not started |
 | 32 | Storage | 78 | 30 | Full StorageDevice/StorageContainer docs + examples | Not started |
 | 33 | Sharp Runtime Overview | 116 | 40 | Deeper architectural detail | Not started |
@@ -783,5 +783,21 @@ current real total of 266 pages.
   full `Guide::BeginShowMessageBox`/`RenderPendingMessageBoxEXT`/`EndShowMessageBox` overlay
   round-trip, matching the real three-step pending-until-Draw()-renders-it contract. Chapter
   grows from 117 to 169 lines (~4 to ~5 of a ~55-page target). Volume recompiled clean (281
+  pages total, 0 undefined references, 0 duplicate-label warnings); all four of the chapter's
+  own pages verified by rendering to PNG and reading them back.
+- **2026-07-20 (same session, "pokracuj"):** Chapter 30 (Networking) — first expansion pass.
+  Same gap shape as 28/29 again: the prose (caller-owned `NetworkSession` lifecycle, the real
+  host-migration/simulated-latency behavior, the real-versus-stub `NetworkSessionType` table,
+  the bug-fix history) was already dense and accurate, but zero worked examples existed. Read
+  `NetworkSession.hpp`, `GamerJoinedEventArgs.hpp`, `LocalNetworkGamer.hpp`, `PacketWriter.hpp`,
+  and `PacketReader.hpp` directly. Added one real detail not previously spelled out as
+  concretely: real XNA's `GamerJoined` is documented to replay itself immediately upon
+  subscription for every gamer already in the session, but this port's `EventHandler` has no
+  such replay hook, so the documented, permanent workaround — call `Update()` once immediately
+  after subscribing — is now shown in a worked example, not just described in prose. Added a
+  second worked example for the `PacketReader`/`PacketWriter` `Color` read/write asymmetry
+  (four bytes on write, four floats on read) already documented in prose, now shown as an
+  actual send/receive round-trip a reader could get wrong if they assumed symmetry. Chapter
+  grows from 125 to 170 lines (~4 to ~5 of a ~70-page target). Volume recompiled clean (281
   pages total, 0 undefined references, 0 duplicate-label warnings); all four of the chapter's
   own pages verified by rendering to PNG and reading them back.
