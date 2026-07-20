@@ -172,7 +172,7 @@ ever needed).
 | 26 | Audio System | 378 (was 118) | 60 | Full method references + worked examples for SoundEffect, SoundEffectInstance/Apply3D 3D audio, DynamicSoundEffectInstance streaming, the AudioEngine/SoundBank/WaveBank/Cue XACT playback model, Microphone capture, AudioCategory retroactive volume, AudioEngine::RendererDetails, SoundEffect::FromStream, and the three audio exception types | **In progress (~8 of ~60 pages)** |
 | 27 | Media | 300 (was 103) | 45 | Full method references + worked examples for Song, the AudioTagParser tag-reading pipeline, MediaQueue's ownership model, MediaPlayer playback/shuffle/repeat internals, VideoPlayer multi-track switching (three real bugs found by external review), and the GetVisualizationData FFT pipeline (lock-free ring buffer + from-scratch radix-2 FFT) | **In progress (~6 of ~45 pages)** |
 | 28 | Devices and Sensors | 208 (was 115) | 45 | Worked examples for Accelerometer/VibrateController/Camera grounded in real headers, plus the SetCurrentValueAndMarkDataValid race-closing finding and the vibrate intensity-zero-is-not-Stop() finding | **In progress (~6 of ~45 pages)** |
-| 29 | GamerServices | 117 | 55 | Full Achievement/Leaderboard/Gamer docs + examples | Not started |
+| 29 | GamerServices | 169 (was 117) | 55 | Worked examples for SignedInGamer achievements/presence, LeaderboardWriter scoring, and Guide's real overlay message-box UI, grounded in real headers | **In progress (~5 of ~55 pages)** |
 | 30 | Networking | 125 | 70 | Full NetworkSession/NetworkGamer docs + worked multi-peer examples | Not started |
 | 31 | Avatar | 131 | 55 | Full Avatar/SkinnedModelEXT docs + examples | Not started |
 | 32 | Storage | 78 | 30 | Full StorageDevice/StorageContainer docs + examples | Not started |
@@ -766,3 +766,22 @@ current real total of 266 pages.
   six of the chapter's own pages verified by rendering to PNG and reading them back — no
   overfull-hbox defect found this time (the proactive `/`-spacing regex pass caught its one
   instance before the first build).
+- **2026-07-20 (same session, "pokracuj"):** Chapter 29 (GamerServices) — first expansion
+  pass. Same gap shape as Chapter 28: the prose (the three-way Implemented/Locally-persisted/
+  documented-stub split, the LeaderboardWriter aliasing hazard, the Guide real-vs-stub
+  distinction) was already dense and accurate, but zero worked code examples existed anywhere
+  in the chapter. Read `SignedInGamer.hpp`, `GamerPresence.hpp`, `GamerPresenceMode.hpp`,
+  `LeaderboardWriter.hpp`, `LeaderboardEntry.hpp`, `LeaderboardIdentity.hpp`,
+  `LeaderboardKey.hpp`, and `Guide.hpp` directly. Added one real detail not previously named:
+  `SignedInGamer` exposes a NOXNA non-`const` overload of `getPresenceProperty()` specifically
+  to preserve real XNA's own get-only-property-returning-a-mutable-reference-type idiom
+  (`gamer.Presence.PresenceMode = ...`), which a plain `const`-only C++ accessor could not
+  reproduce. Added three worked examples grounded in the real signatures: awarding an
+  achievement and mutating presence through `SignedInGamer`; submitting a leaderboard score
+  through `LeaderboardWriter::GetLeaderboard` + `LeaderboardEntry::setRatingProperty` (the
+  "assigning Rating is the whole commit step" behavior, now shown, not just described); and a
+  full `Guide::BeginShowMessageBox`/`RenderPendingMessageBoxEXT`/`EndShowMessageBox` overlay
+  round-trip, matching the real three-step pending-until-Draw()-renders-it contract. Chapter
+  grows from 117 to 169 lines (~4 to ~5 of a ~55-page target). Volume recompiled clean (281
+  pages total, 0 undefined references, 0 duplicate-label warnings); all four of the chapter's
+  own pages verified by rendering to PNG and reading them back.

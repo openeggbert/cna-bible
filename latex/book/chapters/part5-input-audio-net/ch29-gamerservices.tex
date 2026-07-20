@@ -31,15 +31,35 @@ this hazard entirely.
 \texttt{AwardAchievement} and \texttt{GetAchievements} are genuinely real, not stubs, backed
 by a local persistence store. \texttt{IsFriend} always returns false, and
 \texttt{GetFriends()} always returns an empty \cnaclass{FriendCollection} --- not because
-\cnaclass{FriendGamer}/\cnaclass{FriendCollection} are unimplemented (they are fully real,
+\cnaclass{FriendGamer} / \cnaclass{FriendCollection} are unimplemented (they are fully real,
 functioning classes), but because nothing anywhere in the codebase actually populates them;
 this is the one honestly-acknowledged, still-open gap in this namespace's population story,
 not a design limitation like the Xbox-Live-only methods above.
 
+One further NOXNA detail worth knowing: real XNA's own \texttt{Presence} property is get-only,
+but it returns a \cnaclass{GamerPresence} \emph{reference type}, so real game code writes
+\texttt{gamer.Presence.PresenceMode = ...} and mutates the same live object the getter
+returned. A plain \texttt{const}-only C++ accessor would make that usage pattern impossible to
+reproduce, so \cnaclass{SignedInGamer} additionally exposes a non-\texttt{const} overload of
+\texttt{getPresenceProperty()} purely to preserve that idiom in C++.
+
+\begin{lstlisting}
+// Worked example: awarding an achievement synchronously, then reading
+// the achievement list back (empty in this platform's implementation,
+// per GetAchievements()'s own documented contract).
+SignedInGamer* gamer = /* obtained from SignedInGamer::SignedIn, etc. */;
+gamer->AwardAchievement("ACH_FIRST_BOSS_DEFEATED");
+AchievementCollection achievements = gamer->GetAchievements();
+
+// Mutating rich presence through the get-only-looking property, matching
+// the real XNA reference-type idiom this NOXNA overload exists to preserve.
+gamer->getPresenceProperty().setPresenceModeProperty(GamerPresenceMode::SinglePlayer);
+\end{lstlisting}
+
 \section{Leaderboards: real persistence, CNA-original policy}
 \label{sec:leaderboards}
 
-\cnaclass{LeaderboardReader}/\texttt{Writer}/\texttt{Entry} are genuinely disk-backed --- a
+\cnaclass{LeaderboardReader} / \texttt{Writer} / \texttt{Entry} are genuinely disk-backed --- a
 deliberate expansion beyond FNA, whose own reference \cnaclass{LeaderboardReader}/%
 \texttt{Writer} are identically all-\texttt{NotSupportedException} stubs, meaning there was
 no real behavior to port here even if CNA had wanted to stay minimal. Because no reference
@@ -48,7 +68,7 @@ derived: entries sort by rating descending; paging around a specific pivot gamer
 to the top of the board if that gamer has no entry at all; and a persisted gamertag with no
 currently signed-in matching \cnaclass{Gamer*} is simply skipped, since a
 \cnaclass{LeaderboardEntry} needs a live gamer object to attach itself to. Every
-\texttt{Begin}/\texttt{End} async pair on this class completes synchronously, matching the
+\texttt{Begin} / \texttt{End} async pair on this class completes synchronously, matching the
 project-wide pattern already seen for \cnaclass{NetworkSession} in
 Chapter~\ref{ch:networking}. One genuinely subtle, load-bearing detail: real XNA's own
 \cnaclass{LeaderboardWriter} has no explicit submit or commit method at all, so CNA treats
@@ -56,6 +76,18 @@ assigning \texttt{Rating} as the closest honest equivalent of ``I'm finished, pe
 --- but only for an entry actually obtained through a \cnaclass{LeaderboardWriter}, since only
 those have a persistence hook installed; setting \texttt{Rating} on an entry obtained from a
 \cnaclass{LeaderboardReader} is deliberately a no-op.
+
+\begin{lstlisting}
+// Worked example: submitting a new best score. Assigning Rating is the
+// whole "commit" step -- there is no separate Submit()/Flush() call to
+// remember, matching real XNA's own LeaderboardWriter API shape exactly.
+LeaderboardWriter& writer = gamer->getLeaderboardWriterProperty();
+LeaderboardIdentity boardId = LeaderboardIdentity::Create(
+    LeaderboardKey::BestScoreLifeTime);
+
+LeaderboardEntry* entry = writer.GetLeaderboard(boardId);
+entry->setRatingProperty(newHighScore);  // persists immediately
+\end{lstlisting}
 
 \section{Achievements}
 
@@ -74,12 +106,12 @@ of its surface --- \texttt{ShowFriends}, \texttt{ShowMarketplace}, \texttt{ShowG
 \texttt{ShowSignIn}, \texttt{ShowParty}, and the rest of the \texttt{Show*} family --- is a
 genuine, documented no-op: there is no system UI to show for any of them, matching FNA's own
 minimal PC-side stub. Two specific methods are the deliberate exception, and are real, CNA-built
-overlay UI, not stubs at all: \texttt{BeginShowMessageBox}/\texttt{EndShowMessageBox} and
-\texttt{BeginShowKeyboardInput}/\texttt{EndShowKeyboardInput}. Unlike almost everything else
+overlay UI, not stubs at all: \texttt{BeginShowMessageBox} / \texttt{EndShowMessageBox} and
+\texttt{BeginShowKeyboardInput} / \texttt{EndShowKeyboardInput}. Unlike almost everything else
 in this namespace, these do \emph{not} complete synchronously --- they remain genuinely
 pending until the game's own \texttt{Draw()} loop calls a dedicated render hook once per
 frame, which draws the message box or keyboard prompt using a caller-supplied
-\cnaclass{SpriteBatch}/\cnaclass{SpriteFont}, and polls real keyboard/mouse input to detect a
+\cnaclass{SpriteBatch} / \cnaclass{SpriteFont}, and polls real keyboard/mouse input to detect a
 click, Enter, or Escape. The keyboard-input path captures real UTF-16 text safely across
 surrogate pairs, and its password-mode masking only affects the \emph{displayed} text --- the
 value actually returned is always the real typed text, never the masked version.
@@ -87,15 +119,35 @@ value actually returned is always the real typed text, never the masked version.
 itself uses off Xbox) --- true exactly when one of these two real overlays is currently
 pending.
 
+\begin{lstlisting}
+// Worked example: a real, rendered "Quit to menu?" confirmation, driven
+// entirely by this platform's own CNA-built overlay, not a system dialog.
+System::IAsyncResult* pending = Guide::BeginShowMessageBox(
+    "Quit?", "Return to the main menu?",
+    {"Yes", "No"}, /* focusButton */ 1, MessageBoxIcon::Warning,
+    nullptr, std::any{});
+
+// In Game::Draw(), called once per frame, after drawing the game's own scene:
+Guide::RenderPendingMessageBoxEXT(*graphicsDevice, spriteBatch, uiFont, whitePixel);
+
+// Later, once the player has actually clicked a button (poll or check a flag):
+if (!Guide::getHasPendingMessageBoxEXTProperty())
+{
+    std::optional<int> chosen = Guide::EndShowMessageBox(pending);
+    delete pending;
+    if (chosen == 0) { /* "Yes" was clicked -- return to the main menu */ }
+}
+\end{lstlisting}
+
 \section{Dispatcher and component}
 
 \cnaclass{GamerServicesComponent} must be added to \texttt{Game.Components}
-(this book's game-loop chapter) before any \cnaclass{Gamer}/\cnaclass{Guide} API is
+(this book's game-loop chapter) before any \cnaclass{Gamer} / \cnaclass{Guide} API is
 used, matching real XNA~4.0's own PC requirement exactly. \cnaclass{GamerServicesDispatcher}
 is the actual entry point creating and freeing the local, stub-style
 \cnaclass{SignedInGamer} set each time it initializes, and pumping the async machinery every
 other class in this namespace relies on for its synchronously-completing
-\texttt{Begin}/\texttt{End} pairs.
+\texttt{Begin} / \texttt{End} pairs.
 
 \section{Summary table}
 
@@ -104,13 +156,13 @@ other class in this namespace relies on for its synchronously-completing
 \toprule
 \textbf{Feature} & \textbf{Status} \\
 \midrule
-\cnaclass{SignedInGamer}/\cnaclass{GamerCollection} & Implemented \\
+\cnaclass{SignedInGamer} / \cnaclass{GamerCollection} & Implemented \\
 Achievements & Locally persisted \\
 Leaderboards & Locally persisted, CNA-original policy \\
-\cnaclass{GamerPresence}/\cnaclass{GamerPrivileges} & Implemented \\
-\cnaclass{FriendCollection}/\cnaclass{FriendGamer} & Real classes, population always empty \\
+\cnaclass{GamerPresence} / \cnaclass{GamerPrivileges} & Implemented \\
+\cnaclass{FriendCollection} / \cnaclass{FriendGamer} & Real classes, population always empty \\
 \texttt{Guide.Show*} (most) & Documented no-op stub \\
-\texttt{Guide.BeginShowMessageBox}/\texttt{KeyboardInput} & Implemented, CNA-built overlay UI \\
+\texttt{Guide.BeginShowMessageBox} / \texttt{KeyboardInput} & Implemented, CNA-built overlay UI \\
 Avatar (base API) & Faithfully inert --- see Chapter~\ref{ch:avatar} \\
 \bottomrule
 \end{tabular}

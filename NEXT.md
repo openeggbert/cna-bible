@@ -14,7 +14,7 @@ be stale relative to what's happened since — trust the conversation over this 
 numbering). Chapters 25–48 = former Volume II (Parts V–IX, renumbered +24). Appendices A–F.
 Full renumbering table is in `PLAN.md`'s merge session-log entry.
 
-**Four former-Volume-II chapters now have a first real expansion pass**, all following the
+**Five former-Volume-II chapters now have a first real expansion pass**, all following the
 same pattern (full method references + worked examples for every named class, each grounded in
 a direct header/source read, with real verified findings called out explicitly, not just API
 summaries):
@@ -45,13 +45,23 @@ summaries):
   (still plays a real, if inert, zero-strength effect). Added three worked examples
   (`Accelerometer::CurrentValueChanged` subscription, `VibrateController::StartLeftRight`,
   `Camera::TryAcquireFrame`'s poll-every-frame contract).
+- **Chapter 29 (GamerServices)**, this session: 117 → 169 lines, ~4 → ~5 of a ~55-page target.
+  Same gap shape as Chapter 28 — dense, accurate prose but zero worked examples. Read
+  `SignedInGamer.hpp`, `GamerPresence.hpp`, `LeaderboardWriter.hpp`, `LeaderboardEntry.hpp`,
+  `LeaderboardIdentity.hpp`, and `Guide.hpp` directly. Added one new real detail: the NOXNA
+  non-`const` `getPresenceProperty()` overload exists specifically to preserve real XNA's
+  get-only-property-returning-a-mutable-reference-type idiom. Added three worked examples:
+  `SignedInGamer::AwardAchievement`/presence mutation; `LeaderboardWriter::GetLeaderboard` +
+  `setRatingProperty` (showing "assigning Rating is the whole commit step" in code, not just
+  prose); and a full `Guide::BeginShowMessageBox`/`RenderPendingMessageBoxEXT`/
+  `EndShowMessageBox` round-trip.
 
 Volume currently compiles to **281 pages, 0 undefined references, 0 duplicate-label
 warnings** (index count not re-checked this session — verify before quoting it).
 
 ### The `/`-spacing overfull-hbox defect class — three known variants, all with proven fixes
 
-Every chapter touched so far (25, 26, 27, 28) has needed at least one of these. Treat this as a
+Every chapter touched so far (25, 26, 27, 28, 29) has needed at least one of these. Treat this as a
 **routine check on every batch**, not a one-off — run the Python regex pass
 (`re.sub(r'\}/(\\texttt\{|\\cnaclass\{)', r'} / \1', text)`) over any file you touch before the
 first build of a batch:
@@ -80,10 +90,13 @@ second round needed, which is a good sign the routine is actually working now.
 
 ## What to do next
 
-1. **Move to another Part V–IX chapter**: 29 (GamerServices), 30 (Networking), 31 (Avatar), 32
-   (Storage) — same systematic approach (read the real headers directly, add full method
-   references + worked examples, watch for the three overfull-hbox variants above).
-2. **If returning to Chapter 25, 26, 27, or 28 for further depth**, don't re-run the "which
+1. **Move to another Part V–IX chapter**: 30 (Networking), 31 (Avatar), 32 (Storage) — same
+   systematic approach (read the real headers directly, add full method references + worked
+   examples, watch for the three overfull-hbox variants above). Check each one's existing
+   prose density first — 28 and 29 both turned out to need "add worked examples" rather than
+   "add missing API coverage," which is a faster pass once you recognize the shape; but don't
+   assume 30/31/32 are the same until you've actually read them.
+2. **If returning to Chapter 25, 26, 27, 28, or 29 for further depth**, don't re-run the "which
    classes exist" grep again (already done at least once each) — look for narrower gaps
    instead: worked-example depth per topic, cross-checking against `docs/*.md`/`CHECKLIST.md`/
    `plan_*.md` files in the real repo for anything a header-only pass would miss.
