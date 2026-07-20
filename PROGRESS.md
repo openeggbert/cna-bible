@@ -1,17 +1,19 @@
 # The CNA Bible — writing progress
 
 **Status: both volumes complete, including a content-completeness pass covering
-CNJ/XNB/Storage/NOXNA/RAM/cna-template/cna-extended/libcna.com (2026-07-20).**
+CNJ/XNB/Storage/NOXNA/RAM/cna-template/cna-extended/libcna.com, a repo-map expansion
+(meta-gl/easy-3d/cna-craft/mesh-craft/mesh-world/galaxy-eggbert), and a new Volume~I API
+quick-reference appendix (2026-07-20).**
 Two-volume LaTeX technical book about the `openeggbert/cna` ecosystem. Source lives under
 `latex/volume1/` and `latex/volume2/`. Build with:
 
 ```bash
-cd latex && make volume1   # -> volume1/main.pdf  (108 pages)
+cd latex && make volume1   # -> volume1/main.pdf  (112 pages)
 cd latex && make volume2   # -> volume2/main.pdf  (112 pages)
 ```
 
 Both volumes compile cleanly with pdflatex/latexmk, no undefined references, no unicode
-errors. Combined: 220 pages, 48 chapters + 2 prefaces + 4 appendices.
+errors. Combined: 224 pages, 48 chapters + 2 prefaces + 5 appendices.
 
 ## Scope note
 
@@ -75,7 +77,7 @@ libcna.com were all missing or under-covered. Fixed:
   `xrefs-volume1.tex` shim did not need new entries (all new cross-volume citations use plain
   text, matching the existing Vol.I → Vol.II citation style).
 
-## Volume I — The Core Framework and the Graphics Machine — COMPLETE (108 pages, 24 chapters)
+## Volume I — The Core Framework and the Graphics Machine — COMPLETE (112 pages, 24 chapters + 1 appendix)
 
 - Part I (Ch.1-3): Ecosystem, design philosophy, house style
 - Part II (Ch.4-8): Building CNA, first game, game loop, math/geometry types, content model
@@ -84,6 +86,12 @@ libcna.com were all missing or under-covered. Fixed:
   stock effects, state objects, the shader/.fx bytecode gap
 - Part IV (Ch.16-24): Backend architecture + SDL_Renderer, EasyGL, Vulkan, BGFX, WebGPU,
   D3D9/D3D11/D3D12, Canvas+ASCII, DX3
+- Appendix A (new, 2026-07-20): API quick reference — math/geometry types (Vector2/3/4, Matrix,
+  Quaternion, Point, Rectangle, Color, Plane, Ray, BoundingBox/Sphere/Frustum), the Game/
+  GameTime/GameWindow/ContentManager framework layer, Texture2D/RenderTarget2D/SpriteBatch, and
+  Model/ModelMesh/ModelBone plus a comparison table of the five stock effects. Every entry read
+  directly from the corresponding `cna` header at time of writing; a lookup companion to the
+  narrative chapters, not a replacement for them.
 
 ## Volume II — The Ecosystem, the Platforms, and the Practice — COMPLETE (112 pages, 24 chapters + 4 appendices)
 
@@ -97,8 +105,8 @@ libcna.com were all missing or under-covered. Fixed:
 - Part V (Ch.18-24): Migration guide, Blupi case study, xna4-spec auditing, cna-samples/
   cna-examples, project practice & task tracking, testing philosophy, roadmap
 - Appendices: A (backend feature matrix), B (glossary, now includes CNJ/XNB/Storage entries),
-  C (repository map, now includes cna-template/cna-extended/libcna.com/RAM.md), **D (NOXNA
-  extension catalog, new)**
+  C (repository map, now includes cna-template/cna-extended/libcna.com/RAM.md, plus meta-gl/
+  easy-3d/cna-craft/mesh-craft/mesh-world/galaxy-eggbert), D (NOXNA extension catalog)
 
 ## Methodology notes
 
