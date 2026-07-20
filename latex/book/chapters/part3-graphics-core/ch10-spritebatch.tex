@@ -14,7 +14,7 @@ verifying it, because the bugs are as instructive as the API itself.
 overloads of increasing specificity, each defaulting whatever the caller omits:
 \texttt{Begin()} alone defaults to \texttt{SpriteSortMode::Deferred},
 \cnaclass{BlendState::AlphaBlend}, a \texttt{LinearClamp} sampler, no depth-stencil state,
-\cnaclass{RasterizerState::CullCounterClockwise}, and an identity transform; the fuller
+\texttt{RasterizerState::\allowbreak{}CullCounterClockwise}, and an identity transform; the fuller
 overloads let a caller override the sort mode and blend state, the three optional state
 objects (nullptr falls back to the same defaults), a custom \cnaclass{Effect} (nullptr falls
 back to an internal default \cnaclass{SpriteEffect}), and finally an explicit transform
@@ -29,6 +29,65 @@ a non-uniform \cnaclass{Vector2}), \cnaclass{SpriteEffects}, and layer depth ---
 \texttt{DrawString} adds six more overloads (\texttt{string} or \texttt{StringBuilder}, each in
 a simple 4-argument form, a uniform-scale 9-argument form, and a non-uniform-scale
 (\cnaclass{Vector2} scale) 9-argument form).
+
+\section{The Draw overload family, and a worked rotation example}
+
+The nine \texttt{Draw} overloads split cleanly into two families by their second parameter ---
+a \cnaclass{Vector2} \texttt{position} (four overloads, increasingly parameterized) or a
+\cnaclass{Rectangle} \texttt{destinationRectangle} that scales the texture to fit (three
+overloads) --- plus the two \texttt{NOXNA} raw \texttt{float x, float y} convenience forms
+already noted. Every real (non-\texttt{NOXNA}) overload takes an explicit \texttt{Color} tint
+--- there is no overload that omits it, unlike the \texttt{NOXNA} convenience forms. The table
+below abbreviates each overload's parameter names for width (\texttt{tex} for \texttt{texture},
+\texttt{pos} for \texttt{position}, and so on) --- the full, exact parameter names for every
+overload are given in the fully-parameterized worked example immediately below the table.
+
+\begin{center}
+\begin{longtable}{>{\raggedright\arraybackslash}p{0.30\textwidth}>{\raggedright\arraybackslash}p{0.58\textwidth}}
+\toprule
+\textbf{Family member} & \textbf{Adds, relative to the simplest form in its family} \\
+\midrule
+\endhead
+\texttt{Draw(tex, pos, color)} & The simplest real-XNA form: whole texture, no rotation, unit
+  scale. \\[4pt]
+\texttt{Draw(tex, pos, srcRect, color)} & An optional source sub-rectangle
+  (\texttt{std::optional<Rectangle>}, not C\#'s nullable \texttt{Rectangle?}) --- the
+  sprite-sheet-cell pattern. \\[4pt]
+\texttt{Draw(tex, pos, srcRect, color, rot, origin, scale, fx, depth)} & Uniform
+  \texttt{float} scale. \\[4pt]
+\texttt{Draw(tex, pos, srcRect, color, rot, origin, scale, fx, depth)} & Same, but
+  \texttt{scale} is a non-uniform \cnaclass{Vector2} --- these two fully-parameterized
+  overloads differ \emph{only} in that one field's type. \\[4pt]
+\texttt{Draw(tex, destRect, color)} & Whole texture, scaled to fill \texttt{destRect}. \\[4pt]
+\texttt{Draw(tex, destRect, srcRect, color)} & Adds the source sub-rectangle. \\[4pt]
+\texttt{Draw(tex, destRect, srcRect, color, rot, origin, fx, depth)} & Full control,
+  destination-rectangle family --- note there is no separate \texttt{scale} parameter here at
+  all, since the destination rectangle already implies it. \\
+\bottomrule
+\end{longtable}
+\end{center}
+
+\texttt{origin} is the parameter every one of the fully-parameterized overloads shares, and it
+is worth a worked example precisely because \S\ref{sec:sdl-renderer-two-bugs} below names a
+real bug caused by getting a pivot convention wrong: \texttt{origin} is a point \emph{in
+texture space} (not screen space) that both the rotation pivot and the drawn position are
+measured relative to. Rotating a $64\times64$ sprite around its own center, rather than its
+top-left corner, means passing that texture's own center as \texttt{origin}:
+
+\begin{lstlisting}
+Vector2 center(texture.getWidthProperty() / 2.0f, texture.getHeightProperty() / 2.0f);
+float angle = totalSeconds; // radians; grows every frame for a continuous spin
+
+spriteBatch_->Draw(
+    texture, spritePosition, std::nullopt, Color::White,
+    angle, center, 1.0f, SpriteEffects::None, 0.0f);
+\end{lstlisting}
+
+Passing \texttt{Vector2::Zero} for \texttt{origin} instead --- the easy mistake, since it is
+also the type's default-constructed value --- rotates the sprite around its top-left corner,
+which reads as the sprite ``orbiting'' \texttt{spritePosition} in a circle rather than spinning
+in place; the visual symptom is easy to misdiagnose as a rotation-math bug when the actual
+cause is simply the wrong \texttt{origin}.
 
 \section{SpriteSortMode and SpriteEffects}
 
@@ -86,12 +145,25 @@ behavior exactly and is preserved rather than ``fixed,'' consistent with
 Chapter~\ref{ch:design-philosophy}'s fidelity-over-taste rule.
 
 Character encoding deserves its own note: CNA's \texttt{String} is UTF-8
-(\texttt{std::string}), and \cnaclass{SpriteFont}/\cnaclass{SpriteBatch} decode each glyph via
+(\texttt{std::string}), and \cnaclass{SpriteFont} / \cnaclass{SpriteBatch} decode each glyph via
 an internal \texttt{DecodeUtf8CodePoint} helper. Because \texttt{charcs} (the glyph-key type,
 per Chapter~\ref{ch:design-philosophy}'s type-alias table) is 16 bits wide, only Basic
 Multilingual Plane code points can serve as glyph keys at all; an invalid or truncated UTF-8
 sequence decodes to \texttt{'?'} rather than throwing, and the byte index always advances by
 at least one, so a malformed string can never cause an infinite decode loop.
+
+A worked example ties \texttt{MeasureString} directly to the simplest \texttt{DrawString}
+overload for the single most common real use --- centering a line of HUD text horizontally
+around a screen-space point, which needs the string's own measured width before it can compute
+where to start drawing:
+
+\begin{lstlisting}
+const std::string text = "Game Over";
+Vector2 size = font.MeasureString(text);           // Vector2(width, height) in pixels
+Vector2 centered(screenCenterX - size.X / 2.0f, screenCenterY - size.Y / 2.0f);
+
+spriteBatch_->DrawString(font, text, centered, Color::White);
+\end{lstlisting}
 
 \section{What SpriteFont's support matrix actually says}
 
@@ -106,6 +178,7 @@ Task~861). Combined-axis flip is not
 representable on any backend at all, for the \cnaclass{SpriteEffects} reason above.
 
 \section{Two real, fixed SDL\_RENDERER bugs, as a preview of Part~IV's method}
+\label{sec:sdl-renderer-two-bugs}
 
 Two of the fifteen real bugs found during the SDL\_RENDERER backend's own Phase~70 audit
 (Chapter~\ref{ch:sdl-renderer} covers the full audit) live directly in \cnaclass{SpriteBatch}
