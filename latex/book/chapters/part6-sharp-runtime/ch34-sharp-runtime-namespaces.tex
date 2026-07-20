@@ -11,23 +11,84 @@ proof of correctness, and independent audits went looking for what it might have
 \cnaclass{System::String} is deliberately \emph{not} a wrapper class at all --- its default
 constructor and destructor are both explicitly deleted, making it a pure static-method utility
 operating on ordinary \texttt{std::string} values (\texttt{IsNullOrEmpty}, \texttt{Compare},
-the \texttt{IndexOf}/\texttt{LastIndexOf} family, \texttt{Split}, \texttt{Substring},
-\texttt{Trim*}, \texttt{PadLeft}/\texttt{PadRight}). \cnaclass{Text::StringBuilder}, by
+the \texttt{IndexOf} / \texttt{LastIndexOf} family, \texttt{Split}, \texttt{Substring},
+\texttt{Trim*}, \texttt{PadLeft} / \texttt{PadRight}). \cnaclass{Text::StringBuilder}, by
 contrast, is a real, stateful, mutable buffer type --- the many-overloaded \texttt{Append}
 (string, char, int, double, float, bool, and the \texttt{longcs} alias from
 Chapter~\ref{ch:design-philosophy}), \texttt{AppendLine}, \texttt{Insert},
 \texttt{Remove}, \texttt{Replace}, and a nested \texttt{ChunkEnumerator} class mirroring real
-.NET's own chunked-buffer enumeration shape.
+.NET's own chunked-buffer enumeration shape --- real .NET's own \texttt{StringBuilder} is
+internally a linked list of separate character chunks, and \texttt{ChunkEnumerator} walks that
+list without copying; this port's \texttt{StringBuilder} is backed by a single
+\texttt{std::string} instead, so its own \texttt{ChunkEnumerator} always yields exactly one
+chunk holding the entire current buffer --- the enumeration \emph{shape} is preserved
+faithfully even though the simpler single-buffer implementation underneath never actually
+produces more than one chunk to walk.
+
+\begin{lstlisting}
+// Worked example: System::String is a pure static utility -- there is no
+// instance to construct, only free functions operating on std::string.
+std::vector<std::string> parts = System::String::Split(
+    "Content/Textures/hero.png", '/');
+std::string trimmed = System::String::Trim(parts.back());
+
+// Text::StringBuilder, by contrast, is a real mutable buffer.
+System::Text::StringBuilder sb;
+sb.Append("Score: ").Append(playerScore).AppendLine();
+sb.Append("Lives: ").Append(livesRemaining);
+
+for (const std::string& chunk : sb.GetChunks())
+{
+    // Exactly one iteration, always -- see the ChunkEnumerator note above.
+    RenderHudText(chunk);
+}
+\end{lstlisting}
 
 \section{Stream: a lightweight subset, honest about it}
 
 \cnaclass{IO::Stream}'s own class comment states its scope plainly: ``lightweight subset of
 the .NET Stream API.'' \texttt{Read(buffer, offset, count)}, \texttt{Close()}, and
-\texttt{getLengthProperty()} are pure virtual; \texttt{Write}/\texttt{WriteByte} default to
+\texttt{getLengthProperty()} are pure virtual; \texttt{Write} / \texttt{WriteByte} default to
 throwing \texttt{NotSupportedException} unless a writable stream subclass overrides them ---
 the same shape real .NET's own read-only stream implementations follow, rather than forcing
 every stream subclass to implement a full read/write/seek contract regardless of whether it
-actually supports all three.
+actually supports all three. \texttt{getCanWriteProperty()} defaults to false and
+\texttt{getCanReadProperty()} defaults to true, matching a read-only stream's honest self-report
+without requiring every subclass to override both just to state the obvious.
+
+\begin{lstlisting}
+// Worked example: the minimal real subclass this base class actually
+// requires -- only three overrides, matching a genuinely read-only
+// stream's real capabilities (Write/WriteByte are correctly inherited as
+// NotSupportedException-throwing, never called by a well-behaved reader).
+class MemoryBlobStream final : public System::IO::Stream
+{
+public:
+    explicit MemoryBlobStream(std::vector<SharpRuntime::bytecs> data)
+        : data_(std::move(data)) {}
+
+    SharpRuntime::intcs Read(SharpRuntime::bytecs buffer[],
+                             SharpRuntime::intcs offset, SharpRuntime::intcs count) override
+    {
+        SharpRuntime::intcs n = std::min<SharpRuntime::intcs>(
+            count, static_cast<SharpRuntime::intcs>(data_.size()) - position_);
+        std::memcpy(buffer + offset, data_.data() + position_, n);
+        position_ += n;
+        return n;
+    }
+
+    void Close() override {}
+
+    [[nodiscard]] SharpRuntime::intcs getLengthProperty() const override
+    {
+        return static_cast<SharpRuntime::intcs>(data_.size());
+    }
+
+private:
+    std::vector<SharpRuntime::bytecs> data_;
+    SharpRuntime::intcs position_ = 0;
+};
+\end{lstlisting}
 
 \section{The post-stabilization audit: distrusting a complete-looking task list on purpose}
 
@@ -55,6 +116,17 @@ real .NET returns \texttt{3}, and \texttt{Convert::ToInt32(3.5)} returned \textt
 .NET returns \texttt{4} --- and, more strikingly, \texttt{ToUInt32(double)}'s own doc comment
 already said \texttt{"(truncates)"}, as though the wrong behavior had been documented as
 intentional rather than caught as a bug.
+
+\begin{lstlisting}
+// Worked example: the exact repro that caught this bug, and what
+// Convert::ToInt32(double) returns now that it implements real
+// round-half-to-even rounding instead of a bare static_cast<int>().
+assert(System::Convert::ToInt32(2.9) == 3);  // was 2 before the fix
+assert(System::Convert::ToInt32(3.5) == 4);  // was 3 before the fix -- .NET
+                                              // rounds 3.5 up to 4, not to
+                                              // the nearer *even* integer,
+                                              // since 4 is already even
+\end{lstlisting}
 
 \section{A second, independent audit, and what sanitizers found that reasoning alone did not}
 

@@ -15,8 +15,8 @@ what's happened since — trust the conversation over this file in that case.
 numbering). Chapters 25–48 = former Volume II (Parts V–IX, renumbered +24). Appendices A–F.
 Full renumbering table is in `PLAN.md`'s merge session-log entry.
 
-**All eight Part V chapters (25-32) have a first real expansion pass**, and **Chapter 33
-(Part VI's first chapter) now does too.** Full per-chapter detail (exact line counts, which
+**All eight Part V chapters (25-32) have a first real expansion pass**, and **Chapters 33-34
+(Part VI's first two chapters) now do too.** Full per-chapter detail (exact line counts, which
 headers were read, every verified finding and worked example added) lives in `PLAN.md`'s
 session log — this file only summarizes. The pattern every one of these nine chapters
 followed: read the real headers/`.cpp` files for classes already named in the chapter's prose,
@@ -28,18 +28,33 @@ chapter before assuming which kind of gap it has.
 
 **Milestone: every Part V chapter (25-32) has a first pass**, none at their final page targets
 yet (roughly 3-10 of a 30-70-page target each — this was a breadth pass, not a depth pass).
-**Chapter 33 (Sharp Runtime Overview)** also got a first pass this session: 116 → 167 lines,
-~4 → ~5 of a ~40-page target — worked examples for `MulticastAction`'s token-based
-`Add`/`Remove` (the re-parenting use case named in its own header) and `Task::ContinueWith`,
-plus the real finding that `ContinueWith` always runs its continuation synchronously and
-inline (no thread pool/scheduler exists in this port at all).
+**Chapter 33 (Sharp Runtime Overview)** got a first pass: 116 → 167 lines, ~4 → ~5 of a
+~40-page target — worked examples for `MulticastAction`'s token-based `Add`/`Remove` (the
+re-parenting use case named in its own header) and `Task::ContinueWith`, plus the real finding
+that `ContinueWith` always runs its continuation synchronously and inline (no thread
+pool/scheduler exists in this port at all).
 
-Volume currently compiles to **283 pages, 0 undefined references, 0 duplicate-label
+**Chapter 34** also got a first pass, plus a **documentation-drift catch worth knowing about**:
+PLAN.md's own table row for Chapter 34 was stale — it described "Full docs for
+TimeSpan/EventHandler/Stream/collections," but the chapter's real `\chapter{}` title is "Sharp
+Runtime: Strings, Streams, and a Real Audit History," and TimeSpan/EventHandler are already
+covered in Chapter 33 (added last session), not here. PLAN.md's table row is now corrected to
+describe the chapter's actual scope (String/StringBuilder, Stream, and two post-stabilization
+audit narratives) — if you see PLAN.md's per-chapter description not matching what a chapter's
+actual `\chapter{}` title/content says, trust the actual file and correct the table row, the
+same way this project has caught and corrected its own stale claims before (see CLAUDE.md's
+".xnb reader doesn't exist" precedent). Chapter 34 itself: 90 → 162 lines, ~3 → ~5 of a
+~70-page target (that target may need revisiting given the corrected, narrower actual scope).
+Added the `StringBuilder::ChunkEnumerator`-always-one-chunk finding and three worked examples
+(`String`/`StringBuilder` usage, a minimal `Stream` subclass, and the exact
+`Convert::ToInt32` round-half-to-even repro the prose already named numerically).
+
+Volume currently compiles to **285 pages, 0 undefined references, 0 duplicate-label
 warnings** (index count not re-checked this session — verify before quoting it).
 
 ### The `/`-spacing overfull-hbox defect class — three known variants, all with proven fixes
 
-Every chapter touched this session (25 through 33) has needed at least one of these. Treat
+Every chapter touched this session (25 through 34) has needed at least one of these. Treat
 this as a **routine check on every batch**, not a one-off — run the Python regex pass
 (`re.sub(r'\}/(\\texttt\{|\\cnaclass\{)', r'} / \1', text)`) over any file you touch before the
 first build of a batch, then manually grep for `}/%` afterward (the regex doesn't catch it):
@@ -67,15 +82,15 @@ first build — the routine is working.
 
 ## What to do next
 
-1. **Continue through Part VI** (Chapters 34-37: Sharp Runtime Namespaces, Parity Philosophy,
-   EasyGL Deep Dive, free-direct Deep Dive) using the same approach: read the real headers for
-   classes already named in the prose, check whether the gap is "add worked examples" (as it
-   has been for the last six chapters) or something else, and add 1-3 worked examples plus at
-   least one new verified finding. **Chapter 34 (Sharp Runtime Namespaces) has by far the
-   largest gap in this part — 90 lines against a 70-page target** (TimeSpan/EventHandler/
-   Stream/collections), worth prioritizing. **Chapter 37 (free-direct Deep Dive) is explicitly
-   frozen per author confirmation on 2026-07-20 — "stays marginal," do NOT expand it**; skip it
-   entirely regardless of how thin it looks.
+1. **Continue through Part VI** (Chapters 35-37: Parity Philosophy, EasyGL Deep Dive,
+   free-direct Deep Dive) using the same approach: read the real headers for classes already
+   named in the prose, check whether the gap is "add worked examples" (as it has been for the
+   last seven chapters) or something else, add 1-3 worked examples plus at least one new
+   verified finding, and check PLAN.md's own table-row description against the chapter's
+   actual `\chapter{}` title/content before trusting it (Chapter 34 turned out to have a stale
+   description this session). **Chapter 37 (free-direct Deep Dive) is explicitly frozen per
+   author confirmation on 2026-07-20 — "stays marginal," do NOT expand it**; skip it entirely
+   regardless of how thin it looks.
 2. **After Part VI, continue to Parts VII-IX** (Chapters 38-48): Cross-platform engineering,
    Porting/practice/roadmap — none touched yet this session.
 3. **Alternatively, return to Part V for real depth**: every Ch.25-32 chapter has a first pass

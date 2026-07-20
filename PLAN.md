@@ -177,7 +177,7 @@ ever needed).
 | 31 | Avatar | 179 (was 131) | 55 | Worked examples for the faithful-vs-real-rendering bridge (EnableRealRenderingEXT/DrawRealEXT) and wardrobe hot-swapping (AttachPartEXT/RemovePartEXT), grounded in real headers | **In progress (~4 of ~55 pages)** |
 | 32 | Storage | 124 (was 78) | 30 | Worked examples for the full device-selection-to-open-container lifecycle and file read/write, plus the unique_ptr-ownership finding, grounded in real headers | **In progress (~3 of ~30 pages)** |
 | 33 | Sharp Runtime Overview | 167 (was 116) | 40 | Worked examples for MulticastAction token-based removal and Task::ContinueWith's synchronous-execution contract, grounded in real headers | **In progress (~5 of ~40 pages)** |
-| 34 | Sharp Runtime Namespaces | 90 | 70 | Full docs for TimeSpan/EventHandler/Stream/collections + examples | Not started |
+| 34 | Sharp Runtime Namespaces | 162 (was 90) | 70 | **Table description is stale** — the chapter's real title/scope is "Strings, Streams, and a Real Audit History" (String/StringBuilder, Stream, and the two post-stabilization audit narratives); TimeSpan/EventHandler are already covered in Chapter 33, not here. Added worked examples for String/StringBuilder, a minimal Stream subclass, and the Convert::ToInt32 rounding-bug repro | **In progress (~5 of ~70 pages)** |
 | 35 | Parity Philosophy | 111 | 35 | More worked deviation examples | Not started |
 | 36 | EasyGL Deep Dive | 112 | 55 | Deeper coverage | Not started |
 | 37 | free-direct Deep Dive | 65 | ~2 (no change) | **Stays marginal per author confirmation 2026-07-20 — do not expand** | N/A — intentionally frozen |
@@ -864,3 +864,25 @@ current real total of 266 pages.
   167 lines (~4 to ~5 of a ~40-page target). Volume recompiled clean (283 pages total, 0
   undefined references, 0 duplicate-label warnings); all five of the chapter's own pages
   verified by rendering to PNG and reading them back.
+- **2026-07-20 (same session, "pokracuj"):** Chapter 34 — first expansion pass. **Documentation
+  drift caught and corrected**, the same discipline this whole project holds itself to: this
+  table row's own description ("Full docs for TimeSpan/EventHandler/Stream/collections") is
+  stale — the chapter's actual `\chapter{}` title is "Sharp Runtime: Strings, Streams, and a
+  Real Audit History," and its real content is `String`/`StringBuilder`, `Stream`, and two
+  post-stabilization audit narratives; `TimeSpan`/`EventHandler` are already covered in Chapter
+  33, added just last session, not in this chapter at all. Corrected the table row above rather
+  than silently reading the stale description and expanding the wrong scope. Read `String.hpp`,
+  `Text/StringBuilder.hpp`, and `IO/Stream.hpp` directly. Added one real detail not previously
+  in the text: `StringBuilder::ChunkEnumerator` always yields exactly one chunk, because unlike
+  real .NET's internal linked list of separate character chunks, this port's `StringBuilder` is
+  backed by a single `std::string` — the enumeration *shape* is preserved faithfully even
+  though the simpler implementation underneath never produces more than one chunk to walk.
+  Added three worked examples: `String`'s pure-static-utility usage (`Split`/`Trim`) alongside
+  `StringBuilder`'s real mutable-buffer usage; a minimal three-override `Stream` subclass
+  matching the base class's actual read-only contract; and the exact `Convert::ToInt32`
+  round-half-to-even repro the chapter's own prose already named numerically
+  (`ToInt32(2.9) == 3`, `ToInt32(3.5) == 4`), now shown as runnable assertions rather than only
+  described. Chapter grows from 90 to 162 lines (~3 to ~5 of a ~70-page target — note the
+  target itself may need revisiting given the corrected, narrower actual scope). Volume
+  recompiled clean (285 pages total, 0 undefined references, 0 duplicate-label warnings); all
+  four of the chapter's own pages verified by rendering to PNG and reading them back.
