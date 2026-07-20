@@ -174,7 +174,7 @@ ever needed).
 | 28 | Devices and Sensors | 208 (was 115) | 45 | Worked examples for Accelerometer/VibrateController/Camera grounded in real headers, plus the SetCurrentValueAndMarkDataValid race-closing finding and the vibrate intensity-zero-is-not-Stop() finding | **In progress (~6 of ~45 pages)** |
 | 29 | GamerServices | 169 (was 117) | 55 | Worked examples for SignedInGamer achievements/presence, LeaderboardWriter scoring, and Guide's real overlay message-box UI, grounded in real headers | **In progress (~5 of ~55 pages)** |
 | 30 | Networking | 170 (was 125) | 70 | Worked examples for NetworkSession creation/GamerJoined lifecycle and PacketWriter/PacketReader send-receive with the Color asymmetry gotcha, grounded in real headers | **In progress (~5 of ~70 pages)** |
-| 31 | Avatar | 131 | 55 | Full Avatar/SkinnedModelEXT docs + examples | Not started |
+| 31 | Avatar | 179 (was 131) | 55 | Worked examples for the faithful-vs-real-rendering bridge (EnableRealRenderingEXT/DrawRealEXT) and wardrobe hot-swapping (AttachPartEXT/RemovePartEXT), grounded in real headers | **In progress (~4 of ~55 pages)** |
 | 32 | Storage | 78 | 30 | Full StorageDevice/StorageContainer docs + examples | Not started |
 | 33 | Sharp Runtime Overview | 116 | 40 | Deeper architectural detail | Not started |
 | 34 | Sharp Runtime Namespaces | 90 | 70 | Full docs for TimeSpan/EventHandler/Stream/collections + examples | Not started |
@@ -801,3 +801,25 @@ current real total of 266 pages.
   grows from 125 to 170 lines (~4 to ~5 of a ~70-page target). Volume recompiled clean (281
   pages total, 0 undefined references, 0 duplicate-label warnings); all four of the chapter's
   own pages verified by rendering to PNG and reading them back.
+- **2026-07-20 (same session, "pokracuj"):** Chapter 31 (Avatar) — first expansion pass. Same
+  gap shape as 28/29/30 once more: the prose (the faithful base API's provable inertness, the
+  separate SkinnedModelEXT real-rendering extension, the appearance-tint invention, the
+  content-pipeline bug history) was already dense and accurate, but zero worked examples
+  existed. Read `SkinnedModelEXT.hpp`, `AvatarRenderer.hpp`, and `AvatarAppearanceEXT.hpp`
+  directly. Added one real detail not previously in the text: `SkinnedModelEXT::AttachPartEXT`/
+  `RemovePartEXT`'s own history had two real, found-and-fixed bugs — a genuine GPU-resource
+  leak (erasing a part directly from the public `Parts` vector only discarded a non-owning
+  descriptor, never freeing the underlying `VertexBuffer`/`IndexBuffer`/`ModelMeshPart`/
+  `Texture2D`) and a real ordering bug (re-attaching a same-named replacement part, e.g.
+  swapping a hairstyle at runtime, used to render both the old and new part simultaneously
+  because `AttachPartEXT` only ever appended, until it was changed to remove any same-named
+  part first). Added two worked examples: the full faithful-versus-real-rendering bridge
+  (`AvatarRenderer` construction, `EnableRealRenderingEXT`, `SetAppearanceEXT`, the per-frame
+  `DrawRealEXT` call); and a wardrobe hot-swap via `AttachPartEXT` demonstrating the
+  replace-by-name fix. Also proactively fixed two pre-existing instances of the `/`-spacing
+  overfull-hbox defect class found while editing this file (one in this session's own new
+  content, one left over from before this session). Chapter grows from 131 to 179 lines (~4 to
+  ~4 of a ~55-page target — line growth this pass came mostly from prose depth per topic
+  rather than page count, since dense worked-example code blocks compress efficiently). Volume
+  recompiled clean (281 pages total, 0 undefined references, 0 duplicate-label warnings); all
+  four of the chapter's own pages verified by rendering to PNG and reading them back.

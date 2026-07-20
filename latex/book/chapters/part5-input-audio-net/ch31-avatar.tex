@@ -32,7 +32,7 @@ requires exactly 1{,}021 bytes and throws otherwise, a real format that was neve
 documented and cannot be reverse-engineered from the reference assembly alone.
 \texttt{CreateRandom()} --- despite its name --- never actually randomizes anything; both
 overloads always return an all-zero, invalid description, and the second overload's
-\cnaclass{AvatarBodyType} parameter is not read at all. \texttt{BeginGetFromGamer}/%
+\cnaclass{AvatarBodyType} parameter is not read at all. \texttt{BeginGetFromGamer} /
 \texttt{EndGetFromGamer} complete synchronously (a ``fully synchronous fake-async
 operation,'' in the project's own words) and \texttt{EndGetFromGamer} always returns the same
 all-zero, invalid description regardless of which gamer was actually passed in.
@@ -51,7 +51,7 @@ support is limited.''
 
 Real avatar rendering in CNA does not live inside the classes above at all --- it lives in a
 structurally independent, entirely \texttt{NOXNA} system, \cnaclass{SkinnedModelEXT}, built
-specifically because \cnaclass{Model}/\cnaclass{ModelMesh} (Chapter~12's models-and-meshes
+specifically because \cnaclass{Model} / \cnaclass{ModelMesh} (Chapter~12's models-and-meshes
 coverage) encode a rigid, per-mesh parent-bone hierarchy --- the wrong shape entirely for
 real per-vertex GPU skinning. \cnaclass{SkinnedModelEXT} owns its own bone hierarchy (a
 parent-index array, local bind poses, and global inverse bind poses), its own named animation
@@ -73,6 +73,54 @@ was never enabled in the first place. Nothing about this opt-in path changes wha
 that never calls \texttt{EnableRealRenderingEXT} sees exactly the inert behavior described
 above, unchanged.
 
+\begin{lstlisting}
+// Worked example: the same AvatarRenderer instance, opted into real
+// rendering. The AvatarDescription passed to the constructor still goes
+// through the faithful, all-zero-invalid CreateRandom() path above -- it
+// is never read by the real-rendering side at all, which draws entirely
+// from the separately-loaded SkinnedModelEXT instead.
+AvatarDescription desc = AvatarDescription::CreateRandom();
+AvatarRenderer renderer(&desc);
+
+auto model = std::make_shared<SkinnedModelEXT>(LoadSkinnedModel("Content/Avatar/base.skinnedmodel.json"));
+renderer.EnableRealRenderingEXT(*graphicsDevice, model);
+renderer.SetAppearanceEXT(AvatarAppearanceEXT());  // default skin/hair/garment tints
+
+// In Draw(), called every frame:
+renderer.setWorldProperty(Matrix::Identity);
+renderer.setViewProperty(camera.View);
+renderer.setProjectionProperty(camera.Projection);
+renderer.DrawRealEXT("Idle", elapsedClipTime, /* loop */ true);
+\end{lstlisting}
+
+\subsection{Wardrobe hot-swapping: a real, found-and-fixed leak and a real ordering bug}
+
+\cnaclass{SkinnedModelEXT}\texttt{::AttachPartEXT} lets an independently-loaded wardrobe piece
+--- a hairstyle, a shirt, built separately by the same content pipeline against the same
+canonical skeleton --- actually be worn by an already-loaded, running avatar at runtime, not
+just converted offline; it requires the incoming piece to share this model's exact bone count,
+the one cheap check available to catch an obviously mismatched skeleton. Two real bugs were
+found and fixed in this specific path. First, a genuine GPU-resource leak: removing a part by
+erasing it directly from the public \texttt{Parts} vector --- the only approach available
+before \texttt{RemovePartEXT} existed --- only ever discarded a non-owning descriptor,
+never releasing the underlying \cnaclass{VertexBuffer} / \cnaclass{IndexBuffer} /
+\texttt{ModelMeshPart} / \cnaclass{Texture2D} it pointed at; \texttt{RemovePartEXT} now also
+erases the matching entries from this model's own owned-resource vectors, so the real GPU
+memory is actually freed. Second, a real ordering bug: re-attaching a same-named replacement
+part (swapping hairstyles at runtime, the exact scenario this feature exists for) used to
+render \emph{both} the old and new part simultaneously, because \texttt{AttachPartEXT} only
+ever appended; it now removes any existing part(s) sharing the incoming part's name --- via
+\texttt{RemovePartEXT}, freeing their GPU resources too --- before appending the replacement.
+
+\begin{lstlisting}
+// Worked example: swapping a hairstyle on a running, already-rendering
+// avatar. AttachPartEXT's replace-by-name fix means the old hair part is
+// both visually replaced AND its GPU resources freed, not just visually
+// obscured by a second overlapping part.
+SkinnedModelEXT newHair = LoadSkinnedModel("Content/Avatar/Wardrobe/spikyhair.skinnedmodel.json");
+avatarModel->AttachPartEXT(std::move(newHair));  // replaces any existing "...Hair" part
+\end{lstlisting}
+
 \subsection{Appearance: necessarily invented, not reverse-engineered}
 
 \cnaclass{AvatarAppearanceEXT} provides skin/hair/garment tint colors --- and its own
@@ -86,14 +134,14 @@ than a guess.
 
 \subsection{Real bugs found building the content pipeline}
 
-A dedicated \texttt{.skinnedmodel.json}/\texttt{.skeleton.bin}/\texttt{.clip.bin} content
+A dedicated \texttt{.skinnedmodel.json} / \texttt{.skeleton.bin} / \texttt{.clip.bin} content
 pipeline loads \cnaclass{SkinnedModelEXT} assets, and building it end to end surfaced three
 genuine, worth-naming bugs. Manifest asset paths originally resolved against the content
 root rather than the manifest file's own directory, breaking any subdirectory-organized asset
 bundle --- fixed to resolve relative to the manifest itself. A genuine C\texttt{++}
 unspecified-evaluation-order bug corrupted keyframe data: chaining several
 \texttt{reader.Read<float>()} calls directly as constructor arguments for a
-\cnaclass{Vector3}/\cnaclass{Quaternion} scrambled component order, because C\texttt{++} does
+\cnaclass{Vector3} / \cnaclass{Quaternion} scrambled component order, because C\texttt{++} does
 not guarantee left-to-right evaluation of function arguments the way a reader might assume ---
 fixed by reading each component into a named local first. And the asset-conversion tooling's
 own bone-hierarchy reordering step needed a corresponding remap of inverse bind matrices and
@@ -124,7 +172,7 @@ of this chapter's story running at once.
 \midrule
 Purpose & Byte-exact port of real XNA~4.0 & CNA-original, opt-in real renderer \\
 Bone rig & Fixed 71-bone array, always zero & Independent count (\raisebox{0.5ex}{\texttildelow}50--65), real skeleton \\
-Draw() & Permanent no-op & Real \cnaclass{GraphicsDevice}/\cnaclass{SkinnedEffect} draw \\
+Draw() & Permanent no-op & Real \cnaclass{GraphicsDevice} / \cnaclass{SkinnedEffect} draw \\
 Enabled by default & Yes & No --- requires explicit opt-in \\
 \bottomrule
 \end{tabular}
