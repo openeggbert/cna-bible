@@ -14,17 +14,17 @@ model genuinely diverges from FNA's own: FNA re-queries SDL fresh every time
 \texttt{GetState()} is called; CNA instead accumulates input state as SDL events are pumped,
 and \texttt{GetState()} is a pure read of that accumulated snapshot. The pipeline runs in one
 direction: \texttt{Game::PollEvents()} calls \texttt{SDL\_PollEvent} once per frame, funneling
-every event through a single dispatcher, \texttt{SdlInputBridge::ProcessEvent}, which updates
-\texttt{InputManager}'s internal state, \texttt{TextInputEXT}'s internal state, and
-\cnaclass{TouchPanel}'s gesture detector as appropriate; \texttt{Keyboard}/\texttt{Mouse}/%
-\texttt{GamePad}/\texttt{TouchPanel::GetState()} then just read that snapshot back.
+every event through a single dispatcher --- \texttt{SdlInputBridge::ProcessEvent} --- which
+updates \texttt{InputManager}'s internal state, \texttt{TextInputEXT}'s internal state, and
+\cnaclass{TouchPanel}'s gesture detector as appropriate; \texttt{Keyboard} / \texttt{Mouse} /
+\texttt{GamePad} / \texttt{TouchPanel::GetState()} then just read that snapshot back.
 \texttt{FrameworkDispatcher::Update()} (this book's game-loop chapter) drives
 \cnaclass{TouchPanel}'s own per-frame gesture update. For ordinary once-per-frame calling
 code this is behaviorally equivalent to FNA's approach; the one place it is not is calling
 \texttt{GetState()} twice within the same frame, which returns two identical snapshots in
 CNA where FNA might observe a change in between. This entire pipeline is deliberately
 single-threaded and unsynchronized --- safe only because both halves (the event pump and the
-\texttt{Update}/\texttt{Draw} reads) run on the same game-loop thread, matching both SDL's own
+\texttt{Update} / \texttt{Draw} reads) run on the same game-loop thread, matching both SDL's own
 requirement that events be pumped on the video thread and XNA/FNA's own single-threaded
 assumption.
 
@@ -53,6 +53,64 @@ volume up/down --- and simply cannot round-trip through the \texttt{EXT} scancod
 helper, matching an identical omission in FNA's own key/scancode maps rather than being a
 CNA-specific gap.
 
+\subsection{Full method reference: KeyboardState and Keyboard's EXT surface}
+
+\cnaclass{KeyboardState}'s own public surface, read directly from its header, is smaller than
+its internal \texttt{std::unordered\_set<Keys>} storage might suggest:
+
+\begin{description}
+\item[\texttt{KeyboardState(std::initializer\_list<Keys> keys)}] the ordinary way application
+  and test code constructs one directly --- \texttt{KeyboardState\{Keys::W, Keys::LeftShift\}}
+  for a manually-composed state.
+\item[\texttt{getItem(Keys key)} / \texttt{operator[](Keys key)}] both return a
+  \cnaclass{KeyState} (\texttt{Down} or \texttt{Up}) for one key --- the indexer form XNA
+  itself exposes as \texttt{keyboardState[Keys.W]}.
+\item[\texttt{IsKeyDown(key)} / \texttt{IsKeyUp(key)}] the ordinary boolean queries --- what
+  almost all application code actually calls.
+\item[\texttt{GetPressedKeys()}] returns every currently-down key as an ascending-sorted
+  \texttt{std::vector<Keys>} --- the ascending-sort guarantee is explicit and load-bearing:
+  it is part of the observable contract this chapter's own intro named as what CNA
+  deliberately preserves even though the backing storage (a hash set) has no inherent order
+  of its own.
+\end{description}
+
+Beyond \cnaclass{KeyboardState} itself, \cnaclass{Keyboard} (the static entry point) exposes a
+cluster of \texttt{EXT} methods with no FNA equivalent, all revolving around one real gap
+XNA's own \cnaclass{Keys} enum has: it is fundamentally a \emph{layout-dependent} enum (its
+values correspond to US-QWERTY key positions and their typical labels), while SDL3 itself
+tracks both a layout-independent \emph{scancode} (physical key position) and a
+layout-\emph{dependent} keycode. \texttt{GetKeyFromScancodeEXT(scancode)} and its inverse
+direction let a caller translate between the two --- the mechanism a non-US keyboard layout
+needs to implement ``WASD, but by physical position rather than by label'' correctly.
+\texttt{GetModStateEXT()} returns the live modifier-key bitmask (shift/ctrl/alt/etc.)
+\cnaclass{Keys} alone cannot represent as a single down/up state per key.
+\texttt{GetScancodeNameEXT} / \texttt{GetKeyNameEXT} (and their name-to-key inverses) return a
+human-readable, current-layout-aware label for a key or scancode --- what a ``press any key to
+continue'' or key-rebinding UI should actually display, since \texttt{Keys::W} should read as
+``Z'' on an AZERTY layout, not literally ``W''.
+
+\begin{lstlisting}
+// Worked example: physical-position movement keys that stay correct on a
+// non-QWERTY layout -- the real reason GetKeyFromScancodeEXT exists.
+// WASD's physical positions, expressed as scancodes rather than as the
+// QWERTY-specific Keys::W/A/S/D values directly.
+const Keys forwardKey = Keyboard::GetKeyFromScancodeEXT(Keys::W);
+const Keys leftKey    = Keyboard::GetKeyFromScancodeEXT(Keys::A);
+const Keys backKey     = Keyboard::GetKeyFromScancodeEXT(Keys::S);
+const Keys rightKey   = Keyboard::GetKeyFromScancodeEXT(Keys::D);
+
+// On an AZERTY keyboard, forwardKey now resolves to the physical key an
+// AZERTY user actually presses for "forward" (labelled Z, not W) --
+// GetKeyFromScancodeEXT(Keys::W) treats Keys::W as identifying the
+// physical scancode a US layout would call W, then maps that scancode
+// back through the *current* layout to find what key is physically there.
+const KeyboardState keyboard = Keyboard::GetState();
+if (keyboard.IsKeyDown(forwardKey))
+{
+    // move forward
+}
+\end{lstlisting}
+
 \section{Mouse}
 
 \cnaclass{Mouse} is static-only: \texttt{GetState()} and \texttt{SetPosition(x, y)}, the
@@ -63,7 +121,7 @@ how even an ostensibly backend-agnostic input call has to account for
 this book's per-backend presentation differences (its backend-architecture chapter).
 \cnaclass{MouseState} carries the expected X/Y, five buttons, and a cumulative,
 120-units-per-notch \texttt{ScrollWheelValue}; a \texttt{NOXNA} horizontal-scroll addition is
-deliberately excluded from \texttt{Equals}/\texttt{GetHashCode}/\texttt{ToString} specifically
+deliberately excluded from \texttt{Equals} / \texttt{GetHashCode} / \texttt{ToString} specifically
 so those stay byte-identical to FNA's own output despite the extra field existing. A wholly
 \texttt{NOXNA} class, \cnaclass{MouseCursor}, wraps \texttt{SDL\_Cursor*} with eleven lazily
 created, process-lifetime stock system cursors --- a case where CNA's design is deliberately
@@ -71,6 +129,65 @@ created, process-lifetime stock system cursors --- a case where CNA's design is 
 \texttt{PlatformDispose()} frees a shared stock cursor handle unconditionally, which can
 corrupt the shared handle if any other code still holds it; CNA makes \texttt{Dispose()} a
 safe no-op for the shared stock instances specifically to avoid that failure mode.
+
+\subsection{Full method reference: MouseState and Mouse's EXT surface}
+
+\cnaclass{MouseState} is a plain data carrier --- \texttt{X} / \texttt{Y}, five
+\cnaclass{ButtonState} properties (\texttt{LeftButton} / \texttt{RightButton}/%
+\texttt{MiddleButton} / \texttt{XButton1} / \texttt{XButton2}), the cumulative
+\texttt{ScrollWheelValue} already named above, and (\texttt{NOXNA}) a parallel
+\texttt{HorizontalScrollWheelValueEXT} for horizontal scroll, deliberately excluded from
+\texttt{Equals} / \texttt{GetHashCode} / \texttt{ToString} as already noted. \cnaclass{Mouse}
+itself, beyond \texttt{GetState()} and \texttt{SetPosition}, exposes a real, working relative
+(pointer-lock-style) mouse mode and a small cluster of window/capture-related \texttt{EXT}
+methods:
+
+\begin{description}
+\item[\texttt{IsRelativeMouseModeEXT}] (get/set)
+  toggles SDL's own relative mouse mode, where motion is reported as unbounded deltas rather
+  than an absolute, screen-clamped position --- the standard technique for an FPS-style camera
+  look. Both accessors are safe to call with no window at all (no published window handle and
+  no focused window): the getter simply reports \texttt{false} rather than querying SDL with a
+  null window (whose behavior SDL itself leaves undefined), and the setter is a silent no-op
+  for the same reason. Reading \texttt{InputManager::GetMouseState()} directly shows precisely
+  how the substitution works: every \texttt{SDL\_EVENT\_MOUSE\_MOTION} event accumulates into
+  a separate \texttt{RelativeDeltaX} / \texttt{RelativeDeltaY} pair regardless of mode, but
+  \texttt{MouseState}'s public \texttt{X} / \texttt{Y} only read from that accumulator --- and
+  reset it to zero immediately after --- while relative mode is active; otherwise \texttt{X}/%
+  \texttt{Y} report the ordinary absolute position. This is why \texttt{MouseState.X} / \texttt{Y}
+  genuinely mean two different things depending on \texttt{IsRelativeMouseModeEXT}, not just a
+  documentation convention.
+\item[\texttt{SetPosition(x, y)}] is itself a documented no-op while relative mouse mode is
+  active --- read directly from \texttt{Mouse.cpp}: the method's very first check returns
+  immediately if \texttt{getIsRelativeMouseModeEXTProperty()} is true, before ever calling
+  SDL's warp function, since an absolute position warp is meaningless once the mouse is
+  reporting relative deltas instead.
+\item[\texttt{SetCaptureEXT(enabled)}] engages OS-level mouse capture (input keeps arriving
+  even if the cursor leaves the window bounds) --- distinct from relative mode, and combinable
+  with it.
+\item[\texttt{GetGlobalPositionEXT} / \texttt{WarpGlobalEXT}] read or set the mouse position in
+  \emph{desktop} (not window-relative) coordinates --- the form a multi-window or
+  multi-monitor application needs, where an ordinary \texttt{GetState()} position is
+  meaningless across window boundaries.
+\item[\texttt{ClickedEXT}] a \texttt{NOXNA System::MulticastAction<int>} event (Chapter~34
+  covers this \texttt{sharp-runtime} type in full) firing once per real click with the button
+  index, for code that wants a discrete click event rather than polling button state every
+  frame.
+\end{description}
+
+\begin{lstlisting}
+// Worked example: an FPS-style mouse-look camera using relative mouse
+// mode -- SetPosition would be silently ineffective here, which is
+// exactly the point: relative mode reports motion as deltas instead.
+game.setIsMouseVisibleProperty(false);
+Mouse::setIsRelativeMouseModeEXTProperty(true);
+
+// Each frame: read accumulated relative motion, not an absolute position.
+const MouseState mouse = Mouse::GetState();
+const float yaw   = mouse.X * mouseSensitivity;
+const float pitch = mouse.Y * mouseSensitivity;
+cameraRotation = Quaternion::CreateFromYawPitchRoll(yaw, pitch, 0.0f) * cameraRotation;
+\end{lstlisting}
 
 \section{GamePad}
 
@@ -99,6 +216,68 @@ producing $-0.5$ in CNA against FNA's $-0.50001$) --- fixed to match FNA's asymm
 exactly, a good small example of how ``obviously correct-looking'' code can still diverge
 from a reference implementation's own specific numerical quirks.
 
+\subsection{Full method reference: GamePadState and the three GamePadDeadZone modes}
+
+\cnaclass{GamePadState} composes four sub-structures, each a plain value carrier read directly
+from its header: \cnaclass{GamePadThumbSticks} (\texttt{Left} / \texttt{Right}, each a
+\cnaclass{Vector2}), \cnaclass{GamePadTriggers} (\texttt{Left} / \texttt{Right}, each a scalar
+\texttt{float}), \cnaclass{GamePadButtons} (eleven \cnaclass{ButtonState} properties --- every
+face/shoulder/stick-click/back/start/big button --- plus a \texttt{ButtonStateFromFlag(Buttons)}
+convenience for looking one up by the \cnaclass{Buttons} flag enum instead of by name), and
+\cnaclass{GamePadDPad} (\texttt{Up} / \texttt{Down} / \texttt{Left} / \texttt{Right}, each a
+\cnaclass{ButtonState}). \cnaclass{GamePadState} itself adds \texttt{IsConnected},
+\texttt{PacketNumber} (increments whenever the underlying hardware state actually changes ---
+the standard XNA technique for detecting ``did anything change since I last checked'' without
+comparing every field by hand), and \texttt{IsButtonDown} / \texttt{IsButtonUp} convenience
+wrappers over the same \cnaclass{Buttons} flag enum.
+
+The dead-zone handling is worth reading precisely rather than assuming all three
+\cnaclass{GamePadDeadZone} modes merely differ in threshold size --- they differ in
+\emph{shape}. Reading \cnaclass{GamePadThumbSticks}'s constructor directly: \texttt{None}
+applies no filtering at all. \texttt{IndependentAxes} --- the one-argument
+\texttt{GamePad::GetState}'s own default choice --- excludes each axis's dead zone
+independently, one call to \texttt{ExcludeAxisDeadZone} per axis: a stick pushed diagonally
+near the dead-zone boundary can end up with one axis zeroed while the other still reports a
+nonzero value, a small directional distortion right at the boundary. \texttt{Circular} instead
+measures the stick's combined magnitude and excludes the dead zone radially, avoiding that
+per-axis distortion at the cost of the extra trigonometry. Both non-\texttt{None} modes also
+differ in \emph{clamp shape} after the dead zone is applied: \texttt{Circular} clamps the
+result to a unit \emph{circle}; \texttt{None} and \texttt{IndependentAxes} both clamp to a unit
+\emph{square} instead (independently per axis) --- so switching dead-zone modes can change a
+stick's maximum diagonal magnitude, not merely its small-input behavior.
+
+\begin{lstlisting}
+// Worked example: dead-zone-aware movement plus rumble feedback, choosing
+// Circular explicitly for the smoother diagonal response it gives over
+// the IndependentAxes default -- most noticeable exactly at the boundary
+// this book's own reading of GamePadThumbSticks's constructor identified.
+const GamePadState pad = GamePad::GetState(PlayerIndex::One, GamePadDeadZone::Circular);
+if (pad.getIsConnectedProperty())
+{
+    const Vector2 moveInput = pad.getThumbSticksProperty().getLeftProperty();
+    playerPosition += moveInput * moveSpeed * deltaSeconds;
+
+    if (pad.IsButtonDown(Buttons::A))
+    {
+        // Rumble briefly on jump -- SetVibration takes independent
+        // left/right motor strengths in [0, 1], matching real Xbox 360
+        // controllers' two distinct (low-frequency/high-frequency) motors.
+        GamePad::SetVibration(PlayerIndex::One, 0.0f, 0.6f);
+    }
+}
+\end{lstlisting}
+
+Beyond the strict surface, a handful of the \texttt{EXT} methods named earlier are worth a
+second, more concrete look: \texttt{GetGyroEXT} / \texttt{GetAccelerometerEXT} expose a modern
+controller's own built-in motion sensors (distinct from a host device's own sensors, covered
+later in this chapter) --- real only on hardware that actually reports them, and
+\texttt{GamePadCapabilities::getHasGyroEXTProperty()} / \texttt{getHasAccelerometerEXTProperty()}
+exist specifically so calling code can check before relying on either. \texttt{SetLightBarEXT}
+and \texttt{SetTriggerVibrationEXT} (independent per-trigger rumble motors, distinct from the
+two whole-controller motors \texttt{SetVibration} drives) are both real, modern-controller-only
+capabilities with no XNA-era precedent at all, gated the same way behind their own
+\texttt{GamePadCapabilities} flags.
+
 \section{Touch and gestures}
 
 \cnaclass{TouchPanel} is static-only (\texttt{MAX\_TOUCHES = 8}), providing
@@ -121,11 +300,84 @@ call \texttt{GetState()} changed observable behavior --- fixed by splitting the 
 into a pure state read plus a separate, genuinely once-per-frame
 \texttt{AdvanceTouchFrame()} step.
 
+\subsection{Full method reference: TouchCollection, TouchLocation, and GestureSample}
+
+\cnaclass{TouchCollection} (returned by \texttt{TouchPanel::GetState()}) is a fixed, per-frame
+snapshot of every currently-tracked touch, read directly from its header:
+\texttt{Count} / \texttt{IsConnected} (whether a touch device exists at all, distinct from
+whether any finger is currently down), the by-index \texttt{operator[]}, and the same general
+ordered-container surface Chapter~7's own \cnaclass{CurveKeyCollection} coverage already
+described --- \texttt{Contains} / \texttt{IndexOf}, a \texttt{NOXNA} \texttt{empty()}, and
+\texttt{NOXNA} iterator support for range-based \texttt{for}. Each \cnaclass{TouchLocation} inside it carries
+an \texttt{Id} (stable across frames for the same physical finger, the correct key for
+tracking one finger's motion over time), a \texttt{State} (\cnaclass{TouchLocationState}:
+\texttt{Pressed}, \texttt{Moved}, \texttt{Released}, or \texttt{Invalid} for a stale/expired
+entry), a \texttt{Position}, and (\texttt{NOXNA}) a \texttt{PressureEXT} reading on hardware
+that reports one. \cnaclass{GestureSample} (returned by \texttt{TouchPanel::ReadGesture()})
+carries a \texttt{GestureType}, a \texttt{Timestamp}, and up to two positions/deltas
+(\texttt{Position} / \texttt{Position2}, \texttt{Delta} / \texttt{Delta2}) --- the second pair used
+only by two-finger gestures like \texttt{Pinch}, left at their default for single-finger
+gestures.
+
+\begin{lstlisting}
+// Worked example: per-finger drag tracking using TouchLocation's stable
+// Id -- the field that makes tracking *one* finger's motion possible,
+// since a touch's index within the TouchCollection is not stable
+// frame-to-frame the way its Id is.
+const TouchCollection touches = TouchPanel::GetState();
+for (const TouchLocation& touch : touches)
+{
+    switch (touch.getStateProperty())
+    {
+    case TouchLocationState::Pressed:
+        activeDrags[touch.getIdProperty()] = touch.getPositionProperty();
+        break;
+    case TouchLocationState::Moved:
+        if (auto it = activeDrags.find(touch.getIdProperty()); it != activeDrags.end())
+        {
+            const Vector2 delta = touch.getPositionProperty() - it->second;
+            PanCamera(delta);
+            it->second = touch.getPositionProperty();
+        }
+        break;
+    case TouchLocationState::Released:
+    case TouchLocationState::Invalid:
+        activeDrags.erase(touch.getIdProperty());
+        break;
+    }
+}
+
+// Gestures are read separately from raw touches, and only the types
+// enabled via EnabledGestures are ever produced by ReadGesture().
+TouchPanel::setEnabledGesturesProperty(GestureType::Pinch | GestureType::Flick);
+while (TouchPanel::getIsGestureAvailableProperty())
+{
+    const GestureSample gesture = TouchPanel::ReadGesture();
+    if (gesture.getGestureTypeProperty() == GestureType::Pinch)
+    {
+        // Position/Position2 are the two fingers' current positions;
+        // Delta/Delta2 (unused by single-finger gestures) hold their
+        // per-frame motion -- combine both to derive a zoom factor.
+        ZoomCamera(gesture.getPositionProperty(), gesture.getPosition2Property());
+    }
+}
+\end{lstlisting}
+
+Two details worth calling out precisely, both readable directly from the enum/property
+definitions rather than assumed: \texttt{EnabledGestures} is a genuine filter, not merely
+advisory --- \texttt{ReadGesture()} only ever returns gesture types the caller has opted into,
+so a UI that never enables \texttt{GestureType::Pinch} will never see one, even on hardware
+that fully supports it; and \texttt{GestureType} being a proper bit-flag enum (its values are
+powers of two, \texttt{Tap = 1} through \texttt{PinchComplete = 512}) means
+\texttt{EnabledGestures} is genuinely a combinable set, not a single choice --- the
+\texttt{|} composition in the worked example above is the ordinary, intended way to opt into
+more than one gesture type at once.
+
 \section{TextInputEXT and CNA-only NOXNA extensions}
 
 \texttt{TextInputEXT} is not itself a CNA invention --- FNA ships this same extension beyond
-the strict XNA~4.0 surface, and CNA ports it directly: \texttt{TextInput}/\texttt{TextEditing}
-events, \texttt{StartTextInput}/\texttt{StopTextInput}, on-screen-keyboard visibility, and
+the strict XNA~4.0 surface, and CNA ports it directly: \texttt{TextInput} / \texttt{TextEditing}
+events, \texttt{StartTextInput} / \texttt{StopTextInput}, on-screen-keyboard visibility, and
 input-rectangle placement. CNA layers three further, genuinely new members on top with no FNA
 analog at all: IME composition-candidate lists (an SDL3-only capability), and an explicit
 on-screen-keyboard/IME type hint.
@@ -166,5 +418,5 @@ to confirm order-independence. The fifteen formally blocked audit tasks are excl
 real-hardware-only checks (physical keyboard/mouse/gamepad/touchscreen/IME verification, and
 high-DPI display behavior) that cannot be automated at all, not gaps awaiting more
 engineering effort. One acknowledged, low-priority documentation gap remains: the
-\cnaclass{Joysticks}/\cnaclass{Sensors}/\cnaclass{Power} \texttt{NOXNA} extensions have solid
+\cnaclass{Joysticks} / \cnaclass{Sensors} / \cnaclass{Power} \texttt{NOXNA} extensions have solid
 fake-backend unit coverage but no demo-UI or manual-hardware verification pass yet.

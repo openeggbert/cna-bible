@@ -168,7 +168,7 @@ ever needed).
 
 | # | Chapter | Current (lines) | Target (pages) | Approach | Status |
 |---|---------|-----------------:|----------------:|----------|--------|
-| 25 | Input System | 170 | 70 | Full Keyboard/Mouse/GamePad/TouchPanel docs + examples | Not started |
+| 25 | Input System | 422 (was 170) | 70 | Full method references + worked examples added for KeyboardState/Keyboard's EXT scancode surface, MouseState/Mouse's relative-mouse-mode EXT surface, GamePadState/the three GamePadDeadZone modes, and TouchCollection/TouchLocation/GestureSample | **In progress (~8 of ~70 pages)** |
 | 26 | Audio System | 118 | 60 | Full SoundEffect family docs + examples | Not started |
 | 27 | Media | 103 | 45 | Full Song/MediaPlayer/MediaLibrary docs + examples | Not started |
 | 28 | Devices and Sensors | 115 | 45 | Full sensor API docs + examples | Not started |
@@ -568,3 +568,42 @@ current real total of 266 pages.
     **structural** one, not a content-expansion pass — no new page-count progress was made on
     any chapter's target in this entry; the per-chapter tables above are otherwise unchanged
     from the prior entry except for chapter/appendix number relabeling.
+- **2026-07-20 (same session, "pokracuj na nejake dalsi kapitole pote"):** Per the author's
+  explicit instruction to move to a different chapter after the merge, started Chapter 25
+  (Input System) — the first real expansion-pass work on any former-Volume-II chapter, since
+  Parts V–IX were completely untouched (0%) before this. Read the real headers for
+  `Keyboard`/`KeyboardState`, `Mouse`/`MouseState`, `GamePad`/`GamePadState`/
+  `GamePadCapabilities`/`GamePadThumbSticks`, and `TouchPanel`/`TouchCollection`/
+  `TouchLocation`/`GestureSample` directly, and added full method references + worked examples
+  for each: `Keyboard`'s `GetKeyFromScancodeEXT`/layout-independent scancode surface (worked
+  example: physical-position WASD that stays correct on AZERTY); `Mouse`'s relative-mouse-mode
+  EXT surface, with a real, verified mechanism finding — `InputManager::GetMouseState()`
+  substitutes `MouseState.X`/`Y` with an accumulated-then-reset relative-delta pair while
+  relative mode is active, meaning the same two fields genuinely mean different things
+  depending on mode, not just by documentation convention (worked example: FPS-style
+  mouse-look); `GamePadState`'s three `GamePadDeadZone` modes, with a precise finding read from
+  `GamePadThumbSticks`'s constructor — `IndependentAxes` excludes each axis independently (can
+  distort diagonal input right at the dead-zone boundary), `Circular` excludes radially by
+  magnitude instead, and the two also differ in post-dead-zone clamp shape (square vs. circle)
+  (worked example: dead-zone-aware movement plus rumble); `TouchCollection`/`TouchLocation`/
+  `GestureSample`, with a verified finding that `EnabledGestures` is a genuine filter (checked
+  via bitwise AND in `GestureDetector.cpp` before a gesture is ever enqueued), not merely
+  advisory (worked example: per-finger drag tracking by stable `Id`, plus a pinch-to-zoom
+  gesture example).
+  **Also found and fixed a real, pre-existing-pattern typographic defect while rebuilding**:
+  several `\texttt{A}/\texttt{B}` chains with no space around the slash are one unbreakable
+  LaTeX token when long enough, causing severe (up to 225pt/~3 inch) overfull-hbox overflows
+  that visibly ran text off the page edge — worst case, `SdlInputBridge::ProcessEvent` was cut
+  off mid-word in the chapter's own intro paragraph. Fixed by adding breaking spaces around
+  long `/`-joined texttt chains project-wide within this file (32 instances) and rewording the
+  two or three paragraphs where that alone wasn't enough (shortened two overlong `\item[]`
+  labels; restructured the intro sentence naming `SdlInputBridge::ProcessEvent`; reworded the
+  `GamePadDeadZone` paragraph). Verified via full rebuild that severe overflows are gone
+  (worst remaining is 36pt, comparable to pre-existing tolerance levels elsewhere in the book)
+  and by rendering the affected pages to PNG and reading them back. **This defect risk is worth
+  watching for in any future chapter with dense multi-method-name descriptions** — it wasn't
+  caught by the "build clean, check for undefined references" habit alone, since overfull-hbox
+  warnings are easy to skim past in a long build log; a targeted `grep -i overfull` pass
+  (comparing point-widths, not just presence) is what actually surfaced it here.
+  Chapter grows from 170 to 422 lines (~4 to ~8 of a ~70-page target). Volume recompiled clean
+  (270 pages total, 1138 index entries, 0 undefined references, 0 duplicate-label warnings).
