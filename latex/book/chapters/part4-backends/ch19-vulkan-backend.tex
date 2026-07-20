@@ -23,7 +23,7 @@ The single most serious historical bug on this backend, in the project's own wor
 its blend-state implementation was ``almost entirely fake'': one hardcoded blend equation was
 applied regardless of what \cnaclass{BlendState} actually requested, confirmed failing across
 five independent pixel tests before the fix. The fix replaced this with a genuine
-per-\cnaclass{Blend}/\cnaclass{BlendFunction} mapping, applied consistently across all nine
+per-\cnaclass{Blend} / \cnaclass{BlendFunction} mapping, applied consistently across all nine
 of this backend's own pipeline-creation call sites --- meaning the fix had to be threaded
 through every place a graphics pipeline object gets built, not just one central function.
 
@@ -49,7 +49,7 @@ alternative.
 Before its fix, occlusion queries on this backend were not merely inaccurate --- they were
 never connected to anything at all. This backend defers 3D and 2D draws into a pending-batch
 snapshot, recorded into real Vulkan commands only once per frame, well after
-\texttt{Begin()}/\texttt{End()} had already returned synchronously; queries therefore always
+\texttt{Begin()} / \texttt{End()} had already returned synchronously; queries therefore always
 reported zero, regardless of what was actually visible. The fix required resolving three
 genuinely non-obvious design questions: how to tag an individual pending draw with the query
 that should observe it; whether a single query may legitimately span multiple draw calls
@@ -60,8 +60,37 @@ plainly rather than silently assumed); and how per-frame query-pool resets need 
 sequenced before any render pass begins. Verified in both directions --- a visible quad
 producing a positive pixel count, an occluded quad behind a nearer opaque object producing
 none --- plus a genuine multi-draw-span case (two non-overlapping half-quads inside one
-\texttt{Begin}/\texttt{End} span, summing correctly), discriminating for real in this
+\texttt{Begin} / \texttt{End} span, summing correctly), discriminating for real in this
 project's own software Vulkan implementation.
+
+\subsection{A worked example: using an OcclusionQuery correctly on this backend}
+
+The real \cnaclass{OcclusionQuery} surface is small --- \texttt{Begin()}, \texttt{End()},
+\texttt{getIsCompleteProperty()}, \texttt{getPixelCountProperty()} --- and the standard
+visibility-culling pattern is exactly what the verification above tested directly:
+
+\begin{lstlisting}
+OcclusionQuery query(getGraphicsDeviceProperty());
+
+query.Begin();
+DrawBoundingProxyGeometry(occluderCandidate); // a cheap stand-in, not the real detailed mesh
+query.End();
+
+// One or more frames later, once rendering has actually reached the GPU:
+if (query.getIsCompleteProperty() && query.getPixelCountProperty() > 0) {
+    DrawFullDetailMesh(occluderCandidate); // visible -- worth the real draw cost
+}
+\end{lstlisting}
+
+The one genuine gotcha this backend's own verification surfaced, worth restating as a rule
+rather than only as a finding: a single query's \texttt{Begin()} / \texttt{End()} span may
+legitimately cover \emph{multiple} draw calls (useful for querying a whole cluster of small
+objects with one query instead of one per object), but only as long as every draw in that span
+stays within one render pass. A query spanning a render-pass boundary --- switching render
+targets, or anything else that closes and reopens a Vulkan render pass mid-span --- is not
+correctly summed on this backend today. A conservative rule that avoids the gap entirely:
+never let a render-target switch happen between an \cnaclass{OcclusionQuery}'s \texttt{Begin()}
+and \texttt{End()}.
 
 \section{Remaining limitation}
 \label{sec:vulkan-depthbias}
