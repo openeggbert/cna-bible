@@ -1,4 +1,90 @@
-\chapter{Sharp Runtime: The System Namespaces}
+\chapter{Sharp Runtime: Strings, Streams, and a Real Audit History}
 \label{ch:sharp-runtime-namespaces}
 
-\emph{[Placeholder --- full content pending in this book's next writing pass. See \texttt{PROGRESS.md} at the repository root for the current writing status.]}
+This chapter covers two smaller, practical corners of \texttt{sharp-runtime}'s API --- its
+text and stream types --- and then the part of its history most worth learning from: what
+happened when the project's own completed task tracker was deliberately \emph{not} trusted as
+proof of correctness, and independent audits went looking for what it might have missed.
+
+\section{String and StringBuilder: a static-only utility versus a real mutable buffer}
+
+\cnaclass{System::String} is deliberately \emph{not} a wrapper class at all --- its default
+constructor and destructor are both explicitly deleted, making it a pure static-method utility
+operating on ordinary \texttt{std::string} values (\texttt{IsNullOrEmpty}, \texttt{Compare},
+the \texttt{IndexOf}/\texttt{LastIndexOf} family, \texttt{Split}, \texttt{Substring},
+\texttt{Trim*}, \texttt{PadLeft}/\texttt{PadRight}). \cnaclass{Text::StringBuilder}, by
+contrast, is a real, stateful, mutable buffer type --- the many-overloaded \texttt{Append}
+(string, char, int, double, float, bool, and the \texttt{longcs} alias from
+Chapter~\ref{ch:design-philosophy} in Volume~I), \texttt{AppendLine}, \texttt{Insert},
+\texttt{Remove}, \texttt{Replace}, and a nested \texttt{ChunkEnumerator} class mirroring real
+.NET's own chunked-buffer enumeration shape.
+
+\section{Stream: a lightweight subset, honest about it}
+
+\cnaclass{IO::Stream}'s own class comment states its scope plainly: ``lightweight subset of
+the .NET Stream API.'' \texttt{Read(buffer, offset, count)}, \texttt{Close()}, and
+\texttt{getLengthProperty()} are pure virtual; \texttt{Write}/\texttt{WriteByte} default to
+throwing \texttt{NotSupportedException} unless a writable stream subclass overrides them ---
+the same shape real .NET's own read-only stream implementations follow, rather than forcing
+every stream subclass to implement a full read/write/seek contract regardless of whether it
+actually supports all three.
+
+\section{The post-stabilization audit: distrusting a complete-looking task list on purpose}
+
+\texttt{sharp-runtime}'s own ticket backlog --- 1{,}709 tickets across sixteen categories ---
+reached 100\% \texttt{done} at one point in the project's history. What happened next is the
+single most instructive episode in this project's own story, and worth recounting in full,
+because it is the same discipline Chapter~\ref{ch:project-practice} named as this whole
+ecosystem's most distinctive trait, applied at real scale: rather than treating a fully
+checked-off ticket table as proof the runtime was correct, the project commissioned a fresh,
+independent audit specifically built to distrust that conclusion. Seven parallel, read-only
+audit agents were dispatched across eight risk categories --- API inconsistencies,
+undocumented deviations from real .NET, remaining \texttt{NotImplementedException}s, partial
+or stub classes, platform-specific issues, exception-type mismatches, silently-wrong
+behavior, and missing high-risk test coverage --- each one required to verify every finding
+directly against real .NET source and against the project's own documented, accepted
+deviations list before it could be reported at all, specifically to filter out
+plausible-sounding but wrong findings before they ever reached a human.
+
+The result was twenty concrete findings --- nine high-severity, eight medium, three low ---
+filed as new tickets and subsequently fixed. One is worth naming in full, because of how
+quietly it could have shipped: \texttt{Convert::ToXxx(double/float)} was implemented as a
+bare \texttt{static\_cast<T>()}, meaning simple truncation rather than round-half-to-even
+rounding. A direct repro confirmed \texttt{Convert::ToInt32(2.9)} returned \texttt{2} where
+real .NET returns \texttt{3}, and \texttt{Convert::ToInt32(3.5)} returned \texttt{3} where real
+.NET returns \texttt{4} --- and, more strikingly, \texttt{ToUInt32(double)}'s own doc comment
+already said \texttt{"(truncates)"}, as though the wrong behavior had been documented as
+intentional rather than caught as a bug.
+
+\section{A second, independent audit, and what sanitizers found that reasoning alone did not}
+
+A further, separate audit produced seven more findings, six fixed in the same session ---
+among them a stream-backed ZIP archive implementation that never actually wrote its output
+back to the underlying stream in create or update mode, and five of this project's own
+destructors (spanning compression streams and XML writing) that could call
+\texttt{std::terminate()} if an I/O failure occurred during RAII cleanup, since a
+C\texttt{++} destructor that lets an exception escape terminates the program outright rather
+than propagating the failure the way a .NET \texttt{Dispose()} call safely could.
+
+A first-ever full run of the full sanitizer trio --- ThreadSanitizer, AddressSanitizer, and
+UndefinedBehaviorSanitizer --- found real bugs no amount of code review alone had caught:
+ThreadSanitizer found one genuine production deadlock (a \texttt{Channel} implementation
+missing a \texttt{notify\_all} call, a lost-wakeup bug affecting multiple blocked waiters)
+alongside three test-only races; AddressSanitizer found one confirmed heap-buffer-overflow (an
+aligned-reallocation helper copying the \emph{old}, smaller allocation's size into a newly
+enlarged buffer) plus five real memory leaks in XML document node creation; and
+UndefinedBehaviorSanitizer found one genuine undefined-behavior call reaching into vendored
+\texttt{miniz} code, from an empty vector's \texttt{.data()} pointer reaching a
+non-null-parameter-annotated function.
+
+\section{Why this history belongs in a book, not just a changelog}
+
+None of these bugs are individually remarkable --- a truncation-instead-of-rounding bug, a
+missed \texttt{notify\_all}, a leaking XML method. What is worth taking from this chapter is
+the project's own response to having a fully completed task tracker: rather than reading
+``100\% done'' as ``verified correct,'' it treated that state as precisely the moment a fresh,
+independently-skeptical audit was most valuable, and built that audit specifically to check
+claims against real .NET source rather than against the project's own prior conclusions. This
+is the same discipline \texttt{xna4-spec} auditing (Chapter~\ref{ch:xna4-spec-auditing})
+brings to CNA's own XNA surface, applied here one layer further down, to the foundation layer
+everything else in this book's Volume~I ultimately stands on.

@@ -1,4 +1,112 @@
 \chapter{easy-gl in Depth}
 \label{ch:easygl-deep-dive}
 
-\emph{[Placeholder --- full content pending in this book's next writing pass. See \texttt{PROGRESS.md} at the repository root for the current writing status.]}
+Volume~I introduced \texttt{easy-gl} as the OpenGL/OpenGLES wrapper behind CNA's
+\texttt{EASYGL} backend. This chapter goes one level deeper --- into its own layering, its
+capability-detection mechanism, and a real dependency Volume~I's overview did not have room
+to mention.
+
+\section{A layer Volume~I did not cover: meta-gl}
+
+\texttt{easy-gl}'s own README frames it as toolkit-independent, meaning independent of a
+windowing toolkit like SDL or Qt --- but it is not independent of a lower C\texttt{++} GL
+wrapper underneath it. \texttt{easy-gl} itself is built on a sibling project,
+\texttt{meta-gl}, which provides the actual procedural, typed, ownership-free OpenGL/GLES
+call surface (typed enum-class wrappers, \texttt{std::span}-based views, lightweight typed
+handles, no RAII of its own); \texttt{easy-gl} then layers real object-oriented, RAII,
+move-only ownership semantics on top. The dependency is real and direct in the build system
+(\texttt{meta-gl} is pulled in as a sibling \texttt{add\_subdirectory} and linked publicly),
+and in the source (19 of \texttt{easy-gl}'s own header files include \texttt{meta-gl} headers
+directly). The layering is worth remembering precisely because it clarifies what
+``toolkit-independent'' actually means here: independent of the host windowing/event toolkit,
+not independent of every other C\texttt{++} abstraction below it.
+
+\section{Device: initialization and the GLES-versus-desktop-GL detection mechanism}
+
+\cnaclass{easygl::Device} is the largest single entry point, covering initialization, the
+bulk of GL state (clear, viewport/scissor, blend --- including indexed, per-attachment blend
+functions for multiple render targets --- depth/stencil, culling, polygon/line mode, sample
+coverage), pixel readback (a bounds-checked \texttt{read\_pixels\_robust} alongside the plain
+form), the full draw-call family (instanced, indirect, ranged, base-vertex), compute
+dispatch, tessellation patch configuration, and debug facilities (labeled debug groups, a
+settable debug callback).
+
+\texttt{Device::initialize()}'s own GLES-versus-desktop-GL detection is a genuinely careful
+piece of code, not a simple string check: it calls \texttt{glGetString(Version)} and looks
+for the substring \texttt{"OpenGL ES"} to decide the API kind, then reads the version number
+via the modern \texttt{glGetIntegerv(MAJOR\_VERSION/MINOR\_VERSION)} query --- falling back to
+manually parsing the version string on an older context that predates that query, and
+specifically accounting for an ES-specific ten-character prefix offset (skipping past the
+literal \texttt{"OpenGL ES "} text) that a desktop-GL version string does not have. Extension
+enumeration branches the same way: GL~3.0-and-newer contexts use the modern, indexed
+\texttt{glGetStringi(Extensions, i)} query; older contexts fall back to splitting the legacy,
+single space-delimited \texttt{glGetString(GL\_EXTENSIONS)} string. Once this detection
+completes, \texttt{initialize()} hard-requires vertex array objects, shaders, programs,
+buffers, and basic rendering support, throwing an \texttt{easygl::Exception} immediately if
+any one of them is missing --- refusing to hand back a partially-functional device rather
+than letting a caller discover a missing capability later, mid-frame.
+
+\section{Capability gating: a real per-feature table, not a version-number heuristic}
+
+\cnaclass{easygl::Capabilities::detect\_common\_features()} implements a genuine,
+per-feature gating table rather than a single ``desktop GL is capability X, GLES is capability
+Y'' heuristic, and the two API families frequently diverge in specific, non-obvious ways.
+Vertex array objects need GL~3.0 (or the \texttt{GL\_ARB\_vertex\_array\_object} extension) on
+desktop, but GLES~3.0 or the differently-named \texttt{GL\_OES\_vertex\_array\_object}
+extension on GLES. Framebuffer objects need GL~3.0 or an extension on desktop, but are simply
+always present on GLES~2.0 and above, since FBOs are core to ES2 from the start. Tessellation
+shaders need GL~4.0 on desktop but only GLES~3.2 --- a case where the GLES requirement is
+numerically \emph{lower}. Direct State Access, by contrast, is not modeled for GLES at all,
+since it is a desktop-only OpenGL~4.5 capability with no GLES equivalent whatsoever. This
+per-feature table --- not a single ``is this GLES'' branch --- is exactly the mechanism
+Chapter~\ref{ch:easygl-backend} in Volume~I described CNA's own \texttt{EASYGL} backend
+relying on via \texttt{device.supports(...)}/\texttt{device.require(...)}.
+
+\section{Real design fixes, and one genuine breaking change worth knowing}
+
+\texttt{easy-gl}'s own planning documents record several real, reasoned design corrections.
+\texttt{Program::uniform\_block\_index()} originally returned GL's own raw
+\texttt{GL\_INVALID\_INDEX} sentinel on a failed lookup, forcing every caller to know and
+compare against a raw GL constant; it now returns \texttt{std::optional<unsigned int>}
+instead, so a caller never needs to include a GL header at all just to check for failure.
+Several resource classes (\cnaclass{Framebuffer}, \cnaclass{ProgramPipeline},
+\cnaclass{TransformFeedback}) were changed from accepting a raw \texttt{unsigned int} GL
+handle to accepting a real \cnaclass{Texture}/\cnaclass{Program} reference directly, removing
+a whole class of ``passed the wrong handle type by mistake'' bug at the API boundary.
+
+One specific, genuine breaking behavioral change is worth knowing if you are porting code
+against an older version of this library: \texttt{Device::clear()} used to call
+\texttt{glDisable(GL\_SCISSOR\_TEST)} before every clear, silently overriding whatever scissor
+state the caller had already set. This is no longer true --- \texttt{clear()} no longer
+touches scissor state at all, and a caller that was relying on the old implicit disable must
+now call the scissor-disable method explicitly. The project's own migration notes frame this
+as low-impact, since it only matters when scissor testing happens to already be active at the
+moment \texttt{clear()} is called --- but it is exactly the kind of silent, implicit
+side-effect this book has flagged elsewhere (Chapter~\ref{ch:spritebatch}'s ignored transform
+matrix, for instance) as the class of bug most likely to go unnoticed until specifically
+tested for.
+
+\section{Testing without a GPU}
+
+\texttt{easy-gl}'s own test suite is three small, hand-rolled (not GoogleTest-based)
+\texttt{assert()}-driven executables, and the mechanism making them useful without any real
+GPU or display is worth describing directly: a fake \texttt{GLGetProcAddressFn} loader
+returns hand-written function pointers only for the handful of GL entry points
+\texttt{Device::initialize()} actually calls, returning literal hardcoded strings (for
+instance, \texttt{"OpenGL ES 3.0"}) and literal hardcoded enum values in place of real driver
+responses. This lets the entire \cnaclass{ContextInfo}/\cnaclass{Capabilities} detection
+pipeline run and be asserted against genuinely, entirely off-GPU --- every other GL function
+pointer the loader might be asked for resolves to a non-null but non-callable sentinel, so a
+test can exercise detection logic without ever risking an actual GPU call.
+
+\section{Two known, honestly stated limitations}
+
+Two gaps are worth knowing about directly rather than assuming closed. First,
+\texttt{Config::enable\_debug\_logging} currently does nothing at all --- no
+\texttt{log\_callback} field yet exists on \texttt{Config} to actually receive the output,
+despite the flag existing to request it. Second, \cnaclass{Query::result\_u64()} is
+implemented using the 32-bit \texttt{glGetQueryObjectuiv} internally, because the underlying
+\texttt{meta-gl} layer does not expose the real 64-bit query variant --- meaning it is
+suitable for frame counts, but not for a high-resolution GPU timer query, despite its
+64-bit-suggesting name. Both are stated plainly in the project's own tracking rather than
+silently left for a reader to discover.

@@ -1,4 +1,102 @@
 \chapter{Migrating an XNA or FNA Game to CNA}
 \label{ch:migration-guide}
 
-\emph{[Placeholder --- full content pending in this book's next writing pass. See \texttt{PROGRESS.md} at the repository root for the current writing status.]}
+This chapter is the practical payoff of both volumes: a checklist for judging, before you
+start, how much of an existing XNA or FNA game's own code and content will simply work on
+CNA, and which specific gaps this book has already named in detail are the ones likely to
+cost you real time.
+
+\section{Step one: is this a C\# port, or a from-scratch rewrite?}
+
+Be clear about which kind of migration you are actually doing. CNA preserves XNA's API
+shape, not its language --- porting an existing C\# XNA/FNA game means rewriting its logic in
+C\texttt{++} against the equivalent CNA classes, following the same conventions
+Chapter~\ref{ch:design-philosophy} in Volume~I described for CNA's own internal porting work:
+matching class and method names exactly, using \texttt{sharp-runtime}'s type aliases rather
+than raw C\texttt{++} primitives, and translating C\# properties into the
+\texttt{getXProperty()}/\texttt{setXProperty()} convention. This is mechanical translation
+work for code that only ever touched the public XNA surface, and genuinely difficult work for
+code that reached into .NET-specific behavior (reflection, real garbage collection timing,
+LINQ) that \texttt{sharp-runtime} (Chapter~\ref{ch:sharp-runtime-overview}) deliberately does
+not reproduce.
+
+\section{Step two: audit content against the two biggest named gaps}
+
+Before touching gameplay code, check the game's own content against the two gaps this book
+has returned to most often:
+
+\begin{itemize}
+  \item \textbf{Compiled \texttt{.fx} shader bytecode} (Chapter~\ref{ch:shader-fx-gap}).
+        Any custom shader compiled into the original game's content pipeline will hit
+        \cnaclass{Effect}'s bytecode constructor, which always throws. A game built entirely
+        on the five stock effects and \cnaclass{SpriteBatch} (Chapter~\ref{ch:stock-effects})
+        is unaffected; \texttt{cna-samples}' own 23-of-86 failure count
+        (Chapter~\ref{ch:samples-and-examples}) is a real, checkable proxy for how common
+        this gap actually is across real XNA content.
+  \item \textbf{The \texttt{.xnb} content pipeline} (Chapter~\ref{ch:content-and-assets}).
+        Real \texttt{.xnb} compiled assets do not load directly except through the specific
+        readers that exist for them --- \cnaclass{Model} has a genuine, wire-compatible
+        \texttt{.xnb} reader today (Chapter~\ref{ch:models-meshes}); most other asset types do
+        not yet, and need converting to CNA's raw-file-plus-JSON-descriptor convention
+        instead.
+\end{itemize}
+
+\section{Step three: check vertex layouts against the five recognized strides}
+
+If the game does any custom 3D rendering, Chapter~\ref{ch:textures-rendertargets}'s vertex
+layout finding is worth checking directly: every hardware backend selects its GPU
+vertex-attribute layout by raw byte stride, not by the \cnaclass{VertexDeclaration} you
+actually wrote, and only five specific strides (16, 20, 24, 32, and 52 bytes, corresponding to
+the standard \cnaclass{VertexPositionColor}/\texttt{Texture}/\texttt{ColorTexture}/%
+\texttt{NormalTexture} structs and one skinned layout) are guaranteed to render correctly
+everywhere. A custom vertex format outside that set will degrade differently on each backend
+--- Chapter~\ref{ch:textures-rendertargets} gives the specific per-backend fallback behavior
+--- so this is worth checking before porting any custom mesh format, not after seeing
+incorrect rendering on one specific backend.
+
+\section{Step four: check what your game actually needs from networking and gamer services}
+
+If the original game used Xbox Live features, Chapter~\ref{ch:networking} and
+Chapter~\ref{ch:gamerservices} give you the exact real-versus-stub breakdown: system-link
+multiplayer, local achievements, and local leaderboards are genuinely functional; matchmaking,
+Xbox Live friends, and most of the \cnaclass{Guide} system's UI are documented stubs with no
+local equivalent to fall back to, because there is no local substitute for a service that
+required a live Xbox Live connection to begin with. A game whose multiplayer was always
+system-link/LAN-based (as \emph{Speedy Blupi} and \emph{Planet Blupi} were, per
+Chapter~\ref{ch:blupi-case-study}) ports its networking with comparatively little friction;
+a game built around Xbox Live matchmaking or friends lists does not have a real target to
+port that part to at all.
+
+\section{Step five: pick and verify your graphics backend}
+
+Volume~I's Part~IV gave a full per-backend account; for a porting decision specifically,
+three questions matter most. Is the game 2D-only? \texttt{SDL\_RENDERER} or \texttt{EASYGL}
+are both mature, exhaustively pixel-verified choices (Chapters~\ref{ch:sdl-renderer}
+and~\ref{ch:easygl-backend}). Does it need real 3D with stock effects only?
+\texttt{EASYGL} or \texttt{VULKAN} are the most broadly verified choices, with BGFX close
+behind (Chapters~\ref{ch:easygl-backend}--\ref{ch:bgfx-backend}). Does correctness against
+real, historical XNA rendering matter more than portability --- for instance, a game whose
+original visual reference is what a screenshot-comparison test suite checks against?
+\texttt{D3D9}'s oracle-verified pixel authenticity (Chapter~\ref{ch:direct3d-backends}) is
+the only backend built specifically for that bar, at the cost of being Windows-only
+(cross-compiled and Wine-verified, per Chapter~\ref{ch:windows-wine}).
+
+\section{Step six: use xna4-spec, not memory, to check what you ported}
+
+Once a subsystem is ported, Chapter~\ref{ch:xna4-spec-auditing}'s auditing method --- checking
+against the real XNA~4.0 specification directly, not against FNA's own source or against
+recollection --- is the single most reliable way to confirm you did not miss a member or
+introduce an unmarked extension, for exactly the reason Chapter~\ref{ch:media-system}'s
+\cnaclass{Song} finding illustrated: FNA itself is not always a perfectly faithful stand-in
+for the real spec.
+
+\section{A realistic expectation, stated plainly}
+
+Every chapter in this book that has named a real, still-open gap has also named its measured
+cost where one exists --- 23 of 86 samples, a specific 94-test blast radius, a specific
+still-open leak in \texttt{NetworkSession::BeginCreate}. Use those numbers, not a general
+sense of the project's maturity, to judge your own porting timeline: a 2D, stock-effects-only,
+system-link-multiplayer game is a comparatively mechanical port today; a game leaning on
+custom compiled shaders, Xbox Live matchmaking, or an unusual vertex format will hit named,
+real, and in some cases still-unresolved gaps, and this book has tried throughout to tell you
+exactly which ones, rather than leave you to discover them yourself.

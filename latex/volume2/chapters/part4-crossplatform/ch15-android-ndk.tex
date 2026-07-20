@@ -1,4 +1,82 @@
 \chapter{Android via the NDK}
 \label{ch:android-ndk}
 
-\emph{[Placeholder --- full content pending in this book's next writing pass. See \texttt{PROGRESS.md} at the repository root for the current writing status.]}
+CNA's README states Android is a real, verified target --- and this chapter's job is to
+describe precisely what that verification actually covers, because, as with the previous
+chapter's account of the Web target, the honest picture has sharper edges than the one-line
+summary suggests.
+
+\section{Two separate build paths}
+
+Android support in this project is not one build path but two, serving different purposes.
+The first is a plain CMake cross-compile using the NDK's own toolchain file directly, with no
+Gradle involved at all --- producing just the \texttt{CNA} static library, not the test suite,
+since GoogleTest has never been configured for the NDK toolchain in this project's history.
+Confirming that platform-conditional Android code paths (Chapter~\ref{ch:devices-sensors}'s
+Android-specific \cnaclass{Compass}/\cnaclass{Motion} backends, for instance) actually
+\emph{compile} under this path uses the NDK's own \texttt{llvm-nm} tool directly, since a
+host Linux \texttt{nm} cannot read ARM64 object files.
+
+The second path is a full Gradle-based Android application project, generated from SDL's own
+project-creation template, then rewired so its native build step adds CNA's own root CMake
+project as a subdirectory rather than building a second, separately vendored copy of SDL ---
+a real, deliberate deduplication, since the template's own vendored SDL copy was roughly
+34~MB before being removed in favor of reusing CNA's existing one.
+
+\section{A real regression, caught honestly rather than left uncorrected}
+
+This chapter's most important fact is a documented regression, and it is worth stating
+plainly rather than glossing over: an earlier verification pass confirmed the plain
+NDK cross-compile succeeded end to end. A later verification pass, re-running the identical
+command, found it now fails --- and, tellingly, the failure is not in any CNA code at all,
+but in two specific files inside the sibling \texttt{sharp-runtime} project
+(Chapter~\ref{ch:sharp-runtime-overview}), before CNA's own target even begins compiling: a
+strict-warnings build catching an unused private field on one platform/compiler
+configuration that a desktop build does not, and a use of
+\texttt{std::chrono::clock\_cast} that the NDK's bundled C\texttt{++} standard library does
+not yet implement. Because the build never reaches CNA's own \texttt{SdlGraphicsBackend.cpp}
+at all under this regression, that file's own Android buildability is honestly recorded as
+currently \emph{unverified}, not confirmed working --- a direct, current example of exactly
+the kind of documentation staleness Chapter~\ref{ch:easygl-backend} already flagged for
+EasyGL's own bug list: a real success recorded at one point in time, superseded by a later,
+less favorable finding, and this book reports the more recent one rather than the more
+flattering one.
+
+\section{What the Gradle path actually proves, concretely}
+
+The one real Android application in this project is not a graphics demo at all --- it is a
+devices/sensors demo, and no Android graphics demo project exists in the repository. Building
+it surfaced and fixed several genuine, specific problems: a stale cached SDL-prebuilt path
+setting; a missing \texttt{PUBLIC android} link dependency needed for the NDK's native sensor
+manager and looper APIs; and a real launch failure (\texttt{Couldn't find function SDL\_main
+in library libmain.so}) traced to a missing header whose inclusion is what actually redirects
+a game's \texttt{main()} to the symbol SDL's own Java activity code looks up via
+\texttt{dlsym()} at launch.
+
+\section{What was actually observed running on the emulator}
+
+The claim of ``verified on a real x86\_64 emulator'' resolves to a specific configuration: a
+particular Android Virtual Device profile, run with software rendering and no hardware audio,
+after confirming that hardware-accelerated virtualization was genuinely available inside this
+project's own development container (an earlier attempt, in a container without that
+acceleration available, failed to boot the emulator at all --- itself an honestly recorded,
+environment-specific failure, not a CNA bug). Once booted, the devices demo was installed and
+launched, and its liveness was confirmed three separate ways: a live process ID, a real
+screen capture matching the demo's own expected layout (not a blank or crashed screen), and ---
+most tellingly --- synthetic sensor values injected directly through the emulator's own
+console (a specific acceleration vector, a specific magnetic-field vector) producing a real,
+visible on-screen response, live evidence that SDL3's Android sensor event pipeline delivers
+real events end to end, not merely that the app launched without crashing.
+
+Two honest limits on this result are worth stating directly. First, this is evidence for the
+devices/sensors demo specifically --- \texttt{SDL\_RENDERER} (Android's own default graphics
+backend, since Android's own CMake system name is \texttt{"Android"}, not \texttt{"Linux"},
+so it never falls into \texttt{EASYGL}'s Linux-default branch) has never actually been run on
+this or any emulator or device, and its buildability is separately unverified for the reason
+already given above. Second, the emulator's own virtual sensor set has no rotation-vector
+sensor, so the Android-specific \cnaclass{Compass}/\cnaclass{Motion} backends
+(Chapter~\ref{ch:devices-sensors}) were confirmed only to compile, link, and launch
+successfully --- never actually exercised with injected sensor values the way
+\cnaclass{Accelerometer}/\cnaclass{Gyroscope} were. No physical Android device has been used
+for anything in this project's history at all; every claim in this chapter concerns the
+emulator specifically.

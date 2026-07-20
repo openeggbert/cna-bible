@@ -1,4 +1,58 @@
 \chapter{Backend Feature Matrix}
 \label{ch:feature-matrix}
 
-\emph{[Placeholder --- full content pending in this book's next writing pass. See \texttt{PROGRESS.md} at the repository root for the current writing status.]}
+This appendix consolidates the per-backend findings from Volume~I Part~IV into one reference
+table. It is a summary, not a replacement --- each row's full story, including the specific
+task numbers and bug histories behind it, lives in the chapter cited in the rightmost column.
+
+\begin{center}
+\small
+\begin{tabular}{lp{7.6cm}l}
+\toprule
+\textbf{Backend} & \textbf{Summary status} & \textbf{See} \\
+\midrule
+SDL\_RENDERER & 2D-only by design. 15 real bugs found and fixed; exactly 2 items formally
+  BLOCKED (Wrap/Mirror addressing, Texture3D/TextureCube construction). & Ch.~17 (Vol.~I) \\
+EASYGL & Broadest 3D feature coverage of any backend. Own bug list explicitly stale (last
+  fully audited weeks before this book); 1 item BLOCKED (non-Color SurfaceFormat). D3D9-oracle
+  cross-check: 10/31 scenes pixel-perfect, 2 real bugs found. & Ch.~18 (Vol.~I) \\
+VULKAN & Second-most mature. BlendState/stencil both had ``accepts params, discards them''
+  bugs, now fixed. Occlusion queries went from never-wired to fully real. 1 open item
+  (DepthBias extreme-magnitude sub-case). & Ch.~19 (Vol.~I) \\
+BGFX & 37 of 38 originally-found gaps fixed in one session; the 38th (DepthBias, a genuine
+  gap in the underlying bgfx library) fixed too. 2 remaining failures are environment
+  ceilings, not code bugs. & Ch.~20 (Vol.~I) \\
+WEBGPU & Experimental, activated 2026-07-12. Native 2D baseline plus growing 3D (PBR, skinning,
+  render targets, instancing, mip generation). Excluded from this matrix's own cross-backend
+  comparison by its own documentation's choice --- feature surface not yet broad enough. & Ch.~21 (Vol.~I) \\
+D3D9 & Targets pixel-for-pixel authenticity against real XNA~4.0, not just parity. Oracle
+  corpus: 36 scenes, 0 diverge, at zero tolerance. Windows-only, Wine+DXVK-verified. & Ch.~22 (Vol.~I) \\
+D3D11 & First native Direct3D backend. Real state objects, all 10 stock shader variants, a
+  runtime-compiled custom ShaderEffect path. Device-lost recovery detection-only (never
+  triggered in this dev loop). & Ch.~22 (Vol.~I) \\
+D3D12 & Built on D3D11's own bytecode/mapping tables. Routine CTest suite is off-screen only;
+  real swap-chain presentation proven separately via a manual, Proton-managed diagnostic. & Ch.~22 (Vol.~I) \\
+CANVAS & Emscripten-only. No real browser/DOM exists in this dev environment at all --- every
+  claim here means ``code-reviewed and structurally tested,'' not pixel-verified. 5 real bugs
+  found via specification-level review alone. & Ch.~23 (Vol.~I) \\
+ASCII & A thin decorator around SDL\_RENDERER's own implementation, not a real terminal
+  backend. The only backend with no BLOCKED items and no environment-gated claims at all. & Ch.~23 (Vol.~I) \\
+DX3 & Fronts the sibling \texttt{free-direct} project. Real Wrap/Mirror support (a capability
+  win over SDL\_RENDERER). No BLOCKED decisions remain open. & Ch.~24 (Vol.~I) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Reading this table safely}
+
+Two cautions from Volume~I apply to every row above. First, ``verified'' means something
+different for different backends --- Chapter~\ref{ch:direct3d-backends}'s own D3D9 column is
+explicitly the strictest bar in the project (pixel-for-pixel against a real running XNA~4.0
+runtime), while a BGFX or CANVAS row's own verification is scoped more narrowly, and each
+backend chapter says so directly rather than leaving the reader to assume equivalence.
+Second, this table is a snapshot. Volume~I's own source material carried dated corrections in
+both directions --- the D3D9 backend's own documentation and the project's cross-backend
+feature matrix genuinely disagreed about the render-target-as-texture fix's timing at one
+point, and the feature matrix's own account was the more current one. Treat this appendix the
+same way: a starting map, not a final word, to be checked against the project's own current
+\texttt{docs/graphics-backend-feature-matrix.md} before relying on any single row.
