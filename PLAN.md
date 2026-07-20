@@ -170,7 +170,7 @@ ever needed).
 |---|---------|-----------------:|----------------:|----------|--------|
 | 25 | Input System | 534 (was 170) | 70 | Full method references + worked examples for KeyboardState/Keyboard's EXT scancode surface, MouseState/Mouse's relative-mouse-mode EXT surface, GamePadState/the three GamePadDeadZone modes, TouchCollection/TouchLocation/GestureSample, TextInputEXT (IME-aware composition), and all five NOXNA-only device subsystems (Clipboard/Joysticks/Sensors/Power/Haptics) | **In progress (~10 of ~70 pages)** |
 | 26 | Audio System | 378 (was 118) | 60 | Full method references + worked examples for SoundEffect, SoundEffectInstance/Apply3D 3D audio, DynamicSoundEffectInstance streaming, the AudioEngine/SoundBank/WaveBank/Cue XACT playback model, Microphone capture, AudioCategory retroactive volume, AudioEngine::RendererDetails, SoundEffect::FromStream, and the three audio exception types | **In progress (~8 of ~60 pages)** |
-| 27 | Media | 103 | 45 | Full Song/MediaPlayer/MediaLibrary docs + examples | Not started |
+| 27 | Media | 300 (was 103) | 45 | Full method references + worked examples for Song, the AudioTagParser tag-reading pipeline, MediaQueue's ownership model, MediaPlayer playback/shuffle/repeat internals, VideoPlayer multi-track switching (three real bugs found by external review), and the GetVisualizationData FFT pipeline (lock-free ring buffer + from-scratch radix-2 FFT) | **In progress (~6 of ~45 pages)** |
 | 28 | Devices and Sensors | 115 | 45 | Full sensor API docs + examples | Not started |
 | 29 | GamerServices | 117 | 55 | Full Achievement/Leaderboard/Gamer docs + examples | Not started |
 | 30 | Networking | 125 | 70 | Full NetworkSession/NetworkGamer docs + worked multi-peer examples | Not started |
@@ -698,3 +698,44 @@ current real total of 266 pages.
   reach the page target; more chapters/sections of real API surface remain to be checked
   against the header for further gaps in a future pass). Volume recompiled clean (277 pages
   total, 1173 index entries, 0 undefined references, 0 duplicate-label warnings).
+- **2026-07-20 (same session, "pokracuj"):** Chapter 27 (Media) — first real expansion pass,
+  following NEXT.md's recommendation to move to a fresh chapter. Read the real headers and
+  `.cpp` implementations for `Song`, `MediaQueue`, `MediaPlayer`, `MediaLibrary`,
+  `AudioTagParser`, `MediaLibraryPaths`, `PlaylistParser`, `Video`/`VideoPlayer`,
+  `VisualizationData`, `VisualizationCapture`, and `VisualizationFFT` directly, and added full
+  method references + worked examples grounded in each: `Song`'s content-based `GetHashCode`
+  (a documented, deliberate deviation from FNA's own identity-based, contract-violating
+  version) and `FromUri` factory; the real tag-reading pipeline (Vorbis comments, ID3v2.3/2.4
+  with all four text-encoding-byte variants, native-FLAC `VORBIS_COMMENT`, and Ogg-Opus
+  `OpusTags` — two formats beyond what the chapter's introduction already covered — plus the
+  filename/folder fallback chain and the real cross-format rating-scale ambiguity, a documented
+  CNA decision since neither XNA nor FNA defines one); `MediaLibraryPaths` resolving real
+  per-OS Music/Pictures roots via SDL's `SDL_GetUserFolder()`; `MediaQueue`'s ownership model,
+  with a verified finding read directly from `MediaPlayer.cpp` — `LoadSong()` defensively
+  clones every song via `new Song(handle, name)` before handing it to the owning queue,
+  specifically because `SongCollection` (the type `Play(const SongCollection&)` accepts) holds
+  non-owning pointers, so handing those directly to an owning queue would let the next
+  `Play()`'s `Clear()` delete songs a `MediaLibrary` still expects alive; a second verified
+  finding that `MediaPlayer::Stop()` resets every queued song's `PlayCount` to zero, not just
+  the one that was playing; the real shuffle (uniform random over the whole queue, can repeat)
+  versus repeat (wraps to index zero) versus linear (clamped) `NextSong` logic; three real bugs
+  in `VideoPlayer` multi-track switching found by external code review and fixed
+  (`DrainAndFlushAudioBuffer` fixing an unbounded-memory-growth leak on the no-audio-device
+  path; `ReconfigureVideoOutputForCurrentTrack` fixing a stale frame-texture-size bug on a
+  video-track switch; splitting what used to be one coupled reconfigure function into
+  independent audio-side/video-side helpers so an audio-only or video-only track switch no
+  longer needlessly tears down the other side); and `GetVisualizationData`'s genuine,
+  from-scratch pipeline — a lock-free single-producer/single-consumer ring buffer using
+  `std::atomic<float>` with relaxed ordering (a verified finding: this specifically avoids real
+  undefined behavior from cross-thread plain-`float` access, not mere pedantry, at effectively
+  zero runtime cost) feeding a from-scratch 512-sample radix-2 FFT with Hann windowing and a
+  documented CNA-chosen (not XNA-specified) magnitude-normalization constant, plus two further
+  real bugs found in the enable/disable state machine around it. Hit and fixed one more
+  instance of the single-long-identifier overfull-hbox variant (`ReconfigureAudioOutputForCurrentTrack()`
+  paired with `ReconfigureVideoOutputForCurrentTrack()` on one line in an itemized list,
+  confirmed visibly cut off on the rendered page) by splitting the pair into two sentences
+  instead of trying to fix it with `/`-spacing alone — consistent with the technique already
+  established in the Chapter 26 entry above. Chapter grows from 103 to 300 lines (~4 to ~6 of a
+  ~45-page target). Volume recompiled clean (279 pages total, 0 undefined references, 0
+  duplicate-label warnings); all six of the chapter's own pages verified by rendering to PNG
+  and reading them back.

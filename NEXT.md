@@ -14,77 +14,78 @@ be stale relative to what's happened since — trust the conversation over this 
 numbering). Chapters 25–48 = former Volume II (Parts V–IX, renumbered +24). Appendices A–F.
 Full renumbering table is in `PLAN.md`'s merge session-log entry.
 
-**Chapter 25 (Input System)** has a first expansion pass: 170 → 534 lines, ~4 → ~10 of a
-~70-page target.
+**Three former-Volume-II chapters now have a first real expansion pass**, all following the
+same pattern (full method references + worked examples for every named class, each grounded in
+a direct header/source read, with real verified findings called out explicitly, not just API
+summaries):
 
-**Chapter 26 (Audio System)** has now had TWO passes this session: an initial pass (118 → 317
-lines) and, directly in response to the author asking "how much are you actually writing about
-audio — this is supposed to be a bible, so everything should be covered", a gap-filling pass
-(317 → 378 lines) that re-grepped the real headers against the chapter's prose and closed four
-concrete gaps: `AudioCategory` (retroactive `SetVolume` on already-playing cues, worked
-example), `AudioEngine::RendererDetails` (verified finding: production code only ever
-constructs one hardcoded SDL3_mixer renderer, so enumeration always yields exactly one entry
-in practice), `SoundEffect::FromStream` (the one construction path that wants a full WAV
-container, not headerless PCM), and the namespace's three exception types (verified asymmetry:
-`InstancePlayLimitException`/`NoAudioHardwareException` derive from a COM-interop-style
-external exception base, `NoMicrophoneConnectedException` derives from plain `Exception`
-instead). **Honest status: still only ~8 of a ~60-page target** — this pass added real,
-previously-missing API surface, but did not close the size gap. More of the chapter's stated
-scope (XACT internals, the full 3D audio math, the bug-fix narrative sections) already exists;
-what's more likely still thin is depth/worked-examples per topic, not missing topics — a fresh
-gap-discovery pass would need to check chapter-external things like error-handling patterns,
-performance guidance, or platform-specific audio backend notes, not just "which classes are
-named."
+- **Chapter 25 (Input System)**: 170 → 534 lines, ~4 → ~10 of a ~70-page target.
+- **Chapter 26 (Audio System)**: 118 → 378 lines (two passes — an initial pass, then a
+  gap-filling pass directly answering the author's "is this bible-level comprehensive"
+  question), ~4 → ~8 of a ~60-page target.
+- **Chapter 27 (Media)**, this session: 103 → 300 lines, ~4 → ~6 of a ~45-page target. Read
+  `Song`, `MediaQueue`, `MediaPlayer`, `MediaLibrary`, `AudioTagParser`, `MediaLibraryPaths`,
+  `PlaylistParser`, `Video`/`VideoPlayer`, `VisualizationData`, `VisualizationCapture`, and
+  `VisualizationFFT` directly. Added: `Song`'s content-based `GetHashCode` (a documented
+  deviation from FNA's own contract-violating identity-based version); the real multi-format
+  tag-reading pipeline (Vorbis, ID3v2.3/2.4, native-FLAC, Ogg-Opus, plus the filename/folder
+  fallback and the real cross-format rating-scale ambiguity); `MediaQueue`'s ownership model
+  (a verified finding: `MediaPlayer::LoadSong()` defensively clones every song before handing
+  it to the owning queue, because `SongCollection` itself is non-owning); a verified finding
+  that `MediaPlayer::Stop()` resets every queued song's `PlayCount`, not just the one playing;
+  three real `VideoPlayer` multi-track-switching bugs found by external code review and fixed
+  (an unbounded-memory-growth audio-buffer leak, a stale frame-texture-size bug, and a wrongly
+  coupled audio/video reconfigure step); and `GetVisualizationData`'s genuine from-scratch
+  pipeline (a lock-free ring buffer using relaxed atomics — verified to avoid real UB, not
+  pedantry — feeding a from-scratch 512-sample radix-2 FFT).
 
-Both chapters follow the same pattern: full method references + worked examples for every
-named class, each grounded in a direct header/source read, with real verified findings (not
-just API summaries) called out explicitly.
+Volume currently compiles to **279 pages, 0 undefined references, 0 duplicate-label
+warnings** (index count not re-checked this session — verify before quoting it).
 
-Volume currently compiles to **277 pages, 1173 index entries, 0 undefined references, 0
-duplicate-label warnings**.
+### The `/`-spacing overfull-hbox defect class — three known variants, all with proven fixes
 
-### The `/`-spacing overfull-hbox defect class — now three known variants, all with proven fixes
-
-Every chapter touched so far (25, 26) has needed at least one of these fixes. Treat this as a
+Every chapter touched so far (25, 26, 27) has needed at least one of these. Treat this as a
 **routine check on every batch**, not a one-off:
 
 1. **Chain variant**: `\texttt{A}/\texttt{B}` (or `\cnaclass{}`) with no space around the slash
    is one unbreakable LaTeX token; long enough, it overflows the line. Fix: proactively
-   `grep -n '}/\\texttt{\|}/\\cnaclass{'` before the first build of a batch and add a space
-   (`} / \texttt{`) to any long chain.
+   `grep -n '}/\\texttt{\|}/\\cnaclass{'` before the first build of a batch, or just run the
+   established Python regex pass (`re.sub(r'\}/(\\texttt\{|\\cnaclass\{)', r'} / \1', text)`)
+   over the whole file before the first build — this session did that for ch27 and it caught
+   21 instances in one pass.
 2. **Newline-continuation variant**: `\texttt{A}/%` followed by a newline-continued
    `\texttt{B}` — the `%` suppresses the newline's implicit space, and this does NOT match the
    grep above. Only caught by reading the actual source around any overfull warning's line
    range.
-3. **Single-long-identifier variant** (discovered and finally fully fixed this session): even
-   ONE very long `\texttt{}`/`\cnaclass{}`-wrapped identifier (e.g. `NoMicrophoneConnectedException`,
-   31 chars) can cause severe, visibly-confirmed cutoff if it lands with too little remaining
-   space on its line — REGARDLESS of spacing fixes around it. This is not fixable by adding
-   spaces. **The fix that worked**: restructure the paragraph so the sentence containing the
-   long identifier starts fresh (preceded by a blank line = new paragraph), maximizing its
-   available line width from its very first character. Confirmed on ch26's exception-types
-   paragraph after three other fix attempts (spacing, shortening an adjacent name, regrouping
-   which identifiers were named together) reduced but did not eliminate a 128pt+ overfull
-   warning and real visible cutoff on page 170 — only the paragraph-break technique actually
-   fixed it, verified by re-rendering the page to PNG and reading it back.
+3. **Single-long-identifier variant**: even ONE very long `\texttt{}`/`\cnaclass{}`-wrapped
+   identifier can cause severe, visibly-confirmed cutoff if it lands with too little remaining
+   space on its line — REGARDLESS of spacing fixes around it. Not fixable by adding spaces.
+   **The fix that works**: restructure so the sentence/clause containing the long identifier
+   starts fresh (its own sentence, paragraph, or list-item continuation), maximizing its
+   available line width from its very first character. Hit and fixed AGAIN this session in
+   ch27: an itemized-list bullet naming `ReconfigureAudioOutputForCurrentTrack()` immediately
+   followed by `ReconfigureVideoOutputForCurrentTrack()` on the same line overflowed even with
+   `/`-spacing already applied — splitting the pair into two separate sentences (the second
+   identifier starting its own sentence) fixed it, confirmed by re-rendering the page.
 
-**Verification bar, unchanged from before**: `grep -i overfull main.log` alone is not reliable
-evidence either way — this session again saw warnings under ~40pt render perfectly clean, and
-saw a warning drop numerically (128pt → 118pt) from a fix that did NOT actually resolve the
-visible defect. The only real verification is `pdftoppm -png -f N -l N -r 100 main.pdf
+**Verification bar, unchanged**: `grep -i overfull main.log` alone is not reliable evidence
+either way. The only real verification is `pdftoppm -png -f N -l N -r 100 main.pdf
 /tmp/.../pageN` (find N by content search: `pdftotext -f N -l N main.pdf - | grep <text>`,
-never by printed folio number) then reading the PNG back with the Read tool.
+never by printed folio number) then reading the PNG back with the Read tool. This session
+verified all six of ch27's own pages this way before considering the chapter done.
 
 ## What to do next
 
-1. **Move to Chapter 27 (Media)** or another Part V–IX chapter (28 Devices/Sensors, 29
-   GamerServices, 30 Networking, 31 Avatar, 32 Storage) — same systematic approach.
-2. **If returning to Chapter 26 for further depth**, don't re-run the "which classes exist"
-   grep again (already done twice this session) — instead look for narrower gaps: are there
-   real worked examples for every accepted-deviation item in the 26.5 section? Is the
-   memory-safety-bugs section (26.6 or wherever it landed) as concrete/grounded as the rest?
-   Cross-check against `docs/*.md` or `CHECKLIST.md` files in the real repo for anything the
-   header-only grep approach would miss (e.g. platform-specific backend notes).
+1. **Move to another Part V–IX chapter**: 28 (Devices/Sensors), 29 (GamerServices), 30
+   (Networking), 31 (Avatar), 32 (Storage) — same systematic approach (read the real headers
+   directly, add full method references + worked examples, watch for the three overfull-hbox
+   variants above).
+2. **If returning to Chapter 25, 26, or 27 for further depth**, don't re-run the "which classes
+   exist" grep again (already done at least once each) — look for narrower gaps instead:
+   worked-example depth per topic, cross-checking against `docs/*.md`/`CHECKLIST.md`/
+   `plan_*.md` files in the real repo for anything a header-only pass would miss (e.g.
+   platform-specific notes, performance guidance, concurrency contracts like the one found in
+   `VisualizationCapture.hpp` this session).
 3. **Deepen Chapter 9 (GraphicsDevice)** further, or start Chapter 13 (Stock Effects) — both
    still open Part I–IV targets, untouched for several sessions now.
 4. Chapter 7 (Math and Core Types) is at ~33 of a ~110-page target after three sessions — a
@@ -101,7 +102,8 @@ at face value.**
 - Small commits, pushed often — see `CLAUDE.md` for the full methodology list.
 - `/workspace/cna` (or wherever `cna` gets cloned) does not persist across sessions — if a
   screenshot or source re-read needs a working clone, redo it per
-  `tools/cna-screenshot-infra/README.md`.
+  `tools/cna-screenshot-infra/README.md`. This session found a clone already present at
+  `/workspace/cna` from earlier in the same session — check there first before re-cloning.
 - After embedding any new screenshot OR any dense full-method-reference section, verify it
   actually rendered correctly by converting the relevant compiled PDF page to an image and
   reading it back (`pdftoppm` + the `Read` tool).
@@ -112,9 +114,11 @@ at face value.**
   exists and you're touching that paragraph anyway.
 - Verify hand-derived numeric/algebraic claims with an actual computation before writing them
   into the book. Also double-check constructor/method signatures against the real header
-  before writing a worked example that calls them.
+  before writing a worked example that calls them — reading the actual `.cpp` implementation
+  (not just the header) is often where the best verified findings come from (e.g. this
+  session's `MediaQueue`/`LoadSong` ownership finding, the `Stop()` PlayCount-reset finding,
+  and the three `VideoPlayer` bug-fix findings all came from `.cpp` reads, not header reads).
 - To find genuine gaps in an already-"complete-looking" chapter, systematically grep the real
   header for every type/class it covers and diff against what the chapter's prose actually
   mentions — but once that pass is done once, a second pass on the same chapter needs a
-  different angle (worked-example depth, docs/CHECKLIST cross-check, platform notes), not the
-  same class-name grep repeated.
+  different angle, not the same class-name grep repeated.
