@@ -15,7 +15,7 @@ Chapter~\ref{ch:content-and-assets}) and \texttt{.Media}'s fourteen previously-s
 (now largely closed, per Chapter~\ref{ch:media-system}'s own correction to that figure) as the
 two namespaces furthest from full presence. This kind of gap closes the way most of this
 book's own bug histories closed: one class, one audit, one fix at a time, tracked through the
-\texttt{plan\_*.md}/\texttt{AUDIT.md} mechanism from Chapter~\ref{ch:project-practice}.
+\texttt{plan\_*.md} / \texttt{AUDIT.md} mechanism from Chapter~\ref{ch:project-practice}.
 
 \section{The single biggest named gap: compiled .fx bytecode}
 
@@ -45,22 +45,63 @@ Four specific gaps recur across this book's backend chapters, each requiring a p
 decision rather than more engineering effort on its own:
 
 \begin{itemize}
-  \item \texttt{SDL\_RENDERER}'s \cnaclass{TextureAddressMode::Wrap}/\texttt{Mirror} via
+  \item \texttt{SDL\_RENDERER}'s \cnaclass{TextureAddressMode::Wrap} / \texttt{Mirror} via
         \cnaclass{SpriteBatch} (Chapter~\ref{ch:sdl-renderer}) --- blocked on choosing between
         three concrete implementation strategies, each with a real tradeoff.
-  \item \texttt{SDL\_RENDERER}'s \cnaclass{Texture3D}/\cnaclass{TextureCube} construction
+  \item \texttt{SDL\_RENDERER}'s \cnaclass{Texture3D} / \cnaclass{TextureCube} construction
         (Chapter~\ref{ch:sdl-renderer}) --- blocked because the safer fix (throwing at
         construction rather than silently succeeding) has a confirmed 94-test blast radius.
   \item \texttt{EASYGL}'s real, non-\texttt{Color} \cnaclass{SurfaceFormat} GPU forwarding
         (Chapter~\ref{ch:easygl-backend}) --- blocked because it conflicts with an
         already-shipped \texttt{Texture::ValidateFormat} contract the project has already
         committed tests against.
-  \item \cnaclass{Texture3D}/\cnaclass{TextureCube}'s sampler-bind architecture
+  \item \cnaclass{Texture3D} / \cnaclass{TextureCube}'s sampler-bind architecture
         (Chapter~\ref{ch:textures-rendertargets}) --- the structural deviation from FNA
         where neither type participates in the generic texture-slot binding mechanism at
         all, so only stock effects with a dedicated field (\cnaclass{EnvironmentMapEffect}'s
         cube map) can use one.
 \end{itemize}
+
+\section{The last item, compared across all seven backends}
+
+The \cnaclass{Texture3D} / \cnaclass{TextureCube} sampler-bind gap above is worth seeing at its
+full, real width rather than as a single bullet, since the project's own internal feature
+matrix
+(\texttt{docs/\allowbreak{}graphics-\allowbreak{}backend-\allowbreak{}feature-\allowbreak{}matrix.md})
+tracks it across every backend this
+book has covered, not just the two it happens to name most often:
+
+\begin{center}
+\small
+\begin{tabular}{lp{9.3cm}}
+\toprule
+\textbf{Backend} & \textbf{Texture3D/TextureCube sampled in a shader} \\
+\midrule
+\texttt{EASYGL} & Blocked --- neither type inherits \cnaclass{Texture} at all; this is the
+  architectural root cause every other backend's own status traces back to. \\
+\texttt{VULKAN} & Same architectural block. \\
+\texttt{BGFX} & Same architectural block. \\
+\texttt{SDL\_RENDERER} & Not applicable --- a 2D-only backend with no 3D-only resource types
+  to begin with. \\
+\texttt{D3D9} & Partial --- \cnaclass{TextureCube} is sampled and oracle-verified byte-exact
+  via \cnaclass{EnvironmentMapEffect}; \cnaclass{Texture3D} has no consuming shader variant
+  tested at all. \\
+\texttt{D3D11} & Partial, the same shape --- \cnaclass{TextureCube} pixel-verified via a real
+  environment-map scene; \cnaclass{Texture3D} untested in any shader. \\
+\texttt{D3D12} & Partial, the same shape again, though \cnaclass{Texture3D} at least has a
+  real, working backend implementation behind it (Chapter~\ref{ch:direct3d-backends}) --- it
+  is specifically the shader-sampling path that remains unverified, not the resource itself. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The pattern across all seven rows is itself the finding: this is not a gap unique to one
+backend's own maturity, but a single architectural decision (Chapter~\ref{ch:textures-rendertargets}'s
+account of why neither type participates in the generic texture-slot binding mechanism)
+propagating an identical shape of limitation into every backend that implements it, with
+each Direct3D backend's own \cnaclass{TextureCube} support proving the underlying resource and
+GPU sampling both already work correctly --- the missing piece is specifically the generic
+binding path, not GPU capability.
 
 \section{Strengthening cross-platform execution and validation}
 

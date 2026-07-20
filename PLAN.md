@@ -140,7 +140,7 @@ numbers below are unchanged by the merge.
 | 7 | Math and Core Types | 1632 (was 270) | 110 | All 11 type-families have full reference + worked examples, most with 2-4; chapter-wide "shared surface" section; Vector Length/LengthSquared, Vector4 clip-space Transform (tied to real SOFTWARE-backend code); Matrix arithmetic statics + Decompose, CreateBillboard/CreateConstrainedBillboard (two independent epsilon fallbacks), CreateShadow/CreateReflection (normalization asymmetry), CreateOrthographic (shadow-map worked example, tied to real CNA test source) worked examples; Quaternion Concatenate-vs-Multiply and Lerp-vs-Slerp angular-velocity findings (both numerically verified); Plane::Transform inverse-transpose finding (numerically verified); Point and CurveKeyCollection full references; Rectangle IsEmpty corrected; Ray second worked example; BoundingBox-specific, BoundingFrustum-specific, and BoundingSphere::Transform (non-uniform-scale, numerically verified) worked examples | **In progress (~33 of ~110 pages) --- three consecutive sessions focused entirely on this chapter; still well short of target, see PLAN.md session log for what's still missing** |
 | 8 | Content and Assets | 125 | 55 | Full `ContentManager` API + CNJ/XNB worked walkthroughs | Not started |
 | 9 | GraphicsDevice | 872 (was 171) | 90 | Full method-by-method docs for the 887-line header; two real, verified backend-specific gaps found and documented (SpriteBatch can't sample a RenderTarget2D; SupportsCapability(MultipleRenderTargets) always returns true even where MRT silently fails); full private-implementation lifecycle section (window/backend/virtual-resolution) traced from GraphicsDevice.cpp, ties directly to Ch.6's PresentationMode; new GraphicsAdapter multi-monitor enumeration + a third real gap (IsProfileSupported/QueryRenderTargetFormat/QueryBackBufferFormat are only genuinely hardware-checked on D3D9, honestly documented as `true`/simplified stubs on the other nine backends) | **In progress (~23 of ~90 pages)** |
-| 10 | SpriteBatch | 130 | 55 | Every `Begin`/`Draw`/`DrawString` overload documented + examples | Not started |
+| 10 | SpriteBatch | 131 (was 130) | 55 | Every `Begin`/`Draw`/`DrawString` overload documented + examples | Not started (one incidental overfull-hbox fix during a Chapter 48 verification pass — see session log) |
 | 11 | Textures and Render Targets | 207 | 60 | Full `Texture2D`/`RenderTarget2D` API + examples | Not started |
 | 12 | Models and Meshes | 103 | 60 | Full `Model`/`ModelMesh`/`ModelBone` family + examples | Not started |
 | 13 | Stock Effects | 191 | 80 | Full property/method docs for all 5 effects + examples each | Not started |
@@ -191,7 +191,7 @@ ever needed).
 | 45 | Samples and Examples | 104 (was 54) | 45 | Corrected an imprecise claim ("every one of the 23 failures traces to the same root cause") with a real, checked-per-sample breakdown into three distinct root causes; added the SimpleAnimation "Done can still hide a bug" finding, grounded in `cna-samples`' own `PLAN.md`/`DEFERRED.md`/`missing.md` files | **In progress (~4 of ~45 pages)** |
 | 46 | Project Practice | 150 (was 100) | 40 | Added a real task entry (`ASCII-40`) quoted almost in full from `plan_ascii.md`, plus a new finding on the task-splitting convention (Task~868→923, Task~878→899) grounded in `plan_graphics.md` | **In progress (~5 of ~40 pages)** |
 | 47 | Testing Philosophy | 139 (was 103) | 45 | Added a real worked pixel test (`sdlrenderer_transform_matrix_test.cpp`) quoted directly, showing the transformMatrix bug's own discovery mechanism; fixed a genuine 95pt-overfull identifier defect found while verifying | **In progress (~4 of ~45 pages)** |
-| 48 | Roadmap | 82 | 30 | Deeper detail | Not started |
+| 48 | Roadmap | 123 (was 82) | 30 | Added a real seven-backend comparison table for the Texture3D/TextureCube sampler-bind gap, grounded in `docs/graphics-backend-feature-matrix.md`; verified all four named architecture-decision gaps are still current (no drift found); fixed a genuine overfull-hbox defect (a long path) found while verifying, plus an identical pre-existing one caught incidentally in Chapter 10 | **In progress (~4 of ~30 pages)** |
 | B | Feature Matrix | 58 | 15 | Modest expansion, stays a reference table | Not started |
 | C | Glossary | 74 | 15 | More terms | Not started |
 | D | Repo Map | 127 | 20 | Modest expansion | Not started |
@@ -1142,3 +1142,31 @@ stays frozen by explicit author decision, not left incomplete.
   references, 0 duplicate-label warnings); all four of the chapter's own pages (263-266, the
   last one a normal blank right-hand-start padding page) verified by rendering to PNG and reading
   them back, including a second render confirming the overfull-hbox fix.
+- **2026-07-20 (same session, "pokkracuj"):** Chapter 48 (Roadmap and Open Gaps) — first
+  expansion pass, and the last chapter of Part IX and of the book's main chapter sequence.
+  Read `/workspace/cna/docs/graphics-backend-feature-matrix.md` (the project's own internal
+  per-feature, per-backend tracking doc) directly to check whether the chapter's four named
+  architecture-decision gaps are still current — all four are (`SDL_RENDERER`'s
+  `TextureAddressMode`/`Texture3D`/`TextureCube` items and `EASYGL`'s `SurfaceFormat` item all
+  still show their original BLOCKED status in the live matrix), so no correction was needed, but
+  the check itself is worth recording as a real verification, not an assumption. Added a new
+  section expanding the fourth named gap (`Texture3D`/`TextureCube` sampler-bind architecture)
+  into a real seven-backend comparison table, condensed from the feature matrix's own row for
+  "Texture3D/TextureCube sampled in a shader" — showing the gap is a single architectural
+  decision propagating an identical limitation shape into EasyGL/Vulkan/Bgfx (fully blocked) and
+  a matching partial-verification shape into all three Direct3D backends (real, working
+  `TextureCube` support, but no tested `Texture3D`-in-shader path anywhere). While rendering the
+  chapter's pages to PNG, found and fixed a real, severe (139.1pt) overfull-hbox defect — the
+  long path `docs/graphics-backend-feature-matrix.md` running off the page edge — via
+  `\allowbreak{}` inserted after each path/hyphen segment, the same technique already
+  established for the Chapter 44 URL fix. This same fix technique also closed one incidental,
+  pre-existing defect found in the same log sweep: an identical long-path overflow (106.7pt) in
+  Chapter 10 (SpriteBatch and 2D Rendering), mentioning the same filename in an unrelated
+  sentence about `SpriteFont` cross-backend verification status — confirmed via PNG render
+  before and after. Chapter 48 grows from 82 to 123 lines (~3 to ~4 of a ~30-page target);
+  Chapter 10 grows from 130 to 131 lines (incidental fix only, not a content pass). Volume
+  recompiled clean (297 pages total, 0 undefined references, 0 duplicate-label warnings); all
+  four of Chapter 48's own pages (267-270, the last one a normal blank right-hand-start padding
+  page) and the corrected Chapter 10 page (102) verified by rendering to PNG and reading them
+  back. **Part IX (Chapters 42-48) is now fully swept** — every chapter has a first expansion
+  pass.
