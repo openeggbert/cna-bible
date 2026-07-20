@@ -9,7 +9,7 @@ already noted earlier in this book), wrapped by an internal \texttt{ENetBackend}
 
 \section{NetworkSession: caller-owned, and genuinely capable in ways FNA's stub is not}
 
-\cnaclass{NetworkSession} is explicit about its own ownership model: \texttt{Create()}/%
+\cnaclass{NetworkSession} is explicit about its own ownership model: \texttt{Create()} /
 \texttt{Find()} / \texttt{Join()} / \texttt{JoinInvited()} all return a caller-owned
 \cnaclass{NetworkSession*}; \texttt{Dispose()} releases the transport and every gamer the
 session owns, but does not delete the session object itself --- the caller must do that
@@ -51,6 +51,50 @@ session->Update();  // required once, right here -- see the note above
 // ... in the game loop, every frame:
 session->Update();
 \end{lstlisting}
+
+\section{Host migration, worked through in full}
+
+\texttt{AllowHostMigration}'s ``lowest remaining wire ID, no election round-trip'' claim above
+is worth unpacking into the actual algorithm, since it is a genuinely interesting piece of
+distributed-systems design for a library this size. The detection point is the same
+disconnect handler that already runs when any peer drops; when the disconnecting peer is
+specifically the host, \texttt{AllowHostMigration == false} preserves today's exact behavior
+(the session ends immediately), while \texttt{true} branches into a dedicated migration
+helper instead. Every surviving peer already knows the full roster --- gamertag, wire ID, and
+\texttt{IsHost} --- from the handshake messages exchanged when it originally joined, so no new
+negotiation message is needed at all: each survivor independently computes
+\texttt{new\_host = min(every other known wire ID)}, and if that ID belongs to one of its own
+local gamers, it promotes itself; otherwise, it knows it must reconnect to whichever peer now
+owns that ID. Both outcomes share the same cleanup step first --- every currently-known remote
+\cnaclass{NetworkGamer} is removed via a real \texttt{GamerLeave} event, and all of the
+session's internal wire-ID bookkeeping is cleared and reset to zero, so the next real handshake
+cannot collide with stale entries left over from the dead host's own numbering.
+
+\begin{lstlisting}
+// Worked example: subscribing to the real HostChanged event that fires
+// once a promoted or reconnected peer's migration actually completes.
+session->HostChanged.Add(
+    [](System::Object* sender, const HostChangedEventArgs& args)
+    {
+        // args.getOldHostProperty() / getNewHostProperty() -- both real
+        // NetworkGamer pointers; getNewHostProperty() is only raised once
+        // a live NetworkGamer for the new host genuinely exists again.
+    });
+\end{lstlisting}
+
+The reconnecting side (every survivor that is \emph{not} promoted) has no direct channel to
+any other peer in this star topology, and the old host is gone, so the only way to find the
+new host's address is the same real LAN discovery \cnaclass{NetworkSession::Find()} already
+uses --- matched against the expected new host's already-cached gamertag --- followed by an
+ordinary reconnect through the exact same \texttt{ClientHello} / \texttt{ServerWelcome} handshake
+a fresh \texttt{Join()} performs. This is a deliberate, explicitly confirmed scope choice worth
+stating precisely: it is a full reconnect, not a live migration of existing sockets, so a
+reconnecting peer's remote-gamer roster is genuinely rebuilt from scratch (fresh
+\cnaclass{NetworkGamer} identities, real \texttt{GamerLeave} followed by real \texttt{GamerJoin}
+events) rather than preserved across the promotion --- and if no matching session is found on
+that first attempt, migration is abandoned for that frame rather than retried in a loop inside
+library code, falling through to the same immediate-end path \texttt{AllowHostMigration ==
+false} always takes.
 
 \section{NetworkGamer: real per-machine identity where FNA hardcodes it}
 
@@ -109,7 +153,7 @@ worth naming because of what each reveals. \cnaclass{NetworkSession}'s own
 \texttt{Dispose()} could be called twice and use-after-free as a result --- fixed to be
 idempotent. The async \texttt{Begin*} family's callbacks were stored but, for a period, never
 actually invoked at all --- fixed to fire exactly once, correctly handling the case where the
-callback itself re-entrantly triggers another async call. Every \cnaclass{NetworkGamer}/%
+callback itself re-entrantly triggers another async call. Every \cnaclass{NetworkGamer} /
 \cnaclass{LocalNetworkGamer} a session ever created used to leak permanently, because nothing
 in the session's own lifecycle ever deleted them --- fixed by having \cnaclass{NetworkSession}
 take real ownership and free them in bulk on disposal. A local-gamer-ID collision bug could
@@ -121,6 +165,27 @@ through the ordinary public send API --- fixed with a small, bounded, per-sessio
 flushes once both sender and target resolve a real wire ID, then further hardened in a later
 pass after a follow-up audit found the queue itself was never purged when a gamer left,
 disconnected, or a host migration occurred.
+
+A fifth, structurally distinct bug is worth naming on its own, since it lives one level below
+this namespace rather than inside it: every \texttt{GamerCollection<T>} specialization ---
+which includes \cnaclass{NetworkSession}'s own \texttt{AllGamers} / \texttt{LocalGamers} --- had
+an enumerator whose \texttt{MoveNext()} unconditionally dereferenced the underlying collection
+pointer after \texttt{Dispose()}, with no guard matching the one \texttt{getCurrent()} already
+had for exactly that situation.
+
+\begin{lstlisting}
+// Worked example: the exact repro that surfaced the bug -- Dispose(),
+// then MoveNext(), with no intervening getCurrent() call at all.
+auto it = session->getAllGamersProperty().GetEnumerator();
+it.Dispose();
+it.MoveNext();   // used to dereference a null collection_ pointer here
+\end{lstlisting}
+
+Fixed by giving \texttt{MoveNext()} the identical \texttt{nullptr} check
+\texttt{getCurrent()} already performed, throwing the same
+\texttt{System::ArgumentOutOfRangeException} rather than crashing --- a small fix, but one that
+existing tests had never actually exercised, since every prior test disposed an enumerator and
+then called \texttt{getCurrent()}, never \texttt{MoveNext()}, on the disposed instance.
 
 One bug remains explicitly open at the time of writing rather than silently dropped: a real,
 confirmed leak in \texttt{NetworkSession::BeginCreate}, flagged directly and not yet

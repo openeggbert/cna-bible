@@ -5,7 +5,7 @@ exactly where things stand as of the end of the last session — it gets overwri
 session, not appended to (unlike `PLAN.md`'s own internal session log, which is a permanent
 history, and which has the full per-chapter detail this file only summarizes).
 
-## Where things stand right now (end of session, 2026-07-20)
+## Where things stand right now (mid-session, 2026-07-20, updated after a Chapter 30 depth pass)
 
 **The book is a single, unified book** (merged from two volumes earlier this same session).
 Everything is under `latex/book/`, built via `make book` (→ `latex/book/main.pdf`). Chapters
@@ -98,6 +98,25 @@ reliably separate them. The only real verification is rendering to PNG and readi
 build error from `\checkmark` (needs `amssymb`, not loaded in this book's preamble) and fixed
 it by using the plain word "done" instead. Prefer plain text over a symbol that needs a new
 dependency unless there's a strong reason to add the package project-wide.
+
+## Chapter 30 (Networking) just got a real depth pass
+
+Grew 170 → 235 lines (~5 to ~7 of a ~70-page target) — picked as the chapter with one of the
+largest absolute page-target gaps. Added a full worked account of host migration (the
+deterministic min-wire-ID promotion algorithm, the `HostChanged` event, the
+reconnect-via-LAN-discovery path, the explicit "full reconnect not live migration" scope
+boundary), grounded in `/workspace/cna/plan_net.md`'s Phase 5. Also added a genuinely new real
+bug (`GamerCollectionEnumerator::MoveNext()` null-deref after `Dispose()`, from the same plan
+file's Phase 14) with a worked repro. Fixed two pre-existing newline-continuation `}/%` defects
+found in the chapter's own original content while running the routine regex pass — proof this
+defect class can still be lurking anywhere, not just in freshly-touched chapters. Full detail
+in PLAN.md's session log. Volume compiles clean at 299 pages, 0 undefined refs; all six of the
+chapter's own pages (189-194) PNG-rendered and confirmed defect-free.
+
+This is a template for a depth pass on any other under-target chapter: pick the real
+`plan_*.md`/`docs/*.md` source behind a claim the chapter already makes but doesn't fully
+unpack, and turn it into a full worked section rather than re-deriving new content from
+scratch.
 
 ## What to do next
 

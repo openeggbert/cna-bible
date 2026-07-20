@@ -173,7 +173,7 @@ ever needed).
 | 27 | Media | 300 (was 103) | 45 | Full method references + worked examples for Song, the AudioTagParser tag-reading pipeline, MediaQueue's ownership model, MediaPlayer playback/shuffle/repeat internals, VideoPlayer multi-track switching (three real bugs found by external review), and the GetVisualizationData FFT pipeline (lock-free ring buffer + from-scratch radix-2 FFT) | **In progress (~6 of ~45 pages)** |
 | 28 | Devices and Sensors | 208 (was 115) | 45 | Worked examples for Accelerometer/VibrateController/Camera grounded in real headers, plus the SetCurrentValueAndMarkDataValid race-closing finding and the vibrate intensity-zero-is-not-Stop() finding | **In progress (~6 of ~45 pages)** |
 | 29 | GamerServices | 169 (was 117) | 55 | Worked examples for SignedInGamer achievements/presence, LeaderboardWriter scoring, and Guide's real overlay message-box UI, grounded in real headers | **In progress (~5 of ~55 pages)** |
-| 30 | Networking | 170 (was 125) | 70 | Worked examples for NetworkSession creation/GamerJoined lifecycle and PacketWriter/PacketReader send-receive with the Color asymmetry gotcha, grounded in real headers | **In progress (~5 of ~70 pages)** |
+| 30 | Networking | 235 (was 170) | 70 | Added a full worked account of host migration (the min-wire-ID deterministic promotion algorithm, the HostChanged event, the reconnect-via-LAN-discovery path), grounded in `plan_net.md` Phase 5 and the real headers; added a fifth real bug (GamerCollectionEnumerator::MoveNext() null-deref after Dispose()) with a worked repro; fixed two pre-existing newline-continuation `}/%` defects | **In progress (~7 of ~70 pages)** |
 | 31 | Avatar | 179 (was 131) | 55 | Worked examples for the faithful-vs-real-rendering bridge (EnableRealRenderingEXT/DrawRealEXT) and wardrobe hot-swapping (AttachPartEXT/RemovePartEXT), grounded in real headers | **In progress (~4 of ~55 pages)** |
 | 32 | Storage | 124 (was 78) | 30 | Worked examples for the full device-selection-to-open-container lifecycle and file read/write, plus the unique_ptr-ownership finding, grounded in real headers | **In progress (~3 of ~30 pages)** |
 | 33 | Sharp Runtime Overview | 167 (was 116) | 40 | Worked examples for MulticastAction token-based removal and Task::ContinueWith's synchronous-execution contract, grounded in real headers | **In progress (~5 of ~40 pages)** |
@@ -1186,3 +1186,28 @@ stays frozen by explicit author decision, not left incomplete.
   precisely. Also confirmed no stale plain-text "Volume I"/"Volume II" references remain
   anywhere in the chapter bodies. Volume recompiled clean (297 pages, 0 undefined references, 0
   duplicate-label warnings); the corrected Chapter 45 page (256) verified by rendering to PNG.
+- **2026-07-20 (same session, "pokracuj"):** Chapter 30 (Networking) — depth pass, the first
+  return to a Part V chapter this session (Part V was breadth-passed in an earlier session).
+  Picked this chapter specifically because it had one of the largest absolute page-target gaps
+  in the whole book (~5 of ~70 pages). Read `/workspace/cna/plan_net.md`'s Phase 5 ("Real host
+  migration") in full — the chapter already named the host-migration claim
+  ("lowest remaining wire ID, no election round-trip") but never unpacked the actual algorithm.
+  Added a full new section: the disconnect-handler branch point, the deterministic
+  `min(every other known wire ID)` promotion computed independently by every survivor with no
+  negotiation round-trip, the shared cleanup step (real `GamerLeave` events plus a full
+  wire-ID-bookkeeping reset), a worked example subscribing to the real `HostChanged` event, and
+  the reconnecting side's real LAN-discovery-then-handshake path — including the explicitly
+  confirmed "full reconnect, not live socket migration" scope boundary. Also found, while
+  reading the same plan file's Phase 14, a genuinely new real bug not yet in the chapter's "Real
+  bugs found and fixed" section: every `GamerCollection<T>` specialization (including
+  `NetworkSession`'s own `AllGamers`/`LocalGamers`) had an enumerator whose `MoveNext()`
+  unconditionally dereferenced a null collection pointer after `Dispose()` — added with a worked
+  repro (`it.Dispose(); it.MoveNext();`) and its fix (the same nullptr guard `getCurrent()`
+  already had). Verified every new method/class name (`getAllGamersProperty()`,
+  `GetEnumerator()`, `HostChangedEventArgs`) against the real headers before finalizing. While
+  running the proactive regex pass, found two genuine pre-existing newline-continuation `}/%`
+  defects in this chapter's own original content (never caught before this session) and fixed
+  both by hand. Chapter grows from 170 to 235 lines (~5 to ~7 of a ~70-page target). Volume
+  recompiled clean (299 pages total, 0 undefined references, 0 duplicate-label warnings); all
+  six of the chapter's own pages (189-194, the last one a normal blank right-hand-start padding
+  page) verified by rendering to PNG and reading them back.
