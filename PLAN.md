@@ -134,9 +134,9 @@ question silently.
 | 4 | Building CNA | 173 | 35 | Full CMake option reference, per-platform build walkthroughs | Not started |
 | 5 | First Game | 131 | 40 | Multiple complete worked example programs, step-by-step | Not started |
 | 6 | Game Loop | 216 | 40 | Full `Game`/`GameTime`/`GameWindow` method-by-method docs + examples | Not started |
-| 7 | Math and Core Types | 840 (was 270) | 110 | All 11 type-families have full reference + worked examples; Quaternion, Color, and Curve now have a *second* worked example each (Quaternion/Matrix numeric+visual equivalence proof, Color premultiplied-alpha conversion, Curve Cycle-vs-Oscillate-vs-CycleOffset) | **In progress (~24 of ~110 pages)** |
+| 7 | Math and Core Types | 974 (was 270) | 110 | All 11 type-families have full reference + worked examples; Quaternion, Color, and Curve each have a second worked example; Vector3 (Cross product, previously undocumented), Plane (DotCoordinate half-space test), Rectangle (Intersect/Union), MathHelper (WrapAngle), and Bounding volumes (BoundingSphere::CreateFromPoints) now each have a second worked example too | **In progress (~28 of ~110 pages)** |
 | 8 | Content and Assets | 125 | 55 | Full `ContentManager` API + CNJ/XNB worked walkthroughs | Not started |
-| 9 | GraphicsDevice | 790 (was 171) | 90 | Full method-by-method docs for the 887-line header; two real, verified backend-specific gaps found and documented (SpriteBatch can't sample a RenderTarget2D; SupportsCapability(MultipleRenderTargets) always returns true even where MRT silently fails); full private-implementation lifecycle section (window/backend/virtual-resolution) traced from GraphicsDevice.cpp, ties directly to Ch.6's PresentationMode | **In progress (~21 of ~90 pages)** |
+| 9 | GraphicsDevice | 872 (was 171) | 90 | Full method-by-method docs for the 887-line header; two real, verified backend-specific gaps found and documented (SpriteBatch can't sample a RenderTarget2D; SupportsCapability(MultipleRenderTargets) always returns true even where MRT silently fails); full private-implementation lifecycle section (window/backend/virtual-resolution) traced from GraphicsDevice.cpp, ties directly to Ch.6's PresentationMode; new GraphicsAdapter multi-monitor enumeration + a third real gap (IsProfileSupported/QueryRenderTargetFormat/QueryBackBufferFormat are only genuinely hardware-checked on D3D9, honestly documented as `true`/simplified stubs on the other nine backends) | **In progress (~23 of ~90 pages)** |
 | 10 | SpriteBatch | 130 | 55 | Every `Begin`/`Draw`/`DrawString` overload documented + examples | Not started |
 | 11 | Textures and Render Targets | 207 | 60 | Full `Texture2D`/`RenderTarget2D` API + examples | Not started |
 | 12 | Models and Meshes | 103 | 60 | Full `Model`/`ModelMesh`/`ModelBone` family + examples | Not started |
@@ -330,3 +330,33 @@ Ch.13 that is now frozen at ~2 pages per the author's confirmation above).
   alone; explained precisely which produces a snap vs. a ping-pong vs. an accumulating repeat).
   Chapter grows from 758 to 840 lines (~22 to ~24 of a ~110-page target). Volume I recompiled
   clean (137 pages total, 643 index entries, 0 undefined references).
+- **2026-07-20 (same session, "pokracuj na kapitolach 7 a 9"):** Deepened both chapters in one
+  pass per author instruction. Ch.7: filled a real, previously undocumented gap —
+  `Vector3::Cross` (the one shared-vector-family method that is genuinely Vector3-only, since a
+  cross product has no Vector2/Vector4 equivalent) had never been mentioned anywhere in the
+  chapter despite `Plane`'s own three-point constructor using it internally — added a worked
+  example computing a triangle face normal from two edges, tied explicitly to that `Plane`
+  constructor. Added four more second-worked-examples grounded in direct source reads: `Plane`
+  (`DotCoordinate` as a half-space test, reading `Plane.cpp` to confirm the exact
+  `DotNormal + D` relationship), `Rectangle` (`Intersect`/`Union` for scissor-clamping and
+  dirty-rectangle merging), `MathHelper` (`WrapAngle`, including its real early-return fast
+  path read from `MathHelper.cpp`), and `BoundingSphere` (`CreateFromPoints`, with an honest
+  note — read from `BoundingSphere.cpp` — that it is a fast axis-extreme-pair approximation,
+  not an exact minimum-enclosing-sphere solver). Chapter grows from 840 to 974 lines (~24 to
+  ~28 of a ~110-page target). Ch.9: expanded the previously single-paragraph
+  "GraphicsAdapter, DisplayMode" section into two new subsections. First, multi-monitor
+  enumeration via the static `Adapters` list (`getAdaptersProperty()`), reading
+  `GraphicsAdapter.cpp` to confirm its lazy-populate-once-then-cache contract and showing a
+  worked example of enumerating displays and constructing a `GraphicsDevice` against a
+  player-chosen adapter directly (there is no `GraphicsDeviceManager`-level adapter selector —
+  `GraphicsDevice`'s own constructor and `Reset` take the adapter argument directly). Second, a
+  third real, verified backend-specific gap: `IsProfileSupported`, `QueryRenderTargetFormat`,
+  and `QueryBackBufferFormat` are only genuinely hardware-checked (real `D3DCAPS9`/
+  `CheckDeviceFormat`/`CheckDeviceType` queries) on the D3D9 backend; the other nine backends'
+  `#else` branches are honestly commented in the source itself (labelled `D9-101`/`D9-102`) as
+  deliberately not faking a hardware capability table, falling back to unconditional `true` /
+  simplified format checks / a hardcoded `SurfaceFormat::Color` result instead — the same
+  category of finding as the `SupportsCapability(MultipleRenderTargets)` gap documented
+  earlier in this chapter. Chapter grows from 790 to 872 lines (~21 to ~23 of a ~90-page
+  target). Volume I recompiled clean (139 pages total, 654 index entries, 0 undefined
+  references).

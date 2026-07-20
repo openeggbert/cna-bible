@@ -691,6 +691,88 @@ the API but decorative. \cnaclass{DeviceLostException}, \cnaclass{DeviceNotReset
 \cnaclass{NoSuitableGraphicsDeviceException} are all thin \texttt{std::runtime\_error}
 subclasses with default and custom-message constructors.
 
+\subsection{Multi-monitor enumeration: the Adapters list}
+\label{sec:adapters-list}
+
+\texttt{DefaultAdapter} is not the only \cnaclass{GraphicsAdapter} a game can reach: the static
+\texttt{Adapters} property (\texttt{getAdaptersProperty()}) returns
+\texttt{const std::vector<std::unique\_ptr<GraphicsAdapter>>\&} --- one entry per physical
+display SDL3 reports via \texttt{SDL\_GetDisplays}, not merely per GPU. Reading
+\texttt{GraphicsAdapter.cpp} directly confirms the lazy-population contract implied by the
+class's own comment above: \texttt{getAdaptersProperty()} only calls the private
+\texttt{AdaptersChanged()} builder if the internal list is still empty, so the first call in a
+process populates it and every later call (barring an explicit \texttt{AdaptersChanged()}
+invocation after a monitor is connected or removed) returns the same cached vector. This is
+why \texttt{DefaultAdapter} itself is documented as ``re-evaluated on every call'' rather than
+cached by the caller: it simply returns \texttt{*getAdaptersProperty()[0]}, so the caller-side
+staleness risk is really about the vector's \emph{contents}, not about calling
+\texttt{DefaultAdapter} itself too rarely.
+
+\begin{lstlisting}
+// Worked example: let the player choose which physical monitor a
+// fullscreen game window opens on, rather than assuming DefaultAdapter
+// (display index 0) is always the right choice.
+const auto& adapters = GraphicsAdapter::getAdaptersProperty();
+for (std::size_t i = 0; i < adapters.size(); ++i)
+{
+    const GraphicsAdapter& adapter = *adapters[i];
+    const DisplayMode mode = adapter.getCurrentDisplayModeProperty();
+    std::printf("Adapter %zu: %s (%dx%d)\n", i,
+        adapter.getDescriptionProperty().c_str(),
+        mode.getWidthProperty(), mode.getHeightProperty());
+}
+
+// Later, construct (or Reset) the device against the adapter the player
+// selected rather than hardcoding GraphicsAdapter::getDefaultAdapterProperty():
+// GraphicsDevice itself takes the adapter directly, both at construction
+// and via Reset(presentationParameters, adapter) -- there is no separate
+// GraphicsDeviceManager-level adapter selector to go through instead.
+GraphicsDevice dev(*adapters[chosenIndex], GraphicsProfile::HiDef, presentationParameters);
+\end{lstlisting}
+
+\subsection{IsProfileSupported and the format-query methods: honest about what is actually checked}
+\label{sec:adapter-format-queries}
+
+\texttt{IsProfileSupported(GraphicsProfile)}, \texttt{QueryRenderTargetFormat(\ldots)}, and
+\texttt{QueryBackBufferFormat(\ldots)} all exist to answer, in principle, ``will the real
+hardware behind this adapter actually accept what I'm about to request, or will it need to
+substitute something else?'' --- but reading their bodies directly (rather than trusting the
+method names) shows this question is only genuinely answered on one backend. Each method's
+source is split by an \texttt{\#ifdef CNA\_BACKEND\_D3D9}, and the source comments on the
+non-D3D9 side name the reason explicitly rather than leaving it to guesswork:
+
+\begin{description}
+\item[\texttt{IsProfileSupported}] on D3D9, \texttt{GraphicsProfile::Reach} short-circuits to
+  \texttt{true} unconditionally (every real D3D9 HAL device already exceeds Reach's
+  \texttt{vs\_2\_0}/\texttt{ps\_2\_0} floor, so there is nothing worth querying), and
+  \texttt{HiDef} is checked against a real queried \texttt{D3DCAPS9} structure. On every other
+  backend, the method's own source comment (labelled \texttt{D9-101} in the codebase's internal
+  task numbering) states plainly that ``an implementation here would be a hardcoded table
+  pretending to be a capability query'' --- and that the project's own \texttt{plan\_dx9.md}
+  explicitly refuses to do that --- so it simply returns \texttt{true} for every profile,
+  unconditionally, on the other nine backends.
+\item[\texttt{QueryRenderTargetFormat} / \texttt{QueryBackBufferFormat}] on D3D9, both check a
+  requested \cnaclass{SurfaceFormat} against a real profile whitelist \emph{and} a real
+  \texttt{IDirect3D9::CheckDeviceFormat}/\texttt{CheckDeviceType} hardware query, falling back
+  to \texttt{SurfaceFormat::Color} if either check fails --- and separately clamp the requested
+  multisample count to what the selected format actually supports. On every other backend,
+  \texttt{QueryRenderTargetFormat} falls back to a much simpler
+  \texttt{isSupportedRenderTargetFormat(format)} check with the multisample count always
+  reported as \texttt{0}, while \texttt{QueryBackBufferFormat} does not even attempt that much:
+  it unconditionally reports \texttt{SurfaceFormat::Color} as the selected format, regardless
+  of what was actually requested.
+\end{description}
+
+The practical consequence: code that calls these methods to decide whether a fallback path is
+needed will get a genuinely hardware-informed answer only when built against the D3D9 backend
+(Chapter~\ref{ch:direct3d-backends}); on every other backend the answer is either a hardcoded
+\texttt{true} or a simplified format check, both honestly documented as such in the source
+rather than silently passed off as a real capability query. This is the same category of
+finding as \S\ref{sec:worked-mrt}'s \texttt{SupportsCapability(MultipleRenderTargets)} gap
+above --- an API surface that reads as a genuine hardware query but is only actually backed by
+one out of eleven backends --- worth knowing before writing portable code that branches on
+either method's return value.
+
 \section{ClearOptions: one confirmed cross-backend gap}
 \label{sec:clearoptions}
 

@@ -131,6 +131,32 @@ if (distance > 0.0001f)
 }
 \end{lstlisting}
 
+\paragraph{A second worked example: Vector3::Cross, the one method in this family not shared by Vector2/Vector4.}
+Every method in \S\ref{sec:vector-full-reference}'s reference table above is implemented
+identically by all three vector types; \texttt{Cross(vector1, vector2)} is the one genuine
+exception, since a cross product is only meaningfully defined in three dimensions ---
+\cnaclass{Vector2} and \cnaclass{Vector4} do not declare it at all. \cnaclass{Plane}'s own
+three-point constructor (\S\ref{sec:quaternion-full-reference} below) uses exactly this method
+internally to derive a face normal from two triangle edges, which is also the most common
+reason application code reaches for \texttt{Cross} directly:
+
+\begin{lstlisting}
+// Worked example: compute a triangle's face normal from two of its edges --
+// the same computation Plane's own three-point constructor performs
+// internally, made explicit here for a case that just needs the normal
+// itself (e.g. per-face lighting) rather than a full Plane.
+const Vector3 edge1 = b - a;
+const Vector3 edge2 = c - a;
+
+Vector3 faceNormal = Vector3::Cross(edge1, edge2);
+faceNormal.Normalize();
+\end{lstlisting}
+
+Winding order matters here exactly as it does for backface culling
+(Chapter~\ref{ch:graphicsdevice}'s \texttt{RasterizerState} coverage): swapping \texttt{edge1}
+and \texttt{edge2} --- equivalently, swapping \texttt{b} and \texttt{c} --- negates the
+resulting normal, since \texttt{Cross(v1, v2) == -Cross(v2, v1)} for any two vectors.
+
 \section{Matrix: a 4x4, and one CNA-specific bridge method}
 
 \cnaclass{Matrix} stores sixteen public \texttt{float} fields named \texttt{M11}
@@ -368,6 +394,29 @@ identical picture.
   plane's normal and distance independently does not commute with normalization.
 \end{description}
 
+\paragraph{A second worked example: DotCoordinate as a half-space test.}
+\texttt{DotCoordinate} and \texttt{DotNormal} are easy to conflate at a glance since both
+compute the same dot product against the plane's normal; the difference is exactly the
+\texttt{+ D} term, read directly from \cnaclass{Plane}'s own implementation:
+\texttt{DotCoordinate} adds the plane's distance term (\texttt{D}) after the dot product,
+\texttt{DotNormal} does not. That extra term is what makes \texttt{DotCoordinate(point)} return
+a genuine signed distance-like quantity for a \emph{position} in space --- positive on the
+side the normal points toward, negative on the other side, zero exactly on the plane ---
+which is precisely the test \cnaclass{Plane::Intersects(BoundingSphere)} and its sibling
+overloads use internally to classify \cnaclass{PlaneIntersectionType::Front} versus
+\texttt{Back} versus \texttt{Intersecting}.
+
+\begin{lstlisting}
+// Worked example: a manual half-space test using DotCoordinate directly --
+// the same test Plane::Intersects performs internally, made explicit for a
+// case that only needs a yes/no answer for one point (e.g. a gameplay
+// trigger volume bounded by a single plane, not a full bounding-volume test).
+const Plane waterSurface(Vector3::Up, -waterHeight);
+
+const float distance = waterSurface.DotCoordinate(playerPosition);
+const bool playerIsAboveWater = (distance > 0.0f);
+\end{lstlisting}
+
 \subsection{Full method reference: Ray}
 
 \begin{description}
@@ -443,6 +492,42 @@ if (!screenBounds.Contains(spriteBounds))
 {
     spriteBounds.X = std::clamp(spriteBounds.X, 0, screenWidth  - spriteBounds.Width);
     spriteBounds.Y = std::clamp(spriteBounds.Y, 0, screenHeight - spriteBounds.Height);
+}
+\end{lstlisting}
+
+\paragraph{A second worked example: Intersect and Union for a scissor/visible-tile test.}
+\texttt{Intersects} above only answers whether two rectangles overlap at all; the static
+\texttt{Intersect}/\texttt{Union} pair goes further, computing an actual resulting
+\cnaclass{Rectangle} --- the overlap region, or the smallest rectangle containing both inputs,
+respectively. A common use for \texttt{Intersect} specifically is clamping an arbitrary
+draw or scissor region down to what a render target or screen actually covers, so later code
+never has to special-case an out-of-bounds rectangle:
+
+\begin{lstlisting}
+// Worked example: clamp an arbitrary tile's draw rectangle to the visible
+// screen area before using it as a scissor/clip region, so a tile that is
+// only partially on-screen never causes an out-of-bounds draw.
+const Rectangle screenBounds(0, 0, screenWidth, screenHeight);
+const Rectangle tileBounds(tileX, tileY, tileWidth, tileHeight);
+
+const Rectangle visiblePortion = Rectangle::Intersect(tileBounds, screenBounds);
+if (visiblePortion.Width > 0 && visiblePortion.Height > 0)
+{
+    // visiblePortion is guaranteed to lie entirely within screenBounds.
+    DrawTile(tile, visiblePortion);
+}
+\end{lstlisting}
+
+\texttt{Union} solves the opposite problem --- given several tiles' individual bounds, find one
+rectangle that encloses all of them, useful for computing a single dirty-rectangle region to
+redraw after several small UI elements change in the same frame rather than clearing and
+redrawing the whole screen:
+
+\begin{lstlisting}
+Rectangle dirtyRegion = firstChangedWidget.Bounds;
+for (const Widget& widget : otherChangedWidgets)
+{
+    dirtyRegion = Rectangle::Union(dirtyRegion, widget.Bounds);
 }
 \end{lstlisting}
 
@@ -579,6 +664,28 @@ operations bottom out, one dimension at a time.
   equivalent to hide it behind.
 \end{description}
 
+\begin{lstlisting}
+// Worked example: WrapAngle keeps an accumulated turn angle bounded, so a
+// character or camera that spins many times over doesn't hand an
+// ever-growing radian value to CreateRotationZ/CreateFromAxisAngle -- the
+// rotation itself is still correct unbounded, but trigonometric precision
+// (and any code that prints or compares the raw angle) degrades as the
+// magnitude grows.
+float facingAngle = 0.0f;
+
+// Each frame, after applying an arbitrary turn amount:
+facingAngle = MathHelper::WrapAngle(facingAngle + turnAmountThisFrame);
+// facingAngle now always lies within (-Pi, Pi], regardless of how many
+// full turns the character has actually made.
+\end{lstlisting}
+
+Read directly from \cnaclass{MathHelper}'s own implementation, \texttt{WrapAngle} is not a
+naive single \texttt{std::fmod}: it first checks whether the angle already lies within
+$(-\pi, \pi]$ and returns it unchanged if so (avoiding an unnecessary floating-point modulo
+for the overwhelmingly common case of an angle that was never out of range to begin with),
+and only falls through to \texttt{std::fmod(angle, TwoPi)} --- followed by one more
+boundary correction --- for an angle that actually needs wrapping.
+
 \section{Bounding volumes: Box, Sphere, Frustum}
 \label{sec:bounding-volumes}
 
@@ -678,6 +785,33 @@ for (const SceneObject& object : sceneObjects)
     }
     // else: entirely outside the view frustum, skip drawing it this frame.
 }
+\end{lstlisting}
+
+\paragraph{A second worked example: CreateFromPoints, and why it isn't the tightest possible sphere.}
+The frustum-culling example above assumed a \cnaclass{BoundingSphere} already existed for each
+scene object; \texttt{CreateFromPoints(points)} is how one gets built in the first place, from
+a mesh's raw vertex positions at load time. Reading its implementation directly is worth doing
+before assuming it always returns the mathematically smallest enclosing sphere: it finds the
+three axis-aligned extreme pairs (minimum/maximum \texttt{X}, \texttt{Y}, and \texttt{Z}
+points), picks whichever pair is farthest apart as an initial diameter, and then only expands
+that sphere further to include any remaining outlier point --- a fast, single-pass
+approximation, not an exact minimum bounding sphere solver. For most mesh shapes the result is
+close enough that the distinction never matters at runtime; it is worth knowing precisely
+\emph{why} it can occasionally be looser than optimal, rather than assuming an unfamiliar
+result is a bug.
+
+\begin{lstlisting}
+// Worked example: building a mesh's BoundingSphere once at load time from
+// its raw vertex positions, for later use in frustum-culling tests like the
+// one above.
+std::vector<Vector3> positions;
+positions.reserve(mesh.VertexCount());
+for (const VertexPositionNormalTexture& vertex : mesh.Vertices())
+{
+    positions.push_back(vertex.Position);
+}
+
+const BoundingSphere meshBounds = BoundingSphere::CreateFromPoints(positions);
 \end{lstlisting}
 
 \section{Curves: Curve, CurveKey, and their supporting enums}
