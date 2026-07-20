@@ -31,14 +31,14 @@ corpus had grown to 36 scenes, with 0 of 36 diverging.
 \subsection{What is real}
 
 Full device lifecycle via plain \texttt{Direct3DCreate9} (not D3D9Ex, a deliberate choice),
-with genuine \texttt{DeviceLost}/\texttt{DeviceResetting}/\texttt{DeviceReset} handling; all
+with genuine \texttt{DeviceLost} / \texttt{DeviceResetting} / \texttt{DeviceReset} handling; all
 five XNA stock effects, with 61 of 66 compiled shader variants byte-identical to Microsoft's
 own shipped bytecode (the remaining five differ only by HLSL compiler version, and are
 separately proven equivalent through the oracle rather than merely assumed so); a real,
 oracle- and mutation-verified \texttt{SpriteEffect.fx}, including the half-pixel offset
 Direct3D~9 is notorious for --- caught before it could become a false-positive ``closed''
 claim, because the offset's absence is invisible on a $1\times1$ test texture and only shows
-up at a larger size; and \cnaclass{GraphicsProfile.Reach}/\texttt{.HiDef} enforcement that is
+up at a larger size; and \cnaclass{GraphicsProfile.Reach} / \texttt{.HiDef} enforcement that is
 \emph{real} here, consulting an actual \texttt{D3DCAPS9} structure --- the only CNA backend
 where that distinction reflects a genuine capability query rather than a decorative property,
 as Chapter~\ref{ch:graphicsdevice} already noted. Render targets sampled back as ordinary
@@ -57,7 +57,7 @@ cross-backend limitation from Chapter~\ref{ch:textures-rendertargets}, not a D3D
 one); \texttt{Texture3D} has no oracle or GPU round-trip coverage at all --- only its
 \cnaclass{GraphicsProfile} size-limit behavior is tested; \cnaclass{OcclusionQuery} is not
 built for this backend at all, the same gap D3D12 carries; and
-\cnaclass{SpriteSortMode.Immediate}/\texttt{.Texture} were confirmed not viable as
+\cnaclass{SpriteSortMode.Immediate} / \texttt{.Texture} were confirmed not viable as
 deterministic oracle scenes at all --- \texttt{Immediate} is not something a raster diff can
 observe, and \texttt{Texture} sorts by an implementation-defined \texttt{GetHashCode()},
 which no two implementations are obligated to agree on. The caveat that applies to every
@@ -80,11 +80,30 @@ ApplyChanges();} had no path to the live device at all. This is a shared, cross-
 only \emph{discovered} while building \texttt{D3D9}'s own tests, because \texttt{D3D9} is the
 one backend where the profile actually matters enough to notice.
 
+\subsection{A worked example: why \texttt{zFarPlane} sign alone hid every nonzero-depth sprite}
+
+The Z-clipping bug above is worth working through numerically, since ``\texttt{zFarPlane=1}
+instead of \texttt{-1}'' sounds like a cosmetic sign flip until the actual clip-space
+consequence is spelled out. \cnaclass{SpriteBatch}'s orthographic projection maps a
+\texttt{layerDepth} value in $[0, 1]$ (XNA's own documented range: 0 = front, 1 = back) onto
+Direct3D~9's own native clip-space Z range, which is $[0, 1]$ --- \emph{not} the
+$[-1, 1]$ range OpenGL-family APIs use. Constructing that projection with
+\texttt{zFarPlane=1} produces a near/far mapping where any \texttt{layerDepth} strictly
+greater than what the incorrect matrix treats as its own valid far bound gets clipped by the
+GPU's own fixed-function Z-clip test --- silently, with no error, exactly like a sprite drawn
+behind the camera would be. A sprite at \texttt{layerDepth=0} (the common case, since most
+2D games never set it explicitly) was never affected, which is precisely why this bug could
+ship unnoticed: it only manifests for a game that actually uses \cnaclass{SpriteSortMode}'s
+depth-based ordering with a nonzero layer value, a real but less common \cnaclass{SpriteBatch}
+usage pattern than the default. The fix, \texttt{zFarPlane=-1}, corrects the matrix so the
+full documented $[0,1]$ \texttt{layerDepth} range maps inside Direct3D~9's own valid clip
+volume instead of partly outside it.
+
 \section{D3D11: the first native, dependency-free Windows path}
 
 \texttt{D3D11} is CNA's first backend built directly on native Direct3D~11, verified in the
 same MinGW-w64-plus-Wine-plus-DXVK loop as \texttt{D3D9}. It proves out a real
-\texttt{ID3D11Device}/\texttt{ID3D11DeviceContext} pipeline: buffers, textures, and render
+\texttt{ID3D11Device} / \texttt{ID3D11DeviceContext} pipeline: buffers, textures, and render
 targets (including MSAA and multiple render targets), state objects, all ten stock HLSL
 shader variants across the five stock effects, a real \cnaclass{SpriteBatch}, and --- unique
 to this backend and \texttt{D3D12} --- a runtime-\texttt{D3DCompile()}-backed
@@ -142,7 +161,7 @@ window both succeed cleanly, verified twice with zero crashes.
 \subsection{Explicitly corrected claims}
 
 \texttt{D3D12}'s own documentation is unusually direct about its own earlier revisions being
-stale: runtime-settable \cnaclass{BlendState}/\cnaclass{DepthStencilState}/%
+stale: runtime-settable \cnaclass{BlendState} / \cnaclass{DepthStencilState}/%
 \cnaclass{RasterizerState} feeding real pipeline-state objects, sixteen-slot dynamic sampler
 state, real public render-target and render-target-cube backends (including multiple render
 targets), real \cnaclass{Texture3D}, and real \cnaclass{TextureCube::GetData()} were all
