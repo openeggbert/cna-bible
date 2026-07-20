@@ -5,194 +5,150 @@ exactly where things stand as of the end of the last session — it gets overwri
 session, not appended to (unlike `PLAN.md`'s own internal session log, which is a permanent
 history, and which has the full per-chapter detail this file only summarizes).
 
-## Where things stand right now (mid-session, 2026-07-20, updated after a Chapter 30 depth pass)
+## Where things stand right now (end of session, 2026-07-21)
 
-**The book is a single, unified book** (merged from two volumes earlier this same session).
-Everything is under `latex/book/`, built via `make book` (→ `latex/book/main.pdf`). Chapters
-1–24 = former Volume I (Parts I–IV). Chapters 25–48 = former Volume II (Parts V–IX, renumbered
-+24). Appendices A–F. Full renumbering table is in `PLAN.md`'s merge session-log entry.
+**The book is a single, unified book**, built via `make book` (→ `latex/book/main.pdf`).
+Compiles clean: **321 pages, 0 undefined references, 0 duplicate-label warnings, 1321 index
+entries** (verify before quoting — this was true as of the last build this session).
 
-**Every Part from V through IX now has a first expansion pass on every chapter** — Part V
-(25-32), Part VI (33-37, except Chapter 37/free-direct Deep Dive, which stays explicitly frozen
-per the author's own 2026-07-20 confirmation — deliberately skipped, not incomplete), Part VII
-(the same Ch.33-37 range), Part VIII (38-41), and now **Part IX (42-48) is fully swept too** —
-the last chapter (48, Roadmap) finished this session. Full per-chapter detail (exact line
-counts, sources read, every finding and example) lives in `PLAN.md`'s session log — this file
-only summarizes the pattern and the state.
+**Branch note, important:** this session merged the working branch
+(`claude/cna-bible-book-09gxp0`) into `develop` via fast-forward early on, per explicit author
+instruction, and has been committing directly to `develop` (pushed after every chapter) ever
+since. There is no longer any unmerged work sitting on the old feature branch — `develop` is
+the live branch to keep working on.
 
-**None of chapters 25-48 are at their final page targets yet** (roughly 3-10 of a 30-70-page
-target each) — every session so far has been a breadth pass (first pass on every chapter),
-not a depth pass (bringing any one chapter to its full target). That is the natural next
-phase of work once this file is read.
+## This session's headline result: Part I–IV breadth pass, complete
 
-Volume currently compiles to **297 pages, 0 undefined references, 0 duplicate-label
-warnings** (index count not re-checked this session — verify before quoting it).
+At the start of this session, only Chapters 7 and 9 (of Parts I–IV, chapters 1–24 + Appendix A)
+had ever been touched by the expansion project — every other chapter was still at its original,
+pre-expansion length. This session did a **first breadth pass on all 22 previously-untouched
+chapters, plus Appendix A** — the same "touch every chapter once" pattern already proven on
+Parts V–IX in earlier sessions. Every one of the following got a real, source-grounded addition
+(usually one or two worked examples grounded in an actual header/test/`.cpp` read, sometimes a
+corrected inaccuracy), was rebuilt, and had its own physical PDF pages rendered to PNG and read
+back before committing:
 
-## The reusable per-chapter pattern (validated across 24 chapters now, 25-48)
+**Part I (Ecosystem):** Ch.1 What Is CNA (history, licensing, a real audit-methodology
+worked example), Ch.2 Ecosystem Map (fixed 3 stale chapter-ref placeholders), Ch.3 Design
+Philosophy (real NOXNA self-verifying-check worked example, corrected an imprecise claim about
+the NOXNA mechanism also present in Ch.1).
 
-1. Read the chapter's actual current content and title (don't trust a PLAN.md row description
-   at face value — it can be stale, e.g. Chapter 34's was).
-2. Diagnose the chapter's "gap shape" before writing anything — it varies:
-   - **API-reference-shaped** (most Ch.25-36): grep/read the real headers/`.cpp` for classes
-     already named in the prose, add worked examples grounded in real signatures.
-   - **Tooling/narrative-shaped** (Ch.38-40): the real source is shell scripts/CMake, not C++
-     headers — worked examples are real command invocations, not code.
-   - **Synthesis/comparison-shaped** (Ch.41, and partly 48): look for a genuine content gap or
-     a stale cross-reference instead of "add worked examples" — Ch.41 found a missing table row
-     and a leftover "Part~IV" reference from the merge; Ch.48 verified its own named gaps were
-     still current by checking the live source, then expanded one gap into a real table.
-   - **Methodology-described-only-in-the-abstract** (Ch.44, 46, 47): the chapter explains a
-     process or convention but never actually shows one instance of it — the fix is picking one
-     small real example and running the process against it end-to-end, or quoting one real
-     instance almost verbatim. This turned out to be the single most common gap shape in Part
-     IX — worth checking for on ANY still-abstract-only chapter in earlier Parts too.
-   - **Chapter's own claim needs auditing, not just deepening** (Ch.45): when a chapter
-     summarizes a body of real source material (call counts, failure counts, a percentage), it
-     is worth checking that summary against the individual underlying files it was rounding up
-     from — Ch.45 found the chapter's "all 23 failures share one cause" claim was measurably
-     imprecise once every `missing.md` was actually read.
-3. Ground every new sentence in an actual source read — clone a sibling repo fresh if it isn't
-   already present in `/workspace` (check first; several ARE already cloned from earlier
-   sessions: `cna`, `sharp-runtime`, `easy-gl`, `free-direct`, `xna4-spec`, `cna-samples`,
-   `cna-extended`, `cna-template`, `libcna.com` — do NOT re-clone these).
-4. Run the `/`-spacing proactive regex fix (below), then manually grep `}/%`.
-5. Rebuild (`cd latex && make book`), grep the log for `undefined`/`multiply defined`.
-6. Find the chapter's physical page range by content search (`pdftotext -f N -l N main.pdf -
-   | grep <unique text>` — never trust printed folio numbers), render every page to PNG
-   (`pdftoppm -png -f N -l N -r 100 main.pdf <path>`), and read each one back. Read the WHOLE
-   page, not just your own new content — pre-existing defects turn up for free this way (this
-   happened THREE times across Ch.44/47/48 this session alone).
-7. Update PLAN.md's table row + append a session-log entry; update this file; commit; push.
+**Part II (Getting Started):** Ch.4 Building CNA (full CMake option reference table), Ch.5
+First Game (second worked example: keyboard movement, found the first example's `Draw`
+overload is `NOXNA`-only), Ch.6 Game Loop (`GameServiceContainer` + `PresentationMode` worked
+examples, fixed a running-header overflow), Ch.8 Content and Assets (`ContentManager`
+reference + a real manifest-introspection worked example, fixed 4 stale `Chapter~N` citations
+including one pointing at the wrong chapter).
 
-## The `/`-spacing and long-identifier overfull-hbox defect classes — ALL proven fixes
+**Part III (Graphics Core, Ch.10–15 — now fully depth-passed alongside the already-done Ch.9):**
+Ch.10 SpriteBatch (`Draw` overload table — first attempt as a non-floating `tabularx`
+literally broke with an empty column when the table ran taller than one page; fixed with
+`longtable`), Ch.11 Textures/Render Targets (`Texture2D` `SetData`/`GetData` worked example),
+Ch.12 Models and Meshes (bone-transform draw loop + `AnimationPlayer` example adapted from its
+own test fixture), Ch.13 Stock Effects (`BasicEffect` lighting worked example), Ch.14 State
+Objects (by-value-not-by-reference semantics made concrete), Ch.15 Shader/.fx Gap (**a real,
+significant correction**: the chapter previously said `ShaderEffect` only exists on the three
+D3D backends with HLSL source — it's actually real on EasyGL/Vulkan/BGFX/SdlGpu too, EasyGL
+alone has 38 real tests using GLSL source; rewrote the section and the "honest summary").
 
-This has now been the single most common defect class across every chapter touched this entire
-project. Treat checking for it as routine on every batch, not optional:
+**Part IV (Backends, Ch.16–24, all touched for the first time):** Ch.16 Backend Architecture
+(`ISpriteBatchBackend` deep dive tying Ch.10's SDL_Renderer bug to its real no-op default),
+Ch.17 SDL_Renderer (`SupportsCapability` honest-blanket-false worked example), Ch.18 EasyGL
+(computed the exact SpriteBatch quad ceiling, 16,384, from the chapter's own finding), Ch.19
+Vulkan (`OcclusionQuery` worked example), Ch.20 BGFX (`VertexDeclaration` Color-attribute
+check tied to the black-mesh bug), Ch.21 WebGPU (render-target-size-trap worked example),
+Ch.22 Direct3D 9/11/12 (worked `zFarPlane` clip-space math — first draft was placed *before*
+the bug it explained was even introduced; caught and reordered before commit), Ch.23
+Canvas/ASCII (hand-computed pixel-to-glyph luminance example), Ch.24 DX3/free-direct (fixed a
+stale "Chapters~6 and~5" citation; worked blend-preset-detection example — **first draft had a
+real math error** claiming Add-vs-Subtract "happen to" coincide only when `dst=0`, when for
+`BlendState::Opaque`'s own factors they *always* coincide regardless of `dst`; caught by
+working the arithmetic by hand and rewritten using `AlphaBlend`'s genuinely-divergent factors
+instead).
 
-1. **Chain variant**: `\texttt{A}/\texttt{B}` with no space is one unbreakable token. Fixed
-   automatically by: `re.sub(r'\}/(\\texttt\{|\\cnaclass\{)', r'} / \1', text)` — run this over
-   any file you touch before the first build of a batch.
-2. **Newline-continuation variant**: `\texttt{A}/%` + a newline-continued `\texttt{B}` — the
-   `%` suppresses the implicit space; the regex above does NOT catch it. Grep the literal
-   pattern `}/%` by hand every time, separately from the regex pass.
-3. **Single-long-identifier variant**: one very long `\texttt{}`/`\cnaclass{}` token can overflow
-   badly even with correct spacing around it, if a full line's width would actually fit the
-   token. **Fix**: restructure so the identifier becomes the first word of a fresh
-   sentence/paragraph, maximizing the line width available to it.
-4. **Long-URL-or-path variant** (a step further than #3 — new this session): a long
-   `\texttt{}`-wrapped URL or file path (e.g. `learn.microsoft.com/.../xna/`,
-   `docs/graphics-backend-feature-matrix.md`) can be so long that even a FULL fresh line won't
-   fit it — restructuring the paragraph doesn't help here. **Fix**: insert `\allowbreak{}`
-   after every `/`- or `-`-delimited segment inside the `\texttt{}`, giving LaTeX real break
-   points inside the otherwise-atomic token. Used successfully 3 times this session (Ch.44's
-   URL, Ch.48's own new content, and one incidental pre-existing instance in Ch.10 caught by
-   the same filename appearing in an unrelated sentence there).
+**Appendix A (API Quick Reference):** added the previously-entirely-missing `GraphicsDevice`
+and four state-object classes as a new section — the single most glaring omission in an
+appendix that otherwise already covered every other Part II/III class.
 
-**Verification bar, unchanged and proven correct repeatedly**: `grep -i overfull main.log`
-alone is NOT reliable evidence either way — both false positives (Ch.36's
-`detect_common_features()`, ~25pt, confirmed rendering cleanly) and real severe defects
-(Ch.44/47/48, 95-139pt) have been found this session, and the numeric magnitude alone doesn't
-reliably separate them. The only real verification is rendering to PNG and reading it back.
+**Every single one of the above chapters is now at "first pass done, well short of full page
+target" status** — the same place Parts V–IX were in after their own breadth pass. None of
+Parts I–IV is at its final page target yet (see `PLAN.md`'s table for exact current-vs-target
+line/page counts per chapter — every row was updated this session with a real current count).
 
-**Do not add `\usepackage{amssymb}` or other new packages casually** — Chapter 46 hit a fatal
-build error from `\checkmark` (needs `amssymb`, not loaded in this book's preamble) and fixed
-it by using the plain word "done" instead. Prefer plain text over a symbol that needs a new
-dependency unless there's a strong reason to add the package project-wide.
+## Real, reusable findings from this session worth knowing before touching these chapters again
 
-## Chapter 25 (Input System) just got a depth pass too — and it's already the biggest file in the book
-
-Grew 534 → 559 lines (~10 to ~12 of a ~70-page target) — still one of the largest gaps despite
-already being the single largest chapter file, confirmed by checking its actual physical page
-count (10 pages) rather than assuming line count alone meant it was deep enough already. Read
-`/workspace/cna/plan_input.md` looking specifically for findings not yet named anywhere in the
-chapter, beyond the four bugs it already covers. Added three: GamePad's `SDL_INIT_GAMEPAD`
-shutdown-symmetry gap, Mouse's asymmetric-test-coverage finding (write-direction letterbox
-scaling was already tested and named; read-direction wasn't, until this audit), and
-`GestureSample.Timestamp`'s deliberate non-replication of a real FNA unit-mismatch bug. Also
-found and fixed five genuine pre-existing `}/%` defects in this chapter's own original content —
-never caught in any prior session's pass over this specific chapter, a reminder that even a
-chapter touched multiple times before can still hide this defect class. Full detail in PLAN.md's
-session log. Volume compiles clean at 303 pages, 0 undefined refs; all twelve of the chapter's
-own pages (155-166) PNG-rendered and confirmed defect-free.
-
-## Chapter 34 (Sharp Runtime Namespaces) got a depth pass too
-
-Grew 162 → 221 lines (~5 to ~7 of a ~70-page target) — the next-largest page-target gap after
-Chapter 30. Read `/workspace/sharp-runtime/POST_STABILIZATION_AUDIT.md` again (the chapter's own
-existing source, already mined once for the `Convert::ToXxx` truncation bug) and picked two more
-of its twenty findings for full worked treatment: `Dictionary`'s indexer auto-insert-instead-of-
-throw bug (the same bug already fixed once in `ConcurrentDictionary` via `ValueProxy`, never
-propagated) and `ConcurrentDictionary::GetOrAdd`'s lock-across-callback reentrancy deadlock.
-Verified both fixes are actually live in the real headers before writing either example — worth
-doing whenever an audit doc's own "subsequently fixed" framing is the only evidence a fix
-landed. Full detail in PLAN.md's session log. Volume compiles clean at 301 pages, 0 undefined
-refs; all six of the chapter's own pages (209-214) PNG-rendered and confirmed defect-free.
-
-## Chapter 30 (Networking) got a real depth pass
-
-Grew 170 → 235 lines (~5 to ~7 of a ~70-page target) — picked as the chapter with one of the
-largest absolute page-target gaps. Added a full worked account of host migration (the
-deterministic min-wire-ID promotion algorithm, the `HostChanged` event, the
-reconnect-via-LAN-discovery path, the explicit "full reconnect not live migration" scope
-boundary), grounded in `/workspace/cna/plan_net.md`'s Phase 5. Also added a genuinely new real
-bug (`GamerCollectionEnumerator::MoveNext()` null-deref after `Dispose()`, from the same plan
-file's Phase 14) with a worked repro. Fixed two pre-existing newline-continuation `}/%` defects
-found in the chapter's own original content while running the routine regex pass — proof this
-defect class can still be lurking anywhere, not just in freshly-touched chapters. Full detail
-in PLAN.md's session log. Volume compiles clean at 299 pages, 0 undefined refs; all six of the
-chapter's own pages (189-194) PNG-rendered and confirmed defect-free.
-
-This is a template for a depth pass on any other under-target chapter: pick the real
-`plan_*.md`/`docs/*.md` source behind a claim the chapter already makes but doesn't fully
-unpack, and turn it into a full worked section rather than re-deriving new content from
-scratch.
+- **`ShaderEffect`'s real backend footprint (Ch.15)** was corrected from "three D3D backends
+  only" to "EasyGL/Vulkan/BGFX/SdlGpu too, GLSL not HLSL on the GL-family backends" — grep
+  `CreateEffectBackend` overrides across `src/CNA/Internal/Backends/*/` before trusting any
+  future claim about which backends support custom shading.
+- **The NOXNA marker macro vs. the unrelated `CNA_NOXNA` CMake option** (Ch.1/Ch.3/Ch.4) are a
+  real, easy-to-confuse name collision — the marker is controlled by `CNA_STRICT_XNA_API`
+  compiled into two small CMake targets, not a project-wide toggle; `CNA_NOXNA` gates a
+  completely different opt-in "extended render pipeline" feature.
+- **A non-floating `tabularx` table that grows taller than one page corrupts silently** (empty
+  column, huge row gaps) rather than erroring — this happened once this session (Ch.10). Use
+  `longtable` for any reference table with more than ~5-6 rows of wrapped text.
+- **`\allowbreak{}` sometimes needs 2-3 rounds inside the same long compound identifier**
+  before an overfull-hbox actually resolves (seen repeatedly: Ch.16's
+  `std::unique_ptr<IGraphicsBackend>`, Ch.24's `ColorDestinationBlend=Blend::...`) — if two
+  rounds don't fix it, the more reliable fix is restructuring the sentence into short
+  independent clauses (proven in Ch.24) rather than continuing to chase allowbreak placement.
+- **Always hand-verify any arithmetic/formula claim in a worked example before writing it down**
+  — this session caught two real self-authored errors this way (the Ch.24 blend-formula claim,
+  and almost shipped a forward-reference ordering bug in Ch.22) specifically by working the
+  math through by hand rather than trusting the first draft's plausible-sounding phrasing.
 
 ## What to do next
 
-1. **No single obvious next target — this is a genuine decision point.** Every chapter in
-   Parts V through IX has a first pass; none are at their final page target. Options, roughly
-   in order of likely value:
-   - **Depth pass on Parts V/VI/VIII**: these were touched earliest and are furthest from
-     target (~3-10 of 30-70 pages). Don't re-run the "which classes exist" grep (done already)
-     — look for narrower gaps: worked-example depth per topic, cross-checking against
-     `docs/*.md`/`CHECKLIST.md`/`plan_*.md` files for anything a first pass would miss, or the
-     "methodology described only in the abstract" pattern that worked so well in Part IX.
-   - **Depth pass on Part IX** (just-finished, so the gap-shape diagnosis is fresh): same idea,
-     applied to Chapters 42-48.
-   - **Resume Parts I-IV**: Chapter 9 (GraphicsDevice) and Chapter 13 (Stock Effects) are both
-     open targets untouched for several sessions; Chapter 7 (Math and Core Types) is at ~33 of
-     a ~110-page target and needs fresh gap-discovery, not a ready-made list.
-   - ~~Dedicated stale-reference sweep~~ — **done, this session, after Chapter 48**: grepped the
-     whole book for `Part~[IVX]+` (30+ matches, 19 files), checked every one against the real
-     `\part{}` structure. The two-volume merge's renumbering held up well — only one genuine
-     imprecision found (Chapter 45 undercounted the areas `cna-examples` covers to "Part~V"
-     alone; corrected to name Parts III-IV and V). No stale "Volume I"/"Volume II" text remains
-     either. Not worth repeating unless a future renumbering happens.
-2. Ask the user which of the above to prioritize if it's not obvious from their own message —
-   this file deliberately does not pick one, since the choice is a scope decision, not a
-   technical one.
+Same genuine decision point `NEXT.md` has flagged before, but the landscape has shifted:
+**every chapter in the whole book (Parts I–IX plus every appendix touched so far) now has at
+least a first pass.** Options, roughly in order of likely value:
+
+1. **Depth pass on Part I–IV's newly-breadth-passed chapters** (1-6, 8, 10-24, A) — these are
+   almost all still very early (2-6 pages of a 20-85 page target each). This mirrors exactly
+   the depth-pass work already done multiple times on Parts V-IX chapters in earlier sessions:
+   pick a chapter, find the real `plan_*.md`/`docs/*.md`/test-suite source behind a claim it
+   already makes but doesn't fully unpack, and turn it into fuller worked treatment.
+2. **Depth pass on Ch.7 (Math, ~33/110) or Ch.9 (GraphicsDevice, ~23/90)** — both already have
+   an established template and real remaining-gaps history in `PLAN.md`'s session log, but
+   three-plus prior sessions on Ch.7 alone suggest fresh gaps will need active hunting, not a
+   ready-made list.
+3. **Depth pass on Parts V-IX** (touched earliest, still 3-15 of 30-70 page targets each) —
+   same "find a narrower gap" approach documented in prior `NEXT.md` snapshots.
+4. Ask the user which of the above to prioritize if it's not obvious from their own message —
+   this file deliberately does not pick one, since the choice is a scope decision.
 
 **Verify the numbers above against `git log` and actual file line counts before trusting them
-at face value.**
+at face value** — this file's own author (this session) made exactly that mistake once with a
+math claim and had to self-correct; don't compound it by trusting a summary without checking.
 
 ## Housekeeping reminders
 
-- Branch: `claude/cna-bible-book-09gxp0`. Push there; never force-push.
+- Branch: `develop` (the merge described above happened this session — do not go looking for
+  a separate feature branch, there isn't one to merge anymore).
 - Build: `cd latex && make book` → `latex/book/main.pdf`. Check the log for `undefined`,
-  `multiply defined`/`multiply-defined`, AND `overfull` every time.
-- Small commits, pushed often — see `CLAUDE.md` for the full methodology list.
-- `/workspace/cna` (and `sharp-runtime`, `easy-gl`, `free-direct`, `xna4-spec`, `cna-samples`,
-  `cna-extended`, `cna-template`, `libcna.com`) do not persist across sessions — check whether a
-  clone already exists in the CURRENT session before re-cloning.
+  `multiply defined`/`multiply-defined`, AND `overfull` every time. Note from this session:
+  `grep -i overfull main.log` was frequently empty even when a real, visible overflow existed
+  in the rendered PDF — **PNG rendering is the only reliable check**, the log grep is not
+  sufficient evidence either way (this has been noted before but was reconfirmed repeatedly
+  this session).
+- `latexmk`/`pdflatex`/`texlive-latex-extra`/`texlive-fonts-recommended` needed installing at
+  the start of this session (the user ran `apt-get install` interactively) — should now persist
+  for future sessions in this same container/environment, but verify with
+  `command -v latexmk` before assuming.
+- Sibling repos (`cna`, `sharp-runtime`, `easy-gl`, `free-direct`, `xna4-spec`, `cna-samples`,
+  `cna-extended`, `cna-template`, `libcna.com`) live at
+  `/rv/data/development/github.com/openeggbert/<name>` in this environment — **not**
+  `/workspace` as older `NEXT.md` snapshots assumed (that was a different environment). Check
+  this path first in a fresh session before assuming a re-clone is needed.
+- Small commits, pushed after every chapter — this session pushed 23 separate commits, one per
+  chapter, exactly per `CLAUDE.md`'s methodology. Keep doing this.
 - Printed page numbers and physical PDF page numbers differ (front matter uses roman numerals)
   — search by content (`pdftotext -f N -l N`), never assume printed page N is physical page N.
   A blank padding page immediately before a new Part's or chapter's right-hand start is normal
   book layout, not a rendering defect.
 - Prefer real `\ref{ch:label}` over a plain-text `Chapter~N` citation when a label already
-  exists and you're touching that paragraph anyway.
-- Verify hand-derived numeric/algebraic claims with an actual computation before writing them
-  into the book. Double-check constructor/method/callback signatures against the real header
-  (and the `.cpp`, not just the header) before writing a worked example that calls them.
-- To find genuine gaps in an already-"complete-looking" chapter, systematically grep/read the
-  real source and diff against what the chapter's prose actually mentions — but once that pass
-  is done once, a second pass on the same chapter needs a different angle, not the same grep.
+  exists and you're touching that paragraph anyway — this session found and fixed 8+ stale
+  plain-text citations this way, several of them pointing at the *wrong* chapter entirely, not
+  just missing a `\ref{}`. Worth actively grepping for `Chapter~[0-9]` in any chapter you touch,
+  not just fixing ones you happen to notice.

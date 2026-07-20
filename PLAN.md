@@ -1254,3 +1254,63 @@ stays frozen by explicit author decision, not left incomplete.
   clean (303 pages total, 0 undefined references, 0 duplicate-label warnings); all twelve of
   the chapter's own pages (155-166, the last one a normal blank right-hand-start padding page)
   verified by rendering to PNG and reading them back.
+- **2026-07-20/21 (new session, "podivej se do NEXT.md plan.md... navrhni jak pokracovat" →
+  author picked the recommended option, breadth pass on Parts I-IV):** Merged the
+  `claude/cna-bible-book-09gxp0` feature branch into `develop` (clean fast-forward, 55 commits,
+  per explicit author instruction) and worked directly on `develop` for the rest of the session,
+  pushing after every chapter. Installed `latexmk`/`texlive-latex-extra`/
+  `texlive-fonts-recommended` (the author ran `apt-get install` interactively; not previously
+  present in this session's container). Confirmed sibling repos (`cna`, `sharp-runtime`,
+  `easy-gl`, `free-direct`, `xna4-spec`, `cna-samples`, `cna-extended`, `cna-template`,
+  `libcna.com`) are real, persistent checkouts at
+  `/rv/data/development/github.com/openeggbert/<name>` in this environment, not the transient
+  `/workspace` path older session notes assumed.
+
+  Executed a full first breadth pass on all 22 previously-untouched Part I-IV chapters (1-6, 8,
+  10-24) plus Appendix A — the same chapters that had sat at "Not started" through every prior
+  session, while Ch.7 and Ch.9 alone had already been worked. Every chapter got at least one
+  real, source-grounded worked example or a corrected inaccuracy, a full rebuild, and its own
+  physical PDF pages rendered to PNG and read back before committing (23 separate commits, one
+  per chapter, all pushed). Full per-chapter detail is in each chapter's own PLAN.md table-row
+  description above and in `NEXT.md`'s own summary; the highlights not to lose track of:
+
+  - **Ch.15 (Shader/.fx Gap): a real, significant correction**, not just an addition — the
+    chapter previously claimed `ShaderEffect` exists only on the three Direct3D backends using
+    HLSL source. Grepping `CreateEffectBackend()` overrides across
+    `src/CNA/Internal/Backends/*/` showed it is also real on EasyGL, Vulkan, BGFX, and SdlGpu —
+    EasyGL alone has 38 real tests using it (GLSL source, not HLSL), versus one each for
+    D3D11/D3D12. Rewrote both the main section and the "honest summary" paragraph, which had
+    the identical stale claim independently.
+  - **Two self-authored math errors caught and fixed before commit**, worth remembering as a
+    concrete argument for the "verify hand-derived numeric/algebraic claims" rule already in
+    this file's Housekeeping section: Ch.22's zFarPlane worked example was initially placed
+    *before* the section that first introduces the bug it explains (a structural ordering
+    mistake, not a math one, caught by re-reading the rendered page); Ch.24's blend-formula
+    worked example initially claimed Add-vs-Subtract "happen to" produce identical output only
+    when `dst=0`, which is wrong for `BlendState::Opaque`'s own factors specifically (they
+    coincide for *any* `dst` value, since the destination factor itself is `Blend::Zero`) —
+    caught by working the arithmetic through by hand, and rewritten using `AlphaBlend`'s
+    genuinely nonzero destination factor as the correct illustrative case instead.
+  - **A new defect class found this session**: a non-floating `tabularx` table taller than one
+    page corrupts silently (empty second column, huge row-height gaps) rather than raising a
+    LaTeX error — hit once (Ch.10's Draw-overload table), fixed by switching to `longtable`,
+    which paginates correctly. Worth using `longtable` by default for any new reference table
+    with more than ~5-6 rows of wrapped prose, not just tabularx-in-a-center-block.
+  - **`\allowbreak{}` sometimes needs 2-3 rounds** inside the same long compound identifier
+    before an overfull-hbox actually resolves (Ch.16's `std::unique_ptr<IGraphicsBackend>`,
+    Ch.24's `ColorDestinationBlend=Blend::InverseSourceAlpha`) — when two rounds don't fix it,
+    restructuring the sentence into short independent clauses (proven reliable in Ch.24) beats
+    continuing to chase allowbreak placement.
+  - **8+ stale plain-text `Chapter~N` citations found and fixed** across Ch.1/2/8/24, several
+    pointing at the *wrong* chapter entirely (Ch.8's `tools/fna-reference/` mention cited
+    Chapter 37 instead of Chapter 1, where that tool is actually described; Ch.24 cited
+    "Chapters~6 and~5" for Audio/Networking, which are actually Chapters 26/30) — not just
+    missing a `\ref{}`, genuinely wrong numbers left over from the pre-merge/pre-`\ref{}` era.
+  - The recurring `grep -i overfull main.log` unreliability (documented in earlier session-log
+    entries) was reconfirmed repeatedly: several real, visible overflows this session produced
+    zero log matches, so PNG rendering remained the only trustworthy check throughout.
+
+  Volume recompiled clean throughout, ending the session at **321 pages, 0 undefined
+  references, 0 duplicate-label warnings, 1321 index entries**. `NEXT.md` fully rewritten for
+  the next session (the old "start with Ch.25" framing is now obsolete — every chapter in the
+  whole book has at least a first pass as of this session).
