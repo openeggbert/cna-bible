@@ -48,6 +48,89 @@ Both \cnaclass{Matrix} and \cnaclass{Quaternion} are only forward-declared in th
 rather than included, specifically to avoid a circular include --- \texttt{Matrix.hpp} and
 \texttt{Quaternion.hpp} both depend on the vector types in the other direction.
 
+\subsection{Full method reference: the shared vector operation set}
+\label{sec:vector-full-reference}
+
+The paragraph above named the shared operation set; this subsection documents each one's
+actual parameters and behavior once, since \cnaclass{Vector2}/\cnaclass{Vector3}/%
+\cnaclass{Vector4} implement every one of them identically in shape (only the component count
+differs). Every entry below exists as \emph{two} overloads unless stated otherwise --- a
+value-returning \texttt{static} form and a \texttt{void}-returning output-parameter form taking
+the same arguments plus a trailing \texttt{T\& result} --- and as an instance-callable
+counterpart is never provided (these are always reached as \texttt{Vector3::Add(a, b)}, never
+\texttt{a.Add(b)}).
+
+\begin{description}
+\item[\texttt{Add(value1, value2)}] component-wise sum.
+\item[\texttt{Subtract(value1, value2)}] component-wise difference (\texttt{value1 - value2}).
+\item[\texttt{Multiply(value1, value2)}] component-wise product; a second overload,
+  \texttt{Multiply(value1, scaleFactor)}, multiplies every component by one \texttt{float}.
+\item[\texttt{Divide(value1, value2)}] component-wise quotient; a second overload,
+  \texttt{Divide(value1, divider)}, divides every component by one \texttt{float}.
+\item[\texttt{Negate(value)}] a single-argument unary negation, distinct from the
+  \texttt{operator-(value)} friend function that does the same thing operator-style.
+\item[\texttt{Distance(value1, value2)}] Euclidean distance, returned as \texttt{float} (not a
+  vector --- no output-ref variant takes a vector reference; the output-ref overload writes
+  into a \texttt{float\& result} instead).
+\item[\texttt{DistanceSquared(value1, value2)}] the same, without the final square root ---
+  the standard micro-optimization for distance \emph{comparisons}, where the relative ordering
+  of squared distances matches the relative ordering of true distances and the square root's
+  cost can be skipped entirely.
+\item[\texttt{Dot(value1, value2)}] the dot product, again returned as \texttt{float}.
+\item[\texttt{Clamp(value1, min, max)}] clamps each component of \texttt{value1} independently
+  between the matching components of \texttt{min} and \texttt{max}.
+\item[\texttt{Min(value1, value2)} / \texttt{Max(value1, value2)}] per-component minimum/maximum
+  --- not the same as comparing vector magnitude; each component is chosen independently.
+\item[\texttt{Lerp(value1, value2, amount)}] linear interpolation; \texttt{amount} is
+  conventionally in $[0,1]$ but is not clamped --- passing a value outside that range
+  extrapolates rather than throwing.
+\item[\texttt{SmoothStep(value1, value2, amount)}] the same shape as \texttt{Lerp} but applying
+  a smoothed (ease-in/ease-out) interpolation curve instead of a linear one.
+\item[\texttt{Hermite(value1, tangent1, value2, tangent2, amount)}] Hermite spline
+  interpolation between two positions, each with its own tangent vector.
+\item[\texttt{CatmullRom(value1, value2, value3, value4, amount)}] Catmull-Rom spline
+  interpolation through four control points, evaluated between the middle two.
+\item[\texttt{Barycentric(value1, value2, value3, amount1, amount2)}] converts barycentric
+  triangle coordinates (\texttt{amount1} weighting toward \texttt{value2}, \texttt{amount2}
+  weighting toward \texttt{value3}) into a Cartesian point inside the triangle defined by the
+  three vertices.
+\item[\texttt{Reflect(vector, normal)}] reflects \texttt{vector} across a surface whose normal
+  is \texttt{normal}.
+\item[\texttt{Normalize(value)}] a \emph{static} form returning a normalized copy, distinct from
+  the instance method \texttt{void Normalize()} that normalizes \texttt{*this} in place.
+\item[\texttt{Transform(position, matrix)}] transforms a position by a \cnaclass{Matrix};
+  further overloads accept a whole \texttt{std::vector<T>} (transforming every element into a
+  destination vector) and a ranged form taking an explicit source index, destination index, and
+  length, for transforming a sub-range of a larger array without copying it first.
+\item[\texttt{Transform(value, rotation)}] the same shape, transforming by a
+  \cnaclass{Quaternion} rotation instead of a \cnaclass{Matrix} --- \cnaclass{Vector4} alone
+  additionally accepts a \cnaclass{Vector2} or \cnaclass{Vector3} \emph{input} to either
+  \texttt{Transform} overload, since transforming a lower-dimensional position by a
+  \cnaclass{Matrix}/\cnaclass{Quaternion} still naturally produces a full \cnaclass{Vector4}
+  result once the implied \texttt{W} component is accounted for.
+\item[\texttt{TransformNormal(normal, matrix)}] (\cnaclass{Vector2}/\cnaclass{Vector3} only)
+  applies a matrix transform with translation stripped out first --- the mathematically correct
+  form for transforming a surface normal, where translating the normal itself would be
+  meaningless.
+\end{description}
+
+\begin{lstlisting}
+// Worked example: normalize a direction, then move an object toward a
+// target at a fixed speed using Vector2::Distance and Vector2::Lerp.
+Vector2 position(100.0f, 100.0f);
+const Vector2 target(300.0f, 220.0f);
+const float speed = 120.0f;   // pixels per second
+
+Vector2 toTarget = target - position;
+const float distance = toTarget.Length();
+if (distance > 0.0001f)
+{
+    toTarget.Normalize();
+    const float step = std::min(speed * deltaSeconds, distance);
+    position = position + toTarget * step;
+}
+\end{lstlisting}
+
 \section{Matrix: a 4x4, and one CNA-specific bridge method}
 
 \cnaclass{Matrix} stores sixteen public \texttt{float} fields named \texttt{M11}
@@ -80,6 +163,62 @@ implementation would need to re-derive the same transpose independently. Central
 \cnaclass{Matrix} itself is a small but telling example of where CNA allows itself exactly
 one, clearly-marked graphics-motivated extension on an otherwise pure math type, rather than
 scattering the same transpose logic across eleven backend implementations.
+
+\subsection{Full factory method reference}
+\label{sec:matrix-full-reference}
+
+Every factory below returns a full \cnaclass{Matrix} by value and has a matching
+output-parameter twin (\texttt{..., Matrix\& result}), per the convention already established
+for the vector types.
+
+\begin{description}
+\item[\texttt{CreateTranslation(x, y, z)} / \texttt{CreateTranslation(Vector3 position)}] a
+  pure translation matrix.
+\item[\texttt{CreateScale(scale)}] uniform scale on all three axes from a single \texttt{float};
+  \texttt{CreateScale(xScale, yScale, zScale)} scales each axis independently;
+  \texttt{CreateScale(Vector3 scales)} takes the three factors packed into a vector.
+\item[\texttt{CreateRotationX(radians)} / \texttt{CreateRotationY(radians)} /
+  \texttt{CreateRotationZ(radians)}] rotation around one principal axis --- the form the worked
+  example in \S\ref{sec:worked-examples} below actually uses.
+\item[\texttt{CreateFromAxisAngle(axis, angle)}] rotation around an arbitrary (not necessarily
+  axis-aligned) axis vector.
+\item[\texttt{CreateFromQuaternion(quaternion)}] converts a \cnaclass{Quaternion} rotation into
+  its equivalent \cnaclass{Matrix} form.
+\item[\texttt{CreateFromYawPitchRoll(yaw, pitch, roll)}] builds a rotation from the three Euler
+  angles directly, without an intermediate \cnaclass{Quaternion}.
+\item[\texttt{CreateLookAt(cameraPosition, cameraTarget, cameraUpVector)}] the standard
+  view-matrix construction --- camera position, the point it's looking at, and the world ``up''
+  direction (almost always \cnaclass{Vector3::Up}) --- used in the worked example below for
+  exactly this purpose.
+\item[\texttt{CreateOrthographic(width, height, zNearPlane, zFarPlane)}] a centered orthographic
+  projection; \texttt{CreateOrthographicOffCenter(left, right, bottom, top, zNearPlane,
+  zFarPlane)} is the off-center form, letting the projection volume's center not coincide with
+  the view axis.
+\item[\texttt{CreatePerspective(width, height, nearPlaneDistance, farPlaneDistance)}] a
+  perspective projection specified by an explicit near-plane width/height rather than a field
+  of view; \texttt{CreatePerspectiveFieldOfView(fieldOfView, aspectRatio, nearPlaneDistance,
+  farPlaneDistance)} is the far more commonly used field-of-view form (the one the worked
+  example below uses, with \texttt{MathHelper::PiOver4} as a typical 90-degree-diagonal field of
+  view); \texttt{CreatePerspectiveOffCenter(left, right, bottom, top, nearPlaneDistance,
+  farPlaneDistance)} is the off-center form of the explicit-width/height version.
+\item[\texttt{CreateBillboard(objectPosition, cameraPosition, cameraUpVector,
+  cameraForwardVector)}] a spherical billboard matrix --- rotates an object to always face the
+  camera; \texttt{cameraForwardVector} is an \texttt{std::optional<Vector3>}, used only in the
+  degenerate case where the object and camera positions coincide.
+\item[\texttt{CreateConstrainedBillboard(objectPosition, cameraPosition, rotateAxis,
+  cameraForwardVector, objectForwardVector)}] a cylindrical billboard constrained to rotate only
+  around a single fixed axis (\texttt{rotateAxis}) --- the form used for billboarded sprites
+  that should stay upright (e.g.\ trees, grass) rather than fully facing the camera on every
+  axis.
+\item[\texttt{CreateShadow(lightDirection, plane)}] a projection matrix that flattens geometry
+  onto \texttt{plane} as if lit from \texttt{lightDirection} --- the classic planar-shadow
+  technique.
+\item[\texttt{CreateReflection(plane)}] a reflection matrix across an arbitrary \cnaclass{Plane}
+  --- the standard technique behind a planar mirror or water-reflection effect.
+\item[\texttt{CreateWorld(position, forward, up)}] builds a world matrix directly from a
+  position and forward/up direction vectors, without going through rotation angles or a
+  quaternion at all.
+\end{description}
 
 \section{Quaternion, Plane, and Ray}
 
@@ -252,6 +391,68 @@ adds the same \texttt{NOXNA} C\texttt{++}-iterator convenience surface
 (\texttt{iterator}/\texttt{const\_iterator}/\texttt{begin}/\texttt{end}/\texttt{cbegin}/%
 \texttt{cend}) already seen on \cnaclass{GameComponentCollection} in
 Chapter~\ref{ch:game-loop}.
+
+\section{Worked example: a real Matrix-driven world/view/projection chain}
+\label{sec:worked-examples}
+
+Every later graphics chapter in this book assumes the reader already knows the
+World$\times$View$\times$Projection pattern this section makes concrete: a \texttt{World}
+matrix positions and orients one object, a \texttt{View} matrix positions the camera, and a
+\texttt{Projection} matrix maps the resulting camera-space geometry onto the screen. The
+program below builds all three from the factory methods in
+\S\ref{sec:matrix-full-reference} above --- \texttt{CreateRotationZ} composed with
+\texttt{CreateTranslation} for \texttt{World}, \texttt{CreateLookAt} for \texttt{View}, and
+\texttt{CreatePerspectiveFieldOfView} for \texttt{Projection} --- and hands all three straight
+to \cnaclass{BasicEffect} (Chapter~\ref{ch:stock-effects} covers the effect itself; here it is
+purely the vehicle for putting these three matrices to use).
+
+\begin{lstlisting}
+const float angle = MathHelper::ToRadians(30.0f);
+const Matrix world = Matrix::CreateRotationZ(angle) *
+                      Matrix::CreateTranslation(Vector3(0.0f, 0.0f, 0.0f));
+
+const Matrix view = Matrix::CreateLookAt(
+    Vector3(0.0f, 0.0f, 3.0f), Vector3::Zero, Vector3::Up);
+const Matrix projection = Matrix::CreatePerspectiveFieldOfView(
+    MathHelper::PiOver4, 1.0f, 0.1f, 100.0f);
+
+BasicEffect fx(dev);
+fx.VertexColorEnabled = true;
+fx.World = world;
+fx.View = view;
+fx.Projection = projection;
+fx.Apply();
+
+const VertexPositionColor verts[3] = {
+    { Vector3( 0.0f,  0.8f, 0.0f), Color::Red },
+    { Vector3(-0.8f, -0.6f, 0.0f), Color(0, 220, 90, 255) },
+    { Vector3( 0.8f, -0.6f, 0.0f), Color(60, 140, 255, 255) },
+};
+VertexBuffer vb(dev, 3);
+vb.SetData(verts, 3);
+dev.SetVertexBuffer(&vb);
+dev.DrawPrimitives(PrimitiveType::TriangleList, 0, 1);
+\end{lstlisting}
+
+Figure~\ref{fig:ch07-matrix-rotation} is the real, unedited output of this exact program, built
+and run headlessly against CNA's \texttt{SOFTWARE} backend (the same CPU rasterizer
+Chapter~\ref{ch:graphicsdevice}'s own worked example used --- see
+\S\ref{sec:worked-drawprimitives} there for what it is and why it's the realistic choice for a
+headless screenshot in this book's own build environment). The triangle's un-rotated vertices
+above point straight up; a real, working \texttt{Matrix::CreateRotationZ(30 degrees)} tilts it
+--- the screenshot confirms the rotation is genuinely computed and applied, not merely
+specified in source and silently ignored.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.4\textwidth]{images/ch07-matrix-rotation-software.png}
+\caption{Real, unedited output of the Matrix worked example above --- a triangle whose
+un-rotated vertices point straight up, rendered after a real
+\texttt{Matrix::CreateRotationZ(30\textdegree{})}, composed with a real
+\texttt{CreateLookAt}/\texttt{CreatePerspectiveFieldOfView} view/projection chain, rendered
+headlessly through CNA's \texttt{SOFTWARE} backend.}
+\label{fig:ch07-matrix-rotation}
+\end{figure}
 
 \section{A note on scope: this chapter versus NEXT.md}
 

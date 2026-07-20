@@ -8,58 +8,58 @@ be stale relative to what's happened since — trust the conversation over this 
 
 ## Where things stand right now (end of session, 2026-07-20)
 
-`CLAUDE.md` (durable project guide) and this file now exist. `PLAN.md` has the full expansion
-plan: Phase 1 targets ~1,305 pages for Volume I and ~1,163 pages for Volume II, broken down
-chapter-by-chapter. Both scope conflicts (free-direct/cna-extended staying marginal;
-screenshots being real-or-nothing) are resolved, not open — see `PLAN.md`'s "Resolved" section
-and its screenshot-feasibility section if you need the reasoning, but don't re-litigate them.
+`CLAUDE.md` (durable project guide) exists. `PLAN.md` has the full expansion plan (Phase 1
+targets ~1,305 pages Vol.I / ~1,163 pages Vol.II) and is being kept current. Both earlier scope
+conflicts (free-direct/cna-extended staying marginal; screenshots real-or-nothing) are
+resolved — don't re-litigate them, see `PLAN.md`'s "Resolved" section if you need the reasoning.
 
-**The expansion has actually started.** Volume I Chapter 9 (GraphicsDevice) is the first
-chapter touched: grew from 171 to 556 lines (~4 to ~13 pages, against a 90-page target — real
-progress, not complete). It now has full coverage of render targets, vertex/index buffer
-binding, the complete 17-overload `DrawUserPrimitives`/`DrawUserIndexedPrimitives` family,
-back-buffer readback, and every `NOXNA` helper method — none of which the original chapter
-covered. It also has a real worked example with a real, verified screenshot (built and ran
-CNA's `SOFTWARE` backend headlessly; the PNG is at
-`latex/volume1/images/ch09-drawprimitives-software.png`, embedded via a `Figure` environment,
-confirmed correct by rendering the actual compiled PDF page). Volume I recompiles clean:
-123 pages, 577 index entries, 0 undefined references.
+**Two chapters are now in progress, both real, verified, committed progress — neither complete:**
 
-This establishes the **per-chapter template** every subsequent chapter should follow:
-1. Re-read the class's full header fresh (don't rely on this file or PLAN.md to carry
-   method-level detail forward — they don't).
-2. Keep existing narrative sections intact; add a full method-by-method reference under/beside
-   them covering every overload, parameter, and exception the original chapter skipped.
-3. Add at least one real worked example; where the chapter is graphics-facing and a real
-   screenshot is feasible (see `PLAN.md`'s screenshot-feasibility notes for which backends
-   currently can/can't), build and run it for real and embed the actual output — never fake one.
-4. Recompile, grep for `undefined`, fix stale cross-references.
-5. Commit and push.
-6. Update `PLAN.md`'s status column + session log, and rewrite this file's "where things stand"
-   section for the next session.
+- **Vol.I Ch.9 (GraphicsDevice)**: 171 → 556 lines (~4 → ~13 of a ~90-page target). Full
+  coverage added for render targets, vertex/index buffer binding, the 17-overload
+  `DrawUserPrimitives`/`DrawUserIndexedPrimitives` family, back-buffer readback, all `NOXNA`
+  helpers. One worked example with a real screenshot
+  (`latex/volume1/images/ch09-drawprimitives-software.png`).
+- **Vol.I Ch.7 (Math and Core Types)**: 270 → 471 lines. Only `Vector2`/`Vector3`/`Vector4`
+  (documented once, since all three share the same method set) and `Matrix` are now fully
+  expanded with a complete method/factory reference. **Quaternion, Point, Rectangle, Color,
+  Plane, Ray, the three Bounding types (Box/Sphere/Frustum), MathHelper, and Curve/CurveKey are
+  still at the original narrative-summary depth** — this is the single biggest concrete gap to
+  close next in this chapter. One worked example with a real screenshot
+  (`latex/volume1/images/ch07-matrix-rotation-software.png`, a real
+  `CreateRotationZ`/`CreateLookAt`/`CreatePerspectiveFieldOfView` chain, visually confirmed
+  genuinely rotated).
 
-Whether Chapter 9 should be pushed further toward its 90-page target before moving on, or
-whether to move to the next chapter now and return to deepen Chapter 9 later, is an open
-judgment call for whichever session picks this up — nothing forces either order.
+Volume I currently compiles to 127 pages, 598 index entries, 0 undefined references.
+Volume II has not been touched in the expansion pass yet at all.
 
-**Check `git log`/`git status` and the current chapter files' actual line counts before
-trusting the numbers above at face value** — if a session ran after this note was written and
-didn't update this file, this section is stale.
+Two screenshot demos now exist and are preserved in `tools/cna-screenshot-infra/`
+(`software_screenshot_demo.cpp` for Ch.9, `math_rotation_demo.cpp` for Ch.7), both registered
+as CMake targets via one patch file covering both. Adding a third demo for a future chapter
+just means: write the `.cpp`, add one `cna_software_test(...)` line to
+`cmake/Tests/SoftwareTests.cmake`, reconfigure, build, run headlessly, copy the PNG into
+`latex/volumeN/images/`, regenerate the patch file so the next session's fresh clone gets it
+too. Full steps are in `tools/cna-screenshot-infra/README.md`.
 
 ## What to do next
 
-Two reasonable next steps, in order of what `PLAN.md` currently flags as most tractable:
+In order of what's most tractable, per `PLAN.md`:
 
-- **Push Chapter 9 further** toward its ~90-page target (it's at ~13). More worked examples
-  (a render-target round trip actually built and screenshotted, not just the code snippet
-  currently in the chapter; a multi-render-target example) would close real gaps, not padding.
-- **Start Chapter 7 (Math and Core Types)**, `latex/volume1/chapters/part2-getting-started/ch07-math-core-types.tex`,
-  target ~110 pages (the largest single target in Volume I). The eleven math/geometry types
-  (Vector2/3/4, Matrix, Quaternion, Point, Rectangle, Color, Plane, Ray, BoundingBox/Sphere/
-  Frustum) were already read in full earlier this session for the Volume I API Quick Reference
-  appendix (`latex/volume1/chapters/appendices/appendix-a-api-quick-reference.tex`) — re-read
-  the actual headers again rather than trusting that appendix's condensed summaries, but it's
-  a useful map of what exists before diving back into the full header text.
+1. **Finish Chapter 7's remaining 7 type-families** (Quaternion, Point, Rectangle, Color,
+   Plane, Ray, Bounding volumes) plus MathHelper and Curve — same treatment as Vector/Matrix
+   got: full method reference kept alongside the existing narrative, at least one more worked
+   example (a bounding-volume intersection test, or a Quaternion-driven rotation, would both
+   be natural and could reuse the same `SOFTWARE`-backend screenshot technique).
+2. **Push Chapter 9 further** toward its ~90-page target (currently ~13) — a render-target
+   round trip actually built and screenshotted (not just the code snippet already in the
+   chapter) would be the next concrete piece.
+3. **Start a new chapter** — Chapter 13 (Stock Effects, target ~80 pages) is the next largest
+   untouched target in Volume I Part III, and the worked examples in Ch.7/Ch.9 already
+   demonstrate `BasicEffect` in passing, which Ch.13 could build on directly.
+
+**Verify the numbers above against `git log` and actual file line counts before trusting them
+at face value** — if a session ran after this note was written and didn't update this file,
+treat this section as stale and re-derive current state from the repo itself.
 
 ## Housekeeping reminders
 
@@ -69,3 +69,6 @@ Two reasonable next steps, in order of what `PLAN.md` currently flags as most tr
 - `/workspace/cna` (or wherever `cna` gets cloned) does not persist across sessions — if a
   screenshot or source re-read needs a working clone, redo it per
   `tools/cna-screenshot-infra/README.md`.
+- After embedding any new screenshot, verify it actually rendered correctly by converting the
+  relevant compiled PDF page to an image and reading it back (`pdftoppm` + the `Read` tool) —
+  don't just trust that `\includegraphics` didn't error.

@@ -34,6 +34,12 @@ screenshot.
   backend and calls `SaveBackBufferScreenshotEXT`. Run with no `DISPLAY` set, it produced a
   genuine 256×256 RGBA PNG — visually confirmed correct (background triangle correctly
   occluded where the foreground triangle overlaps; correct barycentric color interpolation).
+  Used for Vol.I Ch.9 (GraphicsDevice).
+- `math_rotation_demo.cpp` (same directory) is a second worked example for Vol.I Ch.7 (Math and
+  Core Types): a real `Matrix::CreateRotationZ`/`CreateTranslation`/`CreateLookAt`/
+  `CreatePerspectiveFieldOfView` world/view/projection chain rotating a triangle 30 degrees —
+  screenshotted and visually confirmed as genuinely rotated (not the unrotated upright
+  triangle a stubbed-out transform would have produced).
 - **Other backends**: `HEADLESS` exists but is logic-only (never rasterizes a real pixel, just
   reports the last `Clear()` color) — not useful for a screenshot. `CANVAS` is
   Emscripten/browser-only. `ASCII` decorates `SDL_RENDERER` and still needs a real X11 window.
@@ -61,21 +67,31 @@ apt-get install -y libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev libxss
   libavcodec-dev libavformat-dev libavutil-dev libswresample-dev
 
 # 4. Apply this stopgap patch (only needed if HEAD still doesn't compile without it --
-#    try building first, and skip this step if it already succeeds)
+#    try building first, and skip this step if it already succeeds). This patch also
+#    registers both existing demo targets (cna_software_screenshot_demo,
+#    cna_math_rotation_demo) in cmake/Tests/SoftwareTests.cmake.
 git apply /home/user/cna-bible/tools/cna-screenshot-infra/contentreader-stopgap-and-demo-target.patch
 cp /home/user/cna-bible/tools/cna-screenshot-infra/software_screenshot_demo.cpp examples/
+cp /home/user/cna-bible/tools/cna-screenshot-infra/math_rotation_demo.cpp examples/
 
-# 5. Configure and build the SOFTWARE backend
-cmake -B build -G Ninja -DCNA_GRAPHICS_BACKEND=SOFTWARE
-cmake --build build
+# 5. Configure with Unix Makefiles (or Ninja, if installed) and the SOFTWARE backend
+cmake -B cmake-build-software -DCNA_GRAPHICS_BACKEND=SOFTWARE
+cmake --build cmake-build-software --target cna_software_screenshot_demo cna_math_rotation_demo -j4
 
-# 6. Run the demo headlessly -- produces a real PNG, no DISPLAY needed
-env -u DISPLAY -u WAYLAND_DISPLAY ./build/software_screenshot_demo
+# 6. Run a demo headlessly -- produces a real PNG, no DISPLAY needed
+env -u DISPLAY -u WAYLAND_DISPLAY ./cmake-build-software/cna_software_screenshot_demo
+env -u DISPLAY -u WAYLAND_DISPLAY ./cmake-build-software/cna_math_rotation_demo
 ```
 
-Adapt `software_screenshot_demo.cpp`'s drawing code per-chapter (it already shows the pattern:
-subclass `Game`, draw through `BasicEffect`/`SpriteBatch`/raw vertex buffers as needed, call
-`SaveBackBufferScreenshotEXT`) to produce a screenshot for whatever example a given chapter is
-walking through, then copy the resulting PNG into the book's own `latex/volumeN/images/`
-(create that directory when the first real screenshot is ready to embed) and `\includegraphics`
-it from the chapter `.tex` file.
+To add a **new** worked-example demo for a future chapter: write a new `examples/<name>.cpp`
+following either existing demo's pattern (subclass `Game`, draw through
+`BasicEffect`/`SpriteBatch`/raw vertex buffers as needed, call `SaveBackBufferScreenshotEXT`),
+add one more `cna_software_test(cna_<name> examples/<name>.cpp)` line to
+`cmake/Tests/SoftwareTests.cmake` (right where the existing two are registered), reconfigure
+(`cmake .` from inside `cmake-build-software/`) and build. Copy the new source file into this
+directory and regenerate `contentreader-stopgap-and-demo-target.patch`
+(`git diff -- cmake/Tests/SoftwareTests.cmake include/.../ContentReader.hpp
+src/.../ContentReader.cpp > .../contentreader-stopgap-and-demo-target.patch` from inside
+`cna/`) so the next session's fresh clone picks up the new target too. Copy the resulting PNG
+into the book's own `latex/volumeN/images/` and `\includegraphics` it from the chapter `.tex`
+file.
