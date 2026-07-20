@@ -53,9 +53,18 @@ formats (Tiled's TMX/JSON, LDtk's JSON, Ogmo's JSON, TexturePacker JSON, BMFont'
 --- worth knowing about if you are looking for MonoGame.Extended-style utilities on top of
 CNA, but not a repository this book treats as part of CNA's own core, verified surface.
 
-\texttt{cna-craft} is a further CNA-adjacent project, alongside \texttt{meta-gl} (the
-lower-level typed OpenGL/GLES wrapper \texttt{easy-gl} itself depends on, covered briefly in
-this volume's easy-gl chapter) and \texttt{easy-3d}.
+Three further repositories round out the ecosystem, each worth a sentence or two rather than a
+bare name-drop. \texttt{meta-gl} is the lower-level, type-safe C\texttt{++}23 wrapper around
+OpenGL~ES~2.0--3.2 and desktop OpenGL~3.3+ that \texttt{easy-gl} itself is built on --- it owns
+no window or rendering context of its own, taking a host-supplied \texttt{GetProcAddress}
+loader instead, and its own \texttt{metagl} namespace sits one layer below anything this book
+otherwise names. \texttt{easy-3d} is a small companion library beside CNA rather than a
+replacement for any part of it --- cameras, billboard/cube batching, a texture atlas, and debug
+drawing, built specifically to give \texttt{galaxy-eggbert} (below) what it needed without
+becoming a general game engine; it deliberately has no ECS, physics, networking, or editor of
+its own. \texttt{cna-craft} is a C\texttt{++} port of the well-known \texttt{fogleman/Craft}
+voxel game onto CNA, with SQLite-backed world persistence, its own multiplayer server and wire
+protocol, and a WebAssembly build target alongside its native EASYGL/VULKAN/BGFX backends.
 
 \section{Real games and tools built on this stack}
 
@@ -74,8 +83,21 @@ CPU-side shadow copy every \cnaclass{Texture2D} started retaining once
 \texttt{Texture2D::GetData()} needed a readback source (Chapter~11 of Volume~I covers this
 CPU-shadow mechanism for buffers; the equivalent exists for textures) --- a real, measured,
 downstream finding about one game's specific memory footprint on one backend, not a
-documented, general CNA memory-budget feature. \texttt{mesh-craft} and \texttt{galaxy-eggbert}
-are further games/tools built on this ecosystem, outside this book's scope.
+documented, general CNA memory-budget feature.
+
+Three further projects are worth naming briefly, though none is covered in depth here.
+\texttt{mesh-craft} is a C\texttt{++}23 3D scene editor for its own \texttt{.mc3.xml} format,
+built as a sibling repository to CNA --- it adds real CSG (constructive solid geometry) via the
+Manifold library and glTF/GLB export, though its editor GUI specifically depends on the EASYGL
+backend to render (other backends compile but do not drive its interface). \texttt{mesh-world}
+is a procedural world generator built on top of the MeshCraft ecosystem, combining C\texttt{++}
+chunk generators with Lua-scripted object generators (via sol2 and Lua~5.4), a planetary-map
+subsystem with quadtree level-of-detail and a 52-category biome classifier, and SQLite-backed
+content packs, backed by a substantial test suite. \texttt{galaxy-eggbert} is a full 3D remake
+of \texttt{mobile-eggbert} itself --- which is, per the note above, a C\texttt{++} port of the
+WP7-era \emph{Speedy Blupi} --- with its actively developed \texttt{GalaxyEggbertCNA} target
+built directly on CNA and \texttt{easy-3d}, superseding an earlier, now-historical
+Simple3D/U3D/Urho3D-based target.
 
 \section{Documentation and marketing sites}
 

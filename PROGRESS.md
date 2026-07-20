@@ -63,6 +63,14 @@ libcna.com were all missing or under-covered. Fixed:
   documentation site (own top-level domain, not an *.openeggbert.com mirror); a note on
   RAM.md added under mobile-eggbert, correctly framed as a narrow, downstream memory-usage
   investigation of one game on one backend, not a general CNA feature.
+- **Vol.II Appendix C expanded again (author instruction 2026-07-20, third pass)**: brief
+  ("small extent") paragraphs added for meta-gl (the typed OpenGL/GLES wrapper easy-gl itself
+  depends on), easy-3d (a small companion library built for galaxy-eggbert, explicitly not a
+  game engine), cna-craft (a C++ port of fogleman/Craft onto CNA), mesh-craft (a C++23 3D scene
+  editor for the .mc3.xml format, EASYGL-only GUI), mesh-world (a procedural world generator on
+  the MeshCraft ecosystem, C++ + Lua/sol2, quadtree planetary maps), and galaxy-eggbert (a full
+  3D remake of mobile-eggbert, built on CNA + easy-3d). mobile-eggbert, cna-samples, and
+  cna-examples already had adequate dedicated coverage elsewhere and needed no new content.
 - All cross-volume and cross-chapter references re-verified after renumbering; the
   `xrefs-volume1.tex` shim did not need new entries (all new cross-volume citations use plain
   text, matching the existing Vol.I → Vol.II citation style).
