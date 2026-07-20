@@ -392,6 +392,118 @@ device accelerometer/gyroscope, distinct from a gamepad's own motion sensors cov
 a full effect-building lifecycle --- real actuation requires genuinely FFB-capable hardware,
 since most ordinary gamepads only support simple rumble, not full force feedback).
 
+\subsection{Full method reference: TextInputEXT}
+
+Reading \texttt{TextInputEXT.hpp} directly shows a small, deliberately event-driven surface,
+not a polled one: \texttt{TextInput} (a \texttt{NOXNA System::MulticastAction<charcs>} ---
+Chapter~34 covers this \texttt{sharp-runtime} event type in full) fires once per composed
+character, already IME-resolved --- the correct event for accumulating actual typed text ---
+while \texttt{TextEditing} fires for \emph{in-progress}, not-yet-committed IME composition text
+(candidate string, cursor start, selection length), letting a text field draw a live composition
+preview before the user commits it. \texttt{StartTextInput()} / \texttt{StopTextInput()} bracket
+the period during which either event can fire at all --- text input is off by default, matching
+XNA's own model where keyboard events are always raw key presses unless a caller explicitly
+opts into IME-aware text composition. \texttt{IsTextInputActive()} reports whether that period
+is currently open; \texttt{SetInputRectangle(rectangle)} tells the platform IME where on screen
+to position any composition popup it draws, in window-relative logical coordinates.
+\texttt{IsScreenKeyboardShown()} reports whether a platform on-screen keyboard is currently
+visible (relevant primarily on Android/iOS/Steam Deck-style touch-first platforms).
+\texttt{StartTextInputWithTypeEXT(type)} is a \texttt{NOXNA} addition with no FNA analog at
+all --- a hint (\texttt{TextInputTypeEXT}: e.g.\ plain text, numeric, email) that lets a mobile
+platform's on-screen keyboard present the right key layout for the field being edited, rather
+than always the general-purpose one.
+
+\begin{lstlisting}
+// Worked example: an in-game chat box, using TextInputEXT's event-driven
+// composition instead of reading Keyboard::GetState() key-by-key -- the
+// only approach that gets IME composition (accented characters, CJK
+// input methods, etc.) right instead of only ever seeing raw US-layout
+// key presses.
+void ChatBox::Open()
+{
+    TextInputEXT::SetInputRectangle(chatBoxScreenBounds);
+    TextInputEXT::StartTextInput();
+    TextInputEXT::TextInput += [this](charcs c) { composedText += c; };
+}
+
+void ChatBox::Close()
+{
+    TextInputEXT::StopTextInput();
+    composedText.clear();
+}
+\end{lstlisting}
+
+\subsection{Worked examples: the NOXNA-only device subsystems}
+
+The five subsystems named above share a common shape worth noting once: each is a small,
+static, purely \texttt{NOXNA} class with no FNA or real-XNA precedent at all, since none of
+them has any equivalent in the original Xbox~360-era API surface. \cnaclass{Clipboard}'s
+entire surface is three methods --- \texttt{GetTextEXT()}, \texttt{SetTextEXT(text)}, and
+\texttt{HasTextEXT()} --- a direct wrap of SDL's own clipboard text API. \cnaclass{Joysticks}
+exposes the \emph{raw}, unmapped view of connected joystick hardware
+(\texttt{GetJoysticksEXT()} enumerates every connected device;
+\texttt{GetCapabilitiesEXT(id)} / \texttt{GetStateEXT(id)} read one device's shape and current
+state directly by axis/button/hat index) --- deliberately independent of \cnaclass{GamePad}'s
+own mapped, Xbox-360-shaped view of the same physical hardware, for the rarer case where an
+application needs a device's true native layout rather than GamePad's normalized
+abstraction. \cnaclass{Sensors} (\texttt{GetSensorsEXT()},
+\texttt{GetAccelerometerEXT} / \texttt{GetGyroscopeEXT}) reads the \emph{host device}'s own
+motion sensors --- a laptop's built-in accelerometer, a Steam Deck's gyro --- distinct from a
+gamepad controller's own motion sensors already covered under \texttt{GamePad}'s
+\texttt{EXT} surface above. \cnaclass{Power} is a single method,
+\texttt{GetInfoEXT(secondsLeft\&, percent\&)}, returning a \cnaclass{PowerStateEXT} plus two
+output parameters --- the host device's own battery state, not a gamepad's (that is
+\texttt{GamePad::GetPowerInfoEXT} instead).
+
+\begin{lstlisting}
+// Worked example: a low-battery warning that checks both the host
+// device's own battery (laptop, handheld) and each connected gamepad's
+// battery separately -- these are two distinct power sources with two
+// distinct query methods, easy to conflate.
+int hostSecondsLeft = 0, hostPercent = 0;
+if (Power::GetInfoEXT(hostSecondsLeft, hostPercent) == PowerStateEXT::OnBattery
+    && hostPercent < 15)
+{
+    ShowLowBatteryWarning("this device");
+}
+
+int gamepadPercent = 0;
+if (GamePad::GetPowerInfoEXT(PlayerIndex::One, gamepadPercent) == PowerStateEXT::OnBattery
+    && gamepadPercent < 15)
+{
+    ShowLowBatteryWarning("controller 1");
+}
+\end{lstlisting}
+
+\cnaclass{Haptics} is the one subsystem with real internal state and lifecycle, rather than a
+handful of stateless static queries: \texttt{GetHapticsEXT()} enumerates force-feedback-capable
+devices, and \texttt{OpenEXT(id)} / \texttt{OpenFromJoystickEXT(joystickId)}/%
+\texttt{OpenFromMouseEXT()} each return an owning \cnaclass{HapticDevice} handle. That handle's
+own surface splits cleanly into two tiers: a simple \texttt{InitRumbleEXT()}/%
+\texttt{PlayRumbleEXT(strength, lengthMs)} / \texttt{StopRumbleEXT()} trio for the common
+single-motor-strength case (the same conceptual level as \texttt{GamePad::SetVibration}, just
+reachable for non-gamepad haptic hardware too), and a full \texttt{HapticEffectEXT}
+lifecycle --- \texttt{CreateEffectEXT} / \texttt{UpdateEffectEXT} / \texttt{RunEffectEXT}/%
+\texttt{StopEffectEXT} / \texttt{DestroyEffectEXT}, plus \texttt{GetEffectStatusEXT} to poll
+whether a specific effect is still running --- for genuinely shaped force-feedback (a
+directional recoil kick, a sustained engine rumble curve), real only on the smaller set of
+devices \texttt{IsEffectSupportedEXT} confirms actually support the specific effect requested.
+
+\begin{lstlisting}
+// Worked example: a simple rumble pulse on a haptic-capable mouse -- a
+// case GamePad::SetVibration cannot reach at all, since it only ever
+// addresses gamepad hardware specifically.
+if (Haptics::IsMouseHapticEXT())
+{
+    HapticDevice mouseHaptic = Haptics::OpenFromMouseEXT();
+    if (mouseHaptic.IsOpenEXT() && mouseHaptic.InitRumbleEXT())
+    {
+        mouseHaptic.PlayRumbleEXT(0.5f, 150);   // half strength, 150 ms
+    }
+    // mouseHaptic disposes (closes the device) automatically at scope exit.
+}
+\end{lstlisting}
+
 \section{Platform-specific behavior worth knowing}
 
 A handful of platform facts are worth stating plainly, because they are not CNA bugs even

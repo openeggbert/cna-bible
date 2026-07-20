@@ -168,7 +168,7 @@ ever needed).
 
 | # | Chapter | Current (lines) | Target (pages) | Approach | Status |
 |---|---------|-----------------:|----------------:|----------|--------|
-| 25 | Input System | 422 (was 170) | 70 | Full method references + worked examples added for KeyboardState/Keyboard's EXT scancode surface, MouseState/Mouse's relative-mouse-mode EXT surface, GamePadState/the three GamePadDeadZone modes, and TouchCollection/TouchLocation/GestureSample | **In progress (~8 of ~70 pages)** |
+| 25 | Input System | 534 (was 170) | 70 | Full method references + worked examples for KeyboardState/Keyboard's EXT scancode surface, MouseState/Mouse's relative-mouse-mode EXT surface, GamePadState/the three GamePadDeadZone modes, TouchCollection/TouchLocation/GestureSample, TextInputEXT (IME-aware composition), and all five NOXNA-only device subsystems (Clipboard/Joysticks/Sensors/Power/Haptics) | **In progress (~10 of ~70 pages)** |
 | 26 | Audio System | 118 | 60 | Full SoundEffect family docs + examples | Not started |
 | 27 | Media | 103 | 45 | Full Song/MediaPlayer/MediaLibrary docs + examples | Not started |
 | 28 | Devices and Sensors | 115 | 45 | Full sensor API docs + examples | Not started |
@@ -607,3 +607,30 @@ current real total of 266 pages.
   (comparing point-widths, not just presence) is what actually surfaced it here.
   Chapter grows from 170 to 422 lines (~4 to ~8 of a ~70-page target). Volume recompiled clean
   (270 pages total, 1138 index entries, 0 undefined references, 0 duplicate-label warnings).
+- **2026-07-20 (same session, "commitni pushni. pokracuj"):** Continued Chapter 25, covering
+  the two remaining named-but-undocumented sections: `TextInputEXT` and the five NOXNA-only
+  device subsystems. Added a full method reference for `TextInputEXT` (read directly from
+  `TextInputEXT.hpp`), distinguishing `TextInput` (fires once per composed, IME-resolved
+  character) from `TextEditing` (fires for in-progress, not-yet-committed composition text) ---
+  a distinction easy to conflate — plus a worked example (an in-game chat box). Added full
+  references + worked examples for `Clipboard`, `Joysticks`, `Sensors`, `Power`, and
+  `Haptics` — the last with real internal lifecycle state (`HapticDevice` handles from
+  `OpenEXT`/`OpenFromJoystickEXT`/`OpenFromMouseEXT`, a simple rumble tier and a full
+  `HapticEffectEXT` create/update/run/stop/destroy tier), including a verified finding that
+  `HapticDevice`'s destructor calls `Dispose()` directly (confirmed by reading
+  `HapticDevice.cpp`), so a locally-scoped handle closes automatically at scope exit without
+  needing an explicit call. Worked examples: dual host-device/gamepad battery check (a real,
+  easy-to-conflate distinction between `Power::GetInfoEXT` and
+  `GamePad::GetPowerInfoEXT`), and a haptic-mouse rumble pulse (a case
+  `GamePad::SetVibration` cannot reach at all, since it's gamepad-only).
+  **Proactively re-applied the same `/`-spacing fix from the prior entry** to this session's
+  own new content before the first build (9 more instances caught pre-emptively), then still
+  found and fixed one more instance of the specific `}/%`-line-continuation variant of the bug
+  (a `Clipboard` method list) that the regex-based fix doesn't catch, since it doesn't match a
+  literal `}/\texttt{` pattern. Verified by rendering all four affected pages to PNG and
+  reading them back; one moderate (45pt) overfull warning remains in the log but the
+  corresponding page renders with no visible cutoff when read back, confirming the numeric
+  warning doesn't always correspond to a real visible defect — the actual bar is the rendered
+  page, not a clean log. Chapter grows from 422 to 534 lines (~8 to ~10 of a ~70-page target).
+  Volume recompiled clean (272 pages total, 1146 index entries, 0 undefined references, 0
+  duplicate-label warnings).

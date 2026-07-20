@@ -8,75 +8,54 @@ be stale relative to what's happened since — trust the conversation over this 
 
 ## Where things stand right now (end of session, 2026-07-20)
 
-**The book is now a single, unified book** (merged from two volumes this same session, per
-explicit author instruction). Read `CLAUDE.md` for the current repository layout if you
-haven't already — `latex/volume1`/`latex/volume2` no longer exist; everything is under
-`latex/book/`, built via `make book` (→ `latex/book/main.pdf`). Chapters 1–24 are the former
-Volume I (Parts I–IV, unchanged numbering); chapters 25–48 are the former Volume II (Parts
-V–IX, renumbered +24 from their old 1–24). Appendices A–F (A was Volume I's own; B–F are
-Volume II's old A–E, renumbered). Full renumbering table is in `PLAN.md`'s merge session-log
-entry if ever needed.
+**The book is a single, unified book** (merged from two volumes earlier this same session).
+`latex/volume1`/`latex/volume2` no longer exist; everything is under `latex/book/`, built via
+`make book` (→ `latex/book/main.pdf`). Chapters 1–24 = former Volume I (Parts I–IV, unchanged
+numbering). Chapters 25–48 = former Volume II (Parts V–IX, renumbered +24). Appendices A–F.
+Full renumbering table is in `PLAN.md`'s merge session-log entry.
 
-**After the merge, per the author's "pokracuj na nejake dalsi kapitole pote" (continue on some
-other chapter after that) instruction**, this session did the first real expansion-pass work
-on any former-Volume-II chapter: **Chapter 25 (Input System)**, grown from 170 → 422 lines
-(~4 → ~8 of a ~70-page target). Parts V–IX were previously at 0% — this is the actual start of
-that work, not just a plan.
+**Chapter 25 (Input System) is now essentially fully expanded at the "reference + worked
+example per major type" depth**, though still well short of its ~70-page target (currently
+534 lines, ~10 pages). Every named subsystem now has a full method reference and at least one
+worked example: `Keyboard`/`KeyboardState` (incl. `GetKeyFromScancodeEXT`), `Mouse`/
+`MouseState` (incl. relative-mouse-mode), `GamePad`/`GamePadState`/`GamePadDeadZone`,
+`TouchPanel`/`TouchCollection`/`GestureSample`, `TextInputEXT`, and all five NOXNA-only device
+subsystems (`Clipboard`, `Joysticks`, `Sensors`, `Power`, `Haptics`). The "Platform-specific
+behavior" and "Status" sections at the end are unchanged from before this session's work
+started (still just narrative, no worked examples) — those are the remaining known gap if
+returning to this chapter specifically, though there may not be much real additional content
+to add there (they're already fairly complete narrative, not reference material).
 
-### What Chapter 25 got this session
-
-Full method references + worked examples, each grounded in a direct header/source read:
-- **`Keyboard`'s `GetKeyFromScancodeEXT`** (layout-independent physical-key lookup) — worked
-  example: WASD movement keys that stay correct on AZERTY.
-- **`Mouse`'s relative-mouse-mode EXT surface** — a real, verified finding:
-  `InputManager::GetMouseState()` substitutes `MouseState.X`/`Y` with an
-  accumulated-then-reset relative-delta pair while relative mode is active (confirmed by
-  reading `InputManager.cpp` directly), so the same fields mean genuinely different things
-  depending on mode. Worked example: FPS-style mouse-look.
-- **`GamePadState`'s three `GamePadDeadZone` modes** — a precise finding from
-  `GamePadThumbSticks`'s constructor: `IndependentAxes` (the default) excludes each axis
-  independently (can distort diagonal input at the boundary); `Circular` excludes radially by
-  magnitude; the two also differ in post-dead-zone clamp shape (square vs. circle). Worked
-  example: dead-zone-aware movement plus rumble.
-- **`TouchCollection`/`TouchLocation`/`GestureSample`** — a verified finding that
-  `EnabledGestures` genuinely filters `ReadGesture()`'s output (checked via bitwise AND in
-  `GestureDetector.cpp`), not merely advisory. Worked examples: per-finger drag tracking by
-  stable `Id`, and pinch-to-zoom.
-
-### A real typographic defect found and fixed (worth remembering for future chapters)
-
-While rebuilding, `grep -i overfull` on the build log turned up several `\texttt{A}/\texttt{B}`
-chains (no space around the `/`) that LaTeX treats as one unbreakable token — when long enough,
-this caused severe overfull-hbox overflows (up to ~225pt, about 3 inches) that visibly ran text
-off the page edge. Worst case: `SdlInputBridge::ProcessEvent` was cut off mid-word in the
-chapter's own intro paragraph. **This was not caught by "build clean, check for undefined
-references" alone** — overfull-hbox warnings are easy to skim past in a long log; comparing
-point-widths (not just presence) is what surfaced it. Fixed by adding breaking spaces around
-long `/`-joined `\texttt{}` chains and rewording a few paragraphs. Verified by rendering the
-affected pages to PNG and reading them back, not just trusting the log.
-
-**Do this in any future chapter with dense multi-method-name descriptions**: after any batch of
-edits, run `grep -i overfull main.log | sort -t'(' -k2 -rn` (or similar) and treat anything
-over roughly 30-40pt as worth a look — it likely means visible text is running off the page,
-not just a cosmetically-loose line.
-
-Volume currently compiles to **270 pages, 1138 index entries, 0 undefined references, 0
+Volume currently compiles to **272 pages, 1146 index entries, 0 undefined references, 0
 duplicate-label warnings**.
+
+### A recurring defect class — watch for this in every future chapter
+
+Two consecutive passes on Chapter 25 both turned up the same LaTeX typographic bug: a
+`\texttt{A}/\texttt{B}` (or `\texttt{A}/%`-newline-continued) chain with **no space around the
+slash** is one unbreakable token to LaTeX. When the combined text is long, this causes
+overfull-hbox warnings — sometimes severe enough (up to ~225pt, ~3 inches) to visibly run text
+off the page edge. **After any batch of edits to a chapter with dense multi-method-name
+descriptions**, before considering it done:
+1. `grep -n '}/\\texttt{\|}/\\cnaclass{'` on the file you just edited — fix any hit by adding a
+   space (`} / \texttt{`) unless it's short enough to clearly not matter.
+2. Also check for the sneakier `}/%`-newline-continuation variant, which doesn't match that
+   grep — visually skim any paragraph with a lot of inline `\texttt{}` names.
+3. `grep -i overfull main.log` after building, for the specific file/line range — anything
+   over ~40pt is worth rendering the actual page to PNG and reading it back, since the log
+   warning alone doesn't tell you whether it's a real visible defect or a harmless loose line.
 
 ## What to do next
 
-1. **Continue Chapter 25** — TextInputEXT and the NOXNA extensions (Clipboard, Joysticks,
-   Sensors, Power, Haptics) still have no worked examples or full references of their own;
-   the "Platform-specific behavior" and "Status" sections are unchanged from before this
-   session. Still ~62 pages short of the ~70-page target.
-2. **Move to Chapter 26 (Audio System)** or another Part V–IX chapter — same systematic
-   approach (read the real headers, find full method references and real findings, add
-   worked examples) that worked for both Chapter 7 and Chapter 25.
-3. **Deepen Chapter 9 (GraphicsDevice)** further, or start Chapter 13 (Stock Effects) — both
-   still open Part I–IV targets.
-4. Chapter 7 (Math and Core Types) is at ~33 of a ~110-page target after three sessions — a
-   legitimate target but needs fresh gap-discovery, not a ready-made list (see the chapter's
-   own entry in `PLAN.md`'s session log for what's already been covered).
+1. **Move to Chapter 26 (Audio System)** or another Part V–IX chapter (Chapters 27–32 are
+   Media, Devices/Sensors, GamerServices, Networking, Avatar, Storage) — same systematic
+   approach that worked for Chapters 7 and 25: read the real headers, find full method
+   references and real verified findings, add worked examples, watch for the `/`-spacing
+   defect class above.
+2. **Deepen Chapter 9 (GraphicsDevice)** further, or start Chapter 13 (Stock Effects) — both
+   still open Part I–IV targets, untouched for several sessions now.
+3. Chapter 7 (Math and Core Types) is at ~33 of a ~110-page target after three sessions — a
+   legitimate target but needs fresh gap-discovery, not a ready-made list.
 
 **Verify the numbers above against `git log` and actual file line counts before trusting them
 at face value.**
@@ -85,15 +64,15 @@ at face value.**
 
 - Branch: `claude/cna-bible-book-09gxp0`. Push there; never force-push.
 - Build: `cd latex && make book` → `latex/book/main.pdf`. Check the log for `undefined`,
-  `multiply defined`/`multiply-defined`, AND now also `overfull` (see above) every time.
+  `multiply defined`/`multiply-defined`, AND `overfull` (see above) every time.
 - Small commits, pushed often — see `CLAUDE.md` for the full methodology list.
 - `/workspace/cna` (or wherever `cna` gets cloned) does not persist across sessions — if a
   screenshot or source re-read needs a working clone, redo it per
   `tools/cna-screenshot-infra/README.md`.
-- After embedding any new screenshot, verify it actually rendered correctly by converting the
-  relevant compiled PDF page to an image and reading it back (`pdftoppm` + the `Read` tool).
-  **Now also do this for any dense full-method-reference section**, not just screenshots — a
-  page can render "successfully" (no LaTeX error) while still visibly cutting off text.
+- After embedding any new screenshot OR any dense full-method-reference section, verify it
+  actually rendered correctly by converting the relevant compiled PDF page to an image and
+  reading it back (`pdftoppm` + the `Read` tool) — a page can "build successfully" while still
+  visibly cutting off text.
 - Printed page numbers and physical PDF page numbers differ (front matter uses roman
   numerals) — search by content (`pdftotext -f N -l N`) rather than assuming printed page N
   is physical page N.
