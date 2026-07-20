@@ -25,10 +25,15 @@
   FNA does not implement it at all. See Chapter~5 of this volume.
 \item[GraphicsDevice] The central class every rendering operation in CNA passes through;
   covered in Volume~I, Chapter~9.
-\item[.mdxb / .xnb] Real XNA's compiled binary content-pipeline output format. CNA does not
-  implement a general \texttt{.xnb} reader by design (with one real exception, the
-  \cnaclass{Model} reader) --- see Volume~I, Chapter~8, and this volume's migration guide,
-  Chapter~17.
+\item[.cnj] CNA's own permanent, JSON-based content sidecar format --- ``CNA content JSON,''
+  originally and confusingly named \texttt{.cnb}. Tried after \texttt{.xnb} and a direct
+  native-format load in \cnaclass{ContentManager}'s resolution order. See Volume~I, Chapter~8.
+\item[.xnb] Real XNA's compiled binary content-pipeline output format. CNA has a real, growing
+  binary \texttt{.xnb} reader --- covering \cnaclass{Texture2D}, \cnaclass{SpriteFont}, the
+  five stock effects, \cnaclass{SoundEffect}, \cnaclass{Song}, and \cnaclass{Model} at the
+  time of writing --- checked first in \cnaclass{ContentManager}'s resolution order, ahead of
+  both a direct native-format load and \texttt{.cnj}. See Volume~I, Chapter~8, and this
+  volume's migration guide, Chapter~18.
 \item[MojoShader] The bytecode-to-GLSL cross-compiler FNA uses to run compiled Direct3D~9
   shader bytecode. CNA has no equivalent, which is the root cause of the shader/.fx bytecode
   gap covered in Volume~I, Chapter~15.
@@ -37,7 +42,7 @@
   Volume~I, Chapter~3.
 \item[Oracle (D3D9)] The pixel-for-pixel verification methodology comparing CNA's D3D9
   backend against a genuinely running XNA~4.0 runtime under Wine, at zero tolerance. See
-  Volume~I, Chapter~22, and this volume's Windows/Wine chapter, Chapter~13.
+  Volume~I, Chapter~22, and this volume's Windows/Wine chapter, Chapter~14.
 \item[SDL3] The cross-platform windowing/input/audio library CNA is built on. Not itself a
   graphics backend --- \texttt{SDL\_RENDERER} (one of CNA's eleven backends) is built on
   SDL3's own 2D renderer specifically.
@@ -61,5 +66,9 @@
   engine. See Chapter~2 of this volume.
 \item[xna4-spec] The sibling repository providing a complete, machine-readable XML
   transcription of the real XNA~4.0 API documentation, used to audit CNA's coverage against a
-  ground truth rather than against FNA's own source. See Chapter~19 of this volume.
+  ground truth rather than against FNA's own source. See Chapter~20 of this volume.
+\item[Storage] The \cnans{Microsoft::Xna::Framework::Storage} namespace --- a real, if
+  small, XNA namespace for user-data persistence (\cnaclass{StorageDevice},
+  \cnaclass{StorageContainer}), backed by a straightforward local-filesystem implementation
+  underneath a faithfully-preserved fake-async API shape. See Chapter~8 of this volume.
 \end{description}

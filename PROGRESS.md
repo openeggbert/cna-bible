@@ -1,16 +1,17 @@
 # The CNA Bible — writing progress
 
-**Status: both volumes complete.** Two-volume LaTeX technical book about the
-`openeggbert/cna` ecosystem. Source lives under `latex/volume1/` and `latex/volume2/`.
-Build with:
+**Status: both volumes complete, including a content-completeness pass covering
+CNJ/XNB/Storage/NOXNA/RAM/cna-template/cna-extended/libcna.com (2026-07-20).**
+Two-volume LaTeX technical book about the `openeggbert/cna` ecosystem. Source lives under
+`latex/volume1/` and `latex/volume2/`. Build with:
 
 ```bash
-cd latex && make volume1   # -> volume1/main.pdf  (106 pages)
-cd latex && make volume2   # -> volume2/main.pdf  (104 pages)
+cd latex && make volume1   # -> volume1/main.pdf  (108 pages)
+cd latex && make volume2   # -> volume2/main.pdf  (112 pages)
 ```
 
 Both volumes compile cleanly with pdflatex/latexmk, no undefined references, no unicode
-errors. Combined: 210 pages, 47 chapters + 2 prefaces + 3 appendices.
+errors. Combined: 220 pages, 48 chapters + 2 prefaces + 4 appendices.
 
 ## Scope note
 
@@ -19,49 +20,90 @@ clarified as 2x2000 across a 4000-page total). That target was not reachable as 
 unique, source-grounded content in any reasonable session — this project instead prioritized
 real depth and accuracy over page count, with every specific claim traceable to an actual
 source file, doc, or test result read directly from the `cna`, `sharp-runtime`, `easy-gl`,
-`free-direct`, `xna4-spec`, `cna-samples`, and `cna-examples` repositories. 210 pages of dense,
-non-repetitive, source-grounded technical writing is the honest result.
+`free-direct`, `xna4-spec`, `cna-samples`, `cna-examples`, `cna-template`, and `cna-extended`
+repositories. 220 pages of dense, non-repetitive, source-grounded technical writing is the
+honest result.
 
 **free-direct scope (per author instruction 2026-07-20): capped at ~5-10 pages total across
-both volumes.** Delivered as: Vol.I Ch.24 (DX3 backend, ~2 pages) + Vol.II Ch.12 (free-direct
-in depth, ~2 pages) + material folded into Vol.II Ch.18 (Blupi case study, which is really
+both volumes.** Delivered as: Vol.I Ch.24 (DX3 backend, ~2 pages) + Vol.II Ch.13 (free-direct
+in depth, ~2 pages) + material folded into Vol.II Ch.19 (Blupi case study, which is really
 about the free-eggbert/planetblupi call-site audit, not free-direct itself) — combined
 free-direct-specific content stays within budget.
 
-## Volume I — The Core Framework and the Graphics Machine — COMPLETE (106 pages, 24 chapters)
+**cna-extended scope (per author instruction 2026-07-20): intentionally marginal.** One
+paragraph in Vol.II Appendix C, not a dedicated chapter.
+
+## Content-completeness pass (2026-07-20, second session)
+
+The author flagged real gaps after the first "complete" pass: CNJ format, the corrected/
+current XNB story, the Storage namespace, a NOXNA catalog, and cna-template/cna-extended/
+libcna.com were all missing or under-covered. Fixed:
+
+- **Vol.I Ch.8 (Content and Assets) rewritten**: the original version claimed CNA has no
+  `.xnb` reader "by design" except for Model — this was stale. Corrected to describe both
+  real formats: `.cnj` (CNA's own permanent JSON sidecar format, renamed from the confusingly-
+  named `.cnb`) and a real, growing binary `.xnb` reader (Texture2D, SpriteFont, all 5 stock
+  effects, SoundEffect, Song, Model — plus real LZX decompression, verified via differential
+  testing against FNA's own decompressor, which found a real heap-buffer-overflow). The
+  actual `ContentManager` resolution order is documented precisely: `.xnb` first, then a
+  direct native-format load, then `.cnj` last (as an optional metadata sidecar).
+- **New Vol.II Ch.8 "Storage"**: Microsoft::Xna::Framework::Storage (StorageDevice,
+  StorageContainer, StorageDeviceNotConnectedException) — a real namespace that had no
+  coverage at all. Inserted into Part I, renumbering Parts II-V and their chapters by one
+  chapter (sharp-runtime is now Ch.9-11, easy-gl/free-direct Ch.12-13, cross-platform
+  Ch.14-17, porting/practice Ch.18-24).
+- **New Vol.II Appendix D "Catalog of NOXNA Extensions"**: a reference table of every
+  significant NOXNA/EXT extension named across both volumes, organized by area, with pointers
+  back to the chapter that explains each one — explicitly framed as a curated reference to
+  what this book covers, not a claim of exhaustive coverage (the project's own NOXNA
+  compile-time build gate is the authoritative, mechanically-enforced check).
+- **Vol.II Appendix C (repo map) expanded**: cna-template (thin starter template) and
+  cna-extended (C++23 port of MonoGame.Extended — intentionally marginal per author
+  instruction) both now covered; libcna.com correctly identified as CNA's flagship public
+  documentation site (own top-level domain, not an *.openeggbert.com mirror); a note on
+  RAM.md added under mobile-eggbert, correctly framed as a narrow, downstream memory-usage
+  investigation of one game on one backend, not a general CNA feature.
+- All cross-volume and cross-chapter references re-verified after renumbering; the
+  `xrefs-volume1.tex` shim did not need new entries (all new cross-volume citations use plain
+  text, matching the existing Vol.I → Vol.II citation style).
+
+## Volume I — The Core Framework and the Graphics Machine — COMPLETE (108 pages, 24 chapters)
 
 - Part I (Ch.1-3): Ecosystem, design philosophy, house style
 - Part II (Ch.4-8): Building CNA, first game, game loop, math/geometry types, content model
+  (CNJ + XNB + direct loading, corrected 2026-07-20)
 - Part III (Ch.9-15): GraphicsDevice, SpriteBatch, textures/render targets, models/meshes,
   stock effects, state objects, the shader/.fx bytecode gap
 - Part IV (Ch.16-24): Backend architecture + SDL_Renderer, EasyGL, Vulkan, BGFX, WebGPU,
   D3D9/D3D11/D3D12, Canvas+ASCII, DX3
 
-## Volume II — The Ecosystem, the Platforms, and the Practice — COMPLETE (104 pages, 23 chapters + 3 appendices)
+## Volume II — The Ecosystem, the Platforms, and the Practice — COMPLETE (112 pages, 24 chapters + 4 appendices)
 
-- Part I (Ch.1-7): Input, Audio, Media (corrects a stale README claim), Devices/Sensors,
-  GamerServices, Networking, Avatar
-- Part II (Ch.8-10): Sharp Runtime overview/architecture, strings/streams/audit history,
+- Part I (Ch.1-8): Input, Audio, Media (corrects a stale README claim), Devices/Sensors,
+  GamerServices, Networking, Avatar, **Storage (new)**
+- Part II (Ch.9-11): Sharp Runtime overview/architecture, strings/streams/audit history,
   parity philosophy and permanent deviations
-- Part III (Ch.11-12): easy-gl in depth, free-direct in depth (kept short per scope note)
-- Part IV (Ch.13-16): Windows/MinGW-w64/Wine, Web/Emscripten, Android/NDK, verification
+- Part III (Ch.12-13): easy-gl in depth, free-direct in depth (kept short per scope note)
+- Part IV (Ch.14-17): Windows/MinGW-w64/Wine, Web/Emscripten, Android/NDK, verification
   methodology compared across platforms
-- Part V (Ch.17-23): Migration guide, Blupi case study, xna4-spec auditing, cna-samples/
+- Part V (Ch.18-24): Migration guide, Blupi case study, xna4-spec auditing, cna-samples/
   cna-examples, project practice & task tracking, testing philosophy, roadmap
-- Appendices: A (backend feature matrix), B (glossary), C (repository map)
+- Appendices: A (backend feature matrix), B (glossary, now includes CNJ/XNB/Storage entries),
+  C (repository map, now includes cna-template/cna-extended/libcna.com/RAM.md), **D (NOXNA
+  extension catalog, new)**
 
 ## Methodology notes
 
 - Every chapter is grounded in direct reads of source code, README files, `docs/*.md` files,
-  `CLAUDE.md`, `NEXT.md`, `AUDIT.md`, `CHECKLIST.md`, and `plan_*.md` tracking files across
-  all seven repositories — not paraphrased from memory.
+  `CLAUDE.md`, `NEXT.md`, `AUDIT.md`, `CHECKLIST.md`, and `plan_*.md`/`cnj.md`/`xnb.md`/
+  `RAM.md` tracking files across all repositories — not paraphrased from memory.
 - Several research passes were run via parallel subagents to gather structured, source-cited
-  notes (core framework, Graphics API, all 11 backends, Input/Audio/Media/Net, GamerServices/
-  Avatar, Devices/Sensors, sharp-runtime, easy-gl, cross-platform/Wine/Emscripten/Android/
-  verification, Blupi case study) before writing final prose from those notes.
-- A real documentation-drift correction is included as a worked methodology lesson: the
-  README's "Media: 25/25 present, 14 shells" claim is flagged and corrected against the
-  namespace's own current tracking record (224/231 tasks done) in Vol.II Ch.3.
+  notes before writing final prose from those notes.
+- Two real documentation-drift corrections are now included as worked methodology lessons:
+  the README's "Media: 25/25 present, 14 shells" claim (Vol.II Ch.3), and this session's own
+  correction to Vol.I Ch.8's original "no .xnb reader by design" claim, which was itself
+  stale relative to the project's current, real, growing binary XNB reader.
 - Cross-volume chapter references are resolved via a small `\newlabel` shim
-  (`latex/volume2/xrefs-volume1.tex`) mapping Volume I labels to their real chapter numbers,
-  so `Chapter~\ref{...}` reads correctly across the two separately-compiled documents.
+  (`latex/volume2/xrefs-volume1.tex`) mapping Volume I labels to their real chapter numbers
+  for the handful of citations that use `\ref`; most Vol.I→Vol.II and Vol.II→Vol.I citations
+  use plain-text chapter numbers instead, verified by hand after each renumbering pass.

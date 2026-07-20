@@ -28,31 +28,72 @@ book's own deliberately bounded scope.
 
 Several further repositories extend or sit alongside CNA without being covered in depth here,
 since this book's scope was deliberately bounded to the repositories CNA's own build system
-and documentation directly name as dependencies or verification partners:
-\texttt{cna-template}, \texttt{cna-extended}, and \texttt{cna-craft} (further CNA-adjacent
-projects), \texttt{meta-gl} (the lower-level typed OpenGL/GLES wrapper \texttt{easy-gl} itself
-depends on, covered briefly in this volume's easy-gl chapter), and \texttt{easy-3d}.
+and documentation directly name as dependencies or verification partners. Two are worth a
+paragraph each rather than a bare mention, and one is genuinely marginal to CNA itself:
+
+\texttt{cna-template} is a minimal starter template for building a new application on top of
+CNA --- at the time of writing, an early work in progress, with full build instructions,
+backend/platform coverage, and a porting guide for existing XNA~4.0 C\# games still being
+added. It exists to give a new CNA project a working skeleton to start from, the same
+function a ``File $\to$ New Project'' template serves in a conventional IDE-based framework,
+rather than to demonstrate any specific CNA capability the way \texttt{cna-examples} does.
+
+\texttt{cna-extended} is, briefly --- and it is covered only briefly, since it sits at the
+edge of this book's own scope --- a C\texttt{++}23 port of \emph{MonoGame.Extended}, the
+well-known MonoGame utility library, built on top of both \texttt{cna} and
+\texttt{sharp-runtime} and positioned as a sibling to \texttt{easy-3d}. Its own stated goal is
+a faithful, 1:1 translation of MonoGame.Extended's runtime-usable parts --- 2D collision
+detection, tilemap support (Tiled/LDtk/Ogmo), particles, sprite-sheet animation, an
+Artemis-style entity-component system, tweening, input listeners, and viewport adapters ---
+not a reimagining. It deliberately does not port MonoGame.Extended's own design-time content
+pipeline tooling, since that tooling has no C\texttt{++} runtime counterpart to receive it; it
+covers the same ground instead through direct-format loading of the same underlying file
+formats (Tiled's TMX/JSON, LDtk's JSON, Ogmo's JSON, TexturePacker JSON, BMFont's
+\texttt{.fnt}). At the time of writing it is an early bootstrap, not yet a mature dependency
+--- worth knowing about if you are looking for MonoGame.Extended-style utilities on top of
+CNA, but not a repository this book treats as part of CNA's own core, verified surface.
+
+\texttt{cna-craft} is a further CNA-adjacent project, alongside \texttt{meta-gl} (the
+lower-level typed OpenGL/GLES wrapper \texttt{easy-gl} itself depends on, covered briefly in
+this volume's easy-gl chapter) and \texttt{easy-3d}.
 
 \section{Real games and tools built on this stack}
 
 \texttt{free-eggbert} and \texttt{planetblupi} are the two real legacy games --- \emph{Speedy
 Blupi} and \emph{Planet Blupi} --- whose real call sites shaped \texttt{free-direct}'s own API
-surface, covered as a worked case study in Chapter~18 of this volume.
+surface, covered as a worked case study in Chapter~19 of this volume.
 \texttt{mobile-eggbert} (with a related \texttt{mobile-eggbert-legacy} and a libGDX variant)
 appeared directly in Volume~I's WebGPU backend chapter, as the independent, real XNA-style
 game whose unmodified run against that experimental backend was one of this book's strongest
-pieces of evidence for a backend actually working. \texttt{mesh-craft} and
-\texttt{galaxy-eggbert} are further games/tools built on this ecosystem, outside this book's
-scope.
+pieces of evidence for a backend actually working. Its own repository also carries a real,
+narrow memory-usage investigation (\texttt{RAM.md}) worth naming precisely so it is not
+mistaken for a general CNA characteristic: a specific regression from roughly 28~MB to
+roughly 78~MB on the Vulkan backend was traced almost entirely to \texttt{cpuPixels\_}, a
+CPU-side shadow copy every \cnaclass{Texture2D} started retaining once
+\cnaclass{ContentManager::Load<T>()} needed to be able to return by-value copies and
+\texttt{Texture2D::GetData()} needed a readback source (Chapter~11 of Volume~I covers this
+CPU-shadow mechanism for buffers; the equivalent exists for textures) --- a real, measured,
+downstream finding about one game's specific memory footprint on one backend, not a
+documented, general CNA memory-budget feature. \texttt{mesh-craft} and \texttt{galaxy-eggbert}
+are further games/tools built on this ecosystem, outside this book's scope.
 
-\section{A long tail of documentation and marketing sites}
+\section{Documentation and marketing sites}
 
-The \texttt{openeggbert} organization also hosts a considerable number of
+\texttt{libcna.com} is CNA's own flagship public documentation and marketing site --- a
+static site (features, architecture, tutorials, a demo/showcase gallery, and a
+contribution guide) published under its own top-level domain rather than an
+\texttt{*.openeggbert.com} subdomain, which marks it as the project's primary public-facing
+presence rather than one of the many per-project mirror sites below it. Like every
+documentation site in this appendix, this book does not treat it as a source of new technical
+fact in its own right --- its content is a presentation layer over the same repository this
+book's own Volume~I is about --- but it is worth knowing about specifically as the place a
+newcomer to CNA is most likely to land first, before ever finding the repository itself.
+
+The \texttt{openeggbert} organization also hosts a considerable number of further
 \texttt{*.openeggbert.com}-named repositories --- per-project documentation or marketing
 sites (for instance \texttt{cna.openeggbert.com}, \texttt{easygl.openeggbert.com},
-\texttt{sharpruntime.openeggbert.com}) --- which this book does not cover at all, since they
-are presentation layers over the underlying code repositories rather than sources of new
-technical fact.
+\texttt{sharpruntime.openeggbert.com}) --- which this book does not cover at all, for the
+same reason.
 
 \section{A note on repositories unrelated to CNA}
 
