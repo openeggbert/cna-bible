@@ -27,7 +27,7 @@ that separation:
         vocabulary make sense in C\texttt{++}.
   \item \textbf{Reproduce a GPU.} Real XNA only ever had to run against Direct3D 9 (Xbox 360's
         own GPU API is Direct3D-shaped too). CNA has to make the same \cnaclass{GraphicsDevice}
-        /\cnaclass{SpriteBatch}/\cnaclass{Effect} surface work identically whether the pixels
+        /\cnaclass{SpriteBatch} / \cnaclass{Effect} surface work identically whether the pixels
         are actually produced by SDL's own 2D renderer, raw OpenGL, Vulkan, BGFX, WebGPU, real
         Direct3D 9/11/12 under Wine, an HTML \texttt{<canvas>} under Emscripten, or a
         from-scratch DirectDraw reimplementation. That is the job of the backend layer covered
@@ -45,7 +45,7 @@ internals.''
 \section{Why XNA, and why now}
 
 XNA Game Studio was Microsoft's managed-code (C\#) game development framework, built around
-a small, coherent \cnaclass{Game}/\cnaclass{GraphicsDevice}/\cnaclass{SpriteBatch}/\cnaclass{Effect}
+a small, coherent \cnaclass{Game} / \cnaclass{GraphicsDevice} / \cnaclass{SpriteBatch} / \cnaclass{Effect}
 vocabulary that a whole generation of independent and student developers learned game
 programming on. Microsoft discontinued active XNA development years ago; the community
 response was \textbf{FNA}, a faithful open-source reimplementation of the XNA 4.0 API in
@@ -68,6 +68,20 @@ returns to in this book's migration and case-study chapters, using the real port
 \emph{Speedy Blupi} and \emph{Planet Blupi} (via the \texttt{free-direct} sibling project)
 as worked examples.
 
+``Why now'' is not a rhetorical question this book can only answer with intent --- the
+project's own tracked completion numbers, current as of the source snapshot this book draws
+from, back it up: 227 of 245 public FNA types are present in CNA (92.7\%, computed by diffing
+FNA's own public type list against CNA's headers), with \cnans{Graphics}, \cnans{Audio},
+\cnans{Input} (plus \cnans{Touch}), and \cnans{Storage} each at 100\%. The real, honestly-named
+gaps are narrower than that headline number suggests: \cnans{Content} sits at 4 of 12 (no real
+\texttt{.xnb} reader, a deliberate design choice covered in
+Chapter~\ref{ch:content-and-assets}) and \cnans{Media} is 25 of 25 types present but 14 of them
+shells. Within \cnans{Graphics} specifically, a separate and stricter metric --- one that counts
+behavioral correctness against a real reference, not just class presence --- puts the roughly 26
+major classes at about 90\% test-execution-verified, not merely estimated. This book treats
+both numbers as what they are: two different, non-contradictory measurements of the same
+project, not marketing rounding.
+
 \section{What CNA is not}
 
 It is worth being precise about the negative space, because CNA's own documentation is:
@@ -89,7 +103,7 @@ It is worth being precise about the negative space, because CNA's own documentat
         the sibling \texttt{cna-samples} repository. Chapter~\ref{ch:shader-fx-gap} covers
         this in depth, including why it is architecturally hard rather than merely unwritten.
   \item \textbf{Not binary-compatible with real Xbox Live.} The \cnaclass{GamerServices}
-        namespace (Chapter references in this book) reimplements the public API shape with
+        namespace (Chapter~\ref{ch:gamerservices}) reimplements the public API shape with
         local/synthetic semantics, matching how FNA itself already handles this namespace ---
         there is no real Xbox Live behind it, by design.
   \item \textbf{Not wire-compatible with Microsoft DirectPlay/DirectDraw/DirectSound.} The
@@ -126,6 +140,27 @@ methodology. Three mechanisms recur throughout the codebase and throughout this 
         real GPU) actually looks like.
 \end{description}
 
+\begin{sourcenote}
+\textbf{Why ``differential testing against FNA'' is not by itself enough --- a real finding.}
+CNA's own \texttt{CHECKLIST.md} names FNA as authoritative for \emph{behavior} but the original
+Microsoft XNA 4.0 reference assemblies as authoritative for \emph{API surface}, and explains why
+with a genuine near-miss: FNA is itself a reimplementation, and its own \texttt{src/Media/Song.cs}
+quietly omits three public XNA 4.0 members --- \texttt{Song.Album}, \texttt{Song.Artist}, and
+\texttt{Song.Genre} --- along with \texttt{Song.ToString()}. Because CNA's \cnans{Media} namespace
+(Chapter~\ref{ch:media-system}) was itself audited against FNA across eight consecutive
+adversarial review passes, every one of those eight passes came back clean --- CNA had faithfully
+reproduced FNA's own incompleteness, not merely failed to find a bug that was there to find. The
+gap was only caught on a ninth pass, once the audit method itself changed to a member-level diff
+against the real Microsoft reference XML rather than another comparison against FNA. The fix
+(tracked as \texttt{MEDIA-174} through \texttt{MEDIA-180} in \texttt{plan\_media.md}) added
+non-owning \cnaclass{Album*} / \cnaclass{Artist*} / \cnaclass{Genre*} back-pointers to \cnaclass{Song},
+populated by \cnaclass{MediaLibrary} and \texttt{nullptr} for a song outside any library ---
+mirroring an ownership pattern the surrounding \cnans{Media} types already used. The methodological
+lesson the project drew from this, stated directly in its own checklist, is the one this chapter
+opened with: ``FNA doesn't have it either'' is not a justification, because that is exactly the
+reasoning that let this specific gap survive eight reviews.
+\end{sourcenote}
+
 This matters for how you should read the rest of this book. Where a claim in the chapters
 ahead is stated as a fact about CNA's behavior, it is because the project's own test suite,
 documentation, or source comments state it as a verified fact, generally with a specific
@@ -133,12 +168,47 @@ mechanism (a CTest binary, a doc file, a task number) behind it --- and where th
 own documentation flags something as a dated snapshot, an estimate, or a known open gap, this
 book preserves that qualification rather than erasing it for a cleaner sentence.
 
+\section{A project built in numbered phases, not dated releases}
+
+CNA has no version-number releases in the conventional sense --- no \texttt{v1.0} tag, no
+semantic-versioning scheme. Its own commit history is the honest record: the first commit lands
+on 2025-02-22, and the source snapshot this book draws from carries over 3{,}000 commits,
+spanning roughly a year and a half of continuous, incremental work with no gap long enough to
+call a hiatus. What the project uses instead of version numbers is a strictly incrementing
+\textbf{Phase} counter, tracked in \texttt{CHECKLIST.md} and the per-subsystem \texttt{plan\_*.md}
+files: each phase names a bounded unit of work (a backend reaching a specific parity milestone,
+a namespace passing a specific audit), is broken into individually numbered \textbf{Tasks}, and
+is closed only once its own regression suite is re-run clean. Phase~72, for instance, is ``Bgfx:
+full 2D+3D pixel-verified parity'' (Tasks 740--824) --- the work that took the \texttt{BGFX}
+backend from a narrower feature set up to the same pixel-verified breadth as EasyGL and Vulkan.
+Chapter~\ref{ch:project-practice} covers this Task/Phase discipline itself as a working
+methodology, not just a historical curiosity --- what a task actually looks like, how large ones
+get split, and why every task closes with a re-run regression count rather than a checked box
+alone.
+
+This phase-based, task-tracked structure is also why this book can cite specific completion
+counts (``4{,}370 unit tests,'' ``0 of 31 oracle scenes diverge'') rather than vaguer language ---
+those numbers come from CTest suites the project itself runs and records as part of closing a
+task, not from an external audit conducted for this book's benefit.
+
+\section{Licensing}
+
+CNA is licensed under the Microsoft Public License (Ms-PL), the same permissive-but-not-MIT
+license FNA itself uses --- a deliberate choice, not a coincidence: portions of CNA are
+directly derived from or based on FNA's own source (most visibly the D3D9 backend's vendored
+Stock Effects HLSL bytecode, discussed in Part~IV), and matching FNA's license keeps that
+derivation legally uncomplicated. Ms-PL permits commercial use, modification, and
+redistribution, but --- unlike MIT or the 2-clause BSD license --- includes an explicit patent
+grant limited to contributions and a reciprocal ``if you sue over patents, your license ends''
+clause; it is not a copyleft license, so a game built against CNA is not obligated to publish its
+own source.
+
 \section{Reading map for the rest of this volume}
 
 Chapter~\ref{ch:ecosystem-map} draws the full dependency graph between CNA and its sibling
 repositories. Chapter~\ref{ch:design-philosophy} is the ``house style'' chapter --- the
 concrete rules (API mirroring, namespace discipline, the \texttt{NOXNA} tag, the
-\texttt{getXProperty}/\texttt{setXProperty} convention, the porting checklist) that every
+\texttt{getXProperty} / \texttt{setXProperty} convention, the porting checklist) that every
 other chapter's code examples silently assume. Part~II gets you from a clean checkout to a
 running triangle and then through the core framework types. Part~III and Part~IV are the
 graphics machine, first as an API and then as eleven different implementations of that same
