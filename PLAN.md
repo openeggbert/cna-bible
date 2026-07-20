@@ -168,7 +168,7 @@ ever needed).
 
 | # | Chapter | Current (lines) | Target (pages) | Approach | Status |
 |---|---------|-----------------:|----------------:|----------|--------|
-| 25 | Input System | 534 (was 170) | 70 | Full method references + worked examples for KeyboardState/Keyboard's EXT scancode surface, MouseState/Mouse's relative-mouse-mode EXT surface, GamePadState/the three GamePadDeadZone modes, TouchCollection/TouchLocation/GestureSample, TextInputEXT (IME-aware composition), and all five NOXNA-only device subsystems (Clipboard/Joysticks/Sensors/Power/Haptics) | **In progress (~10 of ~70 pages)** |
+| 25 | Input System | 559 (was 534) | 70 | Added three more real findings from `plan_input.md` (GamePad's SDL_INIT_GAMEPAD shutdown-symmetry fix, Mouse's read-direction DPI-transform test-gap finding, GestureSample.Timestamp's deliberate non-replication of an FNA unit-mismatch bug); fixed five pre-existing newline-continuation `}/%` defects never caught before | **In progress (~12 of ~70 pages)** |
 | 26 | Audio System | 378 (was 118) | 60 | Full method references + worked examples for SoundEffect, SoundEffectInstance/Apply3D 3D audio, DynamicSoundEffectInstance streaming, the AudioEngine/SoundBank/WaveBank/Cue XACT playback model, Microphone capture, AudioCategory retroactive volume, AudioEngine::RendererDetails, SoundEffect::FromStream, and the three audio exception types | **In progress (~8 of ~60 pages)** |
 | 27 | Media | 300 (was 103) | 45 | Full method references + worked examples for Song, the AudioTagParser tag-reading pipeline, MediaQueue's ownership model, MediaPlayer playback/shuffle/repeat internals, VideoPlayer multi-track switching (three real bugs found by external review), and the GetVisualizationData FFT pipeline (lock-free ring buffer + from-scratch radix-2 FFT) | **In progress (~6 of ~45 pages)** |
 | 28 | Devices and Sensors | 208 (was 115) | 45 | Worked examples for Accelerometer/VibrateController/Camera grounded in real headers, plus the SetCurrentValueAndMarkDataValid race-closing finding and the vibrate intensity-zero-is-not-Stop() finding | **In progress (~6 of ~45 pages)** |
@@ -1230,3 +1230,27 @@ stays frozen by explicit author decision, not left incomplete.
   target). Volume recompiled clean (301 pages total, 0 undefined references, 0 duplicate-label
   warnings); all six of the chapter's own pages (209-214, the last one a normal blank
   right-hand-start padding page) verified by rendering to PNG and reading them back.
+- **2026-07-20 (same session, "pokracuj"):** Chapter 25 (The Input System) — depth pass. Despite
+  already being the single largest chapter file in the book (534 lines), it still had one of
+  the largest absolute page-target gaps (~10 of ~70 pages), confirmed by checking its actual
+  physical page count (155-164, 10 pages) before starting rather than assuming line count alone
+  meant it was already deep enough. Read `/workspace/cna/plan_input.md` (505 tasks across 13
+  phases) looking specifically for real findings not yet named anywhere in the chapter, beyond
+  the four bugs already covered (Keyboard/Mouse/GamePad/Touch). Found and added three: (1) a
+  GamePad shutdown-symmetry gap — `SDL_INIT_GAMEPAD` was correctly initialized but never
+  explicitly quit, unlike FNA's own shutdown path, fixed with a new, idempotent
+  `ShutdownGamepadSubsystem()` helper; (2) a genuine asymmetric-test-coverage finding on Mouse —
+  the chapter already named `SetPosition`'s write-direction letterbox scaling on
+  `SDL_RENDERER`, but a later audit found the read-direction conversion (an incoming motion
+  event's window coordinates back to logical ones) had never actually been tested, only fixed
+  by adding the missing test; (3) `GestureSample.Timestamp`'s deliberate non-replication of a
+  real unit-mismatch bug in FNA's own source (`TimeSpan.FromTicks(Environment.TickCount)` — a
+  ~10000x units mismatch between milliseconds and 100ns ticks), documented as a judged,
+  accepted deviation rather than an oversight. While running the proactive regex pass, found
+  and fixed five genuine pre-existing newline-continuation `}/%` defects in this chapter's own
+  original content (MouseState's button-property list, the relative-mouse-mode X/Y note, and
+  three in the Haptics section) — never caught in any prior session's pass over this chapter.
+  Chapter grows from 534 to 559 lines (~10 to ~12 of a ~70-page target). Volume recompiled
+  clean (303 pages total, 0 undefined references, 0 duplicate-label warnings); all twelve of
+  the chapter's own pages (155-166, the last one a normal blank right-hand-start padding page)
+  verified by rendering to PNG and reading them back.

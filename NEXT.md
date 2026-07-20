@@ -99,7 +99,23 @@ build error from `\checkmark` (needs `amssymb`, not loaded in this book's preamb
 it by using the plain word "done" instead. Prefer plain text over a symbol that needs a new
 dependency unless there's a strong reason to add the package project-wide.
 
-## Chapter 34 (Sharp Runtime Namespaces) just got a depth pass too
+## Chapter 25 (Input System) just got a depth pass too — and it's already the biggest file in the book
+
+Grew 534 → 559 lines (~10 to ~12 of a ~70-page target) — still one of the largest gaps despite
+already being the single largest chapter file, confirmed by checking its actual physical page
+count (10 pages) rather than assuming line count alone meant it was deep enough already. Read
+`/workspace/cna/plan_input.md` looking specifically for findings not yet named anywhere in the
+chapter, beyond the four bugs it already covers. Added three: GamePad's `SDL_INIT_GAMEPAD`
+shutdown-symmetry gap, Mouse's asymmetric-test-coverage finding (write-direction letterbox
+scaling was already tested and named; read-direction wasn't, until this audit), and
+`GestureSample.Timestamp`'s deliberate non-replication of a real FNA unit-mismatch bug. Also
+found and fixed five genuine pre-existing `}/%` defects in this chapter's own original content —
+never caught in any prior session's pass over this specific chapter, a reminder that even a
+chapter touched multiple times before can still hide this defect class. Full detail in PLAN.md's
+session log. Volume compiles clean at 303 pages, 0 undefined refs; all twelve of the chapter's
+own pages (155-166) PNG-rendered and confirmed defect-free.
+
+## Chapter 34 (Sharp Runtime Namespaces) got a depth pass too
 
 Grew 162 → 221 lines (~5 to ~7 of a ~70-page target) — the next-largest page-target gap after
 Chapter 30. Read `/workspace/sharp-runtime/POST_STABILIZATION_AUDIT.md` again (the chapter's own

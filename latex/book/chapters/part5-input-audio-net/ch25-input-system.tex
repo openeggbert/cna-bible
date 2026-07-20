@@ -133,7 +133,7 @@ safe no-op for the shared stock instances specifically to avoid that failure mod
 \subsection{Full method reference: MouseState and Mouse's EXT surface}
 
 \cnaclass{MouseState} is a plain data carrier --- \texttt{X} / \texttt{Y}, five
-\cnaclass{ButtonState} properties (\texttt{LeftButton} / \texttt{RightButton}/%
+\cnaclass{ButtonState} properties (\texttt{LeftButton} / \texttt{RightButton} /
 \texttt{MiddleButton} / \texttt{XButton1} / \texttt{XButton2}), the cumulative
 \texttt{ScrollWheelValue} already named above, and (\texttt{NOXNA}) a parallel
 \texttt{HorizontalScrollWheelValueEXT} for horizontal scroll, deliberately excluded from
@@ -153,7 +153,7 @@ methods:
   how the substitution works: every \texttt{SDL\_EVENT\_MOUSE\_MOTION} event accumulates into
   a separate \texttt{RelativeDeltaX} / \texttt{RelativeDeltaY} pair regardless of mode, but
   \texttt{MouseState}'s public \texttt{X} / \texttt{Y} only read from that accumulator --- and
-  reset it to zero immediately after --- while relative mode is active; otherwise \texttt{X}/%
+  reset it to zero immediately after --- while relative mode is active; otherwise \texttt{X} /
   \texttt{Y} report the ordinary absolute position. This is why \texttt{MouseState.X} / \texttt{Y}
   genuinely mean two different things depending on \texttt{IsRelativeMouseModeEXT}, not just a
   documentation convention.
@@ -189,6 +189,8 @@ const float pitch = mouse.Y * mouseSensitivity;
 cameraRotation = Quaternion::CreateFromYawPitchRoll(yaw, pitch, 0.0f) * cameraRotation;
 \end{lstlisting}
 
+This chapter's own intro named \texttt{SetPosition}'s \emph{write}-direction letterbox scaling on \texttt{SDL\_RENDERER} (converting a logical position to real window coordinates before warping); a later audit pass specifically checked whether the \emph{read} direction --- an incoming \texttt{SDL\_EVENT\_MOUSE\_MOTION} event's real window coordinates converted back to logical ones --- was equally correct, since every prior test happened to use a 1:1 window with no backend scaling at all, never actually exercising that conversion branch. It was: a real window with a 100$\times$100 logical presentation letterboxed into a 200$\times$200 physical window (a 2$\times$ scale factor) confirms a window-space motion event at $(100, 100)$ reads back through \texttt{Mouse::GetState()} as logical $(50, 50)$, exactly mirroring the already-tested write direction. A read/write pair that only one direction had ever actually verified is exactly the kind of asymmetric test gap worth checking for deliberately, not assuming symmetric coverage from a single direction's passing test.
+
 \section{GamePad}
 
 The full XNA surface --- \texttt{GetCapabilities}, \texttt{GetState} with configurable
@@ -214,7 +216,16 @@ rather than FNA's own 32767 for \emph{both} halves, meaning every non-endpoint n
 sample diverged slightly from FNA's expected value (for example, a raw value of $-16384$
 producing $-0.5$ in CNA against FNA's $-0.50001$) --- fixed to match FNA's asymmetric divisor
 exactly, a good small example of how ``obviously correct-looking'' code can still diverge
-from a reference implementation's own specific numerical quirks.
+from a reference implementation's own specific numerical quirks. A fourth, smaller gap
+surfaced during this namespace's own later audit rather than its original implementation:
+\texttt{SDL\_INIT\_GAMEPAD} was correctly initialized at startup but never explicitly quit
+anywhere, a genuine asymmetry against FNA's own shutdown path, which quits
+\texttt{SDL\_INIT\_VIDEO} and \texttt{SDL\_INIT\_GAMEPAD} together as its very last SDL call ---
+not a crash or leak risk on its own, since the OS reclaims SDL state at process exit either
+way, but a real gap for any \cnaclass{GraphicsDevice}-recreate-without-process-exit scenario.
+Fixed by adding a dedicated, idempotent \texttt{ShutdownGamepadSubsystem()} internal helper,
+mirroring the existing startup helper's own safe-to-call-repeatedly contract, wired into
+\cnaclass{Game}'s own disposal path right after the graphics device service.
 
 \subsection{Full method reference: GamePadState and the three GamePadDeadZone modes}
 
@@ -373,6 +384,20 @@ powers of two, \texttt{Tap = 1} through \texttt{PinchComplete = 512}) means
 \texttt{|} composition in the worked example above is the ordinary, intended way to opt into
 more than one gesture type at once.
 
+\cnaclass{GestureSample}'s own \texttt{Timestamp} field is worth one more precise note, since
+it is a case where CNA deliberately declines to reproduce a real bug in FNA's own source rather
+than faithfully copying it. FNA's own gesture-timestamp computation is
+\texttt{TimeSpan.FromTicks(Environment.TickCount)} --- but \texttt{TickCount} is a millisecond
+value, while \texttt{FromTicks} expects 100-nanosecond units, a real, roughly ten-thousand-times
+unit mismatch relative to what FNA's own doc comment states the method intends. CNA's
+equivalent instead converts milliseconds to ticks correctly. This is a judged, documented
+deviation rather than an oversight, precisely because \texttt{GestureSample.Timestamp} has no
+defined absolute reference point in either engine --- only relative ordering between
+successive gestures actually matters in practice, and CNA's own regression test pins exactly
+that property (non-negative, strictly increasing across two gestures separated by an advanced
+test clock) rather than any specific numeric value that would depend on which of the two
+engines' conventions it followed.
+
 \section{TextInputEXT and CNA-only NOXNA extensions}
 
 \texttt{TextInputEXT} is not itself a CNA invention --- FNA ships this same extension beyond
@@ -477,13 +502,13 @@ if (GamePad::GetPowerInfoEXT(PlayerIndex::One, gamepadPercent) == PowerStateEXT:
 
 \cnaclass{Haptics} is the one subsystem with real internal state and lifecycle, rather than a
 handful of stateless static queries: \texttt{GetHapticsEXT()} enumerates force-feedback-capable
-devices, and \texttt{OpenEXT(id)} / \texttt{OpenFromJoystickEXT(joystickId)}/%
+devices, and \texttt{OpenEXT(id)} / \texttt{OpenFromJoystickEXT(joystickId)} /
 \texttt{OpenFromMouseEXT()} each return an owning \cnaclass{HapticDevice} handle. That handle's
-own surface splits cleanly into two tiers: a simple \texttt{InitRumbleEXT()}/%
+own surface splits cleanly into two tiers: a simple \texttt{InitRumbleEXT()} /
 \texttt{PlayRumbleEXT(strength, lengthMs)} / \texttt{StopRumbleEXT()} trio for the common
 single-motor-strength case (the same conceptual level as \texttt{GamePad::SetVibration}, just
 reachable for non-gamepad haptic hardware too), and a full \texttt{HapticEffectEXT}
-lifecycle --- \texttt{CreateEffectEXT} / \texttt{UpdateEffectEXT} / \texttt{RunEffectEXT}/%
+lifecycle --- \texttt{CreateEffectEXT} / \texttt{UpdateEffectEXT} / \texttt{RunEffectEXT} /
 \texttt{StopEffectEXT} / \texttt{DestroyEffectEXT}, plus \texttt{GetEffectStatusEXT} to poll
 whether a specific effect is still running --- for genuinely shaped force-feedback (a
 directional recoil kick, a sustained engine rumble curve), real only on the smaller set of
