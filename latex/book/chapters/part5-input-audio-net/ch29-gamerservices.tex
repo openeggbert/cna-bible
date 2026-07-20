@@ -1,0 +1,117 @@
+\chapter{GamerServices}
+\label{ch:gamerservices}
+
+Real XNA's \cnans{GamerServices} namespace is Xbox-Live-only, and FNA --- targeting PC XNA
+--- does not implement it at all. CNA goes further than FNA here on purpose: rather than
+stub the whole namespace out, it built a real, locally-backed implementation held to the
+actual Xbox~360 XNA~4.0 reference behavior as its fidelity bar, not to ``does nothing on a
+PC.'' This chapter is organized around the resulting three-way split this namespace's own
+documentation uses throughout: \textbf{Implemented} (real in-memory behavior matching the
+reference), \textbf{Locally persisted} (real, disk-backed, but with no live online service
+behind it), and \textbf{documented stub} (no local equivalent exists to build against at
+all).
+
+\section{Gamer, SignedInGamer, and a real aliasing hazard}
+
+\cnaclass{Gamer} is the abstract base for \cnaclass{SignedInGamer}; \texttt{GetFromGamertag}
+and \texttt{GetPartnerToken} (and their async pairs) are explicitly documented as ``not
+supported in this platform's implementation'' --- the genuinely inert corners even this
+locally-backed namespace did not attempt to reproduce, since they have no meaning without a
+live Xbox Live service to query. One structural detail is worth knowing before writing any
+code against this namespace: a \cnaclass{Gamer}'s \cnaclass{LeaderboardWriter}
+(\S\ref{sec:leaderboards}) captures its owning \texttt{Gamer*} at construction, and because
+neither \cnaclass{Gamer} nor \cnaclass{SignedInGamer} define custom copy or move
+constructors, that captured pointer is copied verbatim by any ordinary copy or move of a
+\cnaclass{Gamer} --- for instance, pushing a prvalue into a \texttt{std::vector}. Once a
+\cnaclass{Gamer}'s \cnaclass{LeaderboardWriter} may actually be used, that \cnaclass{Gamer}'s
+address must never move again; heap allocation is the documented, recommended way to avoid
+this hazard entirely.
+
+\cnaclass{SignedInGamer} is where the real, locally-persisted behavior lives:
+\texttt{AwardAchievement} and \texttt{GetAchievements} are genuinely real, not stubs, backed
+by a local persistence store. \texttt{IsFriend} always returns false, and
+\texttt{GetFriends()} always returns an empty \cnaclass{FriendCollection} --- not because
+\cnaclass{FriendGamer}/\cnaclass{FriendCollection} are unimplemented (they are fully real,
+functioning classes), but because nothing anywhere in the codebase actually populates them;
+this is the one honestly-acknowledged, still-open gap in this namespace's population story,
+not a design limitation like the Xbox-Live-only methods above.
+
+\section{Leaderboards: real persistence, CNA-original policy}
+\label{sec:leaderboards}
+
+\cnaclass{LeaderboardReader}/\texttt{Writer}/\texttt{Entry} are genuinely disk-backed --- a
+deliberate expansion beyond FNA, whose own reference \cnaclass{LeaderboardReader}/%
+\texttt{Writer} are identically all-\texttt{NotSupportedException} stubs, meaning there was
+no real behavior to port here even if CNA had wanted to stay minimal. Because no reference
+sort or paging policy existed to match, CNA's own policy is explicitly original rather than
+derived: entries sort by rating descending; paging around a specific pivot gamer falls back
+to the top of the board if that gamer has no entry at all; and a persisted gamertag with no
+currently signed-in matching \cnaclass{Gamer*} is simply skipped, since a
+\cnaclass{LeaderboardEntry} needs a live gamer object to attach itself to. Every
+\texttt{Begin}/\texttt{End} async pair on this class completes synchronously, matching the
+project-wide pattern already seen for \cnaclass{NetworkSession} in
+Chapter~\ref{ch:networking}. One genuinely subtle, load-bearing detail: real XNA's own
+\cnaclass{LeaderboardWriter} has no explicit submit or commit method at all, so CNA treats
+assigning \texttt{Rating} as the closest honest equivalent of ``I'm finished, persist this''
+--- but only for an entry actually obtained through a \cnaclass{LeaderboardWriter}, since only
+those have a persistence hook installed; setting \texttt{Rating} on an entry obtained from a
+\cnaclass{LeaderboardReader} is deliberately a no-op.
+
+\section{Achievements}
+
+\cnaclass{Achievement} and \cnaclass{AchievementCollection} are real and locally persisted,
+following the same pattern as leaderboards. One method is a deliberate, faithful exception to
+that: \texttt{Achievement::GetPicture()} always throws \texttt{NotImplementedException},
+matching FNA's own unimplemented stub --- real Xbox~360 achievement artwork streamed from
+Xbox Live on request and has no meaningful local substitute, so this is treated the same way
+this book's other chapters treat a genuinely unreachable capability: named and left throwing,
+not quietly worked around.
+
+\section{Guide: mostly a stub, with two real, CNA-built exceptions}
+
+\cnaclass{Guide} is where this namespace's ``real versus stub'' distinction is sharpest. Most
+of its surface --- \texttt{ShowFriends}, \texttt{ShowMarketplace}, \texttt{ShowGamerCard},
+\texttt{ShowSignIn}, \texttt{ShowParty}, and the rest of the \texttt{Show*} family --- is a
+genuine, documented no-op: there is no system UI to show for any of them, matching FNA's own
+minimal PC-side stub. Two specific methods are the deliberate exception, and are real, CNA-built
+overlay UI, not stubs at all: \texttt{BeginShowMessageBox}/\texttt{EndShowMessageBox} and
+\texttt{BeginShowKeyboardInput}/\texttt{EndShowKeyboardInput}. Unlike almost everything else
+in this namespace, these do \emph{not} complete synchronously --- they remain genuinely
+pending until the game's own \texttt{Draw()} loop calls a dedicated render hook once per
+frame, which draws the message box or keyboard prompt using a caller-supplied
+\cnaclass{SpriteBatch}/\cnaclass{SpriteFont}, and polls real keyboard/mouse input to detect a
+click, Enter, or Escape. The keyboard-input path captures real UTF-16 text safely across
+surrogate pairs, and its password-mode masking only affects the \emph{displayed} text --- the
+value actually returned is always the real typed text, never the masked version.
+\texttt{Guide.IsVisible} is correspondingly real (not the fixed ``always false'' constant FNA
+itself uses off Xbox) --- true exactly when one of these two real overlays is currently
+pending.
+
+\section{Dispatcher and component}
+
+\cnaclass{GamerServicesComponent} must be added to \texttt{Game.Components}
+(this book's game-loop chapter) before any \cnaclass{Gamer}/\cnaclass{Guide} API is
+used, matching real XNA~4.0's own PC requirement exactly. \cnaclass{GamerServicesDispatcher}
+is the actual entry point creating and freeing the local, stub-style
+\cnaclass{SignedInGamer} set each time it initializes, and pumping the async machinery every
+other class in this namespace relies on for its synchronously-completing
+\texttt{Begin}/\texttt{End} pairs.
+
+\section{Summary table}
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Feature} & \textbf{Status} \\
+\midrule
+\cnaclass{SignedInGamer}/\cnaclass{GamerCollection} & Implemented \\
+Achievements & Locally persisted \\
+Leaderboards & Locally persisted, CNA-original policy \\
+\cnaclass{GamerPresence}/\cnaclass{GamerPrivileges} & Implemented \\
+\cnaclass{FriendCollection}/\cnaclass{FriendGamer} & Real classes, population always empty \\
+\texttt{Guide.Show*} (most) & Documented no-op stub \\
+\texttt{Guide.BeginShowMessageBox}/\texttt{KeyboardInput} & Implemented, CNA-built overlay UI \\
+Avatar (base API) & Faithfully inert --- see Chapter~\ref{ch:avatar} \\
+\bottomrule
+\end{tabular}
+\end{center}

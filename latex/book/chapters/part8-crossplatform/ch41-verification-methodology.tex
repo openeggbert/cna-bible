@@ -1,0 +1,68 @@
+\chapter{Verification Methodology, Compared Across Platforms}
+\label{ch:verification-methodology}
+
+Chapter~\ref{ch:testing-philosophy} in this Part covers the individual verification
+\emph{mechanisms} this ecosystem relies on --- pixel tests, differential testing, the D3D9
+oracle, sanitizers, the \texttt{NOXNA} build gate. This short closing chapter of Part~IV takes
+a different cut through the same material: comparing how much of that machinery actually
+reaches each of the four platforms the previous three chapters covered, side by side, because
+the honest answer varies more than a single ``cross-platform and verified'' claim would
+suggest.
+
+\section{A comparative summary}
+
+\begin{center}
+\small
+\begin{tabular}{lp{8.7cm}}
+\toprule
+\textbf{Platform} & \textbf{What is actually verified, as of this book's source material} \\
+\midrule
+Linux (native) & The deepest verification of any platform: the full roughly~4{,}370-test unit
+  suite, the roughly~490-test GPU pixel suite across four backends, real differential testing
+  against a genuine FNA install (Chapter~\ref{ch:windows-wine}), and the sanitizer trio where
+  applied (Chapter~\ref{ch:testing-philosophy}). This is the ground every other platform's own
+  claims are ultimately measured against. \\
+Windows (via Wine) & Real GPU-accelerated rendering through DXVK/vkd3d-proton, gated by a
+  self-verifying marker check so a silent WineD3D fallback cannot corrupt a result
+  (Chapter~\ref{ch:windows-wine}); includes the single strictest test in the whole project,
+  the D3D9 oracle against a genuinely running XNA~4.0 install. Real Windows hardware
+  verification remains open on all three Direct3D backends. \\
+Web (Emscripten) & Split sharply by backend. \texttt{CANVAS}: a real build exists, links, and
+  runs its test suite under Node --- but no test in this environment can touch a real
+  \cnaclass{GraphicsDevice} at all, since Node provides no WebGL/Canvas context, leaving a
+  13-item manual browser checklist entirely unchecked (Chapter~\ref{ch:web-emscripten}).
+  \texttt{EASYGL}/WebGL2, the platform's actual default backend, has never been built under
+  Emscripten at all in this project's history. \\
+Android (NDK) & Split sharply by demo, not just by backend. The devices/sensors demo: real,
+  live-verified on an x86\_64 emulator, down to synthetic sensor injection producing a real
+  on-screen response. Graphics (\texttt{SDL\_RENDERER}, Android's own default): never run on
+  any device or emulator, and, per a documented regression in an unrelated sibling project,
+  currently not even confirmed to \emph{build} (Chapter~\ref{ch:android-ndk}). \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Why the gradient exists, and why it is not a criticism}
+
+None of the gaps this table names are hidden anywhere in this ecosystem's own documentation
+--- every one of them was found, in this book's own research, stated plainly in the project's
+own docs, exactly the way Chapter~\ref{ch:what-is-cna} described this project's
+overall relationship with its own claims. The gradient itself is a predictable consequence of
+where the actual development happens: this is a Linux development environment first, with
+Windows reached through an elaborate but real Wine-based bridge, and Web/Android reached
+through cross-compilation toolchains that can verify \emph{building} far more easily than
+they can verify \emph{running correctly}, absent a real browser or a real device. A native
+Linux pixel test can assert on an exact color value; an Emscripten build that cannot even
+construct a graphics device has no equivalent assertion available to it at all, no matter how
+carefully the surrounding C\texttt{++} is written.
+
+\section{What this means for a reader of this book}
+
+If you are choosing a target platform for a new CNA project, or evaluating CNA for a port,
+this table is the single fact most likely to change your plan: build success and behavioral
+correctness are two different claims, verified to different degrees on different platforms,
+and this ecosystem's own documentation is careful --- and this book has tried to be equally
+careful --- to say which one it means every time it makes one. Treat a Linux-verified claim as
+the strongest evidence available in this project today; treat a Windows claim as strong but
+not hardware-final; and treat a Web or Android graphics claim as, at best, ``compiles,'' until
+someone actually runs it where you intend to ship it.

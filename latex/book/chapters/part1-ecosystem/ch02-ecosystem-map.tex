@@ -1,0 +1,140 @@
+\chapter{The Ecosystem Map}
+\label{ch:ecosystem-map}
+
+CNA does not sit alone in the \texttt{openeggbert} GitHub organization. It sits at the
+center of a small, deliberately layered set of sibling repositories, most of which expect to
+be checked out as literal sibling directories on disk --- \texttt{../sharp-runtime},
+\texttt{../easy-gl}, \texttt{../cna-samples}, and so on --- because CNake's own build system
+looks for them there. This chapter is the map; later chapters (and all of Part~VII)
+are the territory.
+
+\section{The dependency graph}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Repository} & \textbf{Role} & \textbf{Consumed by} \\
+\midrule
+\texttt{sharp-runtime} & C\texttt{++} subset of the .NET BCL & CNA (foundation layer) \\
+\texttt{easy-gl} & Toolkit-independent OpenGL/ES wrapper & CNA's \texttt{EASYGL} backend \\
+\texttt{free-direct} & DirectDraw/DirectSound/DirectPlay subset & CNA's \texttt{DX3} backend \\
+\texttt{xna4-spec} & Machine-readable XNA 4.0 API spec (XML) & Compatibility audits of CNA \\
+\texttt{cna-samples} & Ports of official XNA 4.0 samples & Exercises CNA end-to-end \\
+\texttt{cna-examples} & In-app demo catalog for CNA & Exercises CNA end-to-end \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Every one of these is a genuinely independent, separately buildable, separately tested
+project --- none of them is a vendored copy or a submodule of CNA. \texttt{sharp-runtime} in
+particular describes itself as serving ``as a foundation for higher-level frameworks (e.g.
+CNA)'' and lists CNA as its own downstream consumer, not the other way around; you could, in
+principle, use \texttt{sharp-runtime} or \texttt{easy-gl} in a project that has nothing to do
+with XNA at all.
+
+\section{sharp-runtime: the floor CNA stands on}
+\label{sec:sharp-runtime-intro}
+
+XNA's public API vocabulary assumes .NET underneath it: \texttt{byte}, \texttt{TimeSpan},
+events, \texttt{IDisposable}, \texttt{System.Object.GetType()}. A C\texttt{++} reimplementation
+of XNA has two choices --- invent ad-hoc C\texttt{++} substitutes for all of that inline,
+scattered through the XNA porting work itself, or build the .NET-shaped foundation once, as
+its own project, and depend on it. CNA's own \texttt{CLAUDE.md} porting rules choose the
+second option explicitly: ``If CNA needs anything from .NET that is not yet in
+\texttt{sharp-runtime} --- a type alias, a class, an interface, an exception type, a utility
+--- add it to \texttt{sharp-runtime} first, then use it from CNA. Do not inline .NET concepts
+directly into CNA headers as raw C\texttt{++} types or ad-hoc workarounds.''
+
+\texttt{sharp-runtime} is explicit that it is \emph{not} attempting a CLR: no reflection, no
+GC, no delegates beyond \texttt{std::function}, no serialization infrastructure, no P/Invoke,
+no full cryptography/TLS stack. What it does provide is documented as a ``pragmatic subset
+designed for use in native C\texttt{++} applications,'' tracked class-by-class in a
+git-ignored local SQLite database (\texttt{plan.sqlite3}) with an honest, small state machine
+per .NET type: \texttt{todo}, \texttt{ported}, \texttt{ignore}/\texttt{ignored}, or
+\texttt{tobedecided} for genuinely ambiguous cases that need a human architecture call rather
+than a guess. Chapter references in Part~VI cover \texttt{sharp-runtime}'s own
+architecture, its \texttt{System::*} namespace layout, and its own roughly 10\,900-test suite
+in depth.
+
+\section{easy-gl: OpenGL without a windowing opinion}
+
+The \texttt{EASYGL} graphics backend --- CNA's most mature backend by its own account, with
+full pixel-verified 2D and 3D coverage --- is built on \texttt{easy-gl}, a small,
+toolkit-independent C\texttt{++}20 wrapper over OpenGL and OpenGLES. Its defining
+architectural choice is what it refuses to own: no window creation, no GL context creation,
+no event loop. The host application (CNA, in this case) owns the window, creates and
+activates the GL context, and hands \texttt{easy-gl} a \texttt{GetProcAddress}-style loader
+callback; \texttt{easy-gl} owns everything from there down --- shader compilation and
+linking, buffers, vertex arrays, textures, draw calls, and capability queries that let calling
+code gate OpenGL-only features (like polygon-mode fill flags) away from OpenGLES targets at
+runtime via \texttt{device.supports(...)}/\texttt{device.require(...)}. Chapter references in
+Part~VII cover its public API surface (\texttt{easygl::Device},
+\texttt{easygl::Shader}, \texttt{easygl::Program}, \texttt{easygl::Buffer},
+\texttt{easygl::VertexArray}, \texttt{easygl::Texture}, \texttt{easygl::Feature}) in full.
+
+\section{free-direct: a narrow DirectX 3 for real legacy games}
+
+Where \texttt{easy-gl} is a general-purpose OpenGL wrapper, \texttt{free-direct} is the
+opposite kind of project: a deliberately \emph{narrow}, game-driven reimplementation of a
+subset of DirectX~3 (2D) --- DirectDraw, DirectSound, and DirectPlay --- built on SDL3
+internally, whose explicit goal is not DirectX compatibility in general but running two
+specific legacy Windows games (\emph{Speedy Blupi} and \emph{Planet Blupi}) without their
+original OS dependencies. Its own README states the non-goals as plainly as the goals: no
+full DirectX~3 compatibility, no hardware-accurate emulation, no Direct3D pipeline, and no
+expansion of APIs the target games do not actually call. This project backs CNA's
+\texttt{DX3} graphics backend (Chapter~\ref{ch:dx3-freedirect-backend}) and is covered as a
+project in its own right, including its real (not stubbed) ENet-backed DirectPlay networking,
+in Part~VII and in the Speedy Blupi/Planet Blupi porting case study in Part~IX.
+
+\section{xna4-spec: a ground truth to audit against}
+
+A recurring failure mode for any reimplementation project is drift between what the README
+claims and what the code actually does --- and a subtler one is drift between what the
+README claims and what the \emph{original} API actually specified, from memory rather than
+from a real reference. \texttt{xna4-spec} exists to remove the second failure mode. It is a
+complete, machine-readable XML transcription of the official XNA 4.0 documentation --- every
+class, struct, enum, interface, and delegate across all 19 XNA namespaces, 544 types in
+total, with their original property/method/constructor/field/event descriptions --- converted
+from Microsoft's own \texttt{learn.microsoft.com} XNA~4.0 reference pages. Its own README
+states its purpose directly: ``Auditing C\texttt{++} reimplementations of XNA~4.0 (comparing
+what is implemented vs.\ what is missing).'' The coverage figures quoted in this book's
+Chapter~\ref{ch:what-is-cna} and throughout Parts~I--IV (227 of 245 public FNA types present,
+92.7\%) are exactly this kind of audit --- a diff against a ground truth, not an estimate.
+Chapter references in Part~IX walk through using \texttt{xna4-spec} to run this kind
+of audit yourself.
+
+\section{cna-samples and cna-examples: two different kinds of proof}
+
+Two sibling repositories exist purely to give CNA something real to run, and they answer two
+different questions.
+
+\texttt{cna-samples} is a C\texttt{++} port of the official Microsoft XNA Game Studio 4.0
+sample collection (86 samples in the full upstream set), licensed Ms-PL to match its
+Microsoft-derived origin. Its question is: \emph{does CNA run real, historical XNA sample
+code?} --- and its current gap (23 of 86 samples blocked on the compiled \texttt{.fx}
+bytecode gap from Chapter~\ref{ch:what-is-cna}) is one of the sharpest, most concrete
+measurements of that gap that exists anywhere in the ecosystem.
+
+\texttt{cna-examples} is original, MIT-licensed CNA-specific work --- explicitly \emph{not}
+a port of Microsoft's sample collection, precisely so it can carry a permissive license
+\texttt{cna-samples} cannot. Conceptually inspired by JavaFX's \texttt{Ensemble} sample
+browser, it is a single cross-platform application (desktop, Web, mobile) that lets a reader
+navigate Area~$\to$~Category~$\to$~Demo (Input, Audio, Devices, Net, Media, 2D/3D Graphics,
+\ldots) and run a live demonstration of each area, all inside one binary. Its question is:
+\emph{does CNA have a coherent, in-app way to show off everything it can do?} As of the
+snapshot this book draws from it is an early skeleton --- the application boots and
+navigates Area~$\to$~Category, but individual demo screens are not yet implemented, and only
+the \texttt{EASYGL} backend is targeted so far.
+
+\section{Repositories mentioned but out of this book's scope}
+
+The \texttt{openeggbert} organization hosts a considerably larger set of repositories beyond
+the six above --- additional CNA-adjacent projects (\texttt{cna-template}, \texttt{cna-extended},
+\texttt{cna-craft}), other graphics libraries (\texttt{meta-gl}, \texttt{easy-3d}), actual
+shipped games and tools built on this stack (\texttt{mesh-craft}, \texttt{galaxy-eggbert},
+\texttt{free-eggbert}, \texttt{planetblupi}, \texttt{mobile-eggbert}), and a long tail of
+per-project marketing/documentation sites (the \texttt{*.openeggbert.com} repositories). This
+book's scope is deliberately the six repositories in the table above, because they are the
+ones CNA's own build system, README, and \texttt{CLAUDE.md} porting rules directly name as
+dependencies or verification partners. Appendix~\ref{ch:repo-map} gives a fuller repository
+map for readers who want to go further.

@@ -1,0 +1,127 @@
+\chapter{Repository Map}
+\label{ch:repo-map}
+
+Chapter~2's ecosystem map covered the six repositories this book treats as CNA's core
+dependency and verification graph in depth. This appendix places them in the context of the
+wider \texttt{openeggbert} GitHub organization, for a reader who wants to go further than this
+book's own deliberately bounded scope.
+
+\section{The six repositories this book covers in depth}
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Repository} & \textbf{Role} \\
+\midrule
+\texttt{cna} & The core C\texttt{++}23 XNA~4.0 reimplementation this book is about \\
+\texttt{sharp-runtime} & C\texttt{++} subset of the .NET base class library, CNA's foundation \\
+\texttt{easy-gl} & Toolkit-independent OpenGL/OpenGLES wrapper, backs the EASYGL backend \\
+\texttt{free-direct} & Narrow DirectDraw/DirectSound/DirectPlay reimplementation, backs DX3 \\
+\texttt{xna4-spec} & Machine-readable XML spec of the real XNA~4.0 API, used for auditing \\
+\texttt{cna-samples} & C\texttt{++} ports of the 86 official Microsoft XNA~4.0 samples \\
+\texttt{cna-examples} & Original, MIT-licensed in-app demo catalog for CNA \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Other CNA-adjacent repositories, out of this book's scope}
+
+Several further repositories extend or sit alongside CNA without being covered in depth here,
+since this book's scope was deliberately bounded to the repositories CNA's own build system
+and documentation directly name as dependencies or verification partners. \texttt{cna-template}
+and \texttt{cna-extended} each get a full paragraph below; the rest are covered more briefly:
+
+\texttt{cna-template} is a minimal starter template for building a new application on top of
+CNA --- at the time of writing, an early work in progress, with full build instructions,
+backend/platform coverage, and a porting guide for existing XNA~4.0 C\# games still being
+added. It exists to give a new CNA project a working skeleton to start from, the same
+function a ``File $\to$ New Project'' template serves in a conventional IDE-based framework,
+rather than to demonstrate any specific CNA capability the way \texttt{cna-examples} does.
+
+\texttt{cna-extended} is, briefly --- and it is covered only briefly, since it sits at the
+edge of this book's own scope --- a C\texttt{++}23 port of \emph{MonoGame.Extended}, the
+well-known MonoGame utility library, built on top of both \texttt{cna} and
+\texttt{sharp-runtime} and positioned as a sibling to \texttt{easy-3d}. Its own stated goal is
+a faithful, 1:1 translation of MonoGame.Extended's runtime-usable parts --- 2D collision
+detection, tilemap support (Tiled/LDtk/Ogmo), particles, sprite-sheet animation, an
+Artemis-style entity-component system, tweening, input listeners, and viewport adapters ---
+not a reimagining. It deliberately does not port MonoGame.Extended's own design-time content
+pipeline tooling, since that tooling has no C\texttt{++} runtime counterpart to receive it; it
+covers the same ground instead through direct-format loading of the same underlying file
+formats (Tiled's TMX/JSON, LDtk's JSON, Ogmo's JSON, TexturePacker JSON, BMFont's
+\texttt{.fnt}). At the time of writing it is an early bootstrap, not yet a mature dependency
+--- worth knowing about if you are looking for MonoGame.Extended-style utilities on top of
+CNA, but not a repository this book treats as part of CNA's own core, verified surface.
+
+Three further repositories round out the ecosystem, each worth a sentence or two rather than a
+bare name-drop. \texttt{meta-gl} is the lower-level, type-safe C\texttt{++}23 wrapper around
+OpenGL~ES~2.0--3.2 and desktop OpenGL~3.3+ that \texttt{easy-gl} itself is built on --- it owns
+no window or rendering context of its own, taking a host-supplied \texttt{GetProcAddress}
+loader instead, and its own \texttt{metagl} namespace sits one layer below anything this book
+otherwise names. \texttt{easy-3d} is a small companion library beside CNA rather than a
+replacement for any part of it --- cameras, billboard/cube batching, a texture atlas, and debug
+drawing, built specifically to give \texttt{galaxy-eggbert} (below) what it needed without
+becoming a general game engine; it deliberately has no ECS, physics, networking, or editor of
+its own. \texttt{cna-craft} is a C\texttt{++} port of the well-known \texttt{fogleman/Craft}
+voxel game onto CNA, with SQLite-backed world persistence, its own multiplayer server and wire
+protocol, and a WebAssembly build target alongside its native EASYGL/VULKAN/BGFX backends.
+
+\section{Real games and tools built on this stack}
+
+\texttt{free-eggbert} and \texttt{planetblupi} are the two real legacy games --- \emph{Speedy
+Blupi} and \emph{Planet Blupi} --- whose real call sites shaped \texttt{free-direct}'s own API
+surface, covered as a worked case study in Chapter~43.
+\texttt{mobile-eggbert} (with a related \texttt{mobile-eggbert-legacy} and a libGDX variant)
+appeared directly in Chapter~21's WebGPU backend coverage, as the independent, real XNA-style
+game whose unmodified run against that experimental backend was one of this book's strongest
+pieces of evidence for a backend actually working. Its own repository also carries a real,
+narrow memory-usage investigation (\texttt{RAM.md}) worth naming precisely so it is not
+mistaken for a general CNA characteristic: a specific regression from roughly 28~MB to
+roughly 78~MB on the Vulkan backend was traced almost entirely to \texttt{cpuPixels\_}, a
+CPU-side shadow copy every \cnaclass{Texture2D} started retaining once
+\cnaclass{ContentManager::Load<T>()} needed to be able to return by-value copies and
+\texttt{Texture2D::GetData()} needed a readback source (Chapter~11 covers this CPU-shadow
+mechanism for buffers; the equivalent exists for textures) --- a real, measured, downstream
+finding about one game's specific memory footprint on one backend, not a documented, general
+CNA memory-budget feature.
+
+Three further projects are worth naming briefly, though none is covered in depth here.
+\texttt{mesh-craft} is a C\texttt{++}23 3D scene editor for its own \texttt{.mc3.xml} format,
+built as a sibling repository to CNA --- it adds real CSG (constructive solid geometry) via the
+Manifold library and glTF/GLB export, though its editor GUI specifically depends on the EASYGL
+backend to render (other backends compile but do not drive its interface). \texttt{mesh-world}
+is a procedural world generator built on top of the MeshCraft ecosystem, combining C\texttt{++}
+chunk generators with Lua-scripted object generators (via sol2 and Lua~5.4), a planetary-map
+subsystem with quadtree level-of-detail and a 52-category biome classifier, and SQLite-backed
+content packs, backed by a substantial test suite. \texttt{galaxy-eggbert} is a full 3D remake
+of \texttt{mobile-eggbert} itself --- which is, per the note above, a C\texttt{++} port of the
+WP7-era \emph{Speedy Blupi} --- with its actively developed \texttt{GalaxyEggbertCNA} target
+built directly on CNA and \texttt{easy-3d}, superseding an earlier, now-historical
+Simple3D/U3D/Urho3D-based target.
+
+\section{Documentation and marketing sites}
+
+\texttt{libcna.com} is CNA's own flagship public documentation and marketing site --- a
+static site (features, architecture, tutorials, a demo/showcase gallery, and a
+contribution guide) published under its own top-level domain rather than an
+\texttt{*.openeggbert.com} subdomain, which marks it as the project's primary public-facing
+presence rather than one of the many per-project mirror sites below it. Like every
+documentation site in this appendix, this book does not treat it as a source of new technical
+fact in its own right --- its content is a presentation layer over the same repository this
+book is about --- but it is worth knowing about specifically as the place a newcomer to CNA
+is most likely to land first, before ever finding the repository itself.
+
+The \texttt{openeggbert} organization also hosts a considerable number of further
+\texttt{*.openeggbert.com}-named repositories --- per-project documentation or marketing
+sites (for instance \texttt{cna.openeggbert.com}, \texttt{easygl.openeggbert.com},
+\texttt{sharpruntime.openeggbert.com}) --- which this book does not cover at all, for the
+same reason.
+
+\section{A note on repositories unrelated to CNA}
+
+Several repositories in the same organization --- \texttt{speedyblupi.com},
+\texttt{BlupiEdit}, \texttt{tiled-blupi}, and a handful of forked repositories --- relate to
+the Blupi game franchise's own history independent of CNA/\texttt{free-direct}, or are forks
+maintained for unrelated reasons. They are outside this book's scope entirely and are noted
+here only so a reader browsing the organization's repository list is not left wondering
+whether an omission was accidental.

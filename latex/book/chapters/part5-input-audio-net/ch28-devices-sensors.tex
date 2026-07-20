@@ -1,0 +1,115 @@
+\chapter{Devices and Sensors}
+\label{ch:devices-sensors}
+
+This chapter covers two namespaces that share a directory prefix but almost nothing else:
+\cnans{Microsoft::Devices::Sensors} is a real, historical Windows Phone~7 API surface CNA
+faithfully ports; \cnans{CNA::Devices} is an entirely CNA-original, \texttt{NOXNA} desktop
+utility layer with no XNA or WP7 equivalent at all.
+
+\section{Microsoft::Devices::Sensors: a real WP7 API, engineered for real concurrency}
+
+\cnaclass{SensorBase<TSensorReading>} is the shared template base for every sensor in this
+namespace (\cnaclass{Accelerometer}, \cnaclass{Gyroscope}, \cnaclass{Compass},
+\cnaclass{Motion}), providing \texttt{CurrentValue}, \texttt{IsDataValid},
+\texttt{TimeBetweenUpdates} (defaulting to 2 milliseconds, matching the real WP7 API), the
+public \texttt{CurrentValueChanged} event, and abstract \texttt{Start()}/\texttt{Stop()}.
+What makes this namespace worth a dedicated section in this book is not its API surface,
+which is small, but the genuine concurrency-safety engineering behind it --- because, unlike
+most of CNA's XNA-facing surface, a sensor's \texttt{CurrentValueChanged} callback can
+legitimately fire from whatever thread SDL's own sensor event-watch mechanism happens to
+invoke it on, not necessarily the game's own update thread.
+
+\subsection{A real, found-and-fixed data race, and the design it produced}
+
+An early implementation read \texttt{isDisposed\_} with no lock at all, while the real
+SDL-backed sensor classes wrote to it from a background event-watch thread --- a genuine
+data race under the C\texttt{++} memory model, not a theoretical one. The fix that grew out
+of finding it is more interesting than the fix itself: rather than a single coarse lock, this
+namespace now uses a documented, per-instance protocol for safe disposal under concurrent
+access --- an atomic \texttt{ClaimDisposalOnce()} so exactly one of two racing
+\texttt{Dispose()} callers actually runs cleanup, a \texttt{WaitForDisposalToComplete()} for
+the loser to block on, and (added after a later external audit found the first version could
+still strand a waiting thread if the winning cleanup itself threw) an RAII
+\texttt{DisposalTerminalStateGuard} that unconditionally publishes the disposed state even on
+an exceptional exit path. \texttt{Accelerometer} and \texttt{Compass} each additionally track
+which specific threads are currently mid-dispatch into a callback, so that a handler which
+reentrantly disposes its own sensor instance does not deadlock waiting for itself to finish.
+
+\subsection{A second, subtler bug: an update-throttling integer overflow}
+
+A separate, later external audit found a genuine signed-integer-overflow bug in the update
+throttle every sensor uses to honor \texttt{TimeBetweenUpdates}: comparing an elapsed
+duration against the configured interval by promoting both to a common, finer time
+resolution multiplies the interval's own tick count by 100 --- which overflows a signed
+64-bit integer outright when \texttt{TimeBetweenUpdates} is set to \texttt{TimeSpan.MaxValue},
+confirmed directly under UndefinedBehaviorSanitizer. The fix casts the \emph{elapsed}
+duration down to the coarser resolution instead of promoting the interval up --- a direction
+that can never overflow, since a signed 64-bit count of 100-nanosecond ticks can represent
+roughly 29{,}000 years, far beyond any realistic elapsed wall-clock time a running program
+would ever measure.
+
+\subsection{Per-sensor reality: what is genuinely backed by hardware}
+
+\cnaclass{Accelerometer} is the most complete of the four: genuinely SDL3-backed
+(\texttt{SDL\_SENSOR\_ACCEL}) on desktop, Android, and iOS alike --- a deliberate design
+decision, not a Windows Phone accident, since desktop accelerometer hardware (a laptop's own
+motion sensor, for instance) is treated as a first-class supported case rather than a
+mobile-only special case. It also carries the one genuinely real \texttt{State} property in
+this namespace, and the legacy WP7~7.0 \texttt{ReadingChanged} event --- deprecated since WP7
+7.1 in favor of \texttt{CurrentValueChanged}, but still present and still raised immediately
+after \texttt{CurrentValueChanged} for the same reading, exactly matching real WP7's own
+still-shipping deprecated-but-functional behavior. \cnaclass{Gyroscope} follows the identical
+shape and the identical throttling fixes. \cnaclass{Compass}, by contrast, has no SDL3
+backing at all --- SDL3 exposes no magnetometer API on any platform --- so it is only
+genuinely real on Android, through a dedicated native backend built directly on the NDK's own
+rotation-vector and magnetic-field sensors; on every other platform, \texttt{IsSupported}
+correctly reports false and \texttt{Start()} fails with \cnaclass{SensorFailedException},
+exactly as real WP7 hardware without a compass would behave. \cnaclass{Motion} (a fused
+attitude/gravity/acceleration reading) shares this same Android-real,
+everywhere-else-honest-stub shape.
+
+\cnaclass{VibrateController} is a real WP7 API in its own right: a single, non-static,
+process-lifetime shared instance reached only through \texttt{getDefaultProperty()} --- the
+private constructor exists specifically because a phone has exactly one vibration motor, and
+a second, independently constructed instance could not meaningfully represent anything
+different. \texttt{Start(TimeSpan)} throws outside the documented $[0, 5\text{s}]$ WP7 range;
+a real \texttt{NOXNA} extension, \texttt{Start(TimeSpan, float intensity)}, exposes SDL3's
+graduated rumble-strength parameter directly, since modern hardware supports variable
+intensity that a 2010-era WP7 phone's simple on/off buzzer never did. On Android specifically,
+a documented, source-verified hardware limitation is worth knowing: SDL3's own Android haptic
+backend blends any two independent motor intensities into one blended value before handing it
+to the platform vibration service --- true independent left/right rumble on Android is only
+reachable through \cnaclass{GamePad}'s own controller-rumble path, never through this class.
+
+\section{CNA::Devices: a NOXNA desktop utility layer}
+
+Distinct from the sensor namespace above, \cnans{CNA::Devices} has no XNA or WP7 precedent at
+all --- every class in it is a CNA-original addition, built directly on an SDL3 capability
+with no XNA equivalent to preserve fidelity against. \cnaclass{Camera} captures live video
+frames from a camera device directly into a \cnaclass{Texture2D}, deliberately poll-based
+(matching SDL3's own \texttt{SDL\_AcquireCameraFrame()} shape) rather than forcing a
+callback model onto a fundamentally poll-driven API; its first-implementation scope is
+explicitly narrow --- a single, first-reported camera device, synchronous permission
+polling, RGBA8-only frame delivery. \cnaclass{SystemTray} shows a real system tray icon with
+a flat menu, confirmed genuinely desktop-only by reading SDL3's own per-platform tray source
+directly (no Android, iOS, or Emscripten backend exists at all --- unlike
+\cnaclass{FileDialog}, which turned out to have a real Android backend once actually
+investigated, rather than being assumed desktop-only by analogy). \cnaclass{DisplayInfo}
+deliberately does not duplicate what \cnaclass{GameWindow} (this book's game-loop chapter)
+already exposes --- only the two genuinely new SDL3 capabilities
+\cnaclass{GameWindow} has no property for at all: per-window display content scale, and a
+window's safe interactive area (relevant on displays with notches or rounded corners).
+\cnaclass{MessageBox}, \cnaclass{FileDialog}, \cnaclass{UrlLauncher}, \cnaclass{Locale},
+\cnaclass{Clipboard}, \cnaclass{SystemInfo}, and \cnaclass{PowerInfo} round out this layer,
+each a thin, real wrapper over the corresponding SDL3 host-integration capability.
+
+\section{Why this namespace matters despite its small XNA surface}
+
+Real XNA's own \cnans{Microsoft.Devices.Sensors} surface is small, and CNA's port of it is
+correspondingly modest in scope compared to Graphics or Audio. What makes it worth a chapter
+in this book is not size but craft: this is the one namespace in the whole project whose own
+documentation most explicitly foregrounds thread-safety as a first-class design concern
+(\texttt{docs/devices-thread-safety.md} is described, in the source itself, as the single
+consolidated contract every sensor class's own comments defer back to), precisely because it
+is the one place in CNA where a callback genuinely can arrive from a thread the game's own
+code never spawned.

@@ -1,0 +1,103 @@
+\chapter{Windows, MinGW-w64, and Wine}
+\label{ch:windows-wine}
+
+This book's Direct3D chapter described what the D3D9/D3D11/D3D12 backends prove; this chapter
+describes the actual machinery that makes proving it possible without ever touching a
+Windows machine --- a genuinely elaborate, carefully engineered dev loop that deserves its
+own explanation.
+
+\section{The cross-compilation toolchain}
+
+\texttt{cmake/toolchains/mingw-w64.cmake} is a short, standard CMake cross-toolchain file:
+it sets \texttt{CMAKE\_SYSTEM\_NAME} to \texttt{Windows}, locates the
+\texttt{x86\_64-w64-mingw32-gcc}/\texttt{g++} toolchain (falling back to a 32-bit triple if
+the 64-bit one is not found), and isolates the cross-root so CMake's own
+\texttt{find\_package} calls never accidentally pick up a host Linux library. The invocation
+is exactly what Chapter~\ref{ch:building-cna} already showed:
+\texttt{-DCMAKE\_TOOLCHAIN\_FILE=cmake/toolchains/mingw-w64.cmake}, alongside whichever
+backend option is being targeted.
+
+\section{Three Wine prefixes, never one}
+
+A single Wine prefix is not enough, and the project maintains three, each for a distinct
+reason. One prefix carries a genuine Microsoft \texttt{d3dcompiler\_47.dll} (installed via
+\texttt{winetricks}), needed because Wine's own \emph{builtin} \texttt{d3dcompiler\_47.dll} is
+backed by an incomplete shader compiler --- it fails outright on a real alpha-test ternary
+expression from the stock effects, and where it does compile something, the result can be
+wildly wrong: a 72-bone skinning shader that should compile to about 2{,}160 bytes came out
+of the builtin compiler at 1.4~MB, fully unrolled, because it cannot do relative addressing
+at all. A second, 32-bit prefix carries a full XNA~4.0 installation --- real .NET Framework 4,
+the real XNA~4.0 redistributable, and a real in-prefix \texttt{csc.exe} --- specifically so
+the D3D9 oracle (\S\ref{sec:d3d9-oracle}) can compile and run genuine XNA~4.0 code, not a
+substitute for it. A third prefix is the one CNA's own D3D11 test suite runs against day to
+day, deliberately left alone rather than experimented on.
+
+\section{The self-verifying gate: catching a silent fallback before it corrupts a result}
+
+Every \texttt{scripts/run-wine-dxvk*.sh}/\texttt{run-wine-vkd3d.sh} runner shares one
+critical property: none of them simply trust that DXVK or vkd3d-proton is actually in effect.
+Each one captures the target program's own log output and greps it for a translation-layer-specific
+marker --- a real \texttt{DXVK: <version>} line, or a real \texttt{vkd3d-proton -
+applicationVersion: <version>} line --- and refuses to treat the run as valid otherwise,
+exiting with a specific error naming the failure as ``a silent WineD3D fallback rather than a
+real DXVK-backed Direct3D~11 run.'' This is not a hypothetical concern: without this gate, a
+misconfigured prefix could silently render through Wine's own, much less accurate, built-in
+Direct3D implementation instead of the real GPU-accelerated translation layer the whole
+verification methodology depends on, and every pixel-test result from that run would be
+comparing CNA against the wrong thing without anyone noticing.
+
+\section{D3D12's extra wrinkle: Proton, not plain Wine}
+
+Chapter~\ref{ch:direct3d-backends} already described the real, root-caused
+architecture mismatch behind D3D12's swap-chain crash under plain Wine: Debian's own system
+\texttt{dxgi.dll} cannot hand a command queue to vkd3d-proton's separately overridden
+\texttt{d3d12.dll}, because vkd3d-proton's own \texttt{dxgi.dll} is only ABI-compatible with
+the rest of its own matched build. The concrete fix is a dedicated script that launches
+through Valve's own Proton launcher end to end, which supplies a self-consistent DLL set that
+vkd3d-proton's override then layers onto correctly. This script carries a hard-coded safety
+guard refusing to ever operate against a real personal Wine prefix --- added after a genuine
+incident where an earlier version of the same script accidentally launched against a
+developer's own \texttt{\textasciitilde/.wine} prefix and hung for nine and a half hours
+under a first-run installation wizard.
+
+\section{The D3D9 oracle, mechanically}
+\label{sec:d3d9-oracle}
+
+Chapter~\ref{ch:direct3d-backends}'s account of the D3D9 oracle can now be given its full
+mechanical explanation. A tool compiles Microsoft's own, unmodified stock-effect \texttt{.fx}
+source files to real Direct3D~9 bytecode via the genuine \texttt{d3dcompiler\_47.dll},
+cross-built and run through Wine against the dedicated compiler prefix above; a separate
+comparison step diffs the result against FNA's own shipped, Microsoft-compiled bytecode ---
+61 of 66 compiled variants matched byte-for-byte, and the remaining five (all
+\texttt{PixelLighting} vertex variants) were confirmed, not merely assumed, to differ only by
+compiler version, after ruling out every optimization-flag combination as the actual cause.
+
+The pixel-diff oracle itself works by rendering the identical declarative scene description
+through two independent paths: a real, Wine-hosted XNA~4.0 program (compiled by the genuine
+in-prefix \texttt{csc.exe}, run against the XNA-redistributable prefix, itself running
+through DXVK rather than WineD3D --- a deliberate methodological choice, so that a pixel diff
+never silently measures a driver difference instead of a real CNA difference) and CNA's own
+cross-compiled D3D9 backend, run through the same DXVK-verified gate as everything else in
+this chapter. A dedicated, mutation-tested comparison script does the actual pixel diff, at
+a caller-specified tolerance --- confirmed, via a deliberately corrupted test image, to
+correctly report exactly the number of differing pixels a known mutation introduces, not just
+a pass/fail verdict.
+
+\section{fna-reference: a different, lighter-weight comparison, and why it uses Mono instead}
+
+Distinct from the rendering-capable D3D9 oracle above, \texttt{tools/fna-reference/} answers
+a narrower question --- do CNA's enums, state-object presets, packed vector types, and
+viewport math match FNA's own values exactly --- and does so without any Wine or Windows
+involvement at all. It runs the real \texttt{FNA.dll} natively on Linux through Mono, dumping
+a fixed set of non-rendering values (enum members, default state-object properties, packed
+vector round-trips, viewport projection math) to JSON; a companion C\texttt{++} tool performs
+the identical dump from CNA's own real implementation, entirely without constructing a
+\cnaclass{GraphicsDevice} at all; and a small, dependency-free comparison script asserts every
+FNA-side value has a matching CNA-side value, deliberately one-directional so that a
+CNA-only, \texttt{NOXNA}-tagged extension is never flagged as a mismatch. This lighter-weight
+tool exists specifically because it needs no live rendering device --- extending it to cover
+anything that does (a stock effect's actual rendered output, for instance) was evaluated and
+explicitly deferred as a substantially larger undertaking, left for the D3D9 oracle to cover
+instead. One real, if narrow, divergence this tool did catch: \cnaclass{IndexElementSize}'s
+\texttt{SixteenBits}/\texttt{ThirtyTwoBits} values did not match FNA's own \texttt{0}/\texttt{1}
+numbering at all --- confirmed and fixed once this comparison surfaced it.

@@ -1,15 +1,11 @@
 LATEXMK = latexmk -pdf -interaction=nonstopmode -halt-on-error -file-line-error
 
-.PHONY: all volume1 volume2 clean
+.PHONY: all book clean
 
-all: volume1 volume2
+all: book
 
-volume1:
-	cd volume1 && $(LATEXMK) main.tex
-
-volume2:
-	cd volume2 && $(LATEXMK) main.tex
+book:
+	cd book && $(LATEXMK) main.tex
 
 clean:
-	cd volume1 && latexmk -C main.tex
-	cd volume2 && latexmk -C main.tex
+	cd book && latexmk -C main.tex

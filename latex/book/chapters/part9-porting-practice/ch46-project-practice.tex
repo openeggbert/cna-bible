@@ -1,0 +1,100 @@
+\chapter{Project Practice and Task Tracking}
+\label{ch:project-practice}
+
+Chapter~\ref{ch:design-philosophy} covered the code-level house style CNA
+enforces on every file. This chapter covers the surrounding \emph{project} practice --- how
+work is planned, tracked, and handed off between sessions --- because reading CNA's own
+repository well enough to contribute to it, or even to just trust a specific claim in it,
+means knowing this layer exists and how to read it.
+
+\section{Three tiers of tracking document}
+
+CNA's root directory carries three distinct kinds of tracking file, each with a different job,
+and confusing one for another is a real way to misread the project's own state.
+
+\textbf{\texttt{NEXT.md}} is a \emph{session handoff} document --- written for whichever
+agent or engineer picks up work next, not a historical record. It is explicitly scoped to
+whichever development branch is currently active, and is candid about its own staleness in a
+way worth quoting directly, since it is a good model of the honesty this book has tried to
+carry throughout: one recent revision opens by telling its own reader that everything below a
+certain divider is ``stale, D3D9-branch-scoped content\ldots that ended up merged into this
+file's history\ldots not about this branch and should not be read as current status here.''
+Rather than deleting the stale material, it is left in place as a historical record, with an
+explicit warning attached. \texttt{NEXT.md} also carries genuinely operational notes with no
+equivalent anywhere else in the project --- for instance, running graphics/window tests
+against a dedicated Xvfb display rather than a real one, capping build parallelism well below
+the machine's full core count and pausing new heavy work above a specific CPU temperature
+threshold when the development machine is shared concurrently with other agents, and a
+reminder that \texttt{ctest} changes each test's working directory, which can silently break a
+test relying on a path relative to the repository root.
+
+\textbf{\texttt{AUDIT.md}} is a \emph{systematic, per-class comparison} between FNA (as
+reference) and CNA (as implementation), using a three-value legend --- done, in progress, not
+yet audited --- across every class and enum in every XNA namespace. Unlike \texttt{NEXT.md},
+this is meant to be read as a durable, cumulative record of what has actually been checked,
+not a snapshot of current work.
+
+\textbf{\texttt{CHECKLIST.md}} is the per-file porting checklist already introduced in
+Chapter~\ref{ch:design-philosophy} --- SPDX headers, the \texttt{NOXNA} include requirement,
+line-by-line verification against FNA, mandatory \texttt{GetTypeName()} overrides, and full
+test coverage including out-ref overloads tested separately from their value-returning
+counterparts. It also maintains the project's own table of \emph{accepted} C\texttt{++}
+deviations from FNA --- for instance, the inconsistency already named in
+Chapter~\ref{ch:math-core-types} between \cnaclass{BoundingBox} throwing
+\texttt{System::ArgumentOutOfRangeException} for an out-of-range index versus
+\cnaclass{Input::Touch::TouchCollection} throwing \texttt{std::out\_of\_range} for the
+identical situation --- flagged explicitly as a known, project-wide inconsistency rather than
+silently tolerated or silently ``fixed'' to look more consistent than the codebase's actual
+history.
+
+\section{One plan file per subsystem}
+
+Beyond these three root-level files, CNA maintains a separate \texttt{plan\_<subsystem>.md}
+file for each major feature area under active or completed development --- at the time of
+writing, twenty of them, covering areas as different in scale as \texttt{plan\_ascii.md} (the
+ASCII backend, Chapter~\ref{ch:canvas-ascii-backends}) and \texttt{plan\_cnj.md}
+(the glTF import pipeline). Each is organized into numbered phases and tasks --- the same
+\texttt{Task~123} citation style this book has used throughout both volumes whenever
+attributing a specific bug or fix to its source. This is the mechanism that makes a claim
+like ``Task~868, fixed 2026-07-09'' (Chapter~\ref{ch:vulkan-backend}) a genuinely checkable
+one rather than an unsourced assertion: the task number names an exact entry in an exact
+plan file, not a vague reference to ``recent work.''
+
+\section{Status symbols, read consistently}
+
+Across \texttt{NEXT.md} and the \texttt{plan\_*.md} files, a small set of symbols recur with
+consistent meaning: a hollow marker for work not yet started, a half-filled marker for a
+partially complete item, and a checkmark for done --- the same three-state shape
+\texttt{AUDIT.md} uses with different symbols. When this book's own chapters describe a
+feature as ``open'' or ``BLOCKED'' rather than simply absent, that distinction is drawn
+directly from this same convention: an open item is ordinary unstarted or in-progress work; a
+BLOCKED item, as Chapter~\ref{ch:sdl-renderer} covered for \texttt{SDL\_RENDERER}'s two
+BLOCKED rows, specifically means the work itself is understood but genuinely cannot proceed
+without a decision only the project owner can make.
+
+\section{Doxygen \texttt{@note Status:} tags: a secondary, human-readable hint}
+
+\texttt{sharp-runtime} (Chapter~\ref{ch:sharp-runtime-overview}) layers one further,
+source-level convention on top of all of this: a \texttt{@note Status: Todo|Stub|Partial|%
+Implemented|Verified} Doxygen tag directly on individual classes and methods. Its own
+documentation is explicit that this tag is a \emph{secondary}, human-readable hint, not a
+source of truth --- the authoritative record of whether a given .NET type counts as ``ported''
+lives in \texttt{plan.sqlite3}'s own \texttt{task} table (Chapter~\ref{ch:sharp-runtime-overview}
+covers this database in full), and the two are not mechanically kept in sync with each other.
+A reader trusting only the source comment risks trusting a claim the project's own
+authoritative tracking database might already have superseded.
+
+\section{Why this layer is worth knowing, not just tolerating}
+
+None of this is unusual in isolation --- plenty of large projects keep a TODO file and a set
+of per-feature planning documents. What is worth taking away from this chapter is the
+discipline threading through all of it: every one of these documents is written to be
+distrusted a little, and to tell you exactly how to check it against something more
+authoritative --- \texttt{NEXT.md} telling you which of its own sections are stale,
+\texttt{AUDIT.md} tracking currency per class rather than claiming a single global percentage,
+\texttt{CHECKLIST.md} recording known inconsistencies instead of hiding them, and
+\texttt{sharp-runtime}'s own Doxygen tags explicitly deferring to a database rather than
+claiming to be the final word themselves. This is the same discipline
+Chapter~\ref{ch:what-is-cna} named as this project's most distinctive trait in its very first
+pages, and it is worth recognizing it here again, now grounded in the specific documents that
+actually carry it.

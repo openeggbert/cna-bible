@@ -1,0 +1,74 @@
+\chapter{Glossary of XNA and CNA Terms}
+\label{ch:glossary}
+
+\begin{description}
+\item[BGFX] One of CNA's eleven graphics backends; a third-party rendering library integrated
+  directly via its native API. See Chapter~20.
+\item[CANVAS] CNA's Emscripten-only, HTML \texttt{<canvas>}-based 2D graphics backend. See
+  Chapter~23.
+\item[CNA] The project this book is about: a C\texttt{++}23 reimplementation of the XNA~4.0
+  programming model, built on SDL3 with a pluggable graphics-backend layer.
+\item[DX3] CNA's graphics backend fronting the sibling \texttt{free-direct} project; a 2D-only
+  backend, in the same spirit as \texttt{SDL\_RENDERER}. See Chapter~24.
+\item[EASYGL] CNA's OpenGL/OpenGLES graphics backend, built on the sibling \texttt{easy-gl}
+  project; CNA's most feature-complete backend by its own account. See Chapter~18.
+\item[Effect] The XNA base class for a shader program bound to a \cnaclass{GraphicsDevice}.
+  CNA ships five stock effects and, on three backends, a runtime-compiled custom
+  \texttt{ShaderEffect} path --- see the shader/.fx gap chapter, Chapter~15.
+\item[FNA] An open-source, C\#, SDL2-based reimplementation of the XNA~4.0 API, maintained
+  independently of CNA. FNA is CNA's primary behavioral reference and the subject of CNA's
+  own differential-testing infrastructure --- not the same thing as the real Microsoft
+  XNA~4.0 specification, a distinction this book returns to repeatedly (most sharply in the
+  Media chapter's \cnaclass{Song} finding, Chapter~27).
+\item[GamerServices] The XNA namespace covering Xbox-Live-era player profile, achievement,
+  leaderboard, and system-UI concepts. CNA implements it with real local persistence where
+  FNA does not implement it at all. See Chapter~29.
+\item[GraphicsDevice] The central class every rendering operation in CNA passes through;
+  covered in Chapter~9.
+\item[.cnj] CNA's own permanent, JSON-based content sidecar format --- ``CNA content JSON,''
+  originally and confusingly named \texttt{.cnb}. Tried after \texttt{.xnb} and a direct
+  native-format load in \cnaclass{ContentManager}'s resolution order. See Chapter~8.
+\item[.xnb] Real XNA's compiled binary content-pipeline output format. CNA has a real, growing
+  binary \texttt{.xnb} reader --- covering \cnaclass{Texture2D}, \cnaclass{SpriteFont}, the
+  five stock effects, \cnaclass{SoundEffect}, \cnaclass{Song}, and \cnaclass{Model} at the
+  time of writing --- checked first in \cnaclass{ContentManager}'s resolution order, ahead of
+  both a direct native-format load and \texttt{.cnj}. See Chapter~8, and this book's migration
+  guide, Chapter~42.
+\item[MojoShader] The bytecode-to-GLSL cross-compiler FNA uses to run compiled Direct3D~9
+  shader bytecode. CNA has no equivalent, which is the root cause of the shader/.fx bytecode
+  gap covered in Chapter~15.
+\item[NOXNA] CNA's marker convention (a macro, and a matching compile-time build option) for
+  any declaration inside the XNA namespace tree that is not part of the real XNA~4.0 API. See
+  Chapter~3.
+\item[Oracle (D3D9)] The pixel-for-pixel verification methodology comparing CNA's D3D9
+  backend against a genuinely running XNA~4.0 runtime under Wine, at zero tolerance. See
+  Chapter~22, and this book's Windows/Wine chapter, Chapter~38.
+\item[SDL3] The cross-platform windowing/input/audio library CNA is built on. Not itself a
+  graphics backend --- \texttt{SDL\_RENDERER} (one of CNA's eleven backends) is built on
+  SDL3's own 2D renderer specifically.
+\item[SharpRuntime / sharp-runtime] The sibling C\texttt{++} reimplementation of a subset of
+  the .NET base class library that CNA depends on for its non-XNA-specific vocabulary
+  (\texttt{System::Object}, \texttt{TimeSpan}, \texttt{EventHandler<T>}, and more). Covered in
+  full in Part~VI.
+\item[SkinnedModelEXT] The CNA-original, \texttt{NOXNA} real-rendering extension for the
+  Avatar system, structurally separate from the faithful, inert base Avatar API. See
+  Chapter~31.
+\item[SpriteBatch] The primary 2D rendering API in XNA and CNA alike. See Chapter~10.
+\item[Stock effects] The five built-in XNA shader effects --- \cnaclass{BasicEffect},
+  \cnaclass{AlphaTestEffect}, \cnaclass{DualTextureEffect}, \cnaclass{EnvironmentMapEffect},
+  \cnaclass{SkinnedEffect}. See Chapter~13.
+\item[VULKAN] One of CNA's eleven graphics backends, targeting the Vulkan API directly. See
+  Chapter~19.
+\item[WEBGPU] CNA's experimental fifth graphics backend, targeting native \texttt{wgpu-native}.
+  See Chapter~21.
+\item[XACT] Microsoft's Cross-platform Audio Creation Tool format/engine, the format CNA's own
+  Audio namespace parses and plays back through SDL3\_mixer rather than a FAudio-equivalent
+  engine. See Chapter~26.
+\item[xna4-spec] The sibling repository providing a complete, machine-readable XML
+  transcription of the real XNA~4.0 API documentation, used to audit CNA's coverage against a
+  ground truth rather than against FNA's own source. See Chapter~44.
+\item[Storage] The \cnans{Microsoft::Xna::Framework::Storage} namespace --- a real, if
+  small, XNA namespace for user-data persistence (\cnaclass{StorageDevice},
+  \cnaclass{StorageContainer}), backed by a straightforward local-filesystem implementation
+  underneath a faithfully-preserved fake-async API shape. See Chapter~32.
+\end{description}

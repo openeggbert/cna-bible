@@ -1,0 +1,130 @@
+\chapter{SpriteBatch and 2D Rendering}
+\label{ch:spritebatch}
+
+\cnaclass{SpriteBatch} is the API most CNA code touches most often, and --- because it is
+also the one class every one of the eleven backends in Part~IV must implement --- the class
+whose bugs and fixes best illustrate what ``backend parity'' actually costs to achieve. This
+chapter covers its API surface, its supporting types (\cnaclass{SpriteSortMode},
+\cnaclass{SpriteEffects}, \cnaclass{SpriteFont}), and the specific, real bugs found while
+verifying it, because the bugs are as instructive as the API itself.
+
+\section{Begin, Draw, End}
+
+\cnaclass{SpriteBatch} inherits \cnaclass{GraphicsResource} and offers five \texttt{Begin()}
+overloads of increasing specificity, each defaulting whatever the caller omits:
+\texttt{Begin()} alone defaults to \texttt{SpriteSortMode::Deferred},
+\cnaclass{BlendState::AlphaBlend}, a \texttt{LinearClamp} sampler, no depth-stencil state,
+\cnaclass{RasterizerState::CullCounterClockwise}, and an identity transform; the fuller
+overloads let a caller override the sort mode and blend state, the three optional state
+objects (nullptr falls back to the same defaults), a custom \cnaclass{Effect} (nullptr falls
+back to an internal default \cnaclass{SpriteEffect}), and finally an explicit transform
+\cnaclass{Matrix} applied to every sprite in the batch before projection.
+
+\texttt{Draw} itself has nine overloads: six are the canonical XNA forms ---
+position-or-destination-rectangle, an optional source rectangle (represented as
+\texttt{std::optional<Rectangle>} rather than C\#'s nullable \texttt{Rectangle?}), color, and
+progressively more control over rotation, origin, scale (as either a uniform \texttt{float} or
+a non-uniform \cnaclass{Vector2}), \cnaclass{SpriteEffects}, and layer depth --- and three are
+\texttt{NOXNA} raw texture-and-rectangle convenience forms layered on top.
+\texttt{DrawString} adds six more overloads (\texttt{string} or \texttt{StringBuilder}, each in
+a simple 4-argument form, a uniform-scale 9-argument form, and a non-uniform-scale
+(\cnaclass{Vector2} scale) 9-argument form).
+
+\section{SpriteSortMode and SpriteEffects}
+
+\cnaclass{SpriteSortMode} has five values: \texttt{Deferred}, \texttt{Immediate},
+\texttt{Texture}, \texttt{BackToFront}, \texttt{FrontToBack}. Only the latter two actually
+honor a sprite's \texttt{layerDepth} argument --- the others ignore it entirely, by design,
+matching XNA's own documented sort-mode semantics.
+
+\cnaclass{SpriteEffects} is where this chapter's first concrete, still-open gap lives:
+it is declared as a plain \texttt{enum class} --- \texttt{None=0}, \texttt{FlipHorizontally=1},
+\texttt{FlipVertically=2} --- with \emph{no bitwise operators defined at all}. In real XNA,
+\texttt{SpriteEffects} is a \texttt{[Flags]} enum, and combining both flags
+(\texttt{FlipHorizontally | FlipVertically}, value 3) is a normal, supported call. In CNA,
+reaching value 3 requires an explicit \texttt{static\_cast<SpriteEffects>(3)}, and --- more
+tellingly --- \texttt{SpriteBatch::DrawString}'s own per-axis direction lookup tables (added
+when the flip-mirroring bug below was fixed) deliberately only have three entries, indexed
+0 through 2. Value 3 is functionally unreachable through the normal calling convention. This
+is flagged directly in \texttt{docs/spritefont-support.md} \S7 as a genuine, minor,
+still-open API-completeness gap, not a crash risk --- a combined horizontal-and-vertical
+flip of drawn text simply is not expressible today.
+
+\section{A real, shared bug: SpriteEffects flip only affected sampling, not layout}
+
+Chapter~\ref{ch:design-philosophy} promised that this book would name specific, checkable
+bugs rather than paraphrase a changelog, and this one is worth naming in full because it
+affected every backend at once, which is unusual --- most of the bugs catalogued in Part~IV
+are backend-specific. Before Task~694, a \texttt{SpriteEffects} flip on
+\texttt{DrawString} only flipped each individual glyph's own texture sampling in place; it
+never mirrored the \emph{sequence or position} of the glyphs themselves, which is what FNA's
+real implementation does via a pair of axis-direction/axis-mirrored terms. The fix lives in
+the shared, backend-agnostic \texttt{SpriteBatch.cpp} --- meaning it was one fix that
+corrected the behavior identically on every one of CNA's graphics backends simultaneously,
+rather than something Part~IV's chapters need to revisit backend by backend.
+
+\section{SpriteFont}
+
+\cnaclass{SpriteFont} is deliberately not a \cnaclass{GraphicsResource} --- a texture atlas,
+glyph bounds, cropping data, a character set, line spacing, character spacing, kerning data,
+and an optional default character. Its constructor is \texttt{NOXNA} and publicly callable,
+a direct consequence of Chapter~\ref{ch:content-and-assets}'s content model: real XNA's
+\cnaclass{SpriteFont} constructor is \texttt{internal}, reachable only from the compiled
+\texttt{.xnb} content pipeline's own \texttt{SpriteFontReader}; CNA has no such reader, so the
+constructor has to be public for anything to construct a font at all.
+
+\texttt{MeasureString} exists for both \texttt{string} and \texttt{StringBuilder} --- the
+\texttt{StringBuilder} overload was entirely missing until Task~421/423, and is now a
+one-line forward to the \texttt{string} implementation, a simplification available in
+C\texttt{++} precisely because there is no garbage-collection-pressure argument (the reason
+FNA's own C\# implementation duplicates the algorithm instead of forwarding) against sharing
+code here. A faithfully-preserved, slightly surprising detail: a trailing \texttt{"\textbackslash n"}
+adds a full second empty line's worth of height to the measured result ---
+\texttt{Y = 2 \(\times\) LineSpacing}, not \texttt{1 \(\times\)} --- because both the newline
+handler and the loop's own unconditional final height-add fire. This matches real XNA's
+behavior exactly and is preserved rather than ``fixed,'' consistent with
+Chapter~\ref{ch:design-philosophy}'s fidelity-over-taste rule.
+
+Character encoding deserves its own note: CNA's \texttt{String} is UTF-8
+(\texttt{std::string}), and \cnaclass{SpriteFont}/\cnaclass{SpriteBatch} decode each glyph via
+an internal \texttt{DecodeUtf8CodePoint} helper. Because \texttt{charcs} (the glyph-key type,
+per Chapter~\ref{ch:design-philosophy}'s type-alias table) is 16 bits wide, only Basic
+Multilingual Plane code points can serve as glyph keys at all; an invalid or truncated UTF-8
+sequence decodes to \texttt{'?'} rather than throwing, and the byte index always advances by
+at least one, so a malformed string can never cause an infinite decode loop.
+
+\section{What SpriteFont's support matrix actually says}
+
+\texttt{docs/spritefont-support.md} verifies the property surface, \texttt{MeasureString},
+single- and multi-glyph placement, newline handling, default-character fallback, single-axis
+flip, and rotation/scale as pixel-correct on both \textbf{SDL\_Renderer} and \textbf{EasyGL}.
+On \textbf{Vulkan} and \textbf{BGFX}, the underlying logic is the same shared C\texttt{++} ---
+very likely correct by construction --- but has not been independently re-verified
+specifically for \cnaclass{SpriteFont} (flagged again in
+\texttt{docs/graphics-backend-feature-matrix.md}, Task~861). Combined-axis flip is not
+representable on any backend at all, for the \cnaclass{SpriteEffects} reason above.
+
+\section{Two real, fixed SDL\_RENDERER bugs, as a preview of Part~IV's method}
+
+Two of the fifteen real bugs found during the SDL\_RENDERER backend's own Phase~70 audit
+(Chapter~\ref{ch:sdl-renderer} covers the full audit) live directly in \cnaclass{SpriteBatch}
+rendering and are worth previewing here as a template for how this book reports a bug
+throughout Part~IV: name the symptom, the root cause, and the fix. First,
+\texttt{SDL\_RenderTextureRotated}'s pivot convention differed from XNA's own rotation-origin
+convention; the fix offsets the destination rectangle rather than changing the rotation math
+itself. Second --- more serious --- the \texttt{transformMatrix} argument to
+\texttt{Begin()} was silently ignored \emph{entirely} on this backend; any code passing a
+non-identity transform matrix (a common pattern for camera-style 2D scrolling) simply drew as
+if it had passed identity. The fix added a new rendering path using
+\texttt{SDL\_RenderTextureAffine}, used only when the transform actually differs from
+identity, so the common (and cheaper) untransformed path is unaffected.
+
+\section{Where this leaves a porting engineer}
+
+\cnaclass{SpriteBatch} is, by a wide margin, the most exhaustively cross-backend-verified
+class in CNA --- every backend chapter in Part~IV returns to it, because every backend has
+to implement it, and because its bugs (an ignored transform matrix, a mis-scoped flip, a
+silently-downgraded sampler filter) are exactly the class of bug that only surfaces under
+real pixel-readback testing rather than ``it compiles and something appears on screen.'' If
+you are porting existing 2D XNA/FNA game code (this book's migration chapter), this is also
+the API you can trust most: it is the one every backend is held to the same standard on.

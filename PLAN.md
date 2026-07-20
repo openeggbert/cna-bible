@@ -1,4 +1,4 @@
-# The CNA Bible — Expansion Plan (1000–2000 pages per volume)
+# The CNA Bible — Expansion Plan (1000–2000 pages per part-group; single book since 2026-07-20)
 
 **Status: Phase 1 planning complete, execution starting. This is a long-running,
 multi-session project — this file is the durable task list and progress tracker across
@@ -124,7 +124,10 @@ Effects/State Objects, all backend-agnostic enough to render via SOFTWARE) and C
 Direct3D) should state explicitly why no real screenshot was attempted rather than skip the
 question silently.
 
-## Volume I — target ~1,300 pages (24 chapters + Appendix A)
+## Parts I–IV (formerly "Volume I") — target ~1,300 pages (chapters 1–24 + Appendix A)
+
+Merged into a single book on 2026-07-20 (see the session log entry for that date); chapter
+numbers below are unchanged by the merge.
 
 | # | Chapter | Current (lines) | Target (pages) | Approach | Status |
 |---|---------|-----------------:|----------------:|----------|--------|
@@ -156,42 +159,50 @@ question silently.
 
 **Volume I subtotal: ~1,305 pages.**
 
-## Volume II — target ~1,200 pages (24 chapters + Appendices A–E)
+## Parts V–IX (formerly "Volume II") — target ~1,200 pages (chapters 25–48 + Appendices B–F)
+
+Merged into a single book on 2026-07-20. Chapter and appendix numbers below are the
+**post-merge** numbers (originally chapters 1–24 and Appendices A–E within old Volume II;
+the renumbering table is in the 2026-07-20 session log entry below if the old numbers are
+ever needed).
 
 | # | Chapter | Current (lines) | Target (pages) | Approach | Status |
 |---|---------|-----------------:|----------------:|----------|--------|
-| 1 | Input System | 170 | 70 | Full Keyboard/Mouse/GamePad/TouchPanel docs + examples | Not started |
-| 2 | Audio System | 118 | 60 | Full SoundEffect family docs + examples | Not started |
-| 3 | Media | 103 | 45 | Full Song/MediaPlayer/MediaLibrary docs + examples | Not started |
-| 4 | Devices and Sensors | 115 | 45 | Full sensor API docs + examples | Not started |
-| 5 | GamerServices | 117 | 55 | Full Achievement/Leaderboard/Gamer docs + examples | Not started |
-| 6 | Networking | 125 | 70 | Full NetworkSession/NetworkGamer docs + worked multi-peer examples | Not started |
-| 7 | Avatar | 131 | 55 | Full Avatar/SkinnedModelEXT docs + examples | Not started |
-| 8 | Storage | 78 | 30 | Full StorageDevice/StorageContainer docs + examples | Not started |
-| 9 | Sharp Runtime Overview | 116 | 40 | Deeper architectural detail | Not started |
-| 10 | Sharp Runtime Namespaces | 90 | 70 | Full docs for TimeSpan/EventHandler/Stream/collections + examples | Not started |
-| 11 | Parity Philosophy | 111 | 35 | More worked deviation examples | Not started |
-| 12 | EasyGL Deep Dive | 112 | 55 | Deeper coverage | Not started |
-| 13 | free-direct Deep Dive | 65 | ~2 (no change) | **Stays marginal per author confirmation 2026-07-20 — do not expand** | N/A — intentionally frozen |
-| 14 | Windows/Wine | 103 | 45 | Deeper verification detail | Not started |
-| 15 | Web/Emscripten | 88 | 40 | Deeper build/deploy detail | Not started |
-| 16 | Android/NDK | 82 | 40 | Deeper build/deploy detail | Not started |
-| 17 | Verification Methodology | 68 | 35 | More worked audit examples | Not started |
-| 18 | Migration Guide | 102 | 55 | Full worked porting walkthroughs | Not started |
-| 19 | Blupi Case Study | 116 | 55 | Deeper call-site audit detail | Not started |
-| 20 | xna4-spec Auditing | 74 | 40 | More worked audit examples | Not started |
-| 21 | Samples and Examples | 54 | 45 | Per-sample summaries, more of the 86 samples covered | Not started |
-| 22 | Project Practice | 100 | 40 | Deeper task-tracking-methodology detail | Not started |
-| 23 | Testing Philosophy | 103 | 45 | More worked test examples | Not started |
-| 24 | Roadmap | 82 | 30 | Deeper detail | Not started |
-| A | Feature Matrix | 58 | 15 | Modest expansion, stays a reference table | Not started |
-| B | Glossary | 74 | 15 | More terms | Not started |
-| C | Repo Map | 127 | 20 | Modest expansion | Not started |
-| D | NOXNA Catalog | 114 | 20 | More entries | Not started |
-| E | API Quick Reference | 155 | 25 | Modest expansion, stays a reference | Not started |
+| 25 | Input System | 170 | 70 | Full Keyboard/Mouse/GamePad/TouchPanel docs + examples | Not started |
+| 26 | Audio System | 118 | 60 | Full SoundEffect family docs + examples | Not started |
+| 27 | Media | 103 | 45 | Full Song/MediaPlayer/MediaLibrary docs + examples | Not started |
+| 28 | Devices and Sensors | 115 | 45 | Full sensor API docs + examples | Not started |
+| 29 | GamerServices | 117 | 55 | Full Achievement/Leaderboard/Gamer docs + examples | Not started |
+| 30 | Networking | 125 | 70 | Full NetworkSession/NetworkGamer docs + worked multi-peer examples | Not started |
+| 31 | Avatar | 131 | 55 | Full Avatar/SkinnedModelEXT docs + examples | Not started |
+| 32 | Storage | 78 | 30 | Full StorageDevice/StorageContainer docs + examples | Not started |
+| 33 | Sharp Runtime Overview | 116 | 40 | Deeper architectural detail | Not started |
+| 34 | Sharp Runtime Namespaces | 90 | 70 | Full docs for TimeSpan/EventHandler/Stream/collections + examples | Not started |
+| 35 | Parity Philosophy | 111 | 35 | More worked deviation examples | Not started |
+| 36 | EasyGL Deep Dive | 112 | 55 | Deeper coverage | Not started |
+| 37 | free-direct Deep Dive | 65 | ~2 (no change) | **Stays marginal per author confirmation 2026-07-20 — do not expand** | N/A — intentionally frozen |
+| 38 | Windows/Wine | 103 | 45 | Deeper verification detail | Not started |
+| 39 | Web/Emscripten | 88 | 40 | Deeper build/deploy detail | Not started |
+| 40 | Android/NDK | 82 | 40 | Deeper build/deploy detail | Not started |
+| 41 | Verification Methodology | 68 | 35 | More worked audit examples | Not started |
+| 42 | Migration Guide | 102 | 55 | Full worked porting walkthroughs | Not started |
+| 43 | Blupi Case Study | 116 | 55 | Deeper call-site audit detail | Not started |
+| 44 | xna4-spec Auditing | 74 | 40 | More worked audit examples | Not started |
+| 45 | Samples and Examples | 54 | 45 | Per-sample summaries, more of the 86 samples covered | Not started |
+| 46 | Project Practice | 100 | 40 | Deeper task-tracking-methodology detail | Not started |
+| 47 | Testing Philosophy | 103 | 45 | More worked test examples | Not started |
+| 48 | Roadmap | 82 | 30 | Deeper detail | Not started |
+| B | Feature Matrix | 58 | 15 | Modest expansion, stays a reference table | Not started |
+| C | Glossary | 74 | 15 | More terms | Not started |
+| D | Repo Map | 127 | 20 | Modest expansion | Not started |
+| E | NOXNA Catalog | 114 | 20 | More entries | Not started |
+| F | API Quick Reference: Ecosystem and Platforms | 155 | 25 | Modest expansion, stays a reference | Not started |
 
-**Volume II subtotal: ~1,163 pages** (the 1,195 estimate above included a ~35-page target for
-Ch.13 that is now frozen at ~2 pages per the author's confirmation above).
+**Parts V–IX subtotal: ~1,163 pages** (the 1,195 estimate above included a ~35-page target for
+Ch.37 that is now frozen at ~2 pages per the author's confirmation above).
+
+**Combined book target: ~2,468 pages** (Parts I–IV ~1,305 + Parts V–IX ~1,163), against a
+current real total of 266 pages.
 
 ## Session log
 
@@ -487,3 +498,73 @@ Ch.13 that is now frozen at ~2 pages per the author's confirmation above).
   remaining known gaps list (in `NEXT.md`) is nearly exhausted at this point, meaning a future
   session returning to this chapter will need to find fresh gaps the same grep-every-header
   way the earlier sessions did, rather than working off an existing list.
+- **2026-07-20 (same session, "sluč svazky 1 a 2, bude to jenom jedna kniha"):** Author asked
+  to merge Volume I and Volume II into a single book. Executed as a structural migration
+  rather than a content pass:
+  - **Directories**: `latex/volume1/` and `latex/volume2/` retired; everything moved into
+    `latex/book/` via `git mv` (preserving history). Vol.I's four parts (chapters 1–24 +
+    Appendix A) kept their numbers unchanged. Vol.II's five parts became Parts V–IX, with
+    every chapter file and directory renamed under a fixed offset: `ch01`–`ch24` → `ch25`–
+    `ch48` (`part1-input-audio-net`→`part5-input-audio-net`, `part2-sharp-runtime`→
+    `part6-sharp-runtime`, `part3-easygl-freedirect`→`part7-easygl-freedirect`,
+    `part4-crossplatform`→`part8-crossplatform`, `part5-porting-practice`→
+    `part9-porting-practice`). Vol.II's five appendices (`appendix-a` through `appendix-e`)
+    became `appendix-b` through `appendix-f` (Vol.I's own appendix stays `appendix-a`); both
+    volumes' "API Quick Reference" appendices kept as two separate appendices (A and F) with
+    disambiguated titles ("Core Framework and Graphics" / "Ecosystem and Platforms") since
+    they cover disjoint class sets.
+  - **Verified no label collisions** between the two volumes' `\label{}` namespaces before
+    merging (`comm -12` on sorted label lists from both, zero matches) — the merge would have
+    silently produced wrong `\ref{}` resolutions if any collided.
+  - **`latex/volume2/xrefs-volume1.tex`** (the `\newlabel` shim that let Vol.II's `\ref{}`
+    calls resolve Vol.I chapter numbers across the old two-document compilation) was deleted
+    entirely — real `\ref{}` now resolves correctly on its own within one compilation, which
+    is strictly better than the shim it replaces (auto-updates if a chapter ever moves again,
+    rather than needing manual shim maintenance).
+  - **Cross-reference fixing, by category**: (1) plain-text `Chapter~N` citations with an
+    explicit `Volume~I`/`Volume~II` qualifier — Vol.I-referencing ones needed only the
+    qualifier stripped (Vol.I's own numbers are unchanged by the merge); Vol.II-referencing
+    ones needed both the qualifier stripped and a +24 offset applied to the number. (2) bare
+    `Chapter~N` citations with no qualifier at all, found only inside former-Vol.II files —
+    these are same-volume (Vol.II-internal) references and needed the +24 offset applied.
+    (3) `Volume~I/II Part~N` citations — offset applied via Roman-numeral lookup (Vol.II's
+    Parts I–V → the merged book's Parts V–IX). (4) generic, number-free prose mentions
+    ("Volume~I's ecosystem chapter", "in Volume~II", "this volume's migration chapter") —
+    handled with a scripted regex pass converting to volume-neutral phrasing ("the ecosystem
+    chapter", "later in this book", "the migration chapter"), followed by a manual review pass
+    that caught and fixed: two sentences left with a lowercase-mid-substitution "this book" at
+    a paragraph or sentence start (needed manual capitalization back to "This book"); one
+    doubled artifact ("this book's this book ultimately stands on" from two separate
+    substitution rules firing on the same original sentence); and one genuine temporal-
+    direction error (a Sharp Runtime chapter's own text said it had "already touched on" a
+    networking finding "later in this book" — backwards, since Networking is Part V and Sharp
+    Runtime is Part VI, i.e. earlier, not later — caught by checking each `earlier`/`later`
+    substitution's actual chapter order rather than trusting the mechanical replacement).
+  - **Front matter merged**: one title page (dropped the "Volume I" subtitle line, widened the
+    subtitle to name all five topic areas), one preface (rewrote the "how this book is
+    organized" section to walk all nine parts in one continuous paragraph sequence, folding in
+    the former Volume II preface's own per-part descriptions), one `main.tex` (nine
+    `\part{}`/chapter-`\input{}` blocks, then `\appendix` with six `\input{}` lines, then
+    `\backmatter`/`\printindex` — structurally identical to each old volume's `main.tex`, just
+    concatenated and renumbered).
+  - **Also fixed in passing** (found while doing an unrelated build-log check): thirteen
+    instances of a math-mode `\textdegree` LaTeX warning in Chapter 7 (degree symbols written
+    directly inside `$...$` math delimiters, e.g. `$150°$`) from this session's own earlier
+    Quaternion `Lerp`-vs-`Slerp` and `CreateConstrainedBillboard` additions — moved the `°`
+    outside the math delimiters (`$150$°`) to eliminate the warning; unrelated to the merge
+    itself but caught because the merge's full rebuild surfaced it.
+  - **Makefile**: `volume1`/`volume2` targets replaced with a single `book` target.
+    `CLAUDE.md` updated to describe the new single-book layout and retire the two-volume
+    build/citation conventions it used to document.
+  - **Verification**: rebuilt clean — 266 pages, 0 undefined references, 0 duplicate-label
+    warnings, 0 remaining `\textdegree` warnings, 1111 combined index entries (fewer than the
+    pre-merge sum of both volumes' separate index counts, because identical class names now
+    correctly merge into one shared index entry instead of two near-duplicates). Spot-checked
+    the title page and the Part V transition page (physical PDF page 153, printed page 137)
+    by rendering them to PNG and reading them back, confirming correct part numbering and
+    prose flow across the former volume boundary.
+  - This was a large, mechanical, high-file-count change (48 chapter files + 6 appendices
+    moved/renumbered, ~90 cross-reference instances fixed across ~30 files) but a
+    **structural** one, not a content-expansion pass — no new page-count progress was made on
+    any chapter's target in this entry; the per-chapter tables above are otherwise unchanged
+    from the prior entry except for chapter/appendix number relabeling.

@@ -1,0 +1,74 @@
+\chapter{Auditing Compatibility with xna4-spec}
+\label{ch:xna4-spec-auditing}
+
+Every coverage percentage this book has cited --- 227 of 245 public FNA types, 92.7\%,
+Chapter~\ref{ch:what-is-cna} --- came from comparing CNA against a ground truth rather than
+against memory or against FNA's own source. This chapter covers that ground truth directly:
+\texttt{xna4-spec}, and what auditing against it actually looks like.
+
+\section{What xna4-spec actually is}
+
+\texttt{xna4-spec} is a complete, machine-readable XML transcription of the official XNA~4.0
+documentation, originally published at Microsoft's own
+\texttt{learn.microsoft.com/.../previous-versions/windows/xna/} archive --- every class,
+struct, enum, interface, and delegate across all nineteen XNA namespaces, 544 types in total,
+with each type's original property, method, constructor, field, and event descriptions
+preserved. A master XSD schema and a top-level index of all 544 types organize the whole
+collection; one directory exists per namespace, mirroring the real
+\texttt{Microsoft.Xna.Framework.*} namespace tree exactly.
+
+Per-namespace type counts give a sense of where the real API surface concentrates:
+\cnans{Microsoft.Xna.Framework.Graphics} alone accounts for 175 of the 544 types, with
+\cnans{GamerServices} (53) and \cnans{Content.Pipeline.Graphics} (46) the next largest ---
+which is exactly why this book devoted an entire Part to Graphics and this Part gives
+GamerServices its own chapter, rather than the namespace breakdown being an arbitrary
+organizing choice on this book's part.
+
+\section{Why this matters more than diffing against FNA}
+
+Chapter~\ref{ch:media-system} already gave the sharpest illustration of why this distinction
+is not academic: eight separate audit rounds of CNA's \cnaclass{Song} class diffed against
+FNA's own source and missed a real gap (FNA itself omits \texttt{Album}, \texttt{Artist},
+\texttt{Genre}, and \texttt{ToString()} relative to the real reference assemblies), because
+every round trusted FNA as a stand-in for the real specification rather than checking the
+real specification directly. \texttt{xna4-spec} exists precisely to make that class of
+mistake avoidable: a diff against it checks CNA against the actual, original Microsoft
+documentation, with FNA's own gaps and quirks no longer able to hide a CNA gap behind them.
+
+\section{Running an audit yourself}
+
+The practical shape of an audit, drawn from how CNA's own coverage figures are produced
+(Chapter~\ref{ch:project-practice}'s \texttt{AUDIT.md} conventions), is a straightforward
+three-step comparison: pick a namespace or class from \texttt{xna4-spec}'s own index, read
+its full member list (properties, methods, constructors, fields, events) from the
+corresponding XML file, and check each member off against CNA's actual header for that class
+--- present and correctly shaped, present but tagged \texttt{NOXNA} (and therefore not really
+part of what you are checking), or missing. A member present in CNA but absent from
+\texttt{xna4-spec} and not tagged \texttt{NOXNA} at all is the specific ``Extra-unmarked''
+finding category Chapter~\ref{ch:devices-sensors} showed a real instance of
+(\cnaclass{SensorBase}'s \texttt{TimeBetweenUpdatesChanged} event, found and then correctly
+retagged) --- exactly the class of bug the \texttt{NOXNA} compile-time gate from
+Chapter~\ref{ch:testing-philosophy} exists to catch mechanically, with a manual
+\texttt{xna4-spec} audit as the complementary, judgment-requiring check for anything that
+gate cannot see on its own (a member that is tagged correctly but has the wrong signature, for
+instance).
+
+\section{A licensing note worth stating plainly}
+
+\texttt{xna4-spec}'s own README is direct about its content's origin: the API names,
+descriptions, and everything else in the collection are derived from Microsoft's own XNA~4.0
+documentation and remain Microsoft's intellectual property. The repository presents itself as
+an unofficial, community-maintained conversion into a machine-readable format, intended
+solely for non-commercial, informational, and educational use --- the same spirit in which
+this book cites specific facts drawn from it.
+
+\section{What an audit cannot tell you}
+
+One limit is worth naming directly: \texttt{xna4-spec} tells you whether a member exists and
+what it is documented to do --- it cannot tell you whether CNA's own implementation of a
+present, correctly-shaped member actually behaves correctly. That is exactly the job the
+pixel tests, differential testing, and oracle methodology from
+Chapter~\ref{ch:testing-philosophy} exist to do instead. A useful mental model for the rest of
+this Part: \texttt{xna4-spec} auditing answers ``is the surface complete and correctly
+shaped,'' while the testing mechanisms from the previous chapter answer ``does the surface
+that exists actually work.'' Both questions matter, and neither answers the other.

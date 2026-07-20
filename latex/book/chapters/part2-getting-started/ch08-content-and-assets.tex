@@ -1,0 +1,124 @@
+\chapter{Content and Assets}
+\label{ch:content-and-assets}
+
+Real XNA's content model and CNA's are different, and --- unlike most of the gaps in this
+book --- the story here has genuinely changed over the project's own history rather than
+settling once. This chapter covers where it stands now: two real, actively-maintained content
+formats, tried in a specific order, each with its own reasoning.
+
+\section{Real XNA's own model, briefly}
+
+Real XNA never ships raw asset files inside a game. An offline content-pipeline build step
+compiles every texture, model, font, and effect into a proprietary binary format ---
+\texttt{.xnb} --- which \cnaclass{ContentManager::Load<T>()} loads at runtime. FNA
+reimplements a real \texttt{.xnb} reader, precisely so unmodified, historical XNA content
+keeps working unchanged.
+
+\section{CNA's own format: .cnj}
+\label{sec:cnj}
+
+CNA's primary, permanent strategic answer is not a \texttt{.xnb} reader at all, but its own
+format: \texttt{.cnj} --- ``CNA content JSON,'' a lightweight, human-readable JSON sidecar
+format sitting alongside a directly-loadable native asset file (a \texttt{.png}, a
+\texttt{.wav}) or standing in for an asset with no native format of its own. This is a
+permanent, deliberate strategic choice, not a stopgap awaiting \texttt{.xnb} support --- the
+project's own naming history is worth knowing as a small, honest correction in its own right:
+the format was originally called \texttt{.cnb} (``CNA content Binary/JSON''), a name that
+misleadingly suggested a binary format mirroring XNA's own \texttt{.xnb}, despite always
+having been plain JSON. It was renamed project-wide --- the file extension, the internal
+envelope type, the version field, the registration template, and the format's own planning
+document's task numbering all changed together --- specifically to stop implying something
+the format never was.
+
+A \texttt{.cnj} file is a small JSON envelope (a version field, a type name, and a reference
+to a source file where applicable) validated against the requested C\texttt{++} type with a
+strict version-equality policy, parsed by a real, from-scratch recursive-descent JSON parser.
+\cnaclass{SpriteFont}, custom \cnaclass{Effect} parameters for the five stock effects
+(Chapter~\ref{ch:stock-effects}), and \cnaclass{Model} (the fallback path from
+\S\ref{sec:xnb-and-cnj-model} below) are all reachable through \texttt{.cnj} today, migrated
+from older, bespoke loose-file extensions (\texttt{.font.json}, \texttt{.shader.json},
+\texttt{.model.json}) that predated the unified format. A registration template lets a game
+register several differently-named \texttt{.cnj} ``type'' strings that all resolve to the
+same C\texttt{++} type, for data with no dedicated built-in reader at all --- the same
+general-purpose extensibility mechanism Chapter~\ref{ch:shader-fx-gap} already noted CNA
+deliberately chose over a scripted custom-reader mechanism, for the same reason: a plain,
+type-safe C\texttt{++} registration API, not an embedded scripting language.
+
+One asset type is deliberately \emph{not} part of the unified \texttt{.cnj} format, by an
+explicit, reasoned decision: the Avatar system's \cnaclass{SkinnedModelEXT}
+(Chapter~31) keeps its own separate \texttt{.skinnedmodel.json} extension, because real
+cross-language tooling already depends on that specific extension name, because it already
+carried the most mature test coverage of any loose-file reader in the project at the time
+\texttt{.cnj} unification happened, and because it is explicitly a distinct,
+non-\cnaclass{Model}-shaped system in the first place (Chapter~31 covers exactly why).
+
+\section{The gap, reopened: a real, growing .xnb binary reader}
+\label{sec:xnb-and-cnj-model}
+
+Here is the correction this chapter most needs to make plainly: CNA's owner later decided
+\texttt{.xnb} should \emph{also} become a real runtime format, alongside --- not instead of
+--- \texttt{.cnj}. This is now a genuinely growing, real binary reader, not a planning
+document: container parsing, binary primitives, and a first real \cnaclass{Texture2D} reader
+are complete; real LZX decompression is implemented and verified against real compressed
+fixtures, including a differential-testing pass against FNA's own reference decompressor
+(run under Mono, the same technique Chapter~37 describes for
+\texttt{tools/fna-reference/}) that found and fixed a real heap-buffer-overflow in the
+process; and \cnaclass{SpriteFont}, all five stock effects, \cnaclass{SoundEffect} (at least
+one real wave-format variant), \cnaclass{Song}, and the general
+\texttt{ReadExternalReference<T>()} mechanism are all real, working \texttt{.xnb} readers
+today. \cnaclass{Model}'s own \texttt{.xnb} reader --- described in
+Chapter~\ref{ch:models-meshes} as already real and wire-compatible --- is exactly this
+effort's own most complete result.
+
+Writing or producing \texttt{.xnb} files remains permanently out of scope on both sides of
+this story: CNA only ever needs to \emph{consume} \texttt{.xnb} files produced by real
+XNA/MonoGame/FNA tooling, never to produce its own.
+
+\section{The resolution order, precisely}
+
+With both formats real, \cnaclass{ContentManager}'s own asset-resolution order matters, and
+it is worth stating exactly: for a given asset name, \texttt{.xnb} is checked first; if no
+\texttt{.xnb} file is found, the literal, caller-given path (a directly loadable native
+asset, per \S\ref{sec:direct-loading} below) is tried next; only if neither of those resolves
+does \texttt{.cnj} apply. This ordering is deliberate on both ends: \texttt{.xnb}, when
+present, always wins outright, since it is the most capable and most binary-compatible
+option; and \texttt{.cnj} is checked last specifically so it can act as an optional
+\emph{metadata sidecar} for an otherwise-directly-loadable native asset (a \cnaclass{Texture2D}
+with a \texttt{.cnj} file supplying a source-file override and a color key, for instance) as
+well as a full replacement for an asset with no native format of its own --- not only a
+mutually-exclusive alternative to loading the asset directly.
+
+\section{Direct loading: the shape of Chapter~\ref{ch:first-game}'s smallest program}
+\label{sec:direct-loading}
+
+The one-line construction in Chapter~\ref{ch:first-game}'s minimal game ---
+\texttt{Texture2D("assets/logo.png", getGraphicsDeviceProperty())} --- is the third, simplest
+path this chapter describes: \texttt{"assets/logo.png"} is a literal, directly loadable file
+path, resolved without any \texttt{.xnb} or \texttt{.cnj} involvement at all when neither is
+present. This remains the simplest path for a small, from-scratch CNA project, and it is
+exactly what the resolution order in the previous section falls through to only after the
+other two have both been tried and found nothing.
+
+\section{What this means for porting}
+
+Chapter~42's migration guide covers this in full practical detail, but the
+short version, now that this chapter has given the corrected picture, is worth stating here:
+porting an existing XNA/FNA game's compiled \texttt{.xnb} content is, for the specific asset
+types \S\ref{sec:xnb-and-cnj-model} named as complete (textures, sprite fonts, stock effects,
+sound effects, songs, and models), increasingly a matter of pointing CNA at the original,
+unmodified compiled assets and letting the real binary reader do the work --- not, as an
+earlier version of this book's own understanding assumed, a mandatory translation into
+hand-authored JSON. For asset types the \texttt{.xnb} reader has not reached yet, or a custom
+compiled \texttt{.fx} effect (permanently out of scope for the reason
+Chapter~\ref{ch:shader-fx-gap} already gave), \texttt{.cnj} or a direct native-format
+conversion remains the path.
+
+\section{Where this leaves the rest of Part~III}
+
+Every class in the chapters ahead --- \cnaclass{Texture2D}, \cnaclass{Model}, the stock
+effects --- is describable purely in terms of its runtime API, independent of which of this
+chapter's three loading paths actually produced a live instance of it. This chapter's
+distinction matters specifically at the boundary between ``I have an asset file'' and ``I have
+a live CNA object,'' which is exactly the boundary Chapter~42's migration guide and the
+\texttt{cna-samples}/\texttt{cna-examples} chapter (Chapter~45) come back to when the asset in
+question was originally authored for real XNA rather than for CNA from scratch.

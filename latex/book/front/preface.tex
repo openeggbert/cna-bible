@@ -1,0 +1,86 @@
+\chapter*{Preface}
+\addcontentsline{toc}{chapter}{Preface}
+
+This book exists because a codebase got large enough, and honest enough about its own
+gaps, that it deserved a book instead of a wiki page.
+
+\textbf{CNA} is a C\texttt{++}23 reimplementation of the Microsoft XNA 4.0 programming
+model, built on SDL3 and a pluggable graphics-backend layer. It is not a game, and not a
+game engine in the ``opinionated framework with an editor'' sense --- it is a compatibility
+and abstraction layer that lets code written against \texttt{Microsoft::Xna::Framework}
+run as native, non-managed C\texttt{++}, across a dozen different rendering backends, on
+Linux, Windows, the Web, and Android.
+
+CNA does not exist in isolation. Around it sits a small constellation of sibling
+repositories, each solving one piece of the problem so that CNA itself does not have to:
+\texttt{sharp-runtime} provides a C\texttt{++} subset of the .NET base class library CNA's
+API vocabulary assumes; \texttt{easy-gl} wraps OpenGL/OpenGLES behind a toolkit-independent
+interface for the \texttt{EASYGL} backend; \texttt{free-direct} reimplements the narrow
+slice of DirectDraw/DirectSound/DirectPlay that real legacy games actually call, backing
+the \texttt{DX3} backend; \texttt{xna4-spec} is a machine-readable transcription of the
+entire official XNA 4.0 API surface, used to audit CNA's coverage claims against a ground
+truth rather than against memory; and \texttt{cna-samples}/\texttt{cna-examples} give the
+whole thing something to actually run.
+
+\paragraph{What this book is.} A technical reference and a guided tour, built by reading
+the source code, the design documents (\texttt{NEXT.md}, \texttt{CLAUDE.md}, the \texttt{docs/}
+tree, the per-backend \texttt{plan\_*.md} files), and the test suites of these repositories,
+not by paraphrasing marketing claims. Where the project's own documentation is careful to
+distinguish ``implemented'' from ``pixel-verified'' from ``architecturally blocked,'' this
+book preserves that distinction rather than flattening it into a uniform sales pitch. CNA's
+own README is unusually candid about exactly this --- it dates its own coverage numbers,
+names its own known bugs, and tells you which backend's ``done'' marks mean something different
+from another backend's ``done'' marks. That candor is worth preserving in a book, not smoothing over.
+
+\paragraph{What this book is not.} It is not the official documentation of the
+\texttt{openeggbert} project --- that lives in the repositories themselves, and it changes
+faster than any book can. Treat this book as a snapshot and a map: a way to build a mental
+model of how the pieces fit together, which you then go verify against the current
+\texttt{NEXT.md} and \texttt{docs/} tree of the actual repository, exactly as the project's
+own documentation index recommends doing for itself.
+
+\paragraph{How this book is organized.} The book treats CNA first as an API and as eleven
+implementations of a rendering pipeline behind that API (Parts~I--IV), then as a
+\emph{project} --- a body of engineering practice, a set of sibling libraries each with their
+own reasons to exist, and a working method for porting real, historical games onto the
+result (Parts~V--IX).
+
+Part~I introduces CNA and its ecosystem and the design philosophy that runs through all of
+it --- API mirroring, backend/interface separation, and an unusual commitment to
+differential testing against a real reference implementation. Part~II gets a reader from a
+clean checkout to a running triangle, and then walks the core framework types a game is
+built from: the game loop, the math library, and the content/asset model. Part~III is the
+graphics machine in depth --- everything between \texttt{GraphicsDevice} and a pixel
+actually landing on screen: \texttt{SpriteBatch}, textures and render targets, 3D models and
+meshes, the five stock effects, the state objects, and the one gap CNA is most honest about,
+compiled \texttt{.fx} shader bytecode. Part~IV takes the same graphics machine and asks how
+it is actually implemented eleven different ways, one chapter per backend, from the
+simplicity of \texttt{SDL\_RENDERER} to the Wine-and-DXVK-verified authenticity of
+\texttt{D3D9}.
+
+Part~V finishes the XNA namespace tour that Part~I began with Graphics: input, audio,
+device sensors, gamer services, networking, and the avatar system. Part~VI turns to
+\texttt{sharp-runtime} on its own terms, as the foundation every XNA-facing type in
+Parts~I--IV quietly depends on. Part~VII does the same for \texttt{easy-gl} and
+\texttt{free-direct} --- two libraries with almost opposite design philosophies (one
+deliberately general, one deliberately narrow) that happen to back two of CNA's eleven
+graphics backends. Part~VIII is the cross-platform engineering that makes a single test
+suite mean something on Linux, Windows-via-Wine, a browser tab, and an Android emulator at
+once, and the verification discipline --- differential testing, pixel oracles, compile-time
+purity checks --- introduced in Chapter~1, covered here in full mechanical detail. Part~IX
+closes with the practical work this whole apparatus exists to enable: migrating a real
+XNA/FNA game, a worked case study of two actual legacy games (\emph{Speedy Blupi} and
+\emph{Planet Blupi}) ported via \texttt{free-direct}, auditing compatibility claims against
+\texttt{xna4-spec} instead of memory, and reading the project's own task-tracking
+conventions well enough to contribute to it.
+
+The methodological commitment holds across every part: a claim in this book is stated as
+fact because the project's own source, tests, or documentation state it as a verified fact,
+with a mechanism behind it, not because it sounded right.
+
+\paragraph{A note on dates.} Software documentation ages the moment it is written. Specific
+percentages, task numbers, and ``as of'' dates quoted in this book (many drawn directly from
+CNA's own README and \texttt{docs/} tree, dated around 2026-07-11 through 2026-07-15) are
+reproduced as evidence of methodology and of the project's own verification discipline, not
+as a promise that they still hold on the day you read this. Where the source material itself
+flags a figure as dated or superseded, this book says so.

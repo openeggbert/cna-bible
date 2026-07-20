@@ -1,0 +1,207 @@
+\chapter{Textures, Render Targets and Surfaces}
+\label{ch:textures-rendertargets}
+
+This chapter is the one in Part~III where the gap between ``the API exists'' and ``the API
+does what it says on every backend'' is widest. \cnaclass{Texture2D} is close to fully
+faithful; \cnaclass{Texture3D} and \cnaclass{TextureCube} carry a real, load-bearing
+structural deviation from FNA; and render targets surface some of the sharpest per-backend
+divergence in the whole Graphics namespace. All three are covered here together, with the
+specific per-backend facts intact rather than smoothed into ``mostly works.''
+
+\section{Texture: the base, and one format that actually works}
+
+\cnaclass{Texture} (inheriting \cnaclass{GraphicsResource}) exposes \texttt{Format}
+(\cnaclass{SurfaceFormat}) and \texttt{LevelCount}, plus a set of static helpers ported from
+FNA's own internal size-calculation methods --- made \texttt{public static} in CNA rather
+than FNA's \texttt{internal}, because three of the four real call sites in CNA are not even
+\cnaclass{Texture} subclasses. The single most consequential method here is
+\texttt{ValidateFormat(format)}: it throws for anything other than
+\cnaclass{SurfaceFormat::Color}. This is enforced at construction time, across
+\cnaclass{Texture2D}, \cnaclass{Texture3D}, and \cnaclass{TextureCube} alike --- meaning the
+other 26 \cnaclass{SurfaceFormat} values (the original 20 XNA values plus 7 FNA-only
+extensions like \texttt{ColorBgraEXT}, \texttt{ColorSrgbEXT}, and the block-compressed
+\texttt{Bc7EXT} family) cannot be used to construct a texture at all today, regardless of
+backend. \texttt{Dxt1}/\texttt{Dxt3}/\texttt{Dxt5} are the one partial exception, but only
+through the \texttt{.dds} loading path in \texttt{Texture2D::FromStream}
+(\S\ref{sec:texture-streams}), which CPU-decompresses to RGBA8 rather than uploading a real
+compressed texture --- an eight-times VRAM overhead, and no native GPU compressed path exists
+anywhere in the project.
+
+\section{A structural deviation worth knowing before anything else in this chapter}
+
+Real XNA's \texttt{Texture3D} and \texttt{TextureCube} both inherit \texttt{Texture}, which
+is what lets any of them sit in \texttt{GraphicsDevice.Textures[slot]} and be bound to a
+custom shader like an ordinary 2D texture. CNA's \cnaclass{Texture3D} and
+\cnaclass{TextureCube} \textbf{do not inherit} \cnaclass{Texture} and do not participate in
+the generic texture-slot binding mechanism at all --- tracked internally as Task~863. The
+practical consequence: a custom \cnaclass{ShaderEffect} (Chapter~\ref{ch:shader-fx-gap}) has
+no way to bind a \cnaclass{Texture3D} or \cnaclass{TextureCube}. Only the two stock effects
+with a dedicated field for one --- \cnaclass{EnvironmentMapEffect}'s
+\texttt{EnvironmentMap} --- can actually use a cube texture today, and only via a bypass
+mechanism (a dedicated \texttt{GpuDrawParams::envMap} field, not the generic texture-slot
+path). Keep this in mind whenever a later chapter says a stock effect ``uses a
+\cnaclass{TextureCube}'' --- it is using a special case, not the general texture-binding
+mechanism every other texture type goes through.
+
+\section{Texture2D}
+
+\cnaclass{Texture2D} is copyable and movable (its backend is a \texttt{shared\_ptr}-held
+\texttt{ITextureBackend}), constructible from raw dimensions, from a file path (two
+\texttt{NOXNA} overloads --- real XNA has no such constructor, since real XNA loads textures
+exclusively through the compiled content pipeline), or via \texttt{FromStream} (device plus
+stream, or a five-argument form that resizes/crops to an explicit width, height, and
+\texttt{zoom} fit-vs-cover flag). \texttt{SetData}/\texttt{GetData} cover full-array and
+partial (level, rectangle, start index, element count) forms, all \cnaclass{Color}-only.
+\texttt{SaveAsPng}/\texttt{SaveAsJpeg} round out the surface, alongside several
+\texttt{NOXNA} escape hatches (\texttt{GetBackend()}, \texttt{GetCpuPixelsWeak()},
+\texttt{CreateFromPixels}) that exist for interop with CNA's own content-pipeline and testing
+code rather than for game code.
+
+\subsection{FromStream format support}
+\label{sec:texture-streams}
+
+Format detection in \texttt{FromStream} starts with a minimal internal DDS-header sniffer
+(recognizing only the DXT1/3/5 FourCC codes, decoding via an internal \texttt{DxtUtil}), and
+falls through to SDL3\_image's \texttt{IMG\_Load\_IO} --- which auto-detects the container
+format from the byte stream itself --- for everything else. Verified round-trip formats:
+PNG, JPEG (lossy, within tolerance), 24-bit uncompressed BMP, and DDS (DXT1/3/5). AVIF, TIFF,
+and WebP are present in the linked SDL3\_image build's own dependencies but are not
+independently tested by CNA's own suite. The \texttt{zoom} parameter on the five-argument
+overload matters more than its name suggests: \texttt{zoom=false} uses a simplified
+largest-dimension-fit heuristic (not a general \texttt{min(w/w0, h/h0)} bounding-box fit --- it
+assumes a roughly square target box), while \texttt{zoom=true} scales up and center-crops to
+exactly fill the requested box.
+
+\section{Texture3D and TextureCube}
+
+Beyond the structural deviation described above, \cnaclass{Texture3D} and
+\cnaclass{TextureCube} are both non-copyable (each owns a unique GPU handle) but movable ---
+\cnaclass{Texture3D} specifically gained move construction/assignment to satisfy a glTF
+content-pipeline reader's needs. Neither type's requested \cnaclass{SurfaceFormat} is honored
+by any backend; both are always stored as RGBA8 on the GPU regardless of what was requested.
+
+\texttt{docs/texture3d-texturecube-support.md} is candid about the deepest gap here:
+\textbf{no backend implements a CPU shadow buffer for \texttt{GetData} readback} on either
+type, the way \cnaclass{Texture2D} does. \textbf{EasyGL} genuinely reads pixels back, via a
+real per-slice or per-face framebuffer plus \texttt{glReadPixels}. \textbf{Vulkan} and
+\textbf{BGFX} both make \texttt{GetData} a total, silent no-op --- the caller's buffer is
+left completely untouched, with no exception and no error of any kind, because the call falls
+through to an unimplemented base-class default. This escaped detection for a long time
+because the existing test suites for these methods only ever asserted that the call did not
+crash, never that the returned data was actually correct.
+
+Mip levels above~0 have the identical bug shape on every cell of the matrix except one:
+\textbf{EasyGL's \texttt{TextureCube}} alone pre-allocates real per-face storage per mip
+level (a fix from an earlier task); \textbf{EasyGL's \texttt{Texture3D}} and \textbf{both
+types on Vulkan and BGFX} all hardcode a single mip level regardless of what is requested.
+\texttt{CubeMapFace} validation, by contrast, is a place CNA is \emph{stricter} than FNA: an
+out-of-range face throws \texttt{std::out\_of\_range} at the public API layer, a safety check
+real XNA never performs at all.
+
+\section{Render targets: the sharpest per-backend divergence in this Part}
+\label{sec:rendertargets}
+
+\cnaclass{RenderTarget2D} inherits both \cnaclass{Texture2D} and \cnaclass{IRenderTarget},
+which is what lets it be both drawn into and sampled as an ordinary texture afterward; its
+\texttt{Dispose(bool)} correctly throws \texttt{InvalidOperationException} if it is still
+bound to the device, matching FNA. \cnaclass{RenderTargetCube}, by contrast, inherits
+\cnaclass{GraphicsResource} directly rather than \cnaclass{Texture2D} --- a downstream
+consequence of the \cnaclass{TextureCube} structural deviation above --- and so it
+\emph{cannot} get the same bound-while-disposing guard, since \cnaclass{RenderTargetBinding}
+only ever stores a \texttt{Texture*}. This is tracked, not fixed.
+
+The four things that most concretely differ by backend for a render target are:
+
+\begin{description}
+  \item[Sampling a \cnaclass{RenderTargetCube} face after rendering into it, then unbinding.]
+        \textbf{EasyGL}: works correctly. \textbf{Vulkan}: renders black, for two distinct,
+        separately-tracked reasons --- a clear-only render target never actually records a
+        render pass (one bug), and a second, separate black-render defect specific to sampling
+        a cube face after rendering into faces, whose root cause has not been isolated.
+        \textbf{BGFX}: an unconditional \texttt{static\_cast} reads a framebuffer-pool handle
+        where a texture-pool handle is expected --- a real type-confusion bug, not yet fixed.
+  \item[Depth/stencil format fidelity.] No backend honors the exact requested
+        \cnaclass{DepthFormat}. \textbf{EasyGL} always allocates a depth-only 24-bit buffer,
+        never any stencil bits, regardless of what was requested. \textbf{Vulkan} ignores the
+        \texttt{hasDepth} flag entirely, always allocating a single device-global format.
+        \textbf{BGFX} always uses a combined 24-bit-depth/8-bit-stencil format. This is a
+        deliberate, documented limitation (Task~877), not a silent one.
+  \item[Mipmap generation.] \textbf{EasyGL} genuinely works --- real per-level GPU storage,
+        auto-regenerated via \texttt{glGenerateMipmap} on unbind, matching FNA3D's own real
+        mechanism. \textbf{Vulkan} and \textbf{BGFX} both accept the \texttt{mipMap} request
+        and silently ignore it (Task~878) --- no functional GPU mip chain exists on either.
+  \item[Multisample antialiasing.] \textbf{EasyGL} genuinely works: a real multisampled
+        renderbuffer with a \texttt{glBlitFramebuffer} resolve on unbind. \textbf{Vulkan} and
+        \textbf{BGFX} honestly report \texttt{MultiSampleCount = 0} (Task~879) rather than
+        pretending to honor a sample count they do not implement --- a legitimately correct
+        answer to give, not a shortcut taken to look complete.
+\end{description}
+
+Two further, project-wide findings apply regardless of which specific render-target feature
+you touch. First, switching the active render target correctly resets \texttt{Viewport} and
+\texttt{ScissorRectangle} to the new target's (or the backbuffer's) own dimensions, on every
+backend --- but a separate investigation of that same fix uncovered a much larger, still-open
+gap: \texttt{GraphicsDevice.Viewport} currently has \emph{no GPU wiring at all} on any of the
+three hardware backends investigated; every one of them hardcodes the viewport to the full
+render-target or window size regardless of what the API says it is set to (Task~880).
+Second, no backend matches FNA's real four-target \texttt{MAX\_RENDERTARGET\_BINDINGS} cap
+in the same way: EasyGL and BGFX both silently cap at eight bindings with no error if you
+exceed it, and Vulkan is not capped at the CNA level at all (Task~881).
+
+\section{SurfaceFormat, in one sentence}
+
+\texttt{docs/surface-format-support.md} boils the entire 27-value \cnaclass{SurfaceFormat}
+enum down to a single, load-bearing fact: only \cnaclass{SurfaceFormat::Color} is genuinely
+supported by any backend today, everything else is silently treated as RGBA8 wherever it is
+not rejected outright by \texttt{ValidateFormat} at construction time. One real, historical
+bug is worth naming because of what it reveals about how subtle a graphics-correctness bug
+can be: Vulkan's texture path once created images as \texttt{VK\_FORMAT\_R8G8B8A8\_SRGB}
+(wrong --- \cnaclass{SurfaceFormat::Color} is linear, not sRGB) while the swapchain
+\emph{separately} preferred a matching sRGB format. The two wrong encode/decode steps
+approximately canceled out for ordinary textured content, which is exactly why the bug went
+unnoticed for a long time --- it only became visible on non-textured content (flat vertex
+colors, raw lighting output), where a mid-gray value of 128 was read back as 188. Both were
+corrected to their \texttt{\_UNORM} equivalents.
+
+\section{Buffers: VertexBuffer and IndexBuffer}
+
+\cnaclass{VertexBuffer} and \cnaclass{IndexBuffer} both inherit \cnaclass{GraphicsResource}
+and both maintain a private \texttt{cpuShadow\_} byte buffer purely to support
+\texttt{GetData()} without requiring a real per-backend GPU readback path --- since nothing
+in CNA's own pipeline ever writes GPU-side data back into one of these buffers, a CPU-side
+shadow copy is a faithful, sufficient implementation of read-your-own-writes semantics.
+\cnaclass{VertexBuffer::SetData}/\texttt{GetData} are typed per concrete vertex struct
+(\cnaclass{VertexPositionColor}, \cnaclass{VertexPositionColorTexture},
+\cnaclass{VertexPositionNormalTexture}, \cnaclass{VertexPositionTexture}, plus a
+\texttt{NOXNA} skinned variant and a raw \texttt{SetDataRaw(data, count, stride)} escape hatch
+for layouts with no dedicated XNA struct). \cnaclass{DynamicVertexBuffer} and
+\cnaclass{DynamicIndexBuffer} add \texttt{IsContentLost} (always \texttt{false}) and
+\texttt{SetData(..., SetDataOptions)} overloads --- but the \texttt{dynamic} construction flag
+and the \texttt{Discard}/\texttt{NoOverwrite} streaming hints are both accepted purely for API
+conformance and currently ignored by every backend: static and dynamic buffers take the
+identical GPU upload path today, regardless of the hint given.
+
+\section{Vertex layout: chosen by stride, not by declaration}
+\label{sec:vertex-layout}
+
+The single most important fact in this section is one that is easy to miss reading the API in
+isolation: \textbf{every hardware backend selects its GPU vertex-attribute layout from the raw
+byte stride of the bound vertex buffer, not from the \cnaclass{VertexDeclaration}'s own
+element list.} \cnaclass{VertexDeclaration} is stored and used to compute the stride, and its
+individual \cnaclass{VertexElementFormat}/\cnaclass{VertexElementUsage} mapping tables are
+each individually correct on EasyGL, Vulkan, and BGFX --- but they are consulted only as an
+audit reference today, not by the active draw dispatch. Exactly five hardcoded strides render
+correctly: 16 bytes (\cnaclass{VertexPositionColor}), 20 (\cnaclass{VertexPositionTexture}),
+24 (\cnaclass{VertexPositionColorTexture}), 32 (\cnaclass{VertexPositionNormalTexture}), and
+52 (a custom skinned layout). Anything else falls back differently per backend: EasyGL
+renders position-only with a logged warning; Vulkan compiles no pipeline at all and silently
+skips the draw; BGFX falls back to position-plus-color-only, treating anything past that as
+padding, which produces visibly wrong shading if the shader in question actually reads a
+normal or UV attribute from that padding. SDL\_Renderer has no 3D vertex pipeline at all, so
+\texttt{CreateVertexBuffer()} throws immediately, consistent with its documented 2D-only
+scope.
+
+If you are authoring a custom vertex layout for a ported game (this book's migration chapter
+returns to this), the practical rule this section implies is blunt: stick to one of the five
+recognized strides, or verify your chosen backend's fallback behavior directly, because the
+declaration you wrote is not what determines what actually reaches the GPU.

@@ -1,0 +1,173 @@
+\chapter{Building CNA}
+\label{ch:building-cna}
+
+\section{Prerequisites}
+
+CNA targets C\texttt{++}23 and CMake 3.20+. On Linux, the minimum toolchain is GCC~12+ or
+Clang~15+; two sibling directories must be available to CMake alongside the CNA checkout
+itself: \texttt{../sharp-runtime} (always required) and \texttt{../easy-gl} (only required
+if you build the \texttt{EASYGL} backend). SDL3, SDL3\_image, and SDL3\_mixer are built from
+vendored Git submodules by default, so no system SDL packages are required on a first build.
+
+On Windows, any of MSVC~2022 (v17.8+), clang-cl, or MinGW-w64 (native or cross-compiled from
+Linux) works; only \texttt{../sharp-runtime} is needed as a sibling dependency, and the same
+vendored-submodule SDL story applies.
+
+\subsection{Initializing submodules}
+
+Before the first build, CNA's vendored SDL3/SDL3\_image/SDL3\_mixer submodules must be
+populated:
+
+\begin{lstlisting}[style=cnashell]
+git submodule update --init --recursive
+\end{lstlisting}
+
+A GitHub ``Download ZIP'' archive does \emph{not} include submodule contents. Building from
+such an archive leaves \texttt{third\_party/SDL} empty, and CMake aborts at configure time
+with a clear, specific error pointing at \texttt{cmake/ThirdPartySDL.cmake} rather than
+failing confusingly deep in a missing-header compile error. The two ways around this are
+cloning with Git and running the command above, or configuring with
+\texttt{-DCNA\_USE\_SYSTEM\_SDL=ON} to use system-installed SDL3 packages instead of the
+vendored submodules.
+
+\section{The default build: Linux, EasyGL backend}
+
+\begin{lstlisting}[style=cnashell]
+git submodule update --init --recursive
+cmake -S . -B build -DCNA_GRAPHICS_BACKEND=EASYGL
+cmake --build build --target CNA CnaTests
+ctest --test-dir build --output-on-failure
+\end{lstlisting}
+
+\texttt{EASYGL} is the most mature backend by the project's own account (Chapter~\ref{ch:easygl-backend}),
+so it is the natural default for a first build. Swapping to \texttt{SDL\_RENDERER} is a
+one-flag change:
+
+\begin{lstlisting}[style=cnashell]
+cmake -S . -B build-sdlrenderer -DCNA_GRAPHICS_BACKEND=SDL_RENDERER
+cmake --build build-sdlrenderer --target CNA CnaTests
+\end{lstlisting}
+
+This one-flag swap is the whole point of the backend abstraction covered in
+Chapter~\ref{ch:backend-architecture} --- the same \texttt{CNA}/\texttt{CnaTests} build
+targets exist regardless of which of the eleven backends in
+Table~\ref{tab:backend-option-list} you select.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{\texttt{CNA\_GRAPHICS\_BACKEND} value} & \textbf{Platform constraint} \\
+\midrule
+\texttt{SDL\_RENDERER} & Cross-platform \\
+\texttt{EASYGL}        & Cross-platform (default focus) \\
+\texttt{BGFX}          & Cross-platform \\
+\texttt{VULKAN}        & Cross-platform (Vulkan-capable GPU/driver) \\
+\texttt{WEBGPU}        & Cross-platform, experimental \\
+\texttt{HEADLESS}      & Cross-platform, no window/present \\
+\texttt{SOFTWARE}      & Cross-platform, CPU rasterizer \\
+\texttt{D3D11}         & Windows-only \\
+\texttt{D3D12}         & Windows-only \\
+\texttt{CANVAS}        & Emscripten-only \\
+\texttt{ASCII}         & Cross-platform, SDL-windowed glyph-grid decorator \\
+\texttt{DX3}           & Cross-platform (via \texttt{../free-direct}) \\
+\bottomrule
+\end{tabular}
+\caption{Every value accepted by \texttt{-DCNA\_GRAPHICS\_BACKEND}. \texttt{D3D9} is also
+Windows-only via cross-compilation; see Chapter~\ref{ch:direct3d-backends} for its own build
+invocation, which additionally requires \texttt{-DCNA\_BUILD\_TESTS=ON}.}
+\label{tab:backend-option-list}
+\end{table}
+
+\section{Windows, natively and cross-compiled}
+
+On real Windows, \texttt{SDL\_RENDERER} is selected automatically when no backend is
+specified, and SDL is built from the vendored submodule with no pre-built binaries or
+\texttt{CMAKE\_PREFIX\_PATH} configuration needed:
+
+\begin{lstlisting}[style=cnashell]
+git submodule update --init --recursive
+cmake -S . -B build-win -DCNA_GRAPHICS_BACKEND=SDL_RENDERER
+cmake --build build-win --target CNA CnaTests
+\end{lstlisting}
+
+The same target can be reached without a Windows machine, by cross-compiling from Linux with
+MinGW-w64 --- the toolchain every Windows-targeting CTest binary in this book's Part~IV
+chapters (D3D9/D3D11/D3D12, and the plain \texttt{SDL\_RENDERER} Windows target) is actually
+verified through:
+
+\begin{lstlisting}[style=cnashell]
+sudo apt install mingw-w64
+
+git submodule update --init --recursive
+cmake -S . -B build-windows \
+      -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/mingw-w64.cmake \
+      -DCNA_GRAPHICS_BACKEND=SDL_RENDERER
+cmake --build build-windows --target CNA CnaTests
+\end{lstlisting}
+
+Chapter~\ref{ch:direct3d-backends} and this book's cross-platform verification chapter
+cover what happens after the cross-compiled \texttt{.exe} exists: running it under Wine, with
+DXVK (D3D9/D3D11) or vkd3d-proton (D3D12) translating the Direct3D calls to Vulkan on a real
+GPU, which is how this project verifies Windows-only backends without ever touching a
+Windows machine.
+
+\section{System-installed SDL, if you prefer it}
+
+Rather than the vendored submodules, system SDL3/SDL3\_image/SDL3\_mixer packages can be
+used instead:
+
+\begin{lstlisting}[style=cnashell]
+cmake -S . -B build -DCNA_USE_SYSTEM_SDL=ON -DCNA_GRAPHICS_BACKEND=SDL_RENDERER
+\end{lstlisting}
+
+This calls \texttt{find\_package(SDL3 REQUIRED)}, \texttt{find\_package(SDL3\_image REQUIRED)},
+and \texttt{find\_package(SDL3\_mixer REQUIRED)}, and requires those development packages to
+already be installed system-wide.
+
+\section{Linux system dependencies beyond SDL}
+
+Two optional native libraries extend specific subsystems and are not vendored:
+
+\begin{itemize}
+  \item \textbf{FFmpeg} (\texttt{libavcodec-dev libavformat-dev libavutil-dev
+        libswresample-dev}) is required for \cnaclass{VideoPlayer} (video decoding).
+        \texttt{libswscale-dev} is notably \emph{not} required even though FFmpeg's own video
+        pipeline usually pairs with it --- CNA implements YUV$\to$RGBA conversion internally,
+        so only the runtime \texttt{libswscale8} library needs to be present, not its headers.
+  \item \textbf{Draco} (\texttt{libdraco-dev}) is optional and enables
+        \texttt{KHR\_draco\_mesh\_compression} decoding in \texttt{GltfImportCore}. It is
+        detected via CMake's \texttt{find\_package(draco CONFIG)}; when absent, importing a
+        Draco-compressed glTF primitive throws a clear ``not supported'' error at import time
+        rather than failing to build at all. Unlike \texttt{cgltf.h} and \texttt{stb\_image.h}
+        (single-header vendored dependencies), Draco is a real multi-file library and is
+        deliberately not vendored.
+\end{itemize}
+
+\section{Verifying a build}
+
+CNA intentionally does not ship a bundled playable game demo as its primary verification
+artifact --- the project prioritizes framework/runtime development over a shipping demo
+executable. Two commands stand in for ``does this build actually work'':
+
+\begin{lstlisting}[style=cnashell]
+ctest --test-dir build --output-on-failure
+cmake --build build --target hello-triangle-sdl
+\end{lstlisting}
+
+\texttt{ctest} runs the GoogleTest-based \texttt{CnaTests} suite (thousands of unit tests,
+plus, on backends where a display is available, GPU pixel tests); \texttt{hello-triangle-sdl}
+is the minimal environment/rendering-path smoke test mentioned throughout the backend chapters
+in Part~IV.
+
+\begin{sourcenote}
+\textbf{On CI coverage.} As documented in CNA's own README, project CI is Linux-only and
+partial: at the time this book's source material was gathered, CI ran only the
+\texttt{Input} and \texttt{Devices}/\texttt{Sensors} GoogleTest suites --- not the full
+roughly 4\,370-test unit suite, and not the roughly 490-test GPU pixel-test suite across the
+four established graphics backends. Everything this book states about Graphics-layer
+correctness is verified by running the suites locally and by hand, not by an automated
+Graphics CI gate, and there is no Windows, macOS, or Android CI at all --- those platforms
+are verified manually. Treat a green CI badge, if you see one, as covering a narrower slice
+than ``the whole project passes.''
+\end{sourcenote}

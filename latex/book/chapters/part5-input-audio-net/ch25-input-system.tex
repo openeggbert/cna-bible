@@ -1,0 +1,170 @@
+\chapter{The Input System}
+\label{ch:input-system}
+
+CNA's \cnans{Microsoft::Xna::Framework::Input} namespace covers keyboard, mouse, gamepad,
+and touch --- and, layered underneath it, a set of CNA-only extensions with no XNA
+counterpart at all. Its own audit (\texttt{plan\_input.md}, 505 tasks across 13 phases) is
+fully closed: 490 done, 15 formally blocked (all real-hardware-only checks that cannot be
+automated at all), zero open.
+
+\section{Architecture: event-driven, not poll-driven}
+
+The most important structural fact about this namespace, and the one place CNA's input
+model genuinely diverges from FNA's own: FNA re-queries SDL fresh every time
+\texttt{GetState()} is called; CNA instead accumulates input state as SDL events are pumped,
+and \texttt{GetState()} is a pure read of that accumulated snapshot. The pipeline runs in one
+direction: \texttt{Game::PollEvents()} calls \texttt{SDL\_PollEvent} once per frame, funneling
+every event through a single dispatcher, \texttt{SdlInputBridge::ProcessEvent}, which updates
+\texttt{InputManager}'s internal state, \texttt{TextInputEXT}'s internal state, and
+\cnaclass{TouchPanel}'s gesture detector as appropriate; \texttt{Keyboard}/\texttt{Mouse}/%
+\texttt{GamePad}/\texttt{TouchPanel::GetState()} then just read that snapshot back.
+\texttt{FrameworkDispatcher::Update()} (this book's game-loop chapter) drives
+\cnaclass{TouchPanel}'s own per-frame gesture update. For ordinary once-per-frame calling
+code this is behaviorally equivalent to FNA's approach; the one place it is not is calling
+\texttt{GetState()} twice within the same frame, which returns two identical snapshots in
+CNA where FNA might observe a change in between. This entire pipeline is deliberately
+single-threaded and unsynchronized --- safe only because both halves (the event pump and the
+\texttt{Update}/\texttt{Draw} reads) run on the same game-loop thread, matching both SDL's own
+requirement that events be pumped on the video thread and XNA/FNA's own single-threaded
+assumption.
+
+Three tags recur through this namespace's own headers and documentation, and are worth
+knowing before reading further: \textbf{STRICT} (must match FNA's real surface exactly),
+\textbf{EXT} (an FNA-compatible extension, using the \texttt{...EXT} suffix convention from
+this book's game-loop chapter), and \textbf{NOXNA} (a CNA-only addition with no FNA counterpart
+at all). A dedicated compile-time test suite (\texttt{PublicApiInputSignatureFreezeTests.cpp})
+pins the exact strict-XNA member set this namespace promises never to silently change.
+
+\section{Keyboard}
+
+\cnaclass{Keyboard} is static-only, offering \texttt{GetState()} and a
+per-\cnaclass{PlayerIndex} overload. \cnaclass{KeyboardState} deliberately deviates from
+FNA's own storage layout --- backed by a \texttt{std::unordered\_set<Keys>} rather than
+FNA's native bitfield --- on the reasoning that the observable \emph{contract}
+(\texttt{IsKeyDown}, \texttt{GetPressedKeys()} returning ascending-sorted keys, a specific
+\texttt{GetHashCode()} formula reconstructing FNA's own eight-32-bit-word XOR layout) is what
+must match, not the internal representation producing it. \cnaclass{Keys} itself has over
+150 values, independently confirmed byte-for-byte identical to FNA's numeric values,
+including several distinctly odd hexadecimal outliers (\texttt{Pause = 0x13},
+\texttt{Kana = 0x15}, \texttt{ChatPadGreen = 0xCA}) preserved exactly rather than renumbered
+for tidiness. A real, load-bearing platform limit: forty \cnaclass{Keys} values have no SDL
+scancode source at all --- IME keys, ChatPad keys, and most browser/media keys other than
+volume up/down --- and simply cannot round-trip through the \texttt{EXT} scancode-lookup
+helper, matching an identical omission in FNA's own key/scancode maps rather than being a
+CNA-specific gap.
+
+\section{Mouse}
+
+\cnaclass{Mouse} is static-only: \texttt{GetState()} and \texttt{SetPosition(x, y)}, the
+latter carefully converting logical coordinates to real window coordinates before calling
+SDL's warp function --- and doing so differently per backend (offset-aware on SDL\_Renderer,
+uniform-scale-aware on EasyGL, pass-through on Vulkan/BGFX), a small, concrete illustration of
+how even an ostensibly backend-agnostic input call has to account for
+this book's per-backend presentation differences (its backend-architecture chapter).
+\cnaclass{MouseState} carries the expected X/Y, five buttons, and a cumulative,
+120-units-per-notch \texttt{ScrollWheelValue}; a \texttt{NOXNA} horizontal-scroll addition is
+deliberately excluded from \texttt{Equals}/\texttt{GetHashCode}/\texttt{ToString} specifically
+so those stay byte-identical to FNA's own output despite the extra field existing. A wholly
+\texttt{NOXNA} class, \cnaclass{MouseCursor}, wraps \texttt{SDL\_Cursor*} with eleven lazily
+created, process-lifetime stock system cursors --- a case where CNA's design is deliberately
+\emph{more} defensive than the MonoGame implementation it is closest to: MonoGame's own
+\texttt{PlatformDispose()} frees a shared stock cursor handle unconditionally, which can
+corrupt the shared handle if any other code still holds it; CNA makes \texttt{Dispose()} a
+safe no-op for the shared stock instances specifically to avoid that failure mode.
+
+\section{GamePad}
+
+The full XNA surface --- \texttt{GetCapabilities}, \texttt{GetState} with configurable
+\cnaclass{GamePadDeadZone} handling, \texttt{SetVibration} --- is wired to real
+\texttt{SDL\_Gamepad} hardware, not stubbed. Dead-zone constants match FNA exactly
+(\texttt{LeftDeadZone = 7849/32768}, \texttt{RightDeadZone = 8689/32768},
+\texttt{TriggerThreshold = 30/255}). Beyond the strict XNA surface, an extensive
+\texttt{EXT} layer exposes real hardware capability FNA itself already extends beyond stock
+XNA: GUID, light-bar and trigger-rumble control, gyroscope/accelerometer reads, and several
+CNA-only additions with no FNA counterpart at all (player-index assignment, power info,
+button-label queries, device name/path/serial/firmware, Steam handle, connection state,
+touchpad finger tracking).
+
+\subsection{Real bugs found and fixed}
+
+Several concrete, historically real bugs are worth naming. \texttt{SDL\_INIT\_GAMEPAD} was
+never actually initialized, meaning zero gamepad events were ever delivered until fixed.
+\texttt{GetCapabilities()} itself used to \emph{cancel active rumble} as a side effect ---
+it probed rumble support by calling \texttt{SDL\_RumbleGamepad(0, 0, 0)}, which is itself a
+stop-vibration call; fixed by switching to a non-mutating capability property query instead.
+A stick-normalization bug divided the negative half of an analog stick's range by 32768
+rather than FNA's own 32767 for \emph{both} halves, meaning every non-endpoint negative
+sample diverged slightly from FNA's expected value (for example, a raw value of $-16384$
+producing $-0.5$ in CNA against FNA's $-0.50001$) --- fixed to match FNA's asymmetric divisor
+exactly, a good small example of how ``obviously correct-looking'' code can still diverge
+from a reference implementation's own specific numerical quirks.
+
+\section{Touch and gestures}
+
+\cnaclass{TouchPanel} is static-only (\texttt{MAX\_TOUCHES = 8}), providing
+\texttt{GetCapabilities()}, \texttt{GetState()}, and \texttt{ReadGesture()}.
+\cnaclass{TouchCollection} is immutable only by contract, not by construction --- its
+\texttt{IsReadOnly} flag is advisory, matching an identical inconsistency already present in
+FNA's own implementation. \cnaclass{GestureType} is an eleven-value bit-flag enum (Tap,
+DoubleTap, Hold, Drag, Flick, Pinch, and their variants).
+
+Several real bugs were found and fixed here too. \texttt{SDL\_EVENT\_FINGER\_CANCELED} was
+simply unhandled, leaving a canceled touch stuck as if still active --- fixed to release it
+the same way a genuine finger-up event would. \texttt{TouchPanel::GetCapabilities()} used to
+consult only a sticky ``has this ever been touched'' flag rather than real device
+enumeration, meaning a genuinely present but not-yet-touched touchscreen incorrectly reported
+as disconnected on every non-Windows platform --- fixed to query the real SDL device list on
+every call, keeping the sticky flag only as a fallback. And a frame-accuracy bug had touch
+state advancement (promoting a touch from Pressed to Moved, retiring a Released touch) happen
+\emph{inside} \texttt{GetState()} itself, meaning the number of times a frame happened to
+call \texttt{GetState()} changed observable behavior --- fixed by splitting the operation
+into a pure state read plus a separate, genuinely once-per-frame
+\texttt{AdvanceTouchFrame()} step.
+
+\section{TextInputEXT and CNA-only NOXNA extensions}
+
+\texttt{TextInputEXT} is not itself a CNA invention --- FNA ships this same extension beyond
+the strict XNA~4.0 surface, and CNA ports it directly: \texttt{TextInput}/\texttt{TextEditing}
+events, \texttt{StartTextInput}/\texttt{StopTextInput}, on-screen-keyboard visibility, and
+input-rectangle placement. CNA layers three further, genuinely new members on top with no FNA
+analog at all: IME composition-candidate lists (an SDL3-only capability), and an explicit
+on-screen-keyboard/IME type hint.
+
+Beyond input in the strict XNA sense, the \texttt{CNA::Input} namespace hosts several wholly
+\texttt{NOXNA} subsystems already named in passing in this book's overview chapter:
+\cnaclass{Clipboard} (system clipboard text); \cnaclass{Joysticks} (the raw, unmapped SDL
+joystick API --- axes, buttons, hats, trackballs --- deliberately independent of
+\cnaclass{GamePad}'s own mapped view of the same physical device); \cnaclass{Sensors} (host
+device accelerometer/gyroscope, distinct from a gamepad's own motion sensors covered above);
+\cnaclass{Power} (battery state); and \cnaclass{Haptics} (SDL3's own force-feedback API, with
+a full effect-building lifecycle --- real actuation requires genuinely FFB-capable hardware,
+since most ordinary gamepads only support simple rumble, not full force feedback).
+
+\section{Platform-specific behavior worth knowing}
+
+A handful of platform facts are worth stating plainly, because they are not CNA bugs even
+though they look like gaps from inside a single platform: on Wayland,
+\texttt{SDL\_GetGlobalMouseState} silently returns $(0,0)$, because the compositor's own
+security model forbids querying the global pointer position at all --- absolute mouse
+warping is similarly focus-gated, while relative (pointer-lock) mouse mode works normally.
+On Windows, XInput controllers report no real USB vendor/product ID, so the \texttt{EXT}
+GUID query returns the literal string \texttt{"xinput"} rather than a real hex identifier.
+On Android and iOS, a touch device only reports as present \emph{after} its first touch ---
+matching an identical quirk in FNA's own Windows/Android touch detection, not a CNA-specific
+limitation. In a browser via Emscripten, gamepads remain invisible to SDL until the user
+presses a button on one, a browser privacy restriction, and relative mouse mode maps onto the
+Pointer Lock API, which itself requires a preceding user gesture to engage. Non-US keyboard
+layouts introduce a genuine, structural XNA limitation rather than a CNA one: several
+accented and non-ASCII characters common on European layouts have no corresponding
+\cnaclass{Keys} enum value at all and are simply dropped in keycode mode --- \texttt{TextInputEXT}
+is the correct API for capturing that text instead.
+
+\section{Status}
+
+At the time of writing, 524 input-specific tests pass in full, run shuffled five times over
+to confirm order-independence. The fifteen formally blocked audit tasks are exclusively
+real-hardware-only checks (physical keyboard/mouse/gamepad/touchscreen/IME verification, and
+high-DPI display behavior) that cannot be automated at all, not gaps awaiting more
+engineering effort. One acknowledged, low-priority documentation gap remains: the
+\cnaclass{Joysticks}/\cnaclass{Sensors}/\cnaclass{Power} \texttt{NOXNA} extensions have solid
+fake-backend unit coverage but no demo-UI or manual-hardware verification pass yet.

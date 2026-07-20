@@ -1,0 +1,116 @@
+\chapter{Sharp Runtime: Overview and Architecture}
+\label{ch:sharp-runtime-overview}
+
+This book's ecosystem chapter introduced \texttt{sharp-runtime} as the foundation layer every
+XNA-facing CNA type quietly depends on. This chapter treats it as a project in its own right
+--- one considerably larger, and considerably more broadly scoped, than its role inside CNA
+alone might suggest.
+
+\section{Scale}
+
+\texttt{sharp-runtime} ships 982 public headers, 210 implementation files, and a test suite
+of 12{,}476 tests, all passing at the time of writing, grown from a starting baseline the
+project's own porting rules treat as a floor that must never be lowered. This is a
+considerably larger surface than ``just enough .NET to make XNA's API vocabulary work in
+C\texttt{++}'' might suggest --- coverage genuinely extends to \texttt{System.Text.Json},
+\texttt{System.Xml.Linq}/\texttt{XPath}, \texttt{System.Buffers.Text}/\texttt{Binary},
+\texttt{System.Threading.Channels}, and \texttt{System.Net.WebSockets}/\texttt{Http}/%
+\texttt{Security}, well beyond a minimal XNA-support subset.
+
+\section{Namespace structure}
+
+\texttt{include/System/} mirrors real .NET's namespace tree directly:
+\texttt{Collections} (with \texttt{Concurrent}, \texttt{Frozen}, \texttt{Generic},
+\texttt{Immutable}, \texttt{ObjectModel}, \texttt{Specialized} sub-namespaces),
+\texttt{IO} (with \texttt{Compression}, \texttt{Hashing}, \texttt{IsolatedStorage}),
+\texttt{Net} (with \texttt{Http}, \texttt{Sockets}, \texttt{WebSockets}, \texttt{Security}),
+\texttt{Text} (with \texttt{Json}, \texttt{RegularExpressions}, \texttt{Encodings}),
+\texttt{Threading} (with \texttt{Channels}, \texttt{Tasks}), \texttt{Xml}, \texttt{Security},
+\texttt{Globalization}, \texttt{Runtime}, and roughly 185 flat top-level types
+(\texttt{Object}, \texttt{String}, \texttt{Exception}, \texttt{EventHandler},
+\texttt{IDisposable}, \texttt{TimeSpan}, \texttt{DateTimeOffset}, \texttt{Delegate},
+\texttt{Guid}, \texttt{Random}, \texttt{Uri}, \texttt{Version}, \texttt{Nullable},
+\texttt{Span}, \texttt{Memory}, and more). A separate \texttt{include/SharpRuntime/}
+namespace holds project-internal helpers that are not part of the .NET mirror at all ---
+most importantly \texttt{SharpRuntimeHelper.hpp}, home to the type-alias table
+Chapter~\ref{ch:design-philosophy} already introduced (\texttt{bytecs},
+\texttt{intcs}, \texttt{Single}, and the rest).
+
+\section{Object and IDisposable: the two roots}
+
+\cnaclass{System::Object} is CNA's substitute for .NET's universal base type, and its own
+design is honest about the substitution's limits: it is abstract here (a pure-virtual
+\texttt{GetTypeName()}), because C\texttt{++} has no universal root type of its own to anchor
+it to the way every .NET type implicitly inherits \texttt{object}. \texttt{GetHashCode()},
+\texttt{Equals}, \texttt{ToString()}, and a non-virtual \texttt{GetType()} (backed by
+\texttt{typeid(*this)}) round out the surface; two macros,
+\texttt{GetTypeNameHPP()}/\texttt{GetTypeNameCPP()}, exist purely to reduce the boilerplate of
+implementing the required override on every concrete class --- the same
+\texttt{GetTypeName()} override Chapter~\ref{ch:design-philosophy} already showed CNA's own
+porting checklist requires on every class inheriting \texttt{System::Object}.
+\cnaclass{System::IDisposable} is a single pure interface method,
+\texttt{virtual void Dispose() = 0}; its own documentation is explicit that C\texttt{++} has
+no equivalent of C\#'s \texttt{using} statement, so callers either use RAII or call
+\texttt{Dispose()} explicitly, and every implementation is expected to be idempotent.
+
+\section{EventHandler and MulticastAction: solving a problem C\# doesn't have}
+
+\cnaclass{System::EventHandler<TEventArgs>} deliberately diverges from real .NET's own
+design, and its own header comment states why directly: in C\#, \texttt{EventHandler<T>} is
+only a delegate \emph{type} --- the actual multicast subscriber list and invocation mechanism
+are supplied separately, by the compiler-generated code behind the \texttt{event} keyword.
+C\texttt{++} has no \texttt{event} keyword, so \texttt{sharp-runtime}'s own
+\cnaclass{EventHandler<T>} has to be both the type \emph{and} the subscriber-list
+infrastructure at once: \texttt{operator+=}, a token-based \texttt{Add}/\texttt{Remove} pair,
+\texttt{Clear()}, and \texttt{Raise(sender, e)}. \texttt{Raise} specifically invokes over a
+\emph{snapshot} of the current handler list, not the live list --- a direct, deliberate guard
+against a handler that removes itself (or another handler) from within its own invocation,
+which previously surfaced as a real \texttt{std::bad\_function\_call} crash before this
+snapshot discipline was adopted. A further mechanism, \texttt{SetReplayHook()}, exists
+specifically to model a real XNA quirk this book has already touched on earlier ---
+\cnaclass{NetworkSession.GamerJoined} (Chapter~\ref{ch:networking}) is expected to replay
+already-happened state to a newly-added subscriber, not only notify about future events, and
+this hook is the general mechanism that makes that pattern implementable once, rather than
+reinvented per event.
+
+\cnaclass{System::MulticastAction<Args...>} is a second, purpose-built multicast type built
+for the same underlying reason: since \texttt{std::function}/lambda values have no C\#-style
+target-plus-method equality, ordinary value comparison cannot implement C\#'s
+\texttt{-=}-style single-subscriber removal, so this type uses the same
+token-based-removal-plus-snapshot-invocation discipline as \cnaclass{EventHandler<T>} to solve
+the identical problem for plain multicast callback fields that are not shaped like a
+C\#-style public event.
+
+\section{Value types worth knowing before reading later chapters}
+
+\cnaclass{System::TimeSpan}, the type underlying \cnaclass{GameTime} and
+\cnaclass{SensorBase::TimeBetweenUpdates} throughout this book, stores its value internally
+as 100-nanosecond ticks and carries one small, diagnostic-only surprise: a static, atomic
+copy/move counter, exposed for test instrumentation. This counter is also the subject of one
+specific, deliberately accepted, benign finding: a project-wide ThreadSanitizer run reports
+exactly one pre-existing race, in this counter's own increment, explicitly carved out as
+out-of-scope in at least one downstream consumer's own sanitizer configuration (the
+\cnans{Microsoft::Devices} work covered in Chapter~\ref{ch:devices-sensors}) --- a real,
+known, harmless race in a debug-only diagnostic field, not in \cnaclass{TimeSpan}'s actual
+timing behavior.
+
+\cnaclass{Collections::Generic::List<T>} and \cnaclass{Dictionary<TKey,TValue>} both
+implement .NET's fail-fast collection-modified-during-enumeration behavior via an internal
+version counter checked on every enumeration step --- with one small, explicitly documented
+deviation on \cnaclass{Dictionary}: its \texttt{Remove()} bumps the version counter, which
+real .NET's own \texttt{Dictionary.Remove()} does not do, because \texttt{std::unordered\_map}'s
+own iterator-invalidation guarantees on erase differ from the array-backed entry table real
+.NET's dictionary uses internally --- a deliberate, reasoned adaptation to the underlying
+C\texttt{++} standard library type, not an oversight.
+
+\section{Concurrency primitives}
+
+\cnaclass{Threading::Tasks::Task} implements a real, if scoped, async-task model:
+\texttt{Wait()} rethrows a faulted task's exception (matching .NET's own
+\texttt{Wait()}/\texttt{ThrowIfExceptional} contract), and \texttt{ContinueWith} uses
+weak-pointer-based cycle avoidance specifically to avoid leaking a continuation chain rather
+than spawning an extra OS thread per continuation. \cnaclass{Threading::Thread} is a thin
+wrapper over \texttt{std::thread} that deliberately does not start at construction --- a
+second call to \texttt{Start()} throws \texttt{ThreadStateException}, matching real .NET's own
+one-shot-start contract exactly, rather than silently allowing a thread object to be
+restarted the way a naive wrapper might.

@@ -1,0 +1,82 @@
+\chapter{Roadmap and Open Gaps}
+\label{ch:roadmap}
+
+This closing chapter gathers the open threads left throughout both volumes into one place,
+organized the same way CNA's own README states its roadmap: incremental API coverage first,
+then the specific named gaps, then cross-platform strengthening.
+
+\section{Continued API coverage, class by class}
+
+The largest item on CNA's own roadmap is also its least dramatic: continuing to expand XNA
+API coverage and behavior parity incrementally, class by class, rather than in one large
+push. Chapter~\ref{ch:what-is-cna} already gave the headline numbers --- 227 of 245 public
+FNA types present (92.7\%), with \texttt{.Content} (four of twelve types, by design, per
+Chapter~\ref{ch:content-and-assets}) and \texttt{.Media}'s fourteen previously-shell types
+(now largely closed, per Chapter~\ref{ch:media-system}'s own correction to that figure) as the
+two namespaces furthest from full presence. This kind of gap closes the way most of this
+book's own bug histories closed: one class, one audit, one fix at a time, tracked through the
+\texttt{plan\_*.md}/\texttt{AUDIT.md} mechanism from Chapter~\ref{ch:project-practice}.
+
+\section{The single biggest named gap: compiled .fx bytecode}
+
+Chapter~\ref{ch:shader-fx-gap} covered this in full, and it remains, in the
+project's own words, the single biggest real gap in CNA: no support for loading a compiled
+\texttt{.fx} shader bytecode blob the way a real XNA content pipeline would produce one, with
+a real, measured cost of 23 of the 86 official XNA samples in \texttt{cna-samples}
+(Chapter~\ref{ch:samples-and-examples}) failing to run as a direct result. The
+\texttt{ShaderEffect} runtime-HLSL-compilation path on the three Direct3D backends
+(Chapter~\ref{ch:direct3d-backends}) is a real, working alternative for new or adapted
+shaders, but is not bytecode compatibility, and closing this gap for real would mean building
+something comparable in scope to a second MojoShader-style bytecode cross-compiler.
+
+\section{The .xnb content pipeline: a design choice under active reconsideration}
+
+Chapter~\ref{ch:content-and-assets} covered CNA's raw-asset-plus-JSON-descriptor content
+model as a deliberate design choice, not an oversight --- and the roadmap frames a real,
+binary-compatible \texttt{.xnb} reader as something the project is actively considering
+rather than something ruled out permanently. Chapter~\ref{ch:models-meshes}'s account of the
+real, already-shipped \texttt{.xnb} \cnaclass{Model} reader is a concrete sign of where this
+is already heading incrementally, class by class, rather than as one large content-pipeline
+rewrite.
+
+\section{Named architecture-decision gaps}
+
+Four specific gaps recur across this book's backend chapters, each requiring a project-owner
+decision rather than more engineering effort on its own:
+
+\begin{itemize}
+  \item \texttt{SDL\_RENDERER}'s \cnaclass{TextureAddressMode::Wrap}/\texttt{Mirror} via
+        \cnaclass{SpriteBatch} (Chapter~\ref{ch:sdl-renderer}) --- blocked on choosing between
+        three concrete implementation strategies, each with a real tradeoff.
+  \item \texttt{SDL\_RENDERER}'s \cnaclass{Texture3D}/\cnaclass{TextureCube} construction
+        (Chapter~\ref{ch:sdl-renderer}) --- blocked because the safer fix (throwing at
+        construction rather than silently succeeding) has a confirmed 94-test blast radius.
+  \item \texttt{EASYGL}'s real, non-\texttt{Color} \cnaclass{SurfaceFormat} GPU forwarding
+        (Chapter~\ref{ch:easygl-backend}) --- blocked because it conflicts with an
+        already-shipped \texttt{Texture::ValidateFormat} contract the project has already
+        committed tests against.
+  \item \cnaclass{Texture3D}/\cnaclass{TextureCube}'s sampler-bind architecture
+        (Chapter~\ref{ch:textures-rendertargets}) --- the structural deviation from FNA
+        where neither type participates in the generic texture-slot binding mechanism at
+        all, so only stock effects with a dedicated field (\cnaclass{EnvironmentMapEffect}'s
+        cube map) can use one.
+\end{itemize}
+
+\section{Strengthening cross-platform execution and validation}
+
+The roadmap's final, broadest item is exactly what this Part's cross-platform chapters
+covered in depth: deepening validation on Windows (moving from Wine-verified to genuinely
+Windows-hardware-verified, an open item on every one of the three Direct3D backends), the
+Web (moving \texttt{CANVAS} from code-reviewed to actually pixel-verified in a real browser,
+Chapter~\ref{ch:canvas-ascii-backends}), and Android (broadening beyond the single real
+x86\_64 emulator configuration this project currently verifies against).
+
+\section{A closing note on how to use this chapter}
+
+Every gap named in this chapter is named because a specific, dated source said so ---
+\texttt{NEXT.md}, a \texttt{plan\_*.md} file, or a backend's own documentation, per the
+practice conventions from Chapter~\ref{ch:project-practice}. As with every dated claim this
+book has made, the right way to use this chapter is not to trust it indefinitely, but to use
+it as a map: go to the source it cites, check whether the gap is still open, and update your
+own understanding from there. That is the same discipline this project asks of itself, and
+the same discipline this book has tried to model throughout both volumes.
