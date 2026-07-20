@@ -101,10 +101,10 @@ every frame, and note the constness difference.} \texttt{Update} takes a mutable
 \texttt{Draw} takes a \texttt{const GameTime\&}, since rendering should not mutate timing
 state. Chapter~\ref{ch:game-loop} covers the full \cnaclass{Game} lifecycle this pair of
 overrides plugs into --- \texttt{Initialize()}, \texttt{LoadContent()}, the
-\texttt{Update}/\texttt{Draw} loop itself, and shutdown.
+\texttt{Update} / \texttt{Draw} loop itself, and shutdown.
 
 \textbf{The draw call is the canonical \cnaclass{SpriteBatch} triad:
-\texttt{Begin()}/\texttt{Draw(...)}/\texttt{End()}.} \cnaclass{GraphicsDevice::Clear} takes a
+\texttt{Begin()} / \texttt{Draw(...)} / \texttt{End()}.} \cnaclass{GraphicsDevice::Clear} takes a
 named XNA color constant (\cnaclass{Color::CornflowerBlue} --- traditionally XNA's default
 clear color in generated project templates, preserved here rather than swapped for something
 ``more CNA''), and \cnaclass{GraphicsDevice::Present()} is the final call of the frame,
@@ -119,11 +119,93 @@ Chapter~\ref{ch:game-loop} --- not in application code. This is deliberate: it i
 shape a real XNA \texttt{Program.cs}'s \texttt{Main} method has, preserved so that porting an
 existing XNA game's entry point is close to a mechanical translation.
 
+\section{A second program: making it move}
+\label{sec:first-game-movement}
+
+The program above proves a texture can reach the screen; it says nothing about the
+\texttt{Update} / \texttt{Draw} split actually \emph{doing} anything, since its own
+\texttt{Update} is empty. This section extends exactly the same skeleton --- same includes,
+same class shape, same \texttt{main()} --- with the smallest genuinely interactive addition:
+moving the logo with the arrow keys, at a constant real-world speed regardless of frame rate.
+Three small, real changes, each grounded in the actual headers rather than invented:
+
+\begin{lstlisting}
+#include "Microsoft/Xna/Framework/Input/Keyboard.hpp"
+#include "Microsoft/Xna/Framework/Vector2.hpp"
+
+using namespace Microsoft::Xna::Framework::Input;
+
+class MyGame final : public Game {
+    // ... constructor and LoadContent() unchanged ...
+
+    void Update(GameTime& gameTime) override
+    {
+        const KeyboardState keys = Keyboard::GetState();
+        const float seconds =
+            static_cast<float>(gameTime.getElapsedGameTimeProperty().getTotalSecondsProperty());
+        const float speed = 200.0f; // pixels per second
+
+        if (keys.IsKeyDown(Keys::Left))  position_.X -= speed * seconds;
+        if (keys.IsKeyDown(Keys::Right)) position_.X += speed * seconds;
+        if (keys.IsKeyDown(Keys::Up))    position_.Y -= speed * seconds;
+        if (keys.IsKeyDown(Keys::Down))  position_.Y += speed * seconds;
+    }
+
+    void Draw(const GameTime& gameTime) override
+    {
+        (void)gameTime;
+        auto& device = getGraphicsDeviceProperty();
+        device.Clear(CornflowerBlue);
+
+        spriteBatch_->Begin();
+        spriteBatch_->Draw(*logo_, position_, Color::White);
+        spriteBatch_->End();
+
+        device.Present();
+    }
+
+private:
+    GraphicsDeviceManager graphics_;
+    std::unique_ptr<SpriteBatch> spriteBatch_;
+    std::unique_ptr<Texture2D> logo_;
+    Vector2 position_{100.0f, 80.0f}; // new: replaces the two hardcoded floats
+};
+\end{lstlisting}
+
+\textbf{Reading polled input is a static call, not an object you own.} \cnaclass{Keyboard} has
+no constructor to call and nothing to store between frames --- \texttt{Keyboard::GetState()}
+is a static method returning a fresh, immutable \cnaclass{KeyboardState} snapshot every time
+it is called, and \texttt{Update} calls it once per frame. This is the same shape
+Chapter~\ref{ch:input-system} covers for \cnaclass{Mouse} and \cnaclass{GamePad}.
+
+\textbf{Frame-rate independence comes from \texttt{GameTime}, not a hardcoded per-frame
+step.} Multiplying a pixels-per-second constant by
+\texttt{gameTime.get\allowbreak{}ElapsedGameTimeProperty().get\allowbreak{}TotalSecondsProperty()} --- the real
+\cnaclass{TimeSpan} accessor pair, not an invented shortcut --- means the logo moves at the
+same real-world speed whether the game is running at 30 FPS or 240 FPS. A version that instead
+moved by a flat constant every \texttt{Update} call would move four times faster on a display
+with a four times higher refresh rate, which is precisely the class of bug frame-rate-independent
+movement exists to avoid.
+
+\begin{sourcenote}
+\textbf{Why this program uses a different \texttt{Draw} overload than the first one.} The
+first program in this chapter calls \texttt{spriteBatch\_->Draw(*logo\_, 100.0f, 80.0f)} ---
+but that specific two-float-position overload, reading
+\texttt{include/\allowbreak{}Microsoft/\allowbreak{}Xna/\allowbreak{}Framework/\allowbreak{}Graphics/\allowbreak{}SpriteBatch.hpp} directly, is tagged
+\texttt{NOXNA}: a CNA-only convenience overload, not part of real XNA~4.0
+(Chapter~\ref{ch:design-philosophy} covers what that tag means). This second program instead
+calls \texttt{Draw(*logo\_, position\_, Color::White)}, the real, unmarked XNA~4.0 overload
+that takes a \cnaclass{Vector2} position and an explicit tint color --- worth calling out
+directly here, since a reader who wants code that ports cleanly to real XNA/FNA should reach
+for this overload as the default, not the convenience one the first, minimal example used to
+stay as short as possible.
+\end{sourcenote}
+
 \section{What happens if you change the backend}
 
 Nothing in the file above mentions a graphics backend at all --- that is the entire point of
 Chapter~\ref{ch:backend-architecture}'s abstraction layer. Recompiling this exact,
-unmodified source file with \texttt{-DCNA\_GRAPHICS\_BACKEND=VULKAN} instead of
+unmodified source file with \texttt{-DCNA\_GRAPHICS\allowbreak{}\_BACKEND=VULKAN} instead of
 \texttt{EASYGL} produces a program that opens a Vulkan-backed window, uploads
 \texttt{assets/logo.png} through the Vulkan texture path, and issues the same
 \cnaclass{SpriteBatch} draw call through Vulkan command buffers instead of OpenGL calls ---
