@@ -171,7 +171,7 @@ ever needed).
 | 25 | Input System | 534 (was 170) | 70 | Full method references + worked examples for KeyboardState/Keyboard's EXT scancode surface, MouseState/Mouse's relative-mouse-mode EXT surface, GamePadState/the three GamePadDeadZone modes, TouchCollection/TouchLocation/GestureSample, TextInputEXT (IME-aware composition), and all five NOXNA-only device subsystems (Clipboard/Joysticks/Sensors/Power/Haptics) | **In progress (~10 of ~70 pages)** |
 | 26 | Audio System | 378 (was 118) | 60 | Full method references + worked examples for SoundEffect, SoundEffectInstance/Apply3D 3D audio, DynamicSoundEffectInstance streaming, the AudioEngine/SoundBank/WaveBank/Cue XACT playback model, Microphone capture, AudioCategory retroactive volume, AudioEngine::RendererDetails, SoundEffect::FromStream, and the three audio exception types | **In progress (~8 of ~60 pages)** |
 | 27 | Media | 300 (was 103) | 45 | Full method references + worked examples for Song, the AudioTagParser tag-reading pipeline, MediaQueue's ownership model, MediaPlayer playback/shuffle/repeat internals, VideoPlayer multi-track switching (three real bugs found by external review), and the GetVisualizationData FFT pipeline (lock-free ring buffer + from-scratch radix-2 FFT) | **In progress (~6 of ~45 pages)** |
-| 28 | Devices and Sensors | 115 | 45 | Full sensor API docs + examples | Not started |
+| 28 | Devices and Sensors | 208 (was 115) | 45 | Worked examples for Accelerometer/VibrateController/Camera grounded in real headers, plus the SetCurrentValueAndMarkDataValid race-closing finding and the vibrate intensity-zero-is-not-Stop() finding | **In progress (~6 of ~45 pages)** |
 | 29 | GamerServices | 117 | 55 | Full Achievement/Leaderboard/Gamer docs + examples | Not started |
 | 30 | Networking | 125 | 70 | Full NetworkSession/NetworkGamer docs + worked multi-peer examples | Not started |
 | 31 | Avatar | 131 | 55 | Full Avatar/SkinnedModelEXT docs + examples | Not started |
@@ -739,3 +739,30 @@ current real total of 266 pages.
   ~45-page target). Volume recompiled clean (279 pages total, 0 undefined references, 0
   duplicate-label warnings); all six of the chapter's own pages verified by rendering to PNG
   and reading them back.
+- **2026-07-20 (same session, "pokracuj"):** Chapter 28 (Devices and Sensors) — first
+  expansion pass. This chapter's prose was already unusually dense and well-grounded before
+  this pass (the concurrency-engineering narrative for `SensorBase`'s disposal protocol and the
+  update-throttle integer-overflow bug were already present and accurate), but it had zero
+  worked code examples anywhere in it — every other expanded Part V–IX chapter this session
+  established full method reference + worked example as the pattern, so that was the concrete
+  gap here rather than missing API surface. Read `SensorBase.hpp`, `Accelerometer.hpp`,
+  `AccelerometerReading.hpp`, `SensorReadingEventArgs.hpp`, `EventHandler.hpp`,
+  `VibrateController.hpp`, `Camera.hpp`, and `CameraState.hpp` directly. Added one genuinely
+  new verified finding not previously in the chapter: `SensorBase::SetCurrentValueAndMarkDataValid`
+  closes a real observable-inconsistency window — `IsDataValid` and `CurrentValue` used to be
+  set via two separate, individually race-free locked calls, but a concurrent reader could still
+  observe the gap between them (data marked valid while `CurrentValue` still held stale data);
+  combining both into one lock scope closes it. Added a second new finding for
+  `VibrateController`: `Start(duration, 0.0f)` is deliberately NOT treated as an implicit
+  `Stop()` — it still uploads and plays a genuine zero-strength effect for the full duration,
+  re-confirmed against SDL3's own haptic source and its own test suite, not merely documented.
+  Added three worked examples grounded in the real signatures: subscribing to
+  `Accelerometer::CurrentValueChanged` with the correct `const SensorReadingEventArgs<T>&`
+  handler signature (verified against `EventHandler.hpp` directly rather than assumed);
+  `VibrateController::StartLeftRight` plus an explicit `Stop()`; and `Camera::TryAcquireFrame`'s
+  poll-every-frame contract, including the exact-dimension-match requirement on the destination
+  `Texture2D`. Chapter grows from 115 to 208 lines (~4 to ~6 of a ~45-page target). Volume
+  recompiled clean (281 pages total, 0 undefined references, 0 duplicate-label warnings); all
+  six of the chapter's own pages verified by rendering to PNG and reading them back — no
+  overfull-hbox defect found this time (the proactive `/`-spacing regex pass caught its one
+  instance before the first build).

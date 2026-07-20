@@ -14,7 +14,7 @@ be stale relative to what's happened since — trust the conversation over this 
 numbering). Chapters 25–48 = former Volume II (Parts V–IX, renumbered +24). Appendices A–F.
 Full renumbering table is in `PLAN.md`'s merge session-log entry.
 
-**Three former-Volume-II chapters now have a first real expansion pass**, all following the
+**Four former-Volume-II chapters now have a first real expansion pass**, all following the
 same pattern (full method references + worked examples for every named class, each grounded in
 a direct header/source read, with real verified findings called out explicitly, not just API
 summaries):
@@ -23,69 +23,70 @@ summaries):
 - **Chapter 26 (Audio System)**: 118 → 378 lines (two passes — an initial pass, then a
   gap-filling pass directly answering the author's "is this bible-level comprehensive"
   question), ~4 → ~8 of a ~60-page target.
-- **Chapter 27 (Media)**, this session: 103 → 300 lines, ~4 → ~6 of a ~45-page target. Read
-  `Song`, `MediaQueue`, `MediaPlayer`, `MediaLibrary`, `AudioTagParser`, `MediaLibraryPaths`,
+- **Chapter 27 (Media)**: 103 → 300 lines, ~4 → ~6 of a ~45-page target. Read `Song`,
+  `MediaQueue`, `MediaPlayer`, `MediaLibrary`, `AudioTagParser`, `MediaLibraryPaths`,
   `PlaylistParser`, `Video`/`VideoPlayer`, `VisualizationData`, `VisualizationCapture`, and
   `VisualizationFFT` directly. Added: `Song`'s content-based `GetHashCode` (a documented
   deviation from FNA's own contract-violating identity-based version); the real multi-format
-  tag-reading pipeline (Vorbis, ID3v2.3/2.4, native-FLAC, Ogg-Opus, plus the filename/folder
-  fallback and the real cross-format rating-scale ambiguity); `MediaQueue`'s ownership model
-  (a verified finding: `MediaPlayer::LoadSong()` defensively clones every song before handing
-  it to the owning queue, because `SongCollection` itself is non-owning); a verified finding
-  that `MediaPlayer::Stop()` resets every queued song's `PlayCount`, not just the one playing;
-  three real `VideoPlayer` multi-track-switching bugs found by external code review and fixed
-  (an unbounded-memory-growth audio-buffer leak, a stale frame-texture-size bug, and a wrongly
-  coupled audio/video reconfigure step); and `GetVisualizationData`'s genuine from-scratch
-  pipeline (a lock-free ring buffer using relaxed atomics — verified to avoid real UB, not
-  pedantry — feeding a from-scratch 512-sample radix-2 FFT).
+  tag-reading pipeline; `MediaQueue`'s ownership model (`MediaPlayer::LoadSong()` defensively
+  clones every song before handing it to the owning queue, since `SongCollection` itself is
+  non-owning); `MediaPlayer::Stop()`'s queue-wide `PlayCount` reset; three real `VideoPlayer`
+  multi-track-switching bugs found by external code review and fixed; and
+  `GetVisualizationData`'s from-scratch lock-free-ring-buffer + radix-2-FFT pipeline.
+- **Chapter 28 (Devices and Sensors)**, this session: 115 → 208 lines, ~4 → ~6 of a ~45-page
+  target. Unlike 25–27, this chapter's PROSE was already dense and well-grounded (the
+  `SensorBase` disposal-protocol and integer-overflow narrative was already accurate) — its gap
+  was zero worked code examples anywhere. Read `SensorBase.hpp`, `Accelerometer.hpp`,
+  `AccelerometerReading.hpp`, `SensorReadingEventArgs.hpp`, `EventHandler.hpp`,
+  `VibrateController.hpp`, `Camera.hpp`, `CameraState.hpp` directly. Added two new verified
+  findings not previously in the text: `SetCurrentValueAndMarkDataValid` closes a real
+  observable-inconsistency window between two individually race-free locked calls; and
+  `VibrateController::Start(duration, 0.0f)` deliberately does NOT act as an implicit `Stop()`
+  (still plays a real, if inert, zero-strength effect). Added three worked examples
+  (`Accelerometer::CurrentValueChanged` subscription, `VibrateController::StartLeftRight`,
+  `Camera::TryAcquireFrame`'s poll-every-frame contract).
 
-Volume currently compiles to **279 pages, 0 undefined references, 0 duplicate-label
+Volume currently compiles to **281 pages, 0 undefined references, 0 duplicate-label
 warnings** (index count not re-checked this session — verify before quoting it).
 
 ### The `/`-spacing overfull-hbox defect class — three known variants, all with proven fixes
 
-Every chapter touched so far (25, 26, 27) has needed at least one of these. Treat this as a
-**routine check on every batch**, not a one-off:
+Every chapter touched so far (25, 26, 27, 28) has needed at least one of these. Treat this as a
+**routine check on every batch**, not a one-off — run the Python regex pass
+(`re.sub(r'\}/(\\texttt\{|\\cnaclass\{)', r'} / \1', text)`) over any file you touch before the
+first build of a batch:
 
 1. **Chain variant**: `\texttt{A}/\texttt{B}` (or `\cnaclass{}`) with no space around the slash
-   is one unbreakable LaTeX token; long enough, it overflows the line. Fix: proactively
-   `grep -n '}/\\texttt{\|}/\\cnaclass{'` before the first build of a batch, or just run the
-   established Python regex pass (`re.sub(r'\}/(\\texttt\{|\\cnaclass\{)', r'} / \1', text)`)
-   over the whole file before the first build — this session did that for ch27 and it caught
-   21 instances in one pass.
+   is one unbreakable LaTeX token; long enough, it overflows the line. The regex pass above
+   fixes this automatically.
 2. **Newline-continuation variant**: `\texttt{A}/%` followed by a newline-continued
    `\texttt{B}` — the `%` suppresses the newline's implicit space, and this does NOT match the
-   grep above. Only caught by reading the actual source around any overfull warning's line
-   range.
+   grep/regex above. Only caught by reading the actual source around any overfull warning's
+   line range.
 3. **Single-long-identifier variant**: even ONE very long `\texttt{}`/`\cnaclass{}`-wrapped
    identifier can cause severe, visibly-confirmed cutoff if it lands with too little remaining
-   space on its line — REGARDLESS of spacing fixes around it. Not fixable by adding spaces.
-   **The fix that works**: restructure so the sentence/clause containing the long identifier
-   starts fresh (its own sentence, paragraph, or list-item continuation), maximizing its
-   available line width from its very first character. Hit and fixed AGAIN this session in
-   ch27: an itemized-list bullet naming `ReconfigureAudioOutputForCurrentTrack()` immediately
-   followed by `ReconfigureVideoOutputForCurrentTrack()` on the same line overflowed even with
-   `/`-spacing already applied — splitting the pair into two separate sentences (the second
-   identifier starting its own sentence) fixed it, confirmed by re-rendering the page.
+   space on its line — REGARDLESS of spacing fixes around it. **The fix that works**:
+   restructure so the sentence/clause containing the long identifier starts fresh (its own
+   sentence, paragraph, or list-item continuation), maximizing its available line width from
+   its very first character. Hit and fixed again in ch27 this session (two long `Reconfigure*`
+   identifiers packed onto one itemized-list line — split into two sentences fixed it).
 
 **Verification bar, unchanged**: `grep -i overfull main.log` alone is not reliable evidence
 either way. The only real verification is `pdftoppm -png -f N -l N -r 100 main.pdf
 /tmp/.../pageN` (find N by content search: `pdftotext -f N -l N main.pdf - | grep <text>`,
-never by printed folio number) then reading the PNG back with the Read tool. This session
-verified all six of ch27's own pages this way before considering the chapter done.
+never by printed folio number) then reading the PNG back with the Read tool. Chapter 28 this
+session rendered clean on the first try — the proactive regex pass alone was sufficient, no
+second round needed, which is a good sign the routine is actually working now.
 
 ## What to do next
 
-1. **Move to another Part V–IX chapter**: 28 (Devices/Sensors), 29 (GamerServices), 30
-   (Networking), 31 (Avatar), 32 (Storage) — same systematic approach (read the real headers
-   directly, add full method references + worked examples, watch for the three overfull-hbox
-   variants above).
-2. **If returning to Chapter 25, 26, or 27 for further depth**, don't re-run the "which classes
-   exist" grep again (already done at least once each) — look for narrower gaps instead:
-   worked-example depth per topic, cross-checking against `docs/*.md`/`CHECKLIST.md`/
-   `plan_*.md` files in the real repo for anything a header-only pass would miss (e.g.
-   platform-specific notes, performance guidance, concurrency contracts like the one found in
-   `VisualizationCapture.hpp` this session).
+1. **Move to another Part V–IX chapter**: 29 (GamerServices), 30 (Networking), 31 (Avatar), 32
+   (Storage) — same systematic approach (read the real headers directly, add full method
+   references + worked examples, watch for the three overfull-hbox variants above).
+2. **If returning to Chapter 25, 26, 27, or 28 for further depth**, don't re-run the "which
+   classes exist" grep again (already done at least once each) — look for narrower gaps
+   instead: worked-example depth per topic, cross-checking against `docs/*.md`/`CHECKLIST.md`/
+   `plan_*.md` files in the real repo for anything a header-only pass would miss.
 3. **Deepen Chapter 9 (GraphicsDevice)** further, or start Chapter 13 (Stock Effects) — both
    still open Part I–IV targets, untouched for several sessions now.
 4. Chapter 7 (Math and Core Types) is at ~33 of a ~110-page target after three sessions — a
@@ -115,9 +116,14 @@ at face value.**
 - Verify hand-derived numeric/algebraic claims with an actual computation before writing them
   into the book. Also double-check constructor/method signatures against the real header
   before writing a worked example that calls them — reading the actual `.cpp` implementation
-  (not just the header) is often where the best verified findings come from (e.g. this
-  session's `MediaQueue`/`LoadSong` ownership finding, the `Stop()` PlayCount-reset finding,
-  and the three `VideoPlayer` bug-fix findings all came from `.cpp` reads, not header reads).
+  (not just the header) is often where the best verified findings come from (Chapter 27's
+  `MediaQueue`/`LoadSong` ownership finding and its three `VideoPlayer` bug-fix findings all
+  came from `.cpp` reads, not header reads). Also verify event-handler callback signatures
+  (e.g. `const T&` vs `T&`) against the actual `EventHandler.hpp` template before writing a
+  lambda in a worked example — Chapter 28 caught exactly this kind of mismatch this session.
+- Not every chapter's gap is "missing API surface" — Chapter 28's prose was already dense and
+  accurate, but had zero worked code examples. Check for that gap shape too, not just missing
+  classes/methods.
 - To find genuine gaps in an already-"complete-looking" chapter, systematically grep the real
   header for every type/class it covers and diff against what the chapter's prose actually
   mentions — but once that pass is done once, a second pass on the same chapter needs a

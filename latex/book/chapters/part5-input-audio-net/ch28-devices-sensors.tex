@@ -12,7 +12,7 @@ utility layer with no XNA or WP7 equivalent at all.
 namespace (\cnaclass{Accelerometer}, \cnaclass{Gyroscope}, \cnaclass{Compass},
 \cnaclass{Motion}), providing \texttt{CurrentValue}, \texttt{IsDataValid},
 \texttt{TimeBetweenUpdates} (defaulting to 2 milliseconds, matching the real WP7 API), the
-public \texttt{CurrentValueChanged} event, and abstract \texttt{Start()}/\texttt{Stop()}.
+public \texttt{CurrentValueChanged} event, and abstract \texttt{Start()} / \texttt{Stop()}.
 What makes this namespace worth a dedicated section in this book is not its API surface,
 which is small, but the genuine concurrency-safety engineering behind it --- because, unlike
 most of CNA's XNA-facing surface, a sensor's \texttt{CurrentValueChanged} callback can
@@ -48,6 +48,43 @@ that can never overflow, since a signed 64-bit count of 100-nanosecond ticks can
 roughly 29{,}000 years, far beyond any realistic elapsed wall-clock time a running program
 would ever measure.
 
+\subsection{A third finding: closing the window between two correct locks}
+
+A subtler, later fix illustrates something worth understanding beyond ``add a lock'': two
+individually race-free operations can still compose into an observable inconsistency.
+\cnaclass{Accelerometer} and \cnaclass{Gyroscope} both originally set \texttt{IsDataValid} and
+\texttt{CurrentValue} as two separate, independently-locked calls on every dispatched reading
+--- each call is itself genuinely race-free, per the documented thread-safety contract, but
+nothing prevented a concurrent reader on another thread from observing the narrow window
+\emph{between} the two calls, where \texttt{IsDataValid} had already flipped true while
+\texttt{CurrentValue} still held the previous (or, for a sensor's very first reading, a
+still-default-constructed) value --- a real, misleading snapshot a caller following the
+documented ``if valid, use CurrentValue'' pattern could genuinely observe. \cnaclass{SensorBase}
+now exposes a combined \texttt{SetCurrentValueAndMarkDataValid(value)} that performs both
+assignments under a single lock scope, so a concurrent reader always sees either the fully
+prior state or the fully updated state, never a mix of the two --- the separate setters remain
+available only for the rarer case of changing one without the other, such as explicitly
+invalidating data with no new reading to publish.
+
+\begin{lstlisting}
+// Worked example: subscribing to Accelerometer readings from the game
+// thread while acknowledging the callback can legitimately arrive on
+// whatever thread SDL's own sensor event-watch mechanism uses.
+Accelerometer accelerometer;
+accelerometer.CurrentValueChanged.Add(
+    [](System::Object* sender, const SensorReadingEventArgs<AccelerometerReading>& args)
+    {
+        Vector3 g = args.getSensorReadingProperty().getAccelerationProperty();
+        // NOTE: this handler may run on a non-game thread -- do not touch
+        // GraphicsDevice or other main-thread-only state directly here;
+        // hand the value off to a thread-safe queue instead.
+    });
+accelerometer.Start();
+// ... later, at shutdown or when the feature is no longer needed ...
+accelerometer.Stop();
+accelerometer.Dispose();
+\end{lstlisting}
+
 \subsection{Per-sensor reality: what is genuinely backed by hardware}
 
 \cnaclass{Accelerometer} is the most complete of the four: genuinely SDL3-backed
@@ -81,6 +118,29 @@ backend blends any two independent motor intensities into one blended value befo
 to the platform vibration service --- true independent left/right rumble on Android is only
 reachable through \cnaclass{GamePad}'s own controller-rumble path, never through this class.
 
+A deliberately non-obvious detail, re-confirmed by a later external audit against SDL3's own
+haptic source directly rather than left as an assumption: calling \texttt{Start(duration, 0.0f)}
+is \emph{not} treated as an implicit \texttt{Stop()}. It still uploads and plays a genuine,
+zero-strength SDL rumble effect for the full requested duration --- inert in practice, since
+zero strength has no physical effect, but not equivalent to skipping the call entirely, since a
+zero-intensity effect still occupies whatever ``one active effect'' slot the underlying haptic
+device has. \texttt{Stop()} is the correct call when that distinction actually matters to a
+caller, such as canceling a pending rumble outright rather than merely fading it to silence.
+
+\begin{lstlisting}
+// Worked example: a strong "hit" pulse plus a subtler background rumble
+// on the two motors simultaneously, then an explicit Stop() -- NOT a
+// Start(duration, 0.0f) call, which would still play a real, if
+// inert, effect rather than actually canceling anything.
+VibrateController* vibrate = VibrateController::getDefaultProperty();
+if (vibrate->getIsSupportedProperty())
+{
+    vibrate->StartLeftRight(1.0f, 0.3f, System::TimeSpan::FromSeconds(0.2));
+}
+// ... later, to cancel outright rather than let it play out or fade ...
+vibrate->Stop();
+\end{lstlisting}
+
 \section{CNA::Devices: a NOXNA desktop utility layer}
 
 Distinct from the sensor namespace above, \cnans{CNA::Devices} has no XNA or WP7 precedent at
@@ -102,6 +162,39 @@ window's safe interactive area (relevant on displays with notches or rounded cor
 \cnaclass{MessageBox}, \cnaclass{FileDialog}, \cnaclass{UrlLauncher}, \cnaclass{Locale},
 \cnaclass{Clipboard}, \cnaclass{SystemInfo}, and \cnaclass{PowerInfo} round out this layer,
 each a thin, real wrapper over the corresponding SDL3 host-integration capability.
+
+\subsection{Camera: a worked example of the poll, not push, contract}
+
+\cnaclass{Camera}'s \texttt{getStateProperty()} re-checks the platform's permission decision on
+\emph{every} call rather than caching the answer from construction time, deliberately --- a
+real permission grant or denial can arrive seconds, minutes, or even hours after the camera was
+first opened, depending on the platform's own UI for asking the user, so the honest answer can
+only ever be ``ask again right now,'' cheap enough to do from every \texttt{Game::Update()}
+call alongside \texttt{TryAcquireFrame()}. \texttt{TryAcquireFrame()} itself requires a
+destination \cnaclass{Texture2D} already constructed at exactly
+\texttt{getFrameWidthProperty()}~$\times$~\texttt{getFrameHeightProperty()}, returning false
+without touching it at all if those dimensions don't match, the state isn't
+\cnaclass{CameraState}\texttt{::Ready}, or no new frame happened to be available on this
+particular poll --- there is no callback to wait for instead.
+
+\begin{lstlisting}
+// Worked example: opening the first available camera and polling it
+// once per frame, matching the poll-based (not callback-based) contract
+// SDL_AcquireCameraFrame() itself has.
+Camera camera;
+Texture2D* cameraTexture = nullptr;
+
+// In Game::Update() or Draw(), called every frame:
+if (camera.getStateProperty() == CameraState::Ready)
+{
+    if (cameraTexture == nullptr)
+    {
+        cameraTexture = new Texture2D(graphicsDevice,
+            camera.getFrameWidthProperty(), camera.getFrameHeightProperty());
+    }
+    camera.TryAcquireFrame(*cameraTexture);  // false is not an error -- just no new frame yet
+}
+\end{lstlisting}
 
 \section{Why this namespace matters despite its small XNA surface}
 
