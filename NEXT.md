@@ -77,7 +77,22 @@ either way. The only real verification is `pdftoppm -png -f N -l N -r 100 main.p
 /tmp/.../pageN` (find N by content search: `pdftotext -f N -l N main.pdf - | grep <text>`,
 never by printed folio number) then reading the PNG back with the Read tool.
 
-## Chapter 43 (Blupi Case Study) is now done too — second chapter of Part IX
+## Chapter 44 (xna4-spec Auditing) is now done too — third chapter of Part IX
+
+Grew 74 → 117 lines. This chapter described its own three-step audit methodology only in the
+abstract, so the gap was "actually run it once." Picked `Ray` (small, complete type, already
+cloned at `/workspace/xna4-spec`) and audited every field/constructor/method in the spec against
+CNA's real `Ray.hpp` member by member — full match, plus two precise, genuinely new
+methodological findings: `Ray` has no `Equals(Object)` overload (correctly not a gap — C++ has
+no universal boxed root type, a third audit-outcome category distinct from "missing" and
+"NOXNA-tagged"), and `GetHashCode` returns `std::size_t` not the spec's `int` (a deliberate
+convention substitution). Also found and fixed a genuine pre-existing overfull-hbox defect in
+this chapter's opening paragraph — a long URL overflowing ~99pt past the margin, visibly
+confirmed via PNG render, fixed with `\allowbreak{}` after each path segment. Full detail in
+PLAN.md's session log. Volume compiles clean at **291 pages** (up from 289), 0 undefined refs;
+all four of the chapter's own pages (251-254) PNG-rendered and confirmed defect-free.
+
+## Chapter 43 (Blupi Case Study) is done too — second chapter of Part IX
 
 Grew 116 → 172 lines. This chapter was already dense with real call-site audit findings, so the
 gap shape was "find a genuinely new real source," not re-derive existing coverage. Read
@@ -108,8 +123,8 @@ unrelated overfull-hbox warning surfaced for pre-existing Chapter 36 content
 
 ## What to do next
 
-1. **Continue Part IX**: Chapter 44 (xna4-spec Auditing) is next, then 45-48. Same approach:
-   read the real source before assuming whether each chapter is API-reference-shaped,
+1. **Continue Part IX**: Chapter 45 (cna-samples and cna-examples) is next, then 46-48. Same
+   approach: read the real source before assuming whether each chapter is API-reference-shaped,
    tooling/narrative-shaped, or synthesis-shaped like Chapter 41 turned out to be. When a
    chapter doesn't fit the "add worked examples" mold, look instead for a genuine content gap or
    a stale cross-reference (Chapter 41's own pass found both: a missing macOS row and a
@@ -117,7 +132,17 @@ unrelated overfull-hbox warning surfaced for pre-existing Chapter 36 content
    the move that worked was finding a *newer* or *different* real audit document than the one
    the chapter already drew from (`/workspace/free-direct/docs/` has several: `audit_ddraw.md`,
    `audit_dsound.md`, `audit_dplay.md`, `directplay-callsite-audit.md` — only `audit_ddraw.md`
-   has been mined so far).
+   has been mined so far). For a methodology chapter like Chapter 44, the move was picking one
+   small real type and actually running the described process against it end to end, rather
+   than leaving the process abstract — `/workspace/xna4-spec` (already cloned) has 544 types
+   across 19 namespaces, so this pattern (pick another small type, audit it fully) is repeatable
+   if Chapter 44 ever needs a second pass.
+2. **New lesson this session, worth checking on every future chapter's opening/early
+   paragraphs specifically**: a long, unbroken `\texttt{}`-wrapped URL or path can overflow far
+   more severely (Chapter 44's was ~99pt overfull) than the identifier-length defects seen
+   before — fix with `\allowbreak{}` inserted after each `/`-delimited path segment inside the
+   `\texttt{}`, not by paragraph restructuring (which only helps when a fresh full-width line
+   would actually fit the token — it won't for a long URL).
 2. **Alternatively, return to Part V, VI, or VIII for real depth**: every chapter in those
    three parts has a first pass now, but all are still well short of their page targets. Don't
    re-run the "which classes/tools exist" grep again (already done at least once per chapter)

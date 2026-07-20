@@ -187,7 +187,7 @@ ever needed).
 | 41 | Verification Methodology | 83 (was 68) | 35 | Added a macOS row to the comparative table (a genuine, honestly-named documentation gap: no dedicated chapter exists for it), plus fixed a stale "Part~IV" cross-reference left over from the volume merge | **In progress (~3 of ~35 pages)** |
 | 42 | Migration Guide | 165 (was 102) | 55 | Worked examples for the C#-to-CNA Update()/Draw() mechanical translation (signatures verified against Game.hpp) and hand-computing a custom vertex format's byte stride against the five recognized strides | **In progress (~4 of ~55 pages)** |
 | 43 | Blupi Case Study | 172 (was 116) | 55 | Added a new performance-audit section (measured BltFast/memcpy benchmarks, the CMAKE_BUILD_TYPE default-build finding, exact call-site line numbers in both games, and a confirmed-dead-code call site), grounded in `free-direct/docs/audit_ddraw.md` | **In progress (~5 of ~55 pages)** |
-| 44 | xna4-spec Auditing | 74 | 40 | More worked audit examples | Not started |
+| 44 | xna4-spec Auditing | 117 (was 74) | 40 | Added a full worked member-by-member audit of \cnaclass{Ray} against `xna4-spec`'s own XML, grounded in the real header; fixed a pre-existing long-URL overfull-hbox defect found while verifying | **In progress (~4 of ~40 pages)** |
 | 45 | Samples and Examples | 54 | 45 | Per-sample summaries, more of the 86 samples covered | Not started |
 | 46 | Project Practice | 100 | 40 | Deeper task-tracking-methodology detail | Not started |
 | 47 | Testing Philosophy | 103 | 45 | More worked test examples | Not started |
@@ -1052,3 +1052,28 @@ stays frozen by explicit author decision, not left incomplete.
   ~5 of a ~55-page target). Volume recompiled clean (289 pages total, 0 undefined references, 0
   duplicate-label warnings); all four of the chapter's own pages (247-250) verified by rendering
   to PNG and reading them back, including the new benchmark table.
+- **2026-07-20 (same session, "pokkracuj"):** Chapter 44 (Auditing Compatibility with
+  xna4-spec) — first expansion pass. PLAN.md's gap description ("More worked audit examples")
+  was taken literally: the chapter described the three-step audit methodology in the abstract
+  but never actually ran it against a real type. Picked `Ray`
+  (`Microsoft.Xna.Framework/Ray.xml` in the already-cloned `/workspace/xna4-spec`) as a small,
+  complete type worth auditing in full rather than partially, then read CNA's real
+  `include/Microsoft/Xna/Framework/Ray.hpp` and checked every field/constructor/method in the
+  spec against it member by member. Added a new section documenting a complete, correctly-shaped
+  match (both fields, the constructor, all four `Intersects` overload families including the
+  detail that `BoundingFrustum` correctly has no `ref`/`out` pair, `ToString`, and the
+  `operator==`/`operator!=` pair) plus two precisely-named deviations that are genuinely new
+  methodological findings for this book: (1) `Ray` has no `Equals(Object)` overload, which is
+  correctly not a gap but a third, previously-undocumented audit-outcome category — a member
+  that cannot be translated at all because C++ has no universal boxed root type the way every
+  C# value type inherits from `System.Object`; (2) `GetHashCode` returns `std::size_t` rather
+  than the spec's `int`, a deliberate convention substitution, not a signature bug. Also noted
+  `Ray`'s defaulted zero-argument constructor as a routine, unflagged addition, distinct from an
+  "Extra-unmarked" finding. While verifying, found and fixed one genuine, pre-existing
+  overfull-hbox defect in this chapter's opening section (a 98.99pt-overfull long URL,
+  `learn.microsoft.com/.../previous-versions/windows/xna/`, visibly running off the page edge in
+  the rendered PNG) by inserting `\allowbreak{}` after each path segment — confirmed fixed by
+  re-rendering the page. Chapter grows from 74 to 117 lines (~3 to ~4 of a ~40-page target).
+  Volume recompiled clean (291 pages total, 0 undefined references, 0 duplicate-label warnings);
+  all four of the chapter's own pages (251-254, the last one a normal blank right-hand-start
+  padding page) verified by rendering to PNG and reading them back.

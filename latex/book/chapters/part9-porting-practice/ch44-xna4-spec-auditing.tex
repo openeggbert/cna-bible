@@ -10,7 +10,8 @@ against memory or against FNA's own source. This chapter covers that ground trut
 
 \texttt{xna4-spec} is a complete, machine-readable XML transcription of the official XNA~4.0
 documentation, originally published at Microsoft's own
-\texttt{learn.microsoft.com/.../previous-versions/windows/xna/} archive --- every class,
+\texttt{learn.microsoft.com/\allowbreak{}.../\allowbreak{}previous-versions/\allowbreak{}windows/\allowbreak{}xna/}
+archive --- every class,
 struct, enum, interface, and delegate across all nineteen XNA namespaces, 544 types in total,
 with each type's original property, method, constructor, field, and event descriptions
 preserved. A master XSD schema and a top-level index of all 544 types organize the whole
@@ -52,6 +53,48 @@ Chapter~\ref{ch:testing-philosophy} exists to catch mechanically, with a manual
 \texttt{xna4-spec} audit as the complementary, judgment-requiring check for anything that
 gate cannot see on its own (a member that is tagged correctly but has the wrong signature, for
 instance).
+
+\section{A worked audit: \cnaclass{Ray}, member by member}
+
+The three-step process above is easiest to see against a small, complete type rather than a
+large one. \texttt{xna4-spec}'s own
+\texttt{Microsoft.Xna.Framework/Ray.xml} lists, in full: two fields (\texttt{Position},
+\texttt{Direction}, both \texttt{Vector3}), one constructor (\texttt{Ray(Vector3, Vector3)}),
+and six methods --- \texttt{Equals} (two overloads, one taking a boxed \texttt{Object} and one
+taking another \texttt{Ray}), \texttt{GetHashCode}, \texttt{ToString}, the \texttt{==} / \texttt{!=}
+operators, and \texttt{Intersects} against each of \cnaclass{BoundingBox}, \cnaclass{Plane},
+\cnaclass{BoundingSphere}, and \cnaclass{BoundingFrustum} (the first three of those each with a
+second, \texttt{ref} / \texttt{out} overload; \texttt{BoundingFrustum} has only the one
+return-value form in the real spec, not a \texttt{ref} / \texttt{out} pair, which matters below).
+Checking that list member-by-member against \cnaclass{Ray}'s real header
+(\texttt{include/Microsoft/Xna/Framework/Ray.hpp}) finds a complete, correctly-shaped match for
+every one of them: both fields present with matching types; the two-argument constructor
+present; all four \texttt{Intersects} targets present, each with exactly the same
+value-returning/output-parameter overload pattern the spec lists --- including the detail that
+\texttt{BoundingFrustum} correctly has only the single return-value overload, with no spurious
+\texttt{ref} / \texttt{out} pair invented for it; \texttt{ToString}, and the free-function
+\texttt{operator==} / \texttt{operator!=} pair implementing \texttt{op\_Equality} /
+\texttt{op\_Inequality} exactly as this book's naming conventions predict.
+
+Two small, precise deviations are worth naming exactly rather than glossing over, because they
+illustrate two different categories an audit needs to tell apart. First, \cnaclass{Ray} has no
+\texttt{Equals(Object)} overload at all --- and this is correctly not a gap: C\texttt{++} has no
+universal boxed root type the way every C\# value type inherits from \texttt{System.Object}, so
+there is no C\texttt{++} member this overload could ever correspond to. This is a third audit
+outcome distinct from both ``missing'' and ``present but \texttt{NOXNA}-tagged'': a member that
+cannot be translated at all because the language feature it depends on does not exist on the
+C\texttt{++} side, and is therefore correctly absent with no tag needed to explain the absence.
+Second, \texttt{GetHashCode} returns \texttt{std::size\_t} in \cnaclass{Ray} rather than the
+spec's \texttt{int} --- a deliberate, sensible convention substitution (matching how
+C\texttt{++}'s own \texttt{std::hash} ecosystem represents a hash value) rather than a
+signature bug, the same class of considered adaptation Chapter~\ref{ch:migration-guide}
+described for the \texttt{getXProperty()} / \texttt{setXProperty()} translation of C\# properties.
+\cnaclass{Ray} also adds one member \texttt{xna4-spec} does not list at all: a defaulted
+zero-argument constructor (\texttt{Ray() = default;}). This is not flagged as an
+``Extra-unmarked'' finding in the sense Chapter~\ref{ch:devices-sensors}'s
+\cnaclass{SensorBase} case was --- default-constructibility is a baseline C\texttt{++}
+expectation for a plain aggregate struct, not a deliberate extension of the XNA surface, and
+this book's own audits do not require a \texttt{NOXNA} tag for it.
 
 \section{A licensing note worth stating plainly}
 
