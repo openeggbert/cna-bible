@@ -38,6 +38,74 @@ raised on desktop --- Chapter~\ref{ch:direct3d-backends} explains the one backen
 \texttt{DeviceResetting}, \texttt{ResourceCreated}, \texttt{ResourceDestroyed} (both covered in
 depth in \S\ref{sec:resource-lifetime} below).
 
+\section{Private implementation: window, backend, and virtual-resolution lifecycle}
+\label{sec:private-lifecycle}
+
+The public surface above is a thin shell over eight private methods this chapter's original
+scope never traced. They are not callable from game code, but reading them directly (rather
+than guessing from their names) explains real, observable behavior the public API alone
+doesn't --- most notably how Chapter~\ref{ch:game-loop}'s own \texttt{NOXNA
+PresentationMode} enum (\texttt{Letterbox}/\texttt{Overscan}/\texttt{Stretch}/%
+\texttt{NativeBackBuffer}/\texttt{FixedHeightDynamicWidth}) actually reaches the graphics
+backend.
+
+\begin{description}
+\item[\texttt{createOrAttachWindow()}] under the \texttt{HEADLESS}/\texttt{SOFTWARE}
+  compile-time backend selection, never creates a real window at all --- \texttt{window\_}
+  stays \texttt{nullptr} unconditionally, which is exactly why this chapter's own screenshot
+  tooling (\S\ref{sec:worked-drawprimitives}) needs no display server at all. Otherwise, three
+  paths are tried in order: a runtime \texttt{PresentationParameters::HeadlessEXT} opt-in
+  (honest about its own limits --- only a backend that can genuinely run without a swap chain,
+  D3D12 at the time of writing, supports this; a backend that can't, like EasyGL, whose GL
+  context is bound to a window, throws from its own constructor instead of silently
+  papering over the request); an explicit externally-supplied window handle via
+  \texttt{PresentationParameters::DeviceWindowHandle}; or, the common case, a real
+  \texttt{SDL\_CreateWindow} call (falling back to $1024\times768$ if the requested back-buffer
+  size is unset), whose handle is then published to both \texttt{Input::TextInputEXT} and
+  \texttt{Input::Mouse} so text input and mouse capture target the right window.
+\item[\texttt{createBackend()}] builds a \texttt{GraphicsBackendCreateArgs} struct from the
+  current \cnaclass{PresentationParameters} and wires a \texttt{deviceEventCallback} that
+  drives the real \texttt{Lost}/\texttt{Resetting}/\texttt{Reset} events and
+  \texttt{deviceStatus\_} transitions named back in \S\ref{sec:property-surface} --- the same
+  callback \texttt{D3D9} alone actually invokes.
+\item[\texttt{destroyNativeResources()}] tears the backend down first (via
+  \texttt{unique\_ptr::reset()}), then destroys the SDL window only if this device created it
+  (\texttt{ownsWindow\_}) --- clearing \texttt{TextInputEXT}/\texttt{Mouse}'s own window-handle
+  fields first if they still point at the window about to be destroyed, so neither subsystem is
+  left holding a dangling handle.
+\item[\texttt{UpdateViewportFromWindow()}] resyncs \texttt{Viewport} after a window resize:
+  it asks the backend for its own reported viewport size first, falling back to
+  \texttt{SDL\_GetWindowSize} only if that yields nothing, and --- a subtlety worth stating
+  precisely --- compares the result against \emph{its own last-recorded} width/height, not
+  against \texttt{Viewport}'s current dimensions. The distinction matters: a game may have set
+  a custom sub-region \texttt{Viewport} (split-screen rendering, for instance) that legitimately
+  differs from the full back buffer, and comparing against \texttt{Viewport} directly would
+  silently stomp that custom viewport back to full-window size on the very next
+  \texttt{Present()} even though no real resize occurred.
+\item[\texttt{SetVirtualResolution(width, height)}] is the actual mechanism behind
+  Chapter~\ref{ch:game-loop}'s \texttt{PresentationMode} feature: it stores the requested
+  logical resolution, writes it into \texttt{PresentationParameters}' own back-buffer
+  width/height, forwards it to the backend (which is free to render at a different physical
+  resolution and scale/letterbox/crop the result per whichever \texttt{PresentationMode} the
+  game selected), and finally calls \texttt{UpdateViewportFromWindow()} to resync.
+\item[\texttt{SetPresentationMode(mode)}] simply forwards the mode value to the backend ---
+  all the actual scaling-mode logic (letterbox black bars vs.\ overscan cropping vs.\ plain
+  stretch vs.\ a fixed native back buffer) lives entirely on the backend side of this call, not
+  in \cnaclass{GraphicsDevice} itself.
+\item[\texttt{applyPresentationParametersToWindow()}] applies the real SDL-level consequences
+  of a presentation-parameter change --- \texttt{SDL\_SetWindowFullscreen} and
+  \texttt{SDL\_SetWindowSize} --- and is deliberately non-fatal about the fullscreen call
+  specifically: a headless/virtual-display test environment (Xvfb) may not support fullscreen
+  switching at all, so a failed \texttt{SDL\_SetWindowFullscreen} just clears the SDL error and
+  continues, since the requested state is already stored in \texttt{PresentationParameters}
+  regardless of whether the window server could honor it.
+\item[\texttt{applySamplerStatesToBackend()}] pushes all sixteen
+  (\cnaclass{SamplerStateCollection::MaxSamplers}) sampler slots' filter/address-mode/max
+  anisotropy settings to the backend --- called before every draw-call family in this chapter,
+  which is why \S\ref{sec:property-surface}'s \texttt{SamplerStates} property never needs an
+  explicit ``apply'' call of its own from game code.
+\end{description}
+
 \section{The property surface}
 \label{sec:property-surface}
 

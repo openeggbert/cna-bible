@@ -136,7 +136,7 @@ question silently.
 | 6 | Game Loop | 216 | 40 | Full `Game`/`GameTime`/`GameWindow` method-by-method docs + examples | Not started |
 | 7 | Math and Core Types | 758 (was 270) | 110 | All 11 type-families now have a full method/constructor reference (Vector2/3/4, Matrix, Quaternion, Plane, Ray, Rectangle, Point, Color, MathHelper, 3 Bounding types, Curve/CurveKey) plus worked examples per group and 2 real screenshots | **In progress (~22 of ~110 pages; every type-family covered at least once, depth can still grow further)** |
 | 8 | Content and Assets | 125 | 55 | Full `ContentManager` API + CNJ/XNB worked walkthroughs | Not started |
-| 9 | GraphicsDevice | 722 (was 171) | 90 | Full method-by-method docs for the 887-line header; two real, verified backend-specific gaps found and documented (SpriteBatch can't sample a RenderTarget2D; SupportsCapability(MultipleRenderTargets) always returns true even where MRT silently fails) | **In progress (~19 of ~90 pages)** |
+| 9 | GraphicsDevice | 790 (was 171) | 90 | Full method-by-method docs for the 887-line header; two real, verified backend-specific gaps found and documented (SpriteBatch can't sample a RenderTarget2D; SupportsCapability(MultipleRenderTargets) always returns true even where MRT silently fails); full private-implementation lifecycle section (window/backend/virtual-resolution) traced from GraphicsDevice.cpp, ties directly to Ch.6's PresentationMode | **In progress (~21 of ~90 pages)** |
 | 10 | SpriteBatch | 130 | 55 | Every `Begin`/`Draw`/`DrawString` overload documented + examples | Not started |
 | 11 | Textures and Render Targets | 207 | 60 | Full `Texture2D`/`RenderTarget2D` API + examples | Not started |
 | 12 | Models and Meshes | 103 | 60 | Full `Model`/`ModelMesh`/`ModelBone` family + examples | Not started |
@@ -299,3 +299,19 @@ Ch.13 that is now frozen at ~2 pages per the author's confirmation above).
   SDL_Renderer/DX3/Canvas source, unlike the MRT capability). Chapter grows from 622 to 722
   lines (~16 to ~19 of a ~90-page target). Volume I recompiled clean (133 pages total, 638
   index entries, 0 undefined references).
+- **2026-07-20 (same session, Chapter 9 deepened a third time):** Continued on Ch.9 again per
+  author instruction. Read `GraphicsDevice.cpp` directly for the eight private methods behind
+  construction/teardown/resize (`createOrAttachWindow`, `createBackend`,
+  `destroyNativeResources`, `UpdateViewportFromWindow`, `SetVirtualResolution`,
+  `SetPresentationMode`, `applyPresentationParametersToWindow`,
+  `applySamplerStatesToBackend`) and added a new "Private implementation" section documenting
+  each from its actual body, not just its declaration — including the real mechanism behind
+  Chapter 6's `PresentationMode` enum (`SetVirtualResolution`/`SetPresentationMode` are the
+  methods that actually forward it to the backend), the `HeadlessEXT`/no-window construction
+  path's real three-way branch, and the `UpdateViewportFromWindow` subtlety about comparing
+  against its own last-recorded size rather than the live `Viewport` (to avoid stomping a
+  split-screen sub-viewport on every `Present()`). This is a real, useful cross-chapter tie-in
+  (Ch.6 introduces `PresentationMode`; Ch.9 now explains how it actually reaches the backend),
+  not just more prose for its own sake. Chapter grows from 722 to 790 lines (~19 to ~21 of a
+  ~90-page target). Volume I recompiled clean (135 pages total, 641 index entries, 0 undefined
+  references).

@@ -14,47 +14,58 @@ cna-extended staying marginal; screenshots real-or-nothing) are resolved — don
 
 **Two chapters are in progress, both real committed progress, neither at its full target:**
 
-- **Vol.I Ch.9 (GraphicsDevice)**: 171 → 722 lines (~4 → ~19 of a ~90-page target). Full method
-  coverage plus **two real, verified, backend-specific gaps found and documented from direct
-  source reading**, not assumed or invented:
-  1. `SpriteBatch` cannot correctly sample a `RenderTarget2D` on the `SOFTWARE` backend
-     (`dynamic_cast` in `SoftwareSpriteBatchBackend::Draw` fails silently for
-     `SoftwareRenderTargetBackend`, a sibling class rather than a subclass of
-     `SoftwareTextureBackend`).
-  2. `SupportsCapability(GraphicsCapability::MultipleRenderTargets)` returns `true`
-     universally (nothing overrides it) even on backends like `SOFTWARE` where
-     `SetRenderTargets` silently only binds the first target and drops the rest — the
-     capability check that exists specifically to guard against this doesn't actually catch it.
+- **Vol.I Ch.9 (GraphicsDevice)**: 171 → 790 lines (~4 → ~21 of a ~90-page target). This
+  chapter has had three consecutive deepening passes this session and is now genuinely rich:
+  - Full method coverage for the entire public surface (properties, Clear/Present/Reset,
+    render targets, vertex/index buffers, all `DrawUserPrimitives` overloads, back-buffer
+    readback, all `NOXNA` helpers).
+  - **Two real, verified, backend-specific gaps found from direct source reading**, not
+    assumed: (1) `SpriteBatch` can't correctly sample a `RenderTarget2D` on `SOFTWARE`
+    (`dynamic_cast` fails silently for a sibling class); (2) `SupportsCapability
+    (MultipleRenderTargets)` returns `true` universally since no backend's override actually
+    checks it, so it doesn't guard against the very MRT gap it exists to catch.
+  - A new "Private implementation" section tracing all 8 private lifecycle methods
+    (`createOrAttachWindow`, `createBackend`, `destroyNativeResources`,
+    `UpdateViewportFromWindow`, `SetVirtualResolution`, `SetPresentationMode`,
+    `applyPresentationParametersToWindow`, `applySamplerStatesToBackend`) directly from
+    `GraphicsDevice.cpp`'s real bodies — including the actual mechanism behind Chapter 6's
+    `PresentationMode` enum, a genuine cross-chapter tie-in.
+  - Four worked examples with two real screenshots.
 
-  Four worked examples total now (raw draw calls, render-target round trip, MRT discussion,
-  back-buffer readback + capability checks). This is a genuinely strong chapter for real,
-  source-verified content — worth knowing if picking where to invest further effort.
+  **This chapter is close to feeling "done at this level of depth"** even though it's only
+  ~21 of ~90 target pages — further growth from here should mean covering genuinely new ground
+  (e.g. GraphicsAdapter/DisplayMode could go deeper, or cross-referencing more Part IV backend
+  specifics), not re-explaining what's already there. Worth considering moving to a different
+  chapter next rather than mining Ch.9 for a fourth pass.
 - **Vol.I Ch.7 (Math and Core Types)**: 270 → 758 lines (~4 → ~22 of a ~110-page target). All
   11 type-families have a full reference and at least one worked example.
 
-Volume I currently compiles to 133 pages, 638 index entries, 0 undefined references.
+Volume I currently compiles to 135 pages, 641 index entries, 0 undefined references.
 **Volume II has not been touched in the expansion pass at all yet.**
 
-Three screenshot demos exist in `tools/cna-screenshot-infra/` (`software_screenshot_demo.cpp`,
-`math_rotation_demo.cpp`, `rendertarget_roundtrip_demo.cpp`), one CMake patch covers all three.
-**Important lesson from this session, worth repeating to any future session**: when a worked
-example's screenshot shows something unexpected, investigate before assuming a mistake in the
-demo code — it may be a real, book-worthy finding (this happened twice in Ch.9 this session).
-Trace the actual backend source before writing up a finding; don't speculate.
+Three screenshot demos exist in `tools/cna-screenshot-infra/`, one CMake patch covers all
+three. **Repeated lesson from this session**: when a worked example's screenshot shows
+something unexpected, investigate before assuming a demo-code mistake — it found two real bugs
+this session. Trace the actual backend source before writing up a finding; don't speculate.
 
 ## What to do next
 
-Three reasonable directions:
+Given Ch.9 has now had three deepening passes and is starting to show diminishing returns per
+additional pass, the strongest next moves are:
 
-1. **Push Chapter 9 further** toward ~90 pages (currently ~19) — deeper per-backend behavior
-   notes cross-referencing Part IV's specific backend chapters would be a natural next piece;
-   the render-target/MRT/capability findings already give this chapter real momentum.
-2. **Deepen Chapter 7 further** toward ~110 pages (currently ~22) — a second, different worked
+1. **Deepen Chapter 7 further** toward ~110 pages (currently ~22) — a second, different worked
    example per type (Quaternion-vs-Matrix comparison, Color premultiplied-alpha conversion,
-   Curve's Cycle/Oscillate loop types).
-3. **Start a new chapter** — Chapter 13 (Stock Effects, ~80-page target) is the next largest
-   untouched Volume I Part III target. Volume II hasn't been touched at all — starting there
-   (e.g. Ch.1 Input System, ~70-page target) would be the first real progress on that volume.
+   Curve's Cycle/Oscillate loop types) — this chapter has more untapped room than Ch.9 does
+   right now.
+2. **Start a new chapter** — Chapter 13 (Stock Effects, ~80-page target) is the next largest
+   untouched Volume I Part III target, and both Ch.7/Ch.9's worked examples already use
+   `BasicEffect` in passing. Volume II hasn't been touched at all — starting there (e.g. Ch.1
+   Input System, ~70-page target) would be the first real progress on that volume, and is
+   probably the single highest-value thing to do next given Volume II is currently at 0% of
+   its own Phase 1 progress.
+3. **Push Chapter 9 a fourth time** only if a genuinely new angle presents itself (e.g. a
+   deeper `GraphicsAdapter`/multi-monitor worked example) — don't pad it just to hit the page
+   number.
 
 **Verify the numbers above against `git log` and actual file line counts before trusting them
 at face value** — if a session ran after this note was written and didn't update this file,
@@ -70,6 +81,5 @@ treat this section as stale and re-derive current state from the repo itself.
   `tools/cna-screenshot-infra/README.md`.
 - After embedding any new screenshot, verify it actually rendered correctly by converting the
   relevant compiled PDF page to an image and reading it back (`pdftoppm` + the `Read` tool).
-- Avoid hardcoding a section/figure number as plain text inside a code comment or prose (it
-  won't auto-update like a real `\ref{}` would across renumbering) — one such case was caught
-  and fixed this session; say "earlier in this chapter" instead when a real `\ref` isn't handy.
+- Avoid hardcoding a section/figure number as plain text inside a code comment or prose — say
+  "earlier in this chapter" instead when a real `\ref{}` isn't handy.
