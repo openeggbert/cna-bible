@@ -182,7 +182,7 @@ ever needed).
 | 36 | EasyGL Deep Dive | 151 (was 112) | 55 | Worked examples for Device's per-feature capability gating and the Program::uniform_block_index/Framebuffer typed-reference fixes, grounded in real headers; also fixed two pre-existing single-long-identifier overfull-hbox defects | **In progress (~5 of ~55 pages)** |
 | 37 | free-direct Deep Dive | 65 | ~2 (no change) | **Stays marginal per author confirmation 2026-07-20 — do not expand** | N/A — intentionally frozen |
 | 38 | Windows/Wine | 137 (was 103) | 45 | Real shell-invocation worked examples for the MinGW-w64 toolchain and the DXVK self-verifying gate (including its two escape hatches), grounded in the actual scripts | **In progress (~4 of ~45 pages)** |
-| 39 | Web/Emscripten | 88 | 40 | Deeper build/deploy detail | Not started |
+| 39 | Web/Emscripten | 121 (was 88) | 40 | Real shell-invocation worked examples for the Emscripten-specific compile/link flags and the confirmed CANVAS build success story, grounded in the actual CMakeLists.txt/cmake/UnitTests.cmake | **In progress (~3 of ~40 pages)** |
 | 40 | Android/NDK | 82 | 40 | Deeper build/deploy detail | Not started |
 | 41 | Verification Methodology | 68 | 35 | More worked audit examples | Not started |
 | 42 | Migration Guide | 102 | 55 | Full worked porting walkthroughs | Not started |
@@ -943,3 +943,21 @@ stays frozen by explicit author decision, not left incomplete.
   bypass). Chapter grows from 103 to 137 lines (~4 to ~4 of a ~45-page target). Volume
   recompiled clean (285 pages total, 0 undefined references, 0 duplicate-label warnings); all
   four of the chapter's own pages verified by rendering to PNG and reading them back.
+- **2026-07-20 (same session, "pokracuj"):** Chapter 39 (Web/Emscripten) — first expansion
+  pass. Same tooling-narrative shape as Chapter 38, not a C++ API reference: real Emscripten
+  compile/link flags and the honest, carefully-hedged "what has actually been built and run"
+  account. Read the real `CMakeLists.txt` (its `if(EMSCRIPTEN)` block) and
+  `cmake/UnitTests.cmake` (the `CnaTests`-only link options) directly, plus
+  `docs/web-emscripten-graphics-limitations.md` for the CANVAS build-success wording. Added one
+  real detail sharpened from paraphrase to exact quote: the project's own build comments record
+  the literal error `"window is not defined"` as the precise exception a genuine CANVAS
+  smoke-test build hits under Node (not just "SDL\_Init throws," which the chapter already
+  said, but the actual underlying JS exception string). Added three worked examples: the exact
+  `-fexceptions`/`-sNO_DISABLE_EXCEPTION_CATCHING=1` compile/link options CNA applies globally
+  under Emscripten; the two `CnaTests`-only link flags (`-sEXIT_RUNTIME=1`, `-sASYNCIFY=1`)
+  with their real `target_link_options` CMake syntax; and the real `emcmake`/`cmake --build`/
+  `node` invocation shape behind the CANVAS build-and-run success story, following this book's
+  own already-established `-DCNA_GRAPHICS_BACKEND=X` convention. Chapter grows from 88 to 121
+  lines (~3 to ~3 of a ~40-page target). Volume recompiled clean (287 pages total, 0 undefined
+  references, 0 duplicate-label warnings); all four of the chapter's own pages verified by
+  rendering to PNG and reading them back.

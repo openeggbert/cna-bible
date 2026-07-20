@@ -17,6 +17,16 @@ while \texttt{CANVAS} (Chapter~\ref{ch:canvas-ascii-backends}) is hard-gated the
 direction, refusing to configure at all outside Emscripten, since HTML \texttt{<canvas>} has
 no meaning anywhere else.
 
+\begin{lstlisting}[style=cnashell]
+# Worked example: the exact compile/link options the top-level CMakeLists.txt
+# applies globally under Emscripten, before sharp-runtime is even added --
+# unwinding requires every frame in the call chain to be compiled with
+# -fexceptions, so this has to happen before anything else is configured.
+# (from CMakeLists.txt's own if(EMSCRIPTEN) block)
+add_compile_options(-fexceptions)
+add_link_options(-fexceptions -sNO_DISABLE_EXCEPTION_CATCHING=1)
+\end{lstlisting}
+
 Several test categories are excluded specifically under Emscripten, each for a concrete
 reason rather than a blanket ``skip on web'' rule: pixel/integration test suites for every
 backend's own CMake test registration are excluded here, and a handful of process-spawning
@@ -37,14 +47,34 @@ without help, confirmed directly: a real one-second sleep loop never let a WebSo
 finish without Emscripten's Asyncify transformation enabled, so Asyncify is applied, scoped
 specifically to this one test binary rather than the whole project.
 
+\begin{lstlisting}[style=cnashell]
+# Worked example: both CnaTests-only link flags, exactly as the real
+# cmake/UnitTests.cmake applies them -- neither affects any other
+# Emscripten target (demos, the two-process harness) in the same build.
+target_link_options(CnaTests PRIVATE -sEXIT_RUNTIME=1)
+target_link_options(CnaTests PRIVATE -sASYNCIFY=1)
+\end{lstlisting}
+
 \section{What has actually been built and run, versus what has not}
 
 This is the section most worth reading carefully, because the picture differs sharply by
 backend. The \texttt{CANVAS} backend has a real, confirmed success story: a genuine
-\texttt{emcmake}/\texttt{emcc} (version 6.0.2) configure-and-build succeeded, producing a real
+\texttt{emcmake} / \texttt{emcc} (version 6.0.2) configure-and-build succeeded, producing a real
 build directory for the first time in this project's history, and \texttt{CnaTests.js}
 genuinely links and runs under \texttt{node}, with a real, backend-agnostic GoogleTest suite
 passing in full.
+
+\begin{lstlisting}[style=cnashell]
+# Worked example: the real invocation shape behind that CANVAS success
+# story, following the same -DCNA_GRAPHICS_BACKEND convention this book's
+# Building CNA chapter already established for native builds.
+emcmake cmake -S . -B build-canvas -DCNA_GRAPHICS_BACKEND=CANVAS
+cmake --build build-canvas
+node build-canvas/tests/CnaTests.js
+# The GoogleTest suite genuinely passes here -- but see the next section
+# for the hard ceiling on what "passes" can actually prove in this
+# environment, even for a build that genuinely links and runs.
+\end{lstlisting}
 
 The default \texttt{EASYGL}/WebGL2 path tells a different, more honest story: at the time of
 writing, no Emscripten build directory has ever existed for \texttt{EASYGL} at all, and no
@@ -61,7 +91,10 @@ Even where a build genuinely succeeds and a test binary genuinely runs, there is
 ceiling on what it can prove: \texttt{node} provides no WebGL context and no
 \texttt{CanvasRenderingContext2D}/DOM at all --- confirmed directly, since
 \texttt{SDL\_Init(SDL\_INIT\_VIDEO)} itself throws under Emscripten running inside
-\texttt{node}. This is the same ceiling Chapter~\ref{ch:canvas-ascii-backends} already
+\texttt{node}, and the project's own build comments record the exact underlying error rather
+than a paraphrase: \texttt{"window is not defined"}, the literal exception a real, genuine
+\texttt{CANVAS} smoke-test build hits the moment it tries to touch a browser global that
+simply does not exist in a bare Node.js process. This is the same ceiling Chapter~\ref{ch:canvas-ascii-backends} already
 described for \texttt{CANVAS} specifically: any test suite that constructs a real
 \cnaclass{GraphicsDevice} simply cannot execute in this dev loop at all, real browser or not,
 which is exactly why \texttt{docs/canvas-backend.md}'s own manual browser verification
@@ -72,7 +105,7 @@ an actual browser via a tool like \texttt{emrun}, rather than claimed as done.
 One further, genuinely interesting piece of real code is worth knowing about even though it
 has never been exercised against a real browser: \texttt{EASYGL}'s own backend implementation
 contains real, reviewed WebGL-context-loss handling --- registering for the browser's own
-\texttt{WEBGL\_lose\_context} extension and its \texttt{webglcontextlost}/%
+\texttt{WEBGL\_lose\_context} extension and its \texttt{webglcontextlost} /
 \texttt{webglcontextrestored} events. This code path exists and has been read and reviewed,
 but --- consistent with everything else in this section --- has never actually run against a
 real browser; only the ordinary desktop code path (a synchronous SDL GL context
