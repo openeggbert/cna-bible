@@ -30,6 +30,42 @@ crash. This is the level at which CNA's own house style Chapter~\ref{ch:design-p
 described bites hardest: a stub that silently drops a parameter compiles cleanly, passes a
 crash-only test, and only fails once something reads the pixels it was supposed to affect.
 
+\section{A worked pixel test, in the shape that actually found the bug}
+
+The \texttt{transformMatrix} finding above is worth seeing in the actual test's own shape, not
+just its conclusion, because the shape itself is the reusable lesson: draw something whose
+final screen position depends entirely on the value under test, then read back specific pixels
+and assert on their real color. \texttt{examples/sdlrenderer\_transform\_matrix\_test.cpp}
+does exactly this for \cnaclass{SpriteBatch::Begin()}'s \texttt{transformMatrix} parameter on
+the \texttt{SDL\_RENDERER} backend:
+
+\begin{lstlisting}
+// Translate every sprite by (+100, +50).
+Matrix tx = Matrix::CreateTranslation(100.0f, 50.0f, 0.0f);
+
+sb_->Begin(SpriteSortMode::Deferred, BlendState::Opaque,
+           const_cast<SamplerState*>(&SamplerState::PointClamp),
+           nullptr, nullptr, nullptr, tx);
+
+// Draw a 1x1 red sprite at (0,0) -- a correct transform moves it to (100,50).
+sb_->Draw(*redTex_, Vector2(0.0f, 0.0f), Color::White);
+sb_->End();
+
+// Read back real pixels, not the value a getter reports.
+Color got(0, 0, 0, 0);
+Rectangle reg(100, 50, 1, 1);
+dev.GetBackBufferData(&reg, &got, 0, 1);
+const bool ok = colourMatch(got, kRed);   // FAILS if transformMatrix was silently ignored
+\end{lstlisting}
+
+\texttt{SpriteEffects::FlipHorizontally}, applied to a second sprite under the same transform,
+is the other half of the real test: it confirms the affine flip-and-transform combination
+works together, not just plain translation in isolation, bringing the total to four checked
+coordinates. The core mechanism, though, is this one pair: draw at a position that is only
+correct if the transform was actually applied, then read the screen back at exactly that
+position. No getter, no internal state inspection, and no assumption that a parameter which
+was accepted was also used --- only the pixel a real player would actually see.
+
 \section{Differential testing: a real reference, not a specification}
 
 Chapter~\ref{ch:what-is-cna} named this as one of CNA's three most distinctive verification

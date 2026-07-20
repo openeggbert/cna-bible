@@ -190,7 +190,7 @@ ever needed).
 | 44 | xna4-spec Auditing | 117 (was 74) | 40 | Added a full worked member-by-member audit of \cnaclass{Ray} against `xna4-spec`'s own XML, grounded in the real header; fixed a pre-existing long-URL overfull-hbox defect found while verifying | **In progress (~4 of ~40 pages)** |
 | 45 | Samples and Examples | 104 (was 54) | 45 | Corrected an imprecise claim ("every one of the 23 failures traces to the same root cause") with a real, checked-per-sample breakdown into three distinct root causes; added the SimpleAnimation "Done can still hide a bug" finding, grounded in `cna-samples`' own `PLAN.md`/`DEFERRED.md`/`missing.md` files | **In progress (~4 of ~45 pages)** |
 | 46 | Project Practice | 150 (was 100) | 40 | Added a real task entry (`ASCII-40`) quoted almost in full from `plan_ascii.md`, plus a new finding on the task-splitting convention (Task~868→923, Task~878→899) grounded in `plan_graphics.md` | **In progress (~5 of ~40 pages)** |
-| 47 | Testing Philosophy | 103 | 45 | More worked test examples | Not started |
+| 47 | Testing Philosophy | 139 (was 103) | 45 | Added a real worked pixel test (`sdlrenderer_transform_matrix_test.cpp`) quoted directly, showing the transformMatrix bug's own discovery mechanism; fixed a genuine 95pt-overfull identifier defect found while verifying | **In progress (~4 of ~45 pages)** |
 | 48 | Roadmap | 82 | 30 | Deeper detail | Not started |
 | B | Feature Matrix | 58 | 15 | Modest expansion, stays a reference table | Not started |
 | C | Glossary | 74 | 15 | More terms | Not started |
@@ -1125,3 +1125,20 @@ stays frozen by explicit author decision, not left incomplete.
   ~40-page target). Volume recompiled clean (295 pages total, 0 undefined references, 0
   duplicate-label warnings); all four of the chapter's own pages (259-262, the last one a normal
   blank right-hand-start padding page) verified by rendering to PNG and reading them back.
+- **2026-07-20 (same session, "pokkracuj"):** Chapter 47 (Testing Philosophy) — first
+  expansion pass. PLAN.md's gap description ("More worked test examples") pointed at the same
+  "make the abstract concrete" pattern used for Chapters 44 and 46: this chapter names the
+  \texttt{transformMatrix}/\cnaclass{SpriteBatch::Begin()} bug and the Vulkan blend-state bug as
+  its two headline pixel-test findings but never actually shows a test. Read
+  `/workspace/cna/examples/sdlrenderer_transform_matrix_test.cpp` directly and added a new
+  section quoting its core mechanism (draw a sprite at a position only correct if
+  `transformMatrix` was actually applied, then `GetBackBufferData()` a specific pixel and assert
+  on the real color) as a condensed, verified worked example. While rendering the chapter's
+  pages to PNG, found a real, severe (95.37pt) overfull-hbox defect — `SpriteEffects::%
+  FlipHorizontally` visibly clipped running off the page edge, mid-paragraph — and fixed it by
+  restructuring the sentence so the identifier becomes the very first word of its own paragraph,
+  matching the established single-long-identifier fix technique. Chapter grows from 103 to 139
+  lines (~3 to ~4 of a ~45-page target). Volume recompiled clean (295 pages total, 0 undefined
+  references, 0 duplicate-label warnings); all four of the chapter's own pages (263-266, the
+  last one a normal blank right-hand-start padding page) verified by rendering to PNG and reading
+  them back, including a second render confirming the overfull-hbox fix.

@@ -77,7 +77,21 @@ either way. The only real verification is `pdftoppm -png -f N -l N -r 100 main.p
 /tmp/.../pageN` (find N by content search: `pdftotext -f N -l N main.pdf - | grep <text>`,
 never by printed folio number) then reading the PNG back with the Read tool.
 
-## Chapter 46 (Project Practice) is now done too — fifth chapter of Part IX
+## Chapter 47 (Testing Philosophy) is now done too — sixth chapter of Part IX
+
+Grew 103 → 139 lines. Same "make the abstract concrete" gap shape as Chapters 44/46: this
+chapter names its two headline pixel-test bugs but never shows an actual test. Read
+`/workspace/cna/examples/sdlrenderer_transform_matrix_test.cpp` directly and quoted its core
+mechanism (draw at a position only correct if `transformMatrix` was applied, then read back a
+specific pixel and assert its real color) as a new worked example. While PNG-rendering the
+chapter's pages, caught a real, severe (95.37pt) overfull-hbox defect —
+`SpriteEffects::FlipHorizontally` visibly clipped off the page edge — fixed by making the
+identifier the first word of its own paragraph (the established single-long-identifier
+technique). Full detail in PLAN.md's session log. Volume compiles clean at 295 pages, 0
+undefined refs; all four of the chapter's own pages (263-266) PNG-rendered and confirmed
+defect-free, including a second render confirming the overfull-hbox fix.
+
+## Chapter 46 (Project Practice) is done too — fifth chapter of Part IX
 
 Grew 100 → 150 lines. Like Chapter 44, this chapter described its own tracking layers
 (`NEXT.md`/`AUDIT.md`/`CHECKLIST.md`/`plan_<subsystem>.md`/Doxygen tags) entirely in the
@@ -154,7 +168,8 @@ unrelated overfull-hbox warning surfaced for pre-existing Chapter 36 content
 
 ## What to do next
 
-1. **Continue Part IX**: Chapter 47 (Testing Philosophy) is next, then 48. Same approach: read
+1. **Continue Part IX**: Chapter 48 (Roadmap) is next — the last chapter of Part IX and of the
+   whole book's main chapter sequence. Same approach: read
    the real source before assuming whether each chapter is API-reference-shaped,
    tooling/narrative-shaped, or synthesis-shaped like Chapter 41 turned out to be. When a
    chapter doesn't fit the "add worked examples" mold, look instead for a genuine content gap or
