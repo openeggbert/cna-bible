@@ -189,7 +189,7 @@ ever needed).
 | 43 | Blupi Case Study | 172 (was 116) | 55 | Added a new performance-audit section (measured BltFast/memcpy benchmarks, the CMAKE_BUILD_TYPE default-build finding, exact call-site line numbers in both games, and a confirmed-dead-code call site), grounded in `free-direct/docs/audit_ddraw.md` | **In progress (~5 of ~55 pages)** |
 | 44 | xna4-spec Auditing | 117 (was 74) | 40 | Added a full worked member-by-member audit of \cnaclass{Ray} against `xna4-spec`'s own XML, grounded in the real header; fixed a pre-existing long-URL overfull-hbox defect found while verifying | **In progress (~4 of ~40 pages)** |
 | 45 | Samples and Examples | 104 (was 54) | 45 | Corrected an imprecise claim ("every one of the 23 failures traces to the same root cause") with a real, checked-per-sample breakdown into three distinct root causes; added the SimpleAnimation "Done can still hide a bug" finding, grounded in `cna-samples`' own `PLAN.md`/`DEFERRED.md`/`missing.md` files | **In progress (~4 of ~45 pages)** |
-| 46 | Project Practice | 100 | 40 | Deeper task-tracking-methodology detail | Not started |
+| 46 | Project Practice | 150 (was 100) | 40 | Added a real task entry (`ASCII-40`) quoted almost in full from `plan_ascii.md`, plus a new finding on the task-splitting convention (Task~868→923, Task~878→899) grounded in `plan_graphics.md` | **In progress (~5 of ~40 pages)** |
 | 47 | Testing Philosophy | 103 | 45 | More worked test examples | Not started |
 | 48 | Roadmap | 82 | 30 | Deeper detail | Not started |
 | B | Feature Matrix | 58 | 15 | Modest expansion, stays a reference table | Not started |
@@ -1105,3 +1105,23 @@ stays frozen by explicit author decision, not left incomplete.
   undefined references, 0 duplicate-label warnings); all four of the chapter's own pages
   (255-258, the last one a normal blank right-hand-start padding page) verified by rendering to
   PNG and reading them back.
+- **2026-07-20 (same session, "pokkracuj"):** Chapter 46 (Project Practice and Task Tracking) —
+  first expansion pass. This chapter described its own `NEXT.md`/`AUDIT.md`/`CHECKLIST.md`/
+  `plan_<subsystem>.md`/Doxygen-tag layers entirely in the abstract, with no single task entry
+  ever actually quoted — the same "make the abstract concrete" gap shape as Chapter 44. Read
+  `/workspace/cna/plan_ascii.md` (already cloned) directly and quoted its `ASCII-40` task row
+  almost in full as a new worked example, showing every element the chapter names (a stable
+  task ID, a terminal status, a plain description, and a real bug found and fixed mid-task,
+  confirmed via a new pixel test) in its native form. Also read `/workspace/cna/plan_graphics.md`
+  and found a genuinely new methodological convention not previously described anywhere in this
+  book: when a single numbered task turns out to span multiple independent backends, this
+  project splits it into one new sub-task per backend (Task~868→923, Task~878→899, each split
+  explicitly citing the other as precedent) and rewrites the original row into a "tracking
+  pointer" rather than deleting it — the same stale-but-retained-with-a-warning discipline this
+  chapter's own opening section already named for `NEXT.md`. One build error was hit and fixed
+  along the way: `\checkmark` (from the unloaded `amssymb` package) caused a fatal
+  "Undefined control sequence" error; replaced with the plain word "done" rather than adding a
+  new package dependency for one symbol. Chapter grows from 100 to 150 lines (~4 to ~5 of a
+  ~40-page target). Volume recompiled clean (295 pages total, 0 undefined references, 0
+  duplicate-label warnings); all four of the chapter's own pages (259-262, the last one a normal
+  blank right-hand-start padding page) verified by rendering to PNG and reading them back.

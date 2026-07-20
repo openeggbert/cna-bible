@@ -77,7 +77,21 @@ either way. The only real verification is `pdftoppm -png -f N -l N -r 100 main.p
 /tmp/.../pageN` (find N by content search: `pdftotext -f N -l N main.pdf - | grep <text>`,
 never by printed folio number) then reading the PNG back with the Read tool.
 
-## Chapter 45 (cna-samples and cna-examples) is now done too — fourth chapter of Part IX
+## Chapter 46 (Project Practice) is now done too — fifth chapter of Part IX
+
+Grew 100 → 150 lines. Like Chapter 44, this chapter described its own tracking layers
+(`NEXT.md`/`AUDIT.md`/`CHECKLIST.md`/`plan_<subsystem>.md`/Doxygen tags) entirely in the
+abstract, with no real task entry ever quoted — fixed by reading `/workspace/cna/plan_ascii.md`
+directly and quoting its `ASCII-40` row almost in full. Also found a genuinely new convention in
+`/workspace/cna/plan_graphics.md`: large tasks spanning multiple backends get split into one
+sub-task per backend (Task~868→923, Task~878→899), with the original row rewritten into a
+"tracking pointer" rather than deleted. Hit and fixed one real build error along the way:
+`\checkmark` needs `amssymb`, which this book's preamble doesn't load — used the plain word
+"done" instead of adding a new package for one symbol. Full detail in PLAN.md's session log.
+Volume compiles clean at 295 pages, 0 undefined refs; all four of the chapter's own pages
+(259-262) PNG-rendered and confirmed defect-free.
+
+## Chapter 45 (cna-samples and cna-examples) is done too — fourth chapter of Part IX
 
 Grew 54 → 104 lines, the biggest relative jump of Part IX so far — cloning `/workspace/cna-samples`
 fresh and reading its own `PLAN.md`/`DEFERRED.md`/`missing.md` files turned up a genuine,
@@ -140,7 +154,7 @@ unrelated overfull-hbox warning surfaced for pre-existing Chapter 36 content
 
 ## What to do next
 
-1. **Continue Part IX**: Chapter 46 (Project Practice) is next, then 47-48. Same approach: read
+1. **Continue Part IX**: Chapter 47 (Testing Philosophy) is next, then 48. Same approach: read
    the real source before assuming whether each chapter is API-reference-shaped,
    tooling/narrative-shaped, or synthesis-shaped like Chapter 41 turned out to be. When a
    chapter doesn't fit the "add worked examples" mold, look instead for a genuine content gap or
