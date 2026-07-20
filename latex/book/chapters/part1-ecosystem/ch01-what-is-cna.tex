@@ -125,13 +125,16 @@ methodology. Three mechanisms recur throughout the codebase and throughout this 
         call-for-call, rather than against a written specification of what FNA is supposed to
         do. Disputed behavior that differential testing cannot settle is checked against real
         XNA 4.0 running in a Windows~7 virtual machine.
-  \item[A compile-time purity check.] The \texttt{NOXNA} build option turns every
-        non-XNA-tagged declaration into a \texttt{[[deprecated]]} warning under
-        \texttt{-Werror}. Because every CNA extension beyond the real XNA 4.0 API must be
-        wrapped in the \texttt{NOXNA} marker macro (Chapter~\ref{ch:design-philosophy}
-        explains the convention in full), this check gives the project a mechanical --- not
-        just documented --- guarantee that the public \cnaclass{Microsoft::Xna::Framework}
-        surface has not silently grown project-specific extensions.
+  \item[A compile-time purity check.] A dedicated build define, \texttt{CNA\_STRICT\_XNA\_API},
+        turns the otherwise-inert \texttt{NOXNA} marker macro into a real
+        \texttt{[[deprecated]]} attribute, checked under \texttt{-Werror=deprecated-%
+        declarations} by two small standalone CMake targets built specifically for this
+        purpose. Because every CNA extension beyond the real XNA 4.0 API must be wrapped in the
+        \texttt{NOXNA} marker macro (Chapter~\ref{ch:design-philosophy} explains the
+        convention, and the self-verifying pair of targets that checks it, in full), this gives
+        the project a mechanical --- not just documented --- guarantee that the public
+        \cnaclass{Microsoft::Xna::Framework} surface has not silently grown project-specific
+        extensions.
   \item[Pixel-level oracle corpora, not just ``it compiles.''] The \texttt{D3D9} backend in
         particular ships a 31-scene oracle corpus that diffs CNA's own render output against
         \emph{the real XNA 4.0 runtime's own render} of the same scene, at zero tolerance. As

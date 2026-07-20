@@ -66,12 +66,45 @@ examples from the real codebase:
 NOXNA [[nodiscard]] const std::string& GetTypeName() const override;
 \end{lstlisting}
 
-What makes this more than a documentation convention is the \texttt{NOXNA} CMake build
-option described in Chapter~\ref{ch:what-is-cna}: with it enabled, every declaration inside
-the XNA namespace tree that is \emph{not} tagged \texttt{NOXNA} is checked against the
-expected XNA surface, and drift shows up as a \texttt{[[deprecated]]} warning under
-\texttt{-Werror} --- turning ``did we accidentally leak a project-specific extension into the
-public XNA-compatible surface'' from a code-review judgment call into a build failure.
+What makes this more than a documentation convention is a compiler-enforced check described in
+Chapter~\ref{ch:what-is-cna}, precisely: \texttt{CNAHelper.hpp}'s own definition of
+\texttt{NOXNA} is conditional on a second, distinct macro, \texttt{CNA\_STRICT\_XNA\_API} --- in
+a normal build \texttt{NOXNA} expands to nothing at all (it is documentation only); only when
+\texttt{CNA\_STRICT\_XNA\_API} is defined does it expand to
+\texttt{[[deprecated("NOXNA: not part of the XNA 4.0 API surface")]]}. That define is never set
+for the normal \texttt{CNA} library target --- it is scoped to exactly two small standalone
+CMake targets in \texttt{cmake/Harnesses.cmake}, each compiled with
+\texttt{-Werror=deprecated-declarations} on top of it, so a stray \texttt{NOXNA}-tagged call
+anywhere those targets' translation units can see turns into a hard build failure rather than a
+warning that could be scrolled past.
+
+\begin{sourcenote}
+\textbf{A worked example: the check that verifies the check.} A positive-only test --- ``the
+real API still compiles clean'' --- cannot by itself prove the mechanism would actually catch a
+real leak; it is equally consistent with a check that always passes. CNA's own
+\texttt{tools/\allowbreak{}devices/\allowbreak{}Strict\allowbreak{}Xna\allowbreak{}Api\allowbreak{}Surface\allowbreak{}Check.cpp} (compiled as the
+\texttt{cna\allowbreak{}\_strict\allowbreak{}\_xna\allowbreak{}\_api\allowbreak{}\_check} target,
+run as the \texttt{StrictXnaApiSurfaceCheck\allowbreak{}\_Compile\allowbreak{}\_Run} CTest) is
+that positive direction, and its own header comment names every \texttt{NOXNA}-tagged
+\cnaclass{Accelerometer} / \cnaclass{Sensors} member it deliberately avoids calling. The negative
+direction --- proving a real leak genuinely fails --- is a second, separate file,
+\texttt{tools/\allowbreak{}devices/\allowbreak{}Strict\allowbreak{}Xna\allowbreak{}Api\allowbreak{}Surface\allowbreak{}Leak\allowbreak{}Check.cpp}, whose entire body is one deliberate
+violation:
+\begin{lstlisting}
+Microsoft::Devices::Sensors::Accelerometer accelerometer;
+accelerometer.InjectSyntheticSensorUpdate(1.0f, 0.0f, 0.0f); // NOXNA -- must fail to compile here.
+\end{lstlisting}
+This compiles into an \texttt{EXCLUDE\_FROM\_ALL} target
+(\texttt{cna\allowbreak{}\_strict\allowbreak{}\_xna\allowbreak{}\_api\allowbreak{}\_leak\allowbreak{}\_check}),
+so it never participates in an ordinary build. It is invoked by exactly one CTest:
+\texttt{Strict\allowbreak{}Xna\allowbreak{}Api\allowbreak{}Surface\allowbreak{}Leak\allowbreak{}Check\allowbreak{}\_Must\allowbreak{}Fail\allowbreak{}To\allowbreak{}Compile}, whose
+\texttt{WILL\_FAIL TRUE} property inverts the usual pass/fail meaning --- the test
+\emph{passes} only if the build command it wraps \emph{fails}. If a future change to the
+\texttt{NOXNA} macro or to \texttt{CNA\_STRICT\_XNA\_API}'s wiring ever let this
+deliberately-broken file compile, this specific test would flip from passing to failing ---
+catching a regression in the safety net itself, not merely in the API surface the net is meant
+to protect.
+\end{sourcenote}
 
 \section{C\# properties, translated consistently}
 
@@ -180,7 +213,8 @@ src/Microsoft/Xna/Framework/Graphics/Texture2D.cpp
 
 Non-template implementations do not live in headers. The same mirroring rule is why this
 book can describe ``the Graphics namespace'' and ``the 106 headers under
-\texttt{include/Microsoft/Xna/Framework/Graphics/}'' as the same thing throughout Part~III.
+\texttt{include/\allowbreak{}Microsoft/\allowbreak{}Xna/\allowbreak{}Framework/\allowbreak{}Graphics/}''
+as the same thing throughout Part~III.
 
 \section{No backward-compatibility shims}
 
