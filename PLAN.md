@@ -186,7 +186,7 @@ ever needed).
 | 40 | Android/NDK | 123 (was 82) | 40 | Real shell-invocation worked examples for the NDK cross-compile/llvm-nm verification and the emulator boot/install/sensor-injection sequence, grounded in the project's own build notes | **In progress (~4 of ~40 pages)** |
 | 41 | Verification Methodology | 83 (was 68) | 35 | Added a macOS row to the comparative table (a genuine, honestly-named documentation gap: no dedicated chapter exists for it), plus fixed a stale "Part~IV" cross-reference left over from the volume merge | **In progress (~3 of ~35 pages)** |
 | 42 | Migration Guide | 165 (was 102) | 55 | Worked examples for the C#-to-CNA Update()/Draw() mechanical translation (signatures verified against Game.hpp) and hand-computing a custom vertex format's byte stride against the five recognized strides | **In progress (~4 of ~55 pages)** |
-| 43 | Blupi Case Study | 116 | 55 | Deeper call-site audit detail | Not started |
+| 43 | Blupi Case Study | 172 (was 116) | 55 | Added a new performance-audit section (measured BltFast/memcpy benchmarks, the CMAKE_BUILD_TYPE default-build finding, exact call-site line numbers in both games, and a confirmed-dead-code call site), grounded in `free-direct/docs/audit_ddraw.md` | **In progress (~5 of ~55 pages)** |
 | 44 | xna4-spec Auditing | 74 | 40 | More worked audit examples | Not started |
 | 45 | Samples and Examples | 54 | 45 | Per-sample summaries, more of the 86 samples covered | Not started |
 | 46 | Project Practice | 100 | 40 | Deeper task-tracking-methodology detail | Not started |
@@ -1028,3 +1028,27 @@ stays frozen by explicit author decision, not left incomplete.
   content (`easygl::Capabilities::detect_common_features()`) — rendered that page too and
   confirmed it is a false positive with no visible clipping, consistent with this project's
   standing rule that the numeric warning alone is never sufficient evidence either way.
+- **2026-07-20 (same session, "pokkracuj"):** Chapter 43 (Case Study: Speedy Blupi and Planet
+  Blupi) — first expansion pass. This chapter was already dense with real, specific call-site
+  audit findings (exact `Blt`/`BltFast` call counts, the `PCMWAVEFORMAT` layout hazard, the
+  `GetDC` live-gameplay dependency), so its gap shape ("Deeper call-site audit detail" per
+  PLAN.md) meant finding a genuinely new, real source to deepen it from, not re-deriving what
+  was already covered. Read `/workspace/free-direct/docs/audit_ddraw.md` directly — a later,
+  dedicated performance audit of the same DirectDraw implementation this chapter already
+  discusses, which benchmarked the real compiled library headlessly rather than reasoning from
+  Big-O alone. Added one new section, "A performance audit adds exact costs to the same call
+  sites," covering: the missing 1:1 fast path in the shared `BlitFrom` blit engine, measured at
+  29x slower than a raw `memcpy` at an optimized build and 206x slower at the project's own
+  default (unoptimized) build configuration, with a benchmark table; the exact real `BltFast`
+  call-site line numbers in both games (`free-eggbert: pixmap.cpp:406,574,580,612,1762,1818`;
+  `Planet Blupi: pixmap.cpp:395,401,433,1235,1291`), proving every one is structurally 1:1 per
+  the real DirectDraw~3 API's own `BltFast` signature (no destination-size parameter); the
+  single highest-leverage finding in the audit (`CMAKE_BUILD_TYPE` defaults to unset, giving a
+  6.6x performance penalty project-wide, confirmed via `CMakeCache.txt`); the one confirmed
+  real call site where scaling math is genuinely necessary (`free-eggbert`'s
+  `CPixmap::Display()`, this chapter's own previously-named hottest call); and a newly-found
+  piece of confirmed dead code (`CPixmap::DrawMap`, `pixmap.cpp:640`, zero real callers found
+  anywhere in `free-eggbert`'s reconstructed source). Chapter grows from 116 to 172 lines (~4 to
+  ~5 of a ~55-page target). Volume recompiled clean (289 pages total, 0 undefined references, 0
+  duplicate-label warnings); all four of the chapter's own pages (247-250) verified by rendering
+  to PNG and reading them back, including the new benchmark table.

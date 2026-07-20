@@ -44,23 +44,79 @@ assumed harmless.
 \emph{Planet Blupi} uses source color-keying at exactly two call sites, both routed through a
 shared caching helper, and both constructing what is actually a \emph{degenerate} color-key
 range --- a single value, not a genuine low-to-high range --- matched against white via a
-real \texttt{GetDC}/\texttt{SetPixel}/\texttt{Lock} round trip rather than a hardcoded palette
+real \texttt{GetDC} / \texttt{SetPixel} / \texttt{Lock} round trip rather than a hardcoded palette
 index. \texttt{free-direct}'s color-keying implementation itself supports the fuller, ranged
 case; the real games it was built against simply never exercise that fuller capability, which
 is worth knowing if you are evaluating this library for a third game that might.
 
 \section{A live-gameplay dependency on GetDC, not just a compatibility nicety}
 
-\texttt{GetDC}/\texttt{ReleaseDC} might look, from the outside, like a minor GDI-interop
+\texttt{GetDC} / \texttt{ReleaseDC} might look, from the outside, like a minor GDI-interop
 convenience rarely exercised by a real game. The audit found the opposite for
 \emph{Planet Blupi} specifically: its own \texttt{IsIconPixel} function --- a live,
 per-mouse-click gameplay hit-test, not a one-time setup call --- depends on
-\texttt{GetDC}/\texttt{ReleaseDC} working correctly on both 32-bit surfaces (handled as a
+\texttt{GetDC} / \texttt{ReleaseDC} working correctly on both 32-bit surfaces (handled as a
 direct, zero-copy wrap) and 8-bit surfaces (expanded through a temporary palette-converted
 buffer). This single finding is why \texttt{free-direct}'s own \texttt{GetDC} support had to
 be functionally real rather than a thin stub --- a case where a call that looks incidental
 from the API surface alone turns out to gate real, moment-to-moment gameplay logic once you
 actually check what calls it and why.
+
+\section{A performance audit adds exact costs to the same call sites}
+
+A later, dedicated performance audit of \texttt{free-direct}'s DirectDraw implementation
+went further than call-site counting alone: it benchmarked the real, compiled library
+directly (headlessly, via \texttt{SDL\_VIDEODRIVER=dummy}) rather than reasoning from
+Big-O alone, and the resulting numbers sharpen exactly the call sites this chapter has
+already named. \texttt{BltFast} has no destination-size parameter at all in the real
+DirectDraw~3 API --- every call is 1:1 by construction, never capable of scaling --- and
+every one of the confirmed real \texttt{BltFast} call sites in both games
+(\emph{free-eggbert}: \texttt{pixmap.cpp:406,574,580,612,1762,1818}; \emph{Planet Blupi}:
+\texttt{pixmap.cpp:395,401,433,1235,1291}) is therefore provably non-scaling. Yet the
+shared blit engine behind both \texttt{Blt} and \texttt{BltFast} computes a per-pixel
+integer division and a per-pixel bit-depth branch unconditionally, even on a 1:1 copy ---
+measured at \textbf{29 times slower than a raw \texttt{memcpy}} of the identical byte count
+at an optimized build (0.715~ms versus 0.0244~ms for one 640$\times$480 32-bit blit), and
+\textbf{206 times slower} under the project's own default, unoptimized build configuration.
+
+\begin{center}
+\small
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Build} & \textbf{\texttt{BltFast}} & \textbf{\texttt{memcpy}} & \textbf{Ratio} \\
+\midrule
+Default (no \texttt{-O} flags) & 4.704~ms & 0.0229~ms & 205.8$\times$ \\
+\texttt{-DCMAKE\_BUILD\_TYPE=Release} & 0.715~ms & 0.0244~ms & 29.4$\times$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+That default-build gap is itself the audit's highest-leverage single finding: the project's
+own \texttt{CMakeLists.txt} never sets a default \texttt{CMAKE\_BUILD\_TYPE}, so following
+the repository's own build instructions with no extra flags silently produces a binary with
+no optimization at all, at a measured \textbf{6.6 times} the cost of an explicit
+\texttt{-DCMAKE\_BUILD\_TYPE=Release} build --- a one-line \texttt{CMakeLists.txt} guard
+with no behavioral risk, affecting every function in the library, not merely DirectDraw's
+own blit path. This is worth naming precisely because it recurs as a category throughout
+this book: a real, measurable, zero-behavior-change performance defect that was sitting in
+plain sight in the build configuration itself, only visible once someone actually benchmarked
+against the real compiled artifact instead of assuming the default build reflected the
+project's intent.
+
+Not every \texttt{Blt}-family call site is pure waste, though, and the audit is careful to
+say so: \emph{free-eggbert}'s \texttt{CPixmap::Display()} (\texttt{pixmap.cpp:1509--1516}),
+the once-per-frame full-screen present blit this chapter's opening section already singled
+out as the hottest call in the program, is the one confirmed call site where the scaling
+math is doing genuinely necessary work --- its destination rect comes from the real window's
+client area while its source rect is the fixed internal game resolution, and the two differ
+whenever the window size doesn't exactly match. A future 1:1 fast path would need to keep
+that check a runtime comparison of actual rect sizes, not a blanket assumption that
+presentation is always unscaled. The same call-site audit also turned up a piece of
+confirmed dead code on the game side of the boundary: \emph{free-eggbert}'s
+\texttt{CPixmap::DrawMap(int, RECT, RECT)} (\texttt{pixmap.cpp:640}) has exactly one
+\texttt{Blt()} call inside it, but grepping the entire \emph{free-eggbert} source tree for
+its own three-argument call signature finds zero callers anywhere --- the function is real,
+compiled code that the reconstructed source simply never reaches.
 
 \section{Interfaces never exercised at all}
 

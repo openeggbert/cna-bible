@@ -77,7 +77,20 @@ either way. The only real verification is `pdftoppm -png -f N -l N -r 100 main.p
 /tmp/.../pageN` (find N by content search: `pdftotext -f N -l N main.pdf - | grep <text>`,
 never by printed folio number) then reading the PNG back with the Read tool.
 
-## Chapter 42 (Migration Guide) is now done — first chapter of Part IX
+## Chapter 43 (Blupi Case Study) is now done too — second chapter of Part IX
+
+Grew 116 → 172 lines. This chapter was already dense with real call-site audit findings, so the
+gap shape was "find a genuinely new real source," not re-derive existing coverage. Read
+`/workspace/free-direct/docs/audit_ddraw.md` (already cloned this session) — a dedicated
+performance audit of the same DirectDraw implementation, benchmarked against the real compiled
+library. Added one new section covering the missing 1:1 fast path in `BlitFrom` (29x/206x
+slower than `memcpy`, with a benchmark table), the exact real `BltFast` call-site line numbers
+in both games, the `CMAKE_BUILD_TYPE`-unset 6.6x-penalty finding, the one call site where
+scaling is genuinely necessary, and a newly-found dead-code call site. Full detail in PLAN.md's
+session log. Volume compiles clean at 289 pages, 0 undefined refs; all four of the chapter's own
+pages (247-250) PNG-rendered and confirmed defect-free, including the new table.
+
+## Chapter 42 (Migration Guide) is done — first chapter of Part IX
 
 Grew 102 → 165 lines. It's a checklist/synthesis chapter (six numbered "Step" sections), so the
 gap shape was "add worked examples to the two steps that most invite one," not a header grep:
@@ -95,12 +108,16 @@ unrelated overfull-hbox warning surfaced for pre-existing Chapter 36 content
 
 ## What to do next
 
-1. **Continue Part IX**: Chapter 43 (Blupi Case Study) is next, then 44-48. Same approach: read
-   the real source before assuming whether each chapter is API-reference-shaped,
+1. **Continue Part IX**: Chapter 44 (xna4-spec Auditing) is next, then 45-48. Same approach:
+   read the real source before assuming whether each chapter is API-reference-shaped,
    tooling/narrative-shaped, or synthesis-shaped like Chapter 41 turned out to be. When a
    chapter doesn't fit the "add worked examples" mold, look instead for a genuine content gap or
    a stale cross-reference (Chapter 41's own pass found both: a missing macOS row and a
-   leftover "Part~IV" reference from the merge).
+   leftover "Part~IV" reference from the merge). For a case-study/audit chapter like Chapter 43,
+   the move that worked was finding a *newer* or *different* real audit document than the one
+   the chapter already drew from (`/workspace/free-direct/docs/` has several: `audit_ddraw.md`,
+   `audit_dsound.md`, `audit_dplay.md`, `directplay-callsite-audit.md` — only `audit_ddraw.md`
+   has been mined so far).
 2. **Alternatively, return to Part V, VI, or VIII for real depth**: every chapter in those
    three parts has a first pass now, but all are still well short of their page targets. Don't
    re-run the "which classes/tools exist" grep again (already done at least once per chapter)
