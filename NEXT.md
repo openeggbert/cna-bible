@@ -14,7 +14,8 @@ be stale relative to what's happened since — trust the conversation over this 
 numbering). Chapters 25–48 = former Volume II (Parts V–IX, renumbered +24). Appendices A–F.
 Full renumbering table is in `PLAN.md`'s merge session-log entry.
 
-**Seven former-Volume-II chapters now have a first real expansion pass**, all following the
+**All eight Part V chapters (25-32) now have a first real expansion pass** — this session
+completed the sweep. All follow the
 same pattern (full method references + worked examples for every named class, each grounded in
 a direct header/source read, with real verified findings called out explicitly, not just API
 summaries):
@@ -72,13 +73,26 @@ summaries):
   until replace-by-name was added). Added two worked examples: the full faithful-vs-real
   rendering bridge (`EnableRealRenderingEXT`/`SetAppearanceEXT`/`DrawRealEXT`), and a wardrobe
   hot-swap via `AttachPartEXT`.
+- **Chapter 32 (Storage)**, this session: 78 → 124 lines, ~3 → ~3 of a ~30-page target — the
+  last untouched Part V chapter, now closed out. Same gap shape once more. Read
+  `StorageDevice.hpp`/`StorageContainer.hpp` directly. Added one new real detail: unlike
+  `NetworkSession`/`Guide`'s raw-pointer `Begin`/`End` results requiring manual `delete`, this
+  namespace's `Begin`/`End` results are real `std::unique_ptr`s throughout — a cleaner
+  ownership story than most of this book's ported XNA surface. Added two worked examples: the
+  full device-selection-to-open-container lifecycle, and a save-file write/read-back
+  round-trip.
 
-Volume currently compiles to **281 pages, 0 undefined references, 0 duplicate-label
+**Milestone: every Part V (Ch.25-32) chapter now has a first expansion pass.** None have hit
+their final page targets yet (all are still at roughly 3-10 of a 30-70-page target) — this was
+a breadth pass (worked examples + real findings added everywhere), not a depth pass. Returning
+to any of them for real page-count progress is still open work.
+
+Volume currently compiles to **283 pages, 0 undefined references, 0 duplicate-label
 warnings** (index count not re-checked this session — verify before quoting it).
 
 ### The `/`-spacing overfull-hbox defect class — three known variants, all with proven fixes
 
-Every chapter touched so far (25, 26, 27, 28, 29, 30, 31) has needed at least one of these. Treat this as a
+Every chapter touched so far (25 through 32, all of Part V) has needed at least one of these. Treat this as a
 **routine check on every batch**, not a one-off — run the Python regex pass
 (`re.sub(r'\}/(\\texttt\{|\\cnaclass\{)', r'} / \1', text)`) over any file you touch before the
 first build of a batch:
@@ -107,20 +121,18 @@ second round needed, which is a good sign the routine is actually working now.
 
 ## What to do next
 
-1. **Move to Chapter 32 (Storage)** — the last untouched Part V (Ch.25-32) chapter. Same
-   systematic approach (read the real headers directly, add full method references + worked
-   examples, watch for the three overfull-hbox variants above). Chapters 28/29/30/31 all
-   turned out to need "add worked examples" rather than "add missing API coverage" — check 32's
-   existing prose density first; if the same shape holds, the pass is: read the real headers
-   for classes already named in the prose, find 2-3 genuinely worked-example-shaped gaps (a
-   lifecycle, a send/receive round-trip, a state-machine walkthrough), ground each in real
-   signatures, and watch for one new real detail worth adding along the way (there's been at
-   least one per chapter so far). Once 32 is done, Part V (Ch.25-32) has a first pass on every
-   chapter — worth updating PLAN.md's task-tracking to reflect that milestone.
-2. **If returning to Chapter 25, 26, 27, 28, 29, 30, or 31 for further depth**, don't re-run the
-   "which classes exist" grep again (already done at least once each) — look for narrower gaps
-   instead: worked-example depth per topic, cross-checking against `docs/*.md`/`CHECKLIST.md`/
-   `plan_*.md` files in the real repo for anything a header-only pass would miss.
+1. **Move to Parts VI-IX** (Chapters 33-48): the Sharp Runtime chapters (33-37), Cross-platform
+   engineering (38-41), and Porting/practice/roadmap (42-48) haven't been touched by this
+   session's expansion work at all. Check each chapter's existing prose density first — most
+   Part V chapters turned out to need "add worked examples" rather than "add missing API
+   coverage" once already-dense prose existed, but that pattern may not hold for chapters that
+   haven't had any attention yet; read before assuming the shape of the gap.
+2. **Alternatively, return to Part V for real depth**: every Ch.25-32 chapter has a first pass
+   now, but all are still well short of their page targets (roughly 3-10 of a 30-70-page
+   target each). Don't re-run the "which classes exist" grep again (already done at least once
+   per chapter) — look for narrower gaps instead: worked-example depth per topic,
+   cross-checking against `docs/*.md`/`CHECKLIST.md`/`plan_*.md` files in the real repo for
+   anything a header-only pass would miss.
 3. **Deepen Chapter 9 (GraphicsDevice)** further, or start Chapter 13 (Stock Effects) — both
    still open Part I–IV targets, untouched for several sessions now.
 4. Chapter 7 (Math and Core Types) is at ~33 of a ~110-page target after three sessions — a

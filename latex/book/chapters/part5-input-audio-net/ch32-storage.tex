@@ -13,7 +13,7 @@ responsible for something every real game eventually needs: saving and loading u
 it ``uses the XNA 4.0 fake-async pattern: \texttt{BeginXxx} completes synchronously and the
 paired \texttt{EndXxx} extracts the result.'' This is the same synchronous-but-async-shaped
 pattern this book has already met repeatedly --- \cnaclass{LeaderboardReader}'s
-\texttt{Begin}/\texttt{End} pairs (Chapter~29), \cnaclass{NetworkSession}'s own async
+\texttt{Begin} / \texttt{End} pairs (Chapter~29), \cnaclass{NetworkSession}'s own async
 operations (Chapter~30), \cnaclass{AvatarDescription::BeginGetFromGamer} (Chapter~31) --- and
 \cnaclass{StorageDevice} is arguably where the pattern originated in spirit: real XNA's
 storage API had to accommodate a genuinely slow, UI-driven device-selection flow on a real
@@ -26,9 +26,9 @@ instantly.
 \cnaclass{StorageDevice} exposes \texttt{FreeSpace} and \texttt{TotalSpace} (both in bytes,
 reporting real values from the underlying filesystem) and \texttt{IsConnected}. Opening a
 container follows the fake-async pattern:
-\texttt{BeginOpenContainer(displayName, callback, state)}/\texttt{EndOpenContainer(result)};
+\texttt{BeginOpenContainer(displayName, callback, state)} / \texttt{EndOpenContainer(result)};
 \texttt{DeleteContainer(titleName)} removes an entire container's directory tree outright.
-Four overloads of the static \texttt{BeginShowSelector}/\texttt{EndShowSelector} pair cover
+Four overloads of the static \texttt{BeginShowSelector} / \texttt{EndShowSelector} pair cover
 every combination real XNA supports --- with or without a specific \cnaclass{PlayerIndex},
 with or without an explicit required free-space and directory-count --- for showing the
 device-selection UI, even though, again, there is only ever one real ``device'' (the local
@@ -43,13 +43,37 @@ per-application storage root directory on the host filesystem, and
 \cnaclass{Game} constructor --- before any other storage call, since the storage root is
 lazily resolved and cached on first use.
 
+One further detail distinguishes this namespace from the other fake-async ports this book has
+covered: every \texttt{Begin} / \texttt{End} result here is a real \texttt{std::unique\_ptr}, not
+a caller-owned raw pointer requiring a matching manual \texttt{delete} the way
+\cnaclass{NetworkSession}'s and \cnaclass{Guide}'s own \texttt{Begin} / \texttt{End} families do
+(Chapters~\ref{ch:networking} and~\ref{ch:gamerservices}). \texttt{EndOpenContainer} returns a
+\texttt{std::unique\_ptr<StorageContainer>}, and \texttt{EndShowSelector} returns a
+\texttt{std::unique\_ptr<StorageDevice>} --- a cleaner ownership story than most of the rest of
+this book's ported XNA surface, not a deviation CNA needed to call out defensively, since it
+only makes the caller's life easier.
+
+\begin{lstlisting}
+// Worked example: the full device-selection-to-open-container lifecycle,
+// once per application (typically in the Game constructor).
+StorageDevice::SetAppNameEXT("MyGame");
+
+auto selectResult = StorageDevice::BeginShowSelector(nullptr, nullptr);
+std::unique_ptr<StorageDevice> device = StorageDevice::EndShowSelector(selectResult.get());
+
+auto openResult = device->BeginOpenContainer("MyGame Save Data", nullptr, nullptr);
+std::unique_ptr<StorageContainer> container = device->EndOpenContainer(openResult.get());
+// No delete needed anywhere above -- every intermediate result is a
+// unique_ptr that cleans itself up when it goes out of scope.
+\end{lstlisting}
+
 \section{StorageContainer: a real, if modest, virtual filesystem}
 
 \cnaclass{StorageContainer} inherits \texttt{System::Object} and \texttt{System::IDisposable},
 and provides exactly the file and directory operations a save-data system needs, all relative
-to the container's own root: \texttt{CreateDirectory}/\texttt{DirectoryExists}/%
+to the container's own root: \texttt{CreateDirectory} / \texttt{DirectoryExists} /
 \texttt{DeleteDirectory}, \texttt{GetDirectoryNames()} (with a glob-pattern overload),
-\texttt{CreateFile}/\texttt{FileExists}/\texttt{DeleteFile}, \texttt{GetFileNames()} (with the
+\texttt{CreateFile} / \texttt{FileExists} / \texttt{DeleteFile}, \texttt{GetFileNames()} (with the
 same glob-pattern overload), and a three-overload \texttt{OpenFile} family covering file mode
 alone, mode plus access, and mode plus access plus sharing --- each returning a real
 \cnaclass{System::IO::Stream} (Chapter~34 covers \texttt{sharp-runtime}'s own \cnaclass{Stream}
@@ -57,6 +81,28 @@ type) for a game to read or write through directly. Every relative path
 passed to any of these methods is resolved against the container's own root, which is itself
 resolved against \texttt{StorageDevice::GetStorageRootEXT()} --- meaning the entire
 namespace, end to end, ultimately roots itself in that one \texttt{NOXNA} extension point.
+
+\begin{lstlisting}
+// Worked example: writing then reading back a save file, continuing
+// directly from the container opened above.
+{
+    std::unique_ptr<System::IO::Stream> writeStream =
+        container->CreateFile("savegame.dat");
+    std::vector<SharpRuntime::bytecs> saveData = SerializeGameState();
+    writeStream->Write(saveData.data(), 0, static_cast<int>(saveData.size()));
+    // writeStream goes out of scope here and closes/flushes automatically.
+}
+
+if (container->FileExists("savegame.dat"))
+{
+    std::unique_ptr<System::IO::Stream> readStream =
+        container->OpenFile("savegame.dat", System::IO::FileMode::Open);
+    std::vector<SharpRuntime::bytecs> loaded(readStream->getLengthProperty());
+    readStream->Read(loaded.data(), 0, static_cast<int>(loaded.size()));
+}
+
+container->Dispose();
+\end{lstlisting}
 
 \section{StorageDeviceNotConnectedException}
 

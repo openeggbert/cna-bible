@@ -175,7 +175,7 @@ ever needed).
 | 29 | GamerServices | 169 (was 117) | 55 | Worked examples for SignedInGamer achievements/presence, LeaderboardWriter scoring, and Guide's real overlay message-box UI, grounded in real headers | **In progress (~5 of ~55 pages)** |
 | 30 | Networking | 170 (was 125) | 70 | Worked examples for NetworkSession creation/GamerJoined lifecycle and PacketWriter/PacketReader send-receive with the Color asymmetry gotcha, grounded in real headers | **In progress (~5 of ~70 pages)** |
 | 31 | Avatar | 179 (was 131) | 55 | Worked examples for the faithful-vs-real-rendering bridge (EnableRealRenderingEXT/DrawRealEXT) and wardrobe hot-swapping (AttachPartEXT/RemovePartEXT), grounded in real headers | **In progress (~4 of ~55 pages)** |
-| 32 | Storage | 78 | 30 | Full StorageDevice/StorageContainer docs + examples | Not started |
+| 32 | Storage | 124 (was 78) | 30 | Worked examples for the full device-selection-to-open-container lifecycle and file read/write, plus the unique_ptr-ownership finding, grounded in real headers | **In progress (~3 of ~30 pages)** |
 | 33 | Sharp Runtime Overview | 116 | 40 | Deeper architectural detail | Not started |
 | 34 | Sharp Runtime Namespaces | 90 | 70 | Full docs for TimeSpan/EventHandler/Stream/collections + examples | Not started |
 | 35 | Parity Philosophy | 111 | 35 | More worked deviation examples | Not started |
@@ -823,3 +823,22 @@ current real total of 266 pages.
   rather than page count, since dense worked-example code blocks compress efficiently). Volume
   recompiled clean (281 pages total, 0 undefined references, 0 duplicate-label warnings); all
   four of the chapter's own pages verified by rendering to PNG and reading them back.
+- **2026-07-20 (same session, "pokracuj"):** Chapter 32 (Storage) — first expansion pass, and
+  the last untouched chapter in Part V (Ch.25-32), which now has a first expansion pass on
+  every chapter. Same gap shape once more: the prose (the fake-async pattern's Xbox~360
+  origin, the free-space/connection-state properties, the NOXNA app-name/storage-root
+  extension point) was already dense and accurate, but zero worked examples existed. Read
+  `StorageDevice.hpp` and `StorageContainer.hpp` directly. Added one real detail not previously
+  in the text: unlike `NetworkSession`'s and `Guide`'s own `Begin`/`End` families (both
+  returning caller-owned raw pointers requiring a matching manual `delete`), every `Begin`/
+  `End` result in this namespace is a real `std::unique_ptr` — `EndOpenContainer` returns
+  `std::unique_ptr<StorageContainer>`, `EndShowSelector` returns
+  `std::unique_ptr<StorageDevice>` — a cleaner ownership story than most of the rest of this
+  book's ported XNA surface. Added two worked examples: the full device-selection-to-
+  open-container lifecycle (`SetAppNameEXT`, `BeginShowSelector`/`EndShowSelector`,
+  `BeginOpenContainer`/`EndOpenContainer`), and a save-file write/read-back round-trip through
+  `StorageContainer::CreateFile`/`OpenFile`/`FileExists`. Chapter grows from 78 to 124 lines
+  (~3 to ~3 of a ~30-page target). Volume recompiled clean (283 pages total, 0 undefined
+  references, 0 duplicate-label warnings); the chapter's three real content pages verified by
+  rendering to PNG and reading them back (a fourth, blank padding page before the Part~VI
+  title page is expected book layout, not a defect).
