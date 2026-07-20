@@ -18,10 +18,10 @@ Full renumbering table is in `PLAN.md`'s merge session-log entry.
 **Part V (Ch.25-32) and Part VI (Ch.33-37) are both fully swept** — every chapter in both
 parts has a first expansion pass now, except Chapter 37 (free-direct Deep Dive), which stays
 explicitly frozen per the author's own 2026-07-20 confirmation ("stays marginal") — not left
-incomplete, deliberately skipped. **Chapters 38-40 (Windows/Wine, Web/Emscripten,
-Android/NDK), the first three Part VIII chapters, also got a first pass this session.** Full
-per-chapter detail (exact line counts, headers/scripts read, every finding and example) lives
-in `PLAN.md`'s session log — this file only summarizes.
+incomplete, deliberately skipped. **Part VIII (Chapters 38-41) is now fully swept too** —
+every chapter got a first pass this session. Full per-chapter detail (exact line counts,
+headers/scripts read, every finding and example) lives in `PLAN.md`'s session log — this file
+only summarizes.
 
 The pattern nearly every chapter this session followed: read the real headers/`.cpp`/scripts
 for classes or tools already named in the chapter's prose, add worked examples grounded in
@@ -33,15 +33,23 @@ and Chapter 34 had a **stale PLAN.md table-row description** (said "TimeSpan/Eve
 Stream" but the chapter's real content is String/StringBuilder/Stream/audit-history) — check a
 chapter's actual `\chapter{}` title/content against PLAN.md's own row before trusting the row.
 
-None of the 15 chapters touched this session (25-36, 38-40) are at their final page targets
+None of the 16 chapters touched this session (25-36, 38-41) are at their final page targets
 yet (roughly 3-10 of a 30-70-page target each) — this was a breadth pass, not a depth pass.
+**Chapter 41 is a synthesis/comparison chapter across 38-40**, not API- or tooling-shaped, so
+its pass looked different: found and closed a genuine content gap (its own comparative table
+omitted macOS, a real platform confirmed in the project's own docs) rather than adding worked
+examples, and fixed one genuine stale cross-reference left over from the two-volume merge
+(a plain-text "Part~IV" that should have said "Part~VIII" after renumbering — a good reminder
+that stale merge-era references can still be lurking anywhere, not just in the chapters
+touched during the merge itself).
 
 Volume currently compiles to **289 pages, 0 undefined references, 0 duplicate-label
 warnings** (index count not re-checked this session — verify before quoting it).
 
 ### The `/`-spacing overfull-hbox defect class — three known variants, all with proven fixes
 
-Every chapter touched this session (25 through 36, and 38-40) has needed at least one of these.
+Every API/tooling-shaped chapter touched this session (25 through 36, and 38-40) has needed at
+least one of these; Chapter 41 (a synthesis chapter) had none of its own to fix this pass.
 Treat this as a **routine check on every batch**, not a one-off — run the Python regex pass
 (`re.sub(r'\}/(\\texttt\{|\\cnaclass\{)', r'} / \1', text)`) over any file you touch before the
 first build of a batch, then manually grep for `}/%` afterward (the regex doesn't catch it):
@@ -71,19 +79,23 @@ never by printed folio number) then reading the PNG back with the Read tool.
 
 ## What to do next
 
-1. **Finish Part VIII: Chapter 41** (Verification Methodology) — the last untouched Part VIII
-   chapter. Same approach as 38/39/40: check whether it's API-reference-shaped (add worked
-   examples grounded in real headers) or tooling/narrative-shaped like 38/39/40 turned out to
-   be (add real shell/build invocations grounded in the actual scripts/CMake/docs — all three
-   so far have been this shape). Read the real source before assuming which kind it is. Once
-   41 is done, Part VIII (Ch.38-41) is fully swept.
-2. **Then Part IX** (Chapters 42-48): Porting/practice/roadmap — none touched yet this session.
-3. **Alternatively, return to Part V, VI, or 38-40 for real depth**: every chapter touched
-   this session has a first pass now, but all are still well short of their page targets.
-   Don't re-run the "which classes/tools exist" grep again (already done at least once per
-   chapter) — look for narrower gaps instead: worked-example depth per topic, cross-checking
-   against `docs/*.md`/`CHECKLIST.md`/`plan_*.md` files in the real repo for anything a first
-   pass would miss.
+1. **Move to Part IX** (Chapters 42-48): Porting/practice/roadmap — none touched yet this
+   session. Same approach: read the real source before assuming whether each chapter is
+   API-reference-shaped, tooling/narrative-shaped, or synthesis-shaped like Chapter 41 turned
+   out to be. When a chapter doesn't fit the "add worked examples" mold, look instead for a
+   genuine content gap or a stale cross-reference (Chapter 41's own pass found both: a missing
+   macOS row and a leftover "Part~IV" reference from the merge).
+2. **Alternatively, return to Part V, VI, or VIII for real depth**: every chapter in those
+   three parts has a first pass now, but all are still well short of their page targets. Don't
+   re-run the "which classes/tools exist" grep again (already done at least once per chapter)
+   — look for narrower gaps instead: worked-example depth per topic, cross-checking against
+   `docs/*.md`/`CHECKLIST.md`/`plan_*.md` files in the real repo for anything a first pass
+   would miss.
+3. **Worth a dedicated pass at some point**: grep the whole book for other stale plain-text
+   "Part~N" references left over from the two-volume merge, the same class of bug Chapter 41's
+   "Part~IV" turned out to be — the merge session's own renumbering pass focused on
+   `Chapter~N` citations and may have missed `Part~N` ones in chapters that weren't otherwise
+   touched until now.
 4. **Deepen Chapter 9 (GraphicsDevice)** further, or start Chapter 13 (Stock Effects) — both
    still open Part I–IV targets, untouched for several sessions now.
 5. Chapter 7 (Math and Core Types) is at ~33 of a ~110-page target after three sessions — a

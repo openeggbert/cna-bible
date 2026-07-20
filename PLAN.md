@@ -184,7 +184,7 @@ ever needed).
 | 38 | Windows/Wine | 137 (was 103) | 45 | Real shell-invocation worked examples for the MinGW-w64 toolchain and the DXVK self-verifying gate (including its two escape hatches), grounded in the actual scripts | **In progress (~4 of ~45 pages)** |
 | 39 | Web/Emscripten | 121 (was 88) | 40 | Real shell-invocation worked examples for the Emscripten-specific compile/link flags and the confirmed CANVAS build success story, grounded in the actual CMakeLists.txt/cmake/UnitTests.cmake | **In progress (~3 of ~40 pages)** |
 | 40 | Android/NDK | 123 (was 82) | 40 | Real shell-invocation worked examples for the NDK cross-compile/llvm-nm verification and the emulator boot/install/sensor-injection sequence, grounded in the project's own build notes | **In progress (~4 of ~40 pages)** |
-| 41 | Verification Methodology | 68 | 35 | More worked audit examples | Not started |
+| 41 | Verification Methodology | 83 (was 68) | 35 | Added a macOS row to the comparative table (a genuine, honestly-named documentation gap: no dedicated chapter exists for it), plus fixed a stale "Part~IV" cross-reference left over from the volume merge | **In progress (~3 of ~35 pages)** |
 | 42 | Migration Guide | 102 | 55 | Full worked porting walkthroughs | Not started |
 | 43 | Blupi Case Study | 116 | 55 | Deeper call-site audit detail | Not started |
 | 44 | xna4-spec Auditing | 74 | 40 | More worked audit examples | Not started |
@@ -977,3 +977,28 @@ stays frozen by explicit author decision, not left incomplete.
   of a ~40-page target). Volume recompiled clean (289 pages total, 0 undefined references, 0
   duplicate-label warnings); all four of the chapter's own pages verified by rendering to PNG
   and reading them back.
+- **2026-07-20 (same session, "pokracuj"):** Chapter 41 (Verification Methodology, Compared
+  Across Platforms) — first expansion pass, and the last chapter in Part VIII, which is now
+  fully swept (Ch.38-41 all have a first pass). This chapter is a synthesis/comparison chapter
+  across the three preceding ones, not an API reference or a tooling-invocation narrative, so
+  neither the "worked examples" nor the "real shell commands" pattern fit directly. Instead,
+  found and closed a genuine content gap the same way this project catches its own: read
+  `docs/platform-input-notes.md` and the real `README.md` directly, and noticed this chapter's
+  own comparative table covers Linux/Windows/Web/Android but omits macOS entirely, even though
+  the project's own docs confirm macOS is a real, distinct platform with working input support
+  (mouse warp and global cursor position genuinely work through the SDL3 Cocoa backend) that is
+  explicitly flagged "manual-gated" in the project's own notes, since the CI matrix is
+  Linux-only. Added a full macOS row to the comparative table and an honest paragraph
+  acknowledging this book's own coverage has the same gradient shape — Windows/Web/Android each
+  earned a full chapter because each has a substantial verification story to tell, while macOS
+  has real support but no comparably deep narrative to expand into its own chapter, since unlike
+  Wine (Windows) or the emulator (Android) there is no automated or semi-automated stand-in for
+  a real Mac in this project's own dev loop. Also found and fixed one genuine, pre-existing
+  stale cross-reference left over from the two-volume merge: this chapter's own opening
+  paragraph said "this short closing chapter of Part~IV," a leftover from when this was Volume
+  II's own internal Part IV, never updated to Part~VIII during the merge's renumbering pass —
+  fixed. Chapter grows from 68 to 83 lines (~3 to ~3 of a ~35-page target). Volume recompiled
+  clean (289 pages total, 0 undefined references, 0 duplicate-label warnings); all six of the
+  chapter's own pages verified by rendering to PNG and reading them back.
+
+**Part VIII (Chapters 38-41) is now fully swept**: every chapter has a first expansion pass.

@@ -3,7 +3,7 @@
 
 Chapter~\ref{ch:testing-philosophy} in this Part covers the individual verification
 \emph{mechanisms} this ecosystem relies on --- pixel tests, differential testing, the D3D9
-oracle, sanitizers, the \texttt{NOXNA} build gate. This short closing chapter of Part~IV takes
+oracle, sanitizers, the \texttt{NOXNA} build gate. This short closing chapter of Part~VIII takes
 a different cut through the same material: comparing how much of that machinery actually
 reaches each of the four platforms the previous three chapters covered, side by side, because
 the honest answer varies more than a single ``cross-platform and verified'' claim would
@@ -38,6 +38,13 @@ Android (NDK) & Split sharply by demo, not just by backend. The devices/sensors 
   on-screen response. Graphics (\texttt{SDL\_RENDERER}, Android's own default): never run on
   any device or emulator, and, per a documented regression in an unrelated sibling project,
   currently not even confirmed to \emph{build} (Chapter~\ref{ch:android-ndk}). \\
+macOS & The one platform in this comparison with no dedicated chapter of its own in this
+  book, and worth naming as exactly that kind of gap rather than silently omitted: the
+  project's own input-platform notes confirm mouse warp and global cursor position genuinely
+  work through the SDL3 Cocoa backend, the same as X11, but explicitly flag every macOS
+  specific as ``manual-gated,'' since the CI matrix is Linux-only and macOS is
+  ``not headless-verifiable'' there at all --- no CI, no emulator equivalent, and no
+  automated substitute the way Wine stands in for Windows. \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -55,6 +62,14 @@ they can verify \emph{running correctly}, absent a real browser or a real device
 Linux pixel test can assert on an exact color value; an Emscripten build that cannot even
 construct a graphics device has no equivalent assertion available to it at all, no matter how
 carefully the surrounding C\texttt{++} is written.
+
+This book's own coverage has exactly the same shape of gradient, worth naming rather than
+leaving implicit: Windows, Web, and Android each earned a full chapter in this Part because
+each has a substantial, documented, mechanically-interesting verification story to tell; macOS
+has real, working input support confirmed in the project's own platform notes, but no
+comparably deep verification narrative exists to expand into its own chapter, since --- unlike
+Windows' Wine bridge or Android's emulator --- there is no equivalent automated or
+semi-automated stand-in for a real Mac in this project's own dev loop at all.
 
 \section{What this means for a reader of this book}
 
