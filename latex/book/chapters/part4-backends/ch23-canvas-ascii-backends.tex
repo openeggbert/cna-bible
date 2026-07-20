@@ -9,7 +9,7 @@ thin decorator wrapped around \texttt{SDL\_RENDERER}'s own real implementation.
 \section{CANVAS: real code, an honest verification ceiling}
 
 \texttt{CANVAS} is Emscripten-only, targeting the HTML \texttt{CanvasRenderingContext2D} API
-(\texttt{drawImage}/\texttt{putImageData}/\texttt{fillRect}) instead of SDL3's own 2D blit
+(\texttt{drawImage} / \texttt{putImageData} / \texttt{fillRect}) instead of SDL3's own 2D blit
 API. The single fact that qualifies every other claim in this section: this project's own
 development environment has \emph{no real browser and no real DOM}. The \texttt{node}
 runtime that executes this backend's compiled test suite provides no
@@ -81,7 +81,7 @@ window, exactly like \texttt{SDL\_RENDERER}, and is architecturally, in the proj
 words, ``a thin decorator around SDL\_RENDERER's own \texttt{SdlGraphicsBackend}.'' A game
 draws normally into a private offscreen target; \texttt{Present()} reads that frame back,
 quantizes it into a grid of glyph-plus-color cells, and draws the resulting grid onto the
-real window using the internal \cnaclass{ISpriteBatchBackend}/\cnaclass{ITextureBackend}
+real window using the internal \cnaclass{ISpriteBatchBackend} / \cnaclass{ITextureBackend}
 pair directly --- deliberately \emph{not} going through the public \cnaclass{SpriteFont} API,
 consistent with the project's own rule that backend internals stay below, and hidden from,
 the public XNA-facing API surface.
@@ -107,12 +107,39 @@ formula), mapped onto a ten-character density ramp (\texttt{" .:-=+*\#\%@"}) by 
 verified to be strictly increasing in visual density. Two runtime modes,
 \texttt{BLACKWHITE} and \texttt{COLOR}, are selected via the \texttt{CNA\_ASCII\_MODE}
 environment variable, with a runtime-configurable cell size (default $8\times8$) via
-\texttt{SetCellSize()}/\texttt{GetCellSize()}. The glyph font itself is a deliberate,
+\texttt{SetCellSize()} / \texttt{GetCellSize()}. The glyph font itself is a deliberate,
 hand-authored $8\times8$ pixel bitmap for exactly the ten ramp characters --- explicitly not
 a vendored font file or classic code-page glyph set, a choice made specifically to avoid
 introducing any new asset or license dependency at all. A dirty-cell diffing optimization is
 explicitly not implemented, and explicitly not treated as a correctness gap either --- left
 for later only if performance ever actually demands it.
+
+\subsection{A worked example: from one pixel to one glyph}
+
+The quantizer's own formula and ramp are precise enough to walk through by hand for a single
+pixel, which makes the mapping concrete rather than only described:
+
+\begin{lstlisting}
+// A mid-brightness orange pixel, e.g. sampled from a sprite:
+Color pixel(230, 126, 34, 255);
+
+float luminance = 0.299f * pixel.R + 0.587f * pixel.G + 0.114f * pixel.B;
+// = 0.299*230 + 0.587*126 + 0.114*34 = 68.77 + 73.96 + 3.88 = 146.6
+
+const char* ramp = " .:-=+*#%@";       // 10 characters, index 0 = darkest
+int rampIndex = static_cast<int>(luminance / 255.0f * 9.0f); // = 5 -> '+'
+char glyph = ramp[rampIndex];
+\end{lstlisting}
+
+A luminance of 146.6 out of 255 (roughly 57\%) lands on \texttt{'+'}, the sixth character in
+the ten-character ramp --- not the visual midpoint of the string by character count, but by
+the ramp's own \emph{verified-strictly-increasing} visual density, which is exactly the
+property the chapter's own verification claim rests on. A pure white pixel
+(\texttt{luminance=255}) maps to index 9, \texttt{'@'}, the densest glyph; pure black maps to
+index 0, a plain space --- background, rendered as the visual absence of any glyph at all,
+which is also precisely why the \texttt{BlendState.AlphaBlend} bug above was so easy to miss
+purely by inspection: a background that fails to alpha-blend and an intentionally-empty
+space-character cell can look identical in a screenshot.
 
 \subsection{One real, found-and-fixed bug}
 
@@ -129,7 +156,7 @@ Reading pixels back immediately after a real \texttt{Present()} call returns sta
 garbage content, because \texttt{SDL\_RENDERER}/OpenGL present via a genuine double-buffer
 swap, not a copy --- there is nothing left to read where the just-presented frame was. The
 fix is test-only: a \texttt{DrawQuantizedGridForTesting()} entry point that skips the swap,
-paired with a \texttt{ReadRealBackbufferForTesting()} accessor --- real game code always goes
+paired with a \texttt{Read\allowbreak{}RealBackbuffer\allowbreak{}ForTesting()} accessor --- real game code always goes
 through the genuine \texttt{Present()} path, unaffected by either.
 
 \subsection{Input, unmodified}

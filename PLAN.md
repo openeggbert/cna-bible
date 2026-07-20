@@ -153,7 +153,7 @@ numbers below are unchanged by the merge.
 | 20 | BGFX Backend | 115 (was 87) | 55 | Added a worked example checking a `VertexDeclaration` for a `Color` attribute (real `VertexElement`/`VertexElementUsage` accessors) to recognize the black-mesh bug's real trigger condition ahead of time | **In progress (~4 of ~55 pages, PDF-verified clean)** |
 | 21 | WebGPU Backend | 135 (was 108) | 45 | Added a worked example walking through the still-open `RenderTargetCube` sprite-geometry bug (real `SetRenderTarget` call), showing the silent-wrong-size failure mode and its practical mitigation | **In progress (~4 of ~45 pages, PDF-verified clean)** |
 | 22 | Direct3D Backends | 171 (was 152) | 85 | Added a worked example computing exactly why `zFarPlane=1` vs `-1` mattered (D3D9's [0,1] clip-space Z range vs. XNA's `layerDepth` range), placed correctly after the bug's own first mention (moved once after an initial ordering mistake caught before commit) | **In progress (~4 of ~85 pages, PDF-verified clean)** |
-| 23 | Canvas/ASCII Backends | 139 | 40 | More worked examples | Not started |
+| 23 | Canvas/ASCII Backends | 166 (was 139) | 40 | Added a worked pixel-to-glyph example (hand-computed luminance/ramp-index math for a real color, verified arithmetically) tied to why the `BlendState.AlphaBlend` bug was easy to miss visually; fixed a pre-existing overfull-hbox | **In progress (~4 of ~40 pages, PDF-verified clean)** |
 | 24 | DX3/free-direct Backend | 65 | 30 | Deeper coverage (see free-direct conflict note above) | Not started |
 | A | API Quick Reference | 229 | 40 | Expand summary tables into fuller per-class entries, still a reference (not full docs — that lives in the narrative chapters above) | Not started |
 
