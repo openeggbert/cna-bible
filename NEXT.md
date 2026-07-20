@@ -114,11 +114,12 @@ dependency unless there's a strong reason to add the package project-wide.
    - **Resume Parts I-IV**: Chapter 9 (GraphicsDevice) and Chapter 13 (Stock Effects) are both
      open targets untouched for several sessions; Chapter 7 (Math and Core Types) is at ~33 of
      a ~110-page target and needs fresh gap-discovery, not a ready-made list.
-   - **Dedicated stale-reference sweep**: grep the whole book for other stale plain-text
-     "Part~N" references left over from the two-volume merge (Chapter 41 found one; the merge
-     session's own renumbering pass focused on `Chapter~N` citations and may have missed
-     `Part~N` ones elsewhere) — flagged as worth doing "at some point" for several sessions now,
-     never yet done as its own dedicated pass.
+   - ~~Dedicated stale-reference sweep~~ — **done, this session, after Chapter 48**: grepped the
+     whole book for `Part~[IVX]+` (30+ matches, 19 files), checked every one against the real
+     `\part{}` structure. The two-volume merge's renumbering held up well — only one genuine
+     imprecision found (Chapter 45 undercounted the areas `cna-examples` covers to "Part~V"
+     alone; corrected to name Parts III-IV and V). No stale "Volume I"/"Volume II" text remains
+     either. Not worth repeating unless a future renumbering happens.
 2. Ask the user which of the above to prioritize if it's not obvious from their own message —
    this file deliberately does not pick one, since the choice is a scope decision, not a
    technical one.

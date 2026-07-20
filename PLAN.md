@@ -1170,3 +1170,19 @@ stays frozen by explicit author decision, not left incomplete.
   page) and the corrected Chapter 10 page (102) verified by rendering to PNG and reading them
   back. **Part IX (Chapters 42-48) is now fully swept** — every chapter has a first expansion
   pass.
+- **2026-07-20 (same session, "pokracuj"):** Dedicated stale-"Part~N"-reference sweep, flagged
+  as worth doing in `NEXT.md` since the Chapter 41 merge-era fix earlier this session, but never
+  yet done as its own pass. Grepped the entire book for the `Part~[IVX]+` pattern (30+ matches
+  across 19 files) and checked every single one against the real `\part{}` structure in
+  `main.tex` (Part I = Ecosystem/Ch.1-3, II = Getting Started/Ch.4-8, III = Graphics
+  Machine/Ch.9-15, IV = Backends/Ch.16-24, V = Input-Audio-Net/Ch.25-32, VI = Sharp
+  Runtime/Ch.33-35, VII = easy-gl-freedirect/Ch.36-37, VIII = Cross-Platform/Ch.38-41, IX =
+  Porting-Practice/Ch.42-48). Result: the two-volume merge's own renumbering pass held up very
+  well — every reference checked out correct except one genuine (non-merge-related) imprecision
+  in Chapter 45: its closing claim that `cna-examples`' intended final shape covers "every area
+  this book's own Part~V chapters describe" undercounts, since the areas `cna-examples` itself
+  lists (Input, Audio, Devices, Net, Media, 2D Graphics, 3D Graphics) span Parts III-IV
+  (graphics) as well as Part V (input/audio/devices/net) — corrected to name both spans
+  precisely. Also confirmed no stale plain-text "Volume I"/"Volume II" references remain
+  anywhere in the chapter bodies. Volume recompiled clean (297 pages, 0 undefined references, 0
+  duplicate-label warnings); the corrected Chapter 45 page (256) verified by rendering to PNG.
