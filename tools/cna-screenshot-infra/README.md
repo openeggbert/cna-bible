@@ -40,6 +40,23 @@ screenshot.
   `CreatePerspectiveFieldOfView` world/view/projection chain rotating a triangle 30 degrees —
   screenshotted and visually confirmed as genuinely rotated (not the unrotated upright
   triangle a stubbed-out transform would have produced).
+- `rendertarget_roundtrip_demo.cpp` (same directory) is a third worked example, for Vol.I Ch.9
+  (GraphicsDevice), that **found a real bug** rather than producing a clean success: it draws
+  into an offscreen `RenderTarget2D`, verifies via `GetBackBufferData` that the render target's
+  own pixels are correct while still bound (numerically confirmed: `R=255 G=144 B=0`, matching
+  the triangle drawn), restores the back buffer, then tries to draw the render target's content
+  back into the main scene via `SpriteBatch::Draw`. The inset renders as blank white instead of
+  the verified-correct offscreen content. Root cause (read directly from
+  `SoftwareGraphicsBackend.cpp`): `SoftwareSpriteBatchBackend::Draw` recognizes its texture
+  argument via `dynamic_cast<const SoftwareTextureBackend*>(&texture)`, but a `RenderTarget2D`'s
+  backend is a `SoftwareRenderTargetBackend` — a sibling class (both separately implement
+  `ITextureBackend`, one directly and one via `IRenderTargetBackend`), not a subclass of
+  `SoftwareTextureBackend`. The cast fails silently and the rasterizer falls back to
+  "untextured" instead of throwing — unlike the raw `DrawPrimitivesEx`/`DrawIndexedPrimitivesEx`
+  paths, which explicitly throw `std::runtime_error` for the analogous null-texture case. This
+  is a real, specific, live-discovered gap in the `SOFTWARE` backend specifically (not verified
+  on any other backend) — write it up honestly in the book as a finding, per this project's own
+  "screenshots real or not at all" rule; do not silently work around it or hide the broken inset.
 - **Other backends**: `HEADLESS` exists but is logic-only (never rasterizes a real pixel, just
   reports the last `Clear()` color) — not useful for a screenshot. `CANVAS` is
   Emscripten/browser-only. `ASCII` decorates `SDL_RENDERER` and still needs a real X11 window.

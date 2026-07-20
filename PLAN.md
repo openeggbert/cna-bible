@@ -136,7 +136,7 @@ question silently.
 | 6 | Game Loop | 216 | 40 | Full `Game`/`GameTime`/`GameWindow` method-by-method docs + examples | Not started |
 | 7 | Math and Core Types | 758 (was 270) | 110 | All 11 type-families now have a full method/constructor reference (Vector2/3/4, Matrix, Quaternion, Plane, Ray, Rectangle, Point, Color, MathHelper, 3 Bounding types, Curve/CurveKey) plus worked examples per group and 2 real screenshots | **In progress (~22 of ~110 pages; every type-family covered at least once, depth can still grow further)** |
 | 8 | Content and Assets | 125 | 55 | Full `ContentManager` API + CNJ/XNB worked walkthroughs | Not started |
-| 9 | GraphicsDevice | 556 (was 171) | 90 | Full method-by-method docs for the 887-line header | **In progress (~13 of ~90 pages, first pass done)** |
+| 9 | GraphicsDevice | 622 (was 171) | 90 | Full method-by-method docs for the 887-line header; render-target worked example found and documented a real SOFTWARE-backend bug (SpriteBatch can't sample a RenderTarget2D) | **In progress (~16 of ~90 pages)** |
 | 10 | SpriteBatch | 130 | 55 | Every `Begin`/`Draw`/`DrawString` overload documented + examples | Not started |
 | 11 | Textures and Render Targets | 207 | 60 | Full `Texture2D`/`RenderTarget2D` API + examples | Not started |
 | 12 | Models and Meshes | 103 | 60 | Full `Model`/`ModelMesh`/`ModelBone` family + examples | Not started |
@@ -261,3 +261,24 @@ Ch.13 that is now frozen at ~2 pages per the author's confirmation above).
   before the page target is actually reached; treat "every type covered once" as this pass's
   real accomplishment, not "chapter complete"). Volume I recompiled clean (131 pages total,
   632 index entries, 0 undefined references).
+- **2026-07-20 (same session, Chapter 9 deepened — found a real bug):** Per author instruction
+  to keep deepening an in-progress chapter, returned to Vol.I Ch.9 (GraphicsDevice) and built a
+  third worked example: a render-target round trip (draw into an offscreen `RenderTarget2D`,
+  restore the back buffer, draw the render target's own content back as a `SpriteBatch` inset).
+  Registered a third CMake demo target (`cna_rendertarget_roundtrip_demo`); numerically verified
+  via `GetBackBufferData` that the render target was drawn into correctly (`R=255 G=144 B=0`,
+  matching the triangle) while still bound. Running the full example surfaced a real,
+  live-discovered bug rather than a clean success: the `SpriteBatch`-drawn inset renders blank
+  white instead of the verified-correct offscreen content. Traced the root cause directly in
+  `SoftwareGraphicsBackend.cpp`: `SoftwareSpriteBatchBackend::Draw`'s
+  `dynamic_cast<const SoftwareTextureBackend*>(&texture)` fails silently for a
+  `RenderTarget2D`'s backend (`SoftwareRenderTargetBackend`, a sibling class under
+  `ITextureBackend`/`IRenderTargetBackend`, not a subclass of `SoftwareTextureBackend`) — an
+  inconsistency with the raw `DrawPrimitivesEx`/`DrawIndexedPrimitivesEx` paths, which throw a
+  real `std::runtime_error` for the same null-texture case instead of silently drawing
+  untextured. Wrote this up honestly in the chapter as a `sourcenote` finding with the actual
+  (partially broken) screenshot as evidence, per this project's "real or not at all" rule —
+  did not hide the gap or fake a working result. Chapter grows from 556 to 622 lines (~13 to
+  ~16 of a ~90-page target). Volume I recompiled clean (131 pages total, 636 index entries, 0
+  undefined references). This finding, the demo source, and the updated CMake patch are all
+  preserved in `tools/cna-screenshot-infra/` for reproducibility.

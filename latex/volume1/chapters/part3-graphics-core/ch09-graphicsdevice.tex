@@ -178,19 +178,85 @@ original scope and covered here for the first time:
   always allocates a fresh \texttt{std::vector}.
 \end{description}
 
+\subsection{Worked example: a render-target round trip, and a real bug it found}
+\label{sec:worked-rendertarget}
+
+The program below exercises every method in this section for real: it draws an orange/gold
+triangle into an offscreen 128$\times$128 \cnaclass{RenderTarget2D}, confirms via
+\texttt{GetBackBufferData} (\S\ref{sec:backbuffer-readback} below) that the render target's own
+pixels are correct \emph{while it is still bound}, restores the back buffer with
+\texttt{SetRenderTarget(nullptr)}, confirms via \texttt{GetRenderTargets()} that the back
+buffer really is active again, draws a second, unrelated scene into the back buffer, and
+finally tries to draw the offscreen render target's own contents back into the main scene as a
+small inset --- the classic render-to-texture pattern behind minimaps, portals, and
+post-processing effects alike.
+
 \begin{lstlisting}
-// Render-target round trip: draw into an off-screen target, then use it as
-// a source texture for a second pass.
-RenderTarget2D target(device, 256, 256);
+RenderTarget2D offscreen(dev, 128, 128);
+dev.SetRenderTarget(&offscreen);
+dev.Clear(Color(60, 20, 80, 255), 1.0f);
+fx.Apply();
+DrawTriangle(dev, offscreenTri);   // the orange/gold triangle
 
-device.SetRenderTarget(&target);
-device.Clear(Color::CornflowerBlue);
-// ... draw scene contents into `target` here ...
-device.SetRenderTarget(nullptr);   // restore the back buffer
+// Confirm the offscreen target was drawn into correctly, while still bound.
+Color centerPixel(0, 0, 0, 0);
+dev.GetBackBufferData(&Rectangle(64, 64, 1, 1), &centerPixel, 0, 1);
+// centerPixel reads R=255 G=144 B=0 A=255 here -- correct, matches the
+// triangle just drawn.
 
-// `target` is now a regular Texture2D-compatible source for a second pass,
-// e.g. spriteBatch.Draw(target, Vector2::Zero, Color::White);
+dev.SetRenderTarget(nullptr);                     // restore the back buffer
+assert(dev.GetRenderTargets().empty());           // confirmed true
+
+dev.Clear(Color(20, 45, 45, 255), 1.0f);
+fx.Apply();
+DrawTriangle(dev, mainTri);                       // the teal main scene
+
+SpriteBatch batch(dev);
+batch.Begin();
+batch.Draw(offscreen, Rectangle(146, 20, 90, 90), Color::White);
+batch.End();
 \end{lstlisting}
+
+Figure~\ref{fig:ch09-rendertarget-roundtrip} is the real, unedited result --- and it demonstrates
+a real, verified gap rather than a clean success. The numeric check above confirms the render
+target itself was drawn into correctly (\texttt{R=255 G=144 B=0}, matching the triangle's
+interpolated color at that point); \texttt{GetRenderTargets()} confirms the back buffer was
+correctly restored; the teal main-scene triangle renders correctly. But the inset --- where
+\texttt{offscreen}'s own real, just-verified pixel content should appear --- is blank white
+instead.
+
+\begin{sourcenote}
+\textbf{A real bug, found live while writing this worked example, not copied from an existing
+issue tracker.} \texttt{SoftwareGraphicsBackend.cpp}'s \texttt{SoftwareSpriteBatchBackend::Draw}
+(the \texttt{SOFTWARE} backend's implementation of every \cnaclass{SpriteBatch} draw call)
+recognizes its texture argument via \texttt{dynamic\_cast<const SoftwareTextureBackend*>(\&texture)}.
+A \cnaclass{RenderTarget2D}'s backend object, however, is a \texttt{SoftwareRenderTargetBackend}
+--- a sibling class that separately implements \texttt{IRenderTargetBackend} (itself derived
+from \texttt{ITextureBackend}), not a subclass of \texttt{SoftwareTextureBackend} itself. The
+\texttt{dynamic\_cast} therefore fails silently, \texttt{texture0} ends up null, and the
+rasterizer's own texture-sampling code (which re-derives the same \texttt{dynamic\_cast} a
+second time, at the point it actually needs pixel data) treats a null texture as ``draw
+untextured'' --- exactly the blank white quad in the figure. Tellingly, the raw
+\texttt{DrawPrimitivesEx}/\texttt{DrawIndexedPrimitivesEx} paths (\S\ref{sec:draw-calls}) that
+\cnaclass{GraphicsDevice}'s own \texttt{DrawUserPrimitives} family ultimately calls into
+\emph{do} guard against exactly this case --- they throw a \texttt{std::runtime\_error} when
+\texttt{TextureEnabled} is set but \texttt{texture0} is null --- so this is a real, specific
+inconsistency between two code paths that should both refuse silently-wrong output the same
+way, not a documented, intentional limitation. It affects only the \texttt{SOFTWARE} backend
+specifically (the one this book's own screenshot tooling uses); this book takes no position on
+whether the same gap exists on any of the eleven backends Part~IV covers, since verifying that
+would require testing each one directly, which is outside this chapter's scope.
+\end{sourcenote}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.5\textwidth]{images/ch09-rendertarget-roundtrip-software.png}
+\caption{Real, unedited output of the render-target round-trip worked example. The teal main
+scene and the render-target mechanism itself both work correctly (verified numerically); the
+blank white inset is the real, live-discovered \texttt{SpriteBatch}-sampling gap described in
+the note above, not a placeholder or a rendering mistake in this example's own code.}
+\label{fig:ch09-rendertarget-roundtrip}
+\end{figure}
 
 \section{Vertex and index buffer binding}
 \label{sec:vertex-index-binding}
