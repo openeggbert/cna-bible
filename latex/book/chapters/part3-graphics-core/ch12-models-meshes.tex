@@ -6,12 +6,12 @@
 \cnaclass{Model} owns a \cnaclass{ModelBoneCollection} and a \cnaclass{ModelMeshCollection};
 each \cnaclass{ModelMesh} owns a \cnaclass{ModelMeshPartCollection} and a
 \cnaclass{ModelEffectCollection}; each \cnaclass{ModelMeshPart} references a shared
-\cnaclass{VertexBuffer}/\cnaclass{IndexBuffer} pair and an \cnaclass{Effect}. This is the
+\cnaclass{VertexBuffer} / \cnaclass{IndexBuffer} pair and an \cnaclass{Effect}. This is the
 same shape as real XNA, and \cnaclass{Model}'s \emph{runtime} API --- as opposed to how a
 model actually gets loaded, \S\ref{sec:model-loading} below --- is fully audited against FNA
 with zero known open gaps as of the most recent fix (a \texttt{rootBoneIndex} correction).
 \cnaclass{Model} exposes \texttt{CopyAbsoluteBoneTransformsTo},
-\texttt{CopyBoneTransformsFrom}/\texttt{To}, and a convenience \texttt{Draw(world, view,
+\texttt{CopyBoneTransformsFrom} / \texttt{To}, and a convenience \texttt{Draw(world, view,
 projection)}; one small, intentionally-kept deviation from FNA is that CNA's
 \texttt{Copy*BoneTransforms*} methods loop by \texttt{Bones.Count} rather than trusting the
 caller's array length the way FNA does --- strictly safer against an oversized destination
@@ -24,6 +24,50 @@ its \texttt{Parent}, and a \texttt{Children} collection built via a \texttt{NOXN
 described below) and a get/\emph{set} \texttt{ParentBone} --- both properties that only
 matter once something actually populates them, which is exactly where the two different
 model loaders in this codebase diverge sharply.
+
+\section{A worked example: two ways to draw a loaded model}
+
+The simplest path is the convenience method already named above:
+
+\begin{lstlisting}
+model.Draw(worldMatrix, camera.View(), camera.Projection());
+\end{lstlisting}
+
+This is correct for a model with no bone hierarchy to speak of, but a real, multi-bone model
+(a character, a vehicle with independently-animated wheels) needs each mesh drawn with its
+\emph{own} absolute bone transform composed into world space first --- the classic pattern,
+grounded directly in the real \texttt{CopyAbsoluteBoneTransformsTo} and
+\texttt{IEffectMatrices} signatures:
+
+\begin{lstlisting}
+std::vector<Matrix> boneTransforms(model.getBonesProperty().getCountProperty());
+model.CopyAbsoluteBoneTransformsTo(boneTransforms);
+
+for (ModelMesh& mesh : model.getMeshesProperty()) {
+    Matrix meshWorld = boneTransforms[mesh.getParentBoneProperty()->getIndexProperty()]
+                      * worldMatrix;
+
+    for (Effect* effect : mesh.getEffectsProperty()) {
+        if (auto* matrices = dynamic_cast<IEffectMatrices*>(effect)) {
+            matrices->setWorldProperty(meshWorld);
+            matrices->setViewProperty(camera.View());
+            matrices->setProjectionProperty(camera.Projection());
+        }
+    }
+    mesh.Draw(); // issues the actual GPU draw calls per ModelMeshPart -- Chapter 9 covers
+                 // the underlying GraphicsDevice::DrawIndexedPrimitives path this reaches.
+}
+\end{lstlisting}
+
+\texttt{boneTransforms[mesh.getParentBoneProperty()->getIndexProperty()]} is the one line
+worth pausing on: it looks up the mesh's \emph{own} parent bone's absolute transform, not bone
+0 or the model's own root --- which is exactly why the earlier ``two loaders'' distinction
+matters practically here, not just architecturally. Every mesh drawn through a real
+\texttt{.xnb}-loaded model gets its correct, distinct \texttt{ParentBone}; every mesh loaded
+through the older \texttt{.model.json} path silently gets the same default bone regardless of
+what the source data says, so this exact loop --- copied verbatim from a real XNA tutorial ---
+would render every part of a \texttt{.model.json}-loaded model rigidly welded together, with no
+error or warning that anything was wrong.
 
 \section{Two loaders, two very different stories}
 \label{sec:model-loading}
@@ -38,7 +82,7 @@ tries the newer, real one first.
         is wire-compatible with real XNA/MonoGame/FNA compiled model assets. It reconstructs
         the full bone hierarchy, assigns each mesh's real \texttt{ParentBone}, computes a real
         \texttt{BoundingSphere}, and correctly resolves shared \cnaclass{VertexBuffer}/%
-        \cnaclass{IndexBuffer}/\cnaclass{Effect} resources across meshes that share them ---
+        \cnaclass{IndexBuffer} / \cnaclass{Effect} resources across meshes that share them ---
         everything below in this section that describes a gap does \emph{not} apply to this
         loader.
   \item[The older \texttt{.model.json} loose-file loader] (\texttt{ModelTypeReader}) is what
@@ -51,7 +95,7 @@ tries the newer, real one first.
         \texttt{BoundingSphere} is never computed, staying at a degenerate zero radius, and
         neither \texttt{Model.Tag} nor any \texttt{ModelMesh.Tag} is ever set. Resource
         sharing is also absent: every mesh gets a freshly-allocated
-        \cnaclass{VertexBuffer}/\cnaclass{IndexBuffer}, and every part using anything other
+        \cnaclass{VertexBuffer} / \cnaclass{IndexBuffer}, and every part using anything other
         than the plain \texttt{"BasicEffect"} string gets its own freshly-constructed
         \cnaclass{Effect} rather than a shared one --- there is no dependency-graph-aware
         resource deduplication of the kind FNA's own \texttt{ReadSharedResource<T>}
@@ -70,7 +114,7 @@ easy mistake to make. \cnaclass{AnimationPlayer} (\texttt{NOXNA}, mirroring Micr
 unshipped XNA ``Skinned Model Sample'' reference code rather than anything in the framework
 assembly itself) drives a bone-track timeline: \texttt{StartClip(clip)},
 \texttt{Update(TimeSpan, relativeToCurrentTime, loop=true)}, and
-\texttt{GetBoneTransforms()}/\texttt{GetWorldTransforms()}/\texttt{GetSkinTransforms()} ---
+\texttt{GetBoneTransforms()} / \texttt{GetWorldTransforms()} / \texttt{GetSkinTransforms()} ---
 the last of which is exactly what feeds \cnaclass{SkinnedEffect::SetBoneTransforms}
 (Chapter~\ref{ch:stock-effects}). Its skinning data (bone count, hierarchy, bind pose,
 inverse bind pose, animation clips) is stashed on a loaded \cnaclass{Model}'s own
@@ -87,10 +131,53 @@ via a loaded \cnaclass{ModelMeshPart}'s own \texttt{Tag} --- the same attachment
 applied to a different object in the hierarchy, for a different purpose.
 
 A third, still more separate system exists for the Avatar subsystem specifically:
-\texttt{SkinnedModelEXT} (its own \texttt{.skeleton.bin}/\texttt{.clip.bin} binary formats) is
-deliberately not built on \cnaclass{Model}/\cnaclass{ModelBone}/\cnaclass{ModelMesh} at all,
+\texttt{SkinnedModelEXT} (its own \texttt{.skeleton.bin} / \texttt{.clip.bin} binary formats) is
+deliberately not built on \cnaclass{Model} / \cnaclass{ModelBone} / \cnaclass{ModelMesh} at all,
 has its own full test coverage, and is covered alongside the rest of the Avatar system in
 this book.
+
+\subsection{A worked example: driving AnimationPlayer, adapted from its own test suite}
+
+\texttt{AnimationPlayerTests.cpp} builds its fixtures around the smallest rig that can
+actually exercise bone-hierarchy composition: two bones, where bone~1 is a child of bone~0
+offset by $(0,1,0)$ in bind pose, and bone~0's own track moves it from the origin to
+$(2,0,0)$ over one second. Adapted directly from that fixture:
+
+\begin{lstlisting}
+SkinningData data;
+data.BoneCount = 2;
+data.SkeletonHierarchy = {-1, 0};                              // bone 0 = root, bone 1's parent = 0
+data.BindPose = {Matrix::getIdentityProperty(),
+                  Matrix::CreateTranslation(Vector3(0, 1, 0))};
+data.InverseBindPose = {Matrix::getIdentityProperty(), Matrix::getIdentityProperty()};
+
+BoneTrackEXT track;
+track.BoneIndex = 0;
+track.Keys.push_back(Keyframe{System::TimeSpan::FromSeconds(0.0), Vector3(0, 0, 0)});
+track.Keys.push_back(Keyframe{System::TimeSpan::FromSeconds(1.0), Vector3(2, 0, 0)});
+
+AnimationClip clip;
+clip.Duration = System::TimeSpan::FromSeconds(1.0);
+clip.Tracks.push_back(track);
+data.AnimationClips["Move"] = clip;
+
+AnimationPlayer player(data);
+player.StartClip(data.AnimationClips["Move"]);
+
+// Every frame:
+player.Update(gameTime.getElapsedGameTimeProperty(), /*relativeToCurrentTime=*/true);
+skinnedEffect.SetBoneTransforms(player.GetSkinTransforms());
+\end{lstlisting}
+
+Two details this fixture makes concrete rather than abstract: \texttt{SkeletonHierarchy} is a
+flat parent-index array (\texttt{-1} means ``no parent, this is a root''), the same
+representation glTF and most DCC export pipelines use, not a pointer-based tree; and
+\texttt{GetWorldTransforms()} versus \texttt{GetSkinTransforms()} answer two different
+questions --- the former is each bone's absolute transform (what \S\ref{sec:model-loading}'s
+manual mesh-draw loop above would want for a non-skinned mesh attached to a bone), the latter
+is pre-multiplied by each bone's own \texttt{InverseBindPose}, which is specifically the form
+\cnaclass{SkinnedEffect::SetBoneTransforms} expects, since GPU skinning needs the bone's
+\emph{delta} from bind pose, not its absolute pose.
 
 \section{Collections, uniformly}
 
