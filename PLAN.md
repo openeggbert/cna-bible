@@ -35,6 +35,15 @@ done.
   commit and push after each chapter (or small batch of chapters); recompile and check for
   new undefined references/errors before every push, exactly as every prior pass in this
   project has done.
+- **Code examples and screenshots (2026-07-20, follow-up instruction):** every expanded
+  chapter needs real, compilable code examples (already implied by "worked examples" above,
+  now stated explicitly), and graphics-facing chapters should additionally include real
+  screenshots of the example programs actually running wherever that's feasible. A feasibility
+  check of building/running CNA and capturing real screenshots in this environment is
+  in progress as of this session — see the session log for what it found and how screenshot
+  coverage got scoped as a result (this environment is a headless remote container with no
+  guaranteed GPU/display, so the realistic answer may be "some backends yes, others no" rather
+  than uniform coverage across every chapter).
 
 ## Methodology (unchanged from the rest of this project)
 
@@ -46,6 +55,16 @@ done.
   signature, each parameter's meaning/units/valid range, return value, every documented
   exception and when it's thrown, and (per the author's second answer) a short worked example
   showing it called in context, not just a signature restated in prose.
+- Every worked example must be real, compilable code — adapted from an actual test/example
+  call site wherever one exists, not invented from scratch and never presented as tested when
+  it wasn't actually compiled.
+- **Screenshots: real or not at all.** Where a chapter includes a screenshot of an example
+  program running, it must be a real, actually-captured image from an actually-built and
+  actually-run CNA program in this environment — never a mockup, a hand-drawn diagram
+  presented as a screenshot, or an AI-generated image. If a given backend/chapter genuinely
+  cannot produce a real screenshot in this environment (no GPU, no display, a backend that
+  needs Windows/Wine, etc.), the chapter says so explicitly and either omits the screenshot or
+  substitutes a real, clearly-labeled textual/ASCII capture instead — it does not fake one.
 - Recompile (`make volume1` / `make volume2`) after every chapter or small batch; grep the log
   for `undefined` before moving on; fix any stale cross-references immediately (this project's
   established failure mode after any renumbering or heavy insertion).
