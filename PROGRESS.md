@@ -8,12 +8,23 @@ Two-volume LaTeX technical book about the `openeggbert/cna` ecosystem. Source li
 `latex/volume1/` and `latex/volume2/`. Build with:
 
 ```bash
-cd latex && make volume1   # -> volume1/main.pdf  (112 pages)
-cd latex && make volume2   # -> volume2/main.pdf  (116 pages)
+cd latex && make volume1   # -> volume1/main.pdf  (114 pages)
+cd latex && make volume2   # -> volume2/main.pdf  (119 pages)
 ```
 
 Both volumes compile cleanly with pdflatex/latexmk, no undefined references, no unicode
-errors. Combined: 228 pages, 48 chapters + 2 prefaces + 6 appendices.
+errors. Combined: 233 pages, 48 chapters + 2 prefaces + 6 appendices.
+
+**Index fix (2026-07-20):** both volumes' back-of-book index (`\printindex`) was previously
+present but empty (0 entries — the index infrastructure existed but no `\index{}` markup had
+ever been added anywhere in 48 chapters). Fixed at the root: `\cnaclass{}` and `\cnans{}` in
+`latex/common/preamble.tex` (the macros already wrapping every class/method/namespace name
+throughout both volumes) now also emit `\index{}` for their argument, so the index populates
+automatically from markup that already existed everywhere in the text, with no separate
+manual-indexing pass needed. Volume I: 544 entries, 226 index lines, 0 rejected, 0 warnings.
+Volume II: 367 entries, 259 index lines, 0 rejected, 0 warnings. Surveyed all ~330 unique
+`\cnaclass`/`\cnans` arguments beforehand for makeindex-special characters (`@ ! | "`) — none
+found, only two already-escaped underscores — before making the change.
 
 ## Scope note
 
