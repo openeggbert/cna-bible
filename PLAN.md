@@ -136,7 +136,7 @@ question silently.
 | 6 | Game Loop | 216 | 40 | Full `Game`/`GameTime`/`GameWindow` method-by-method docs + examples | Not started |
 | 7 | Math and Core Types | 270 | 110 | Full method docs for all 11 types (Vector2/3/4, Matrix, Quaternion, Point, Rectangle, Color, Plane, Ray, 3 Bounding types) + worked examples per type | Not started |
 | 8 | Content and Assets | 125 | 55 | Full `ContentManager` API + CNJ/XNB worked walkthroughs | Not started |
-| 9 | GraphicsDevice | 171 | 90 | Full method-by-method docs for the 887-line header | Not started |
+| 9 | GraphicsDevice | 556 (was 171) | 90 | Full method-by-method docs for the 887-line header | **In progress (~13 of ~90 pages, first pass done)** |
 | 10 | SpriteBatch | 130 | 55 | Every `Begin`/`Draw`/`DrawString` overload documented + examples | Not started |
 | 11 | Textures and Render Targets | 207 | 60 | Full `Texture2D`/`RenderTarget2D` API + examples | Not started |
 | 12 | Models and Meshes | 103 | 60 | Full `Model`/`ModelMesh`/`ModelBone` family + examples | Not started |
@@ -216,3 +216,21 @@ Ch.13 that is now frozen at ~2 pages per the author's confirmation above).
   flagged earlier — Ch.13's target reverted to "no change," Vol. II subtotal adjusted to
   ~1,163 pages. Execution of the actual chapter expansions still has not started; that remains
   the very next step for whichever session picks this up next.
+- **2026-07-20 (same session, execution started):** Added `CLAUDE.md` (durable project guide)
+  and `NEXT.md` (short, overwritten-each-session handoff briefing) for cross-session
+  continuity. Started Volume I Chapter 9 (GraphicsDevice), the first chapter actually
+  expanded: re-read the full 887-line header, kept the existing accurate narrative sections,
+  and added full coverage of render targets, vertex/index buffer binding, the complete
+  `DrawUserPrimitives`/`DrawUserIndexedPrimitives` overload family (17 overloads total),
+  back-buffer readback, and all `NOXNA` helper/diagnostic methods — none of which the original
+  chapter covered at all. Built CNA's `SOFTWARE` backend from the patch in
+  `tools/cna-screenshot-infra/`, wrote a `GraphicsDevice`-focused worked example (raw
+  `SetVertexBuffer`/`DrawPrimitives` calls, no `SpriteBatch`), ran it headlessly, and embedded
+  the real resulting screenshot (`latex/volume1/images/ch09-drawprimitives-software.png`) with
+  a `Figure` environment — verified by rendering the actual compiled PDF page to confirm the
+  image displays correctly. Chapter grew from 171 to 556 lines, ~4 to ~13 pages (against a
+  90-page target — real, verified progress, not yet complete). This chapter now establishes
+  the template — narrative kept, full method-by-method reference added per section, one real
+  worked example with a real screenshot where feasible — for every subsequent chapter. Volume
+  I recompiled clean (123 pages total, 577 index entries, 0 undefined references). Not yet
+  committed as of this log entry — see the actual commit log for what landed.
