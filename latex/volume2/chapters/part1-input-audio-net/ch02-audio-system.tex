@@ -1,4 +1,118 @@
 \chapter{The Audio System}
 \label{ch:audio-system}
 
-\emph{[Placeholder --- full content pending in this book's next writing pass. See \texttt{PROGRESS.md} at the repository root for the current writing status.]}
+CNA's \cnans{Microsoft::Xna::Framework::Audio} namespace sits on a foundation the project
+debated openly before choosing: real XNA runs XACT content through Microsoft's own XACT
+engine; FNA reimplements that engine as FAudio. CNA does neither --- the project owner
+explicitly rejected an optional-FAudio-backend proposal, and instead built a hand-written
+XACT container parser (\texttt{CNA::Internal::Audio::XactParser}) that feeds real,
+SDL3\_mixer-based playback. This single decision is the root cause of essentially every
+deviation from FNA's own audio behavior catalogued in this chapter.
+
+\section{Why SDL3\_mixer, and what that choice costs}
+
+SDL3\_mixer's own device model hard-floors every audio device to one fixed format, and CNA
+leans into that rather than fighting it: its internal mixer always requests 16-bit signed
+stereo at 44100~Hz, regardless of what the physical output device's native format actually
+is --- a deliberate simplification, since XACT content is itself almost always authored at
+44100~Hz anyway. The cost of building on SDL3\_mixer rather than a dedicated 3D-audio engine
+shows up consistently: no true per-source 3D audio graph, no auxiliary-send/reverb bus, and a
+single shared ``cooked callback'' slot per track used for both filtering and pan-crossfeed at
+once, rather than independent processing stages.
+
+\section{SoundEffect and its instances}
+
+\cnaclass{SoundEffect} loads raw PCM/WAV assets and is move-only, specifically so that
+disposing the parent cascades correctly to every \cnaclass{SoundEffectInstance} it ever
+handed out via \texttt{CreateInstance()}. Its raw-buffer constructors require
+\emph{headerless} 16-bit PCM data --- passing an entire WAV file's bytes, RIFF header
+included, is flagged directly in the class's own documentation as a common, specific mistake
+to avoid. \cnaclass{SoundEffectInstance} exposes volume/pan/pitch/looping/state and a
+\texttt{Apply3D(listener, emitter)} method implementing a distance-and-pan
+\emph{approximation} rather than full 3D audio --- SDL3\_mixer has no native Doppler
+computation, so \texttt{DopplerScale} only ever feeds this approximation, never a true
+per-sample Doppler shift. Pitch shifting uses XNA's exact exponential formula,
+$2^{\text{pitch}}$, and a real state-variable filter (low-pass, high-pass, or band-pass) is
+implemented via an SDL3\_mixer per-track callback matching FAudio's own filter algorithm
+precisely. \cnaclass{DynamicSoundEffectInstance} supports both integer and, as a
+\texttt{NOXNA} addition with no real-XNA equivalent, floating-point buffer submission; its
+\texttt{PendingBufferCount} only decreases once a submitted chunk is genuinely consumed by
+playback, matching FNA's own behavior rather than decrementing eagerly at submission time.
+
+\section{The XACT object model: AudioEngine, SoundBank, WaveBank, Cue}
+
+\cnaclass{AudioEngine} parses a compiled \texttt{.xgs} settings file and owns the lifecycle of
+every \cnaclass{SoundBank}/\cnaclass{WaveBank}/\cnaclass{Cue} built from it, including
+per-category instance-limit enforcement and both global and cue-scoped XACT runtime
+variables. \cnaclass{WaveBank} supports both a fully in-memory mode and a real streaming mode
+(reading by offset and packet size rather than loading everything up front).
+\cnaclass{SoundBank::Dispose()} force-stops every cue it ever produced, matching the real
+FACT engine's own \texttt{FACTSoundBank\_Destroy} behavior exactly. \cnaclass{Cue} implements
+the full XACT playback state machine (\texttt{Created}/\texttt{Preparing}/\texttt{Prepared}/%
+\texttt{Playing}/\texttt{Stopping}/\texttt{Stopped}) with an independent \texttt{paused}
+flag layered on top of \texttt{Playing} --- matching FACT's own bitmask-shaped state rather
+than a naive single enum --- real fade-in/fade-out ramps, per-tick re-evaluation of
+Runtime Parameter Control curves, and all five of XACT's randomized track-variation selection
+algorithms (\texttt{Ordered}, \texttt{OrderedFromRandom}, \texttt{Random},
+\texttt{RandomNoRepeats}, \texttt{Shuffle}).
+
+\section{A real user-reported bug, and the audit it triggered}
+
+The most recent, and most consequential, audit of this namespace was not routine --- it was
+triggered by real user reports of high-pitched, sped-up, distorted, or missing audio in an
+actual ported game. The highest-priority finding directly explains the ``missing audio''
+class of report: the XNB \cnaclass{SoundEffectReader} only ever accepted a narrow PCM format,
+meaning \emph{any} MS-ADPCM-compressed XACT wave bank or XNB sound effect --- a common,
+space-saving compression choice for XACT content --- silently failed to decode at all,
+because the reader's synthetic WAV wrapper was missing the coefficient table MS-ADPCM
+decoding requires. This is now fixed, and the fix was extended to cover 8-bit PCM, IEEE
+float, and IMA-ADPCM as well, not just the one format that triggered the investigation.
+
+A second real fix addressed an asymmetry in how \cnaclass{DynamicSoundEffectInstance}
+handled integer versus float buffer submission --- a genuine code-level risk, not merely a
+missing feature. And because no end-to-end audible-output conformance test existed at all
+before this audit, a new deterministic offline rendering harness was built specifically to
+measure this class of bug directly: it empirically rules out SDL3\_mixer's own resampler as
+the cause of the reported pitch issue, confirming frequency is preserved within 0.1\% across
+22050/44100/48000/96000~Hz source material resampled into the fixed 44100~Hz mixer, provided
+the source sample rate is declared correctly.
+
+A separate, real stereo-panning bug was found and fixed for \cnaclass{SoundEffectInstance}:
+a hard pan used to eliminate the opposite channel entirely rather than crossfeed-blending it
+down, corrected for the \texttt{Play}/\texttt{Apply3D}/pan-setter paths --- but the static,
+fire-and-forget \texttt{SoundEffect::Play(volume, pitch, pan)} convenience helper still
+carries the old, unfixed behavior, tracked separately rather than silently left inconsistent
+without a record.
+
+\section{Accepted deviations, stated as such}
+
+Several differences from a hypothetical ``full XACT'' implementation are documented as
+deliberate, accepted deviations rather than open bugs. XACT's three instance-limit-behavior
+modes (queue, replace-oldest, replace-quietest) all collapse to a single ``evict the oldest
+active cue'' behavior --- matching FAudio's own shipped implementation, which makes the same
+collapse, not a CNA-specific shortcut. A cue-level instance limit has no category- or
+same-cue victim-search filter. Runtime Parameter Control curves targeting a DSP preset are
+never evaluated, because no DSP preset system exists at all. \texttt{Apply3D}'s panning is a
+single-axis linear approximation, not full multi-speaker 3D diffusion. A parsed per-track
+filter can only ever decode as low-pass or high-pass, never band-pass --- itself a real bit-decoding
+quirk in FAudio being faithfully replicated, not invented independently. Reverb is a
+documented no-op, since SDL3\_mixer provides no auxiliary send/return bus to implement it
+against, and there is no HRTF or elevation modeling in the 3D audio approximation at all.
+
+\section{Real memory-safety bugs found and fixed}
+
+Beyond behavioral correctness, the same audit pass found and fixed several genuine
+memory-safety issues through a systematic ``what happens if operation X runs concurrently
+with operation Y'' review: a mixer generation-counter pair with a real use-after-free,
+a heap-buffer-overflow in XACT name parsing, and a genuine data race in \cnaclass{WaveBank}'s
+own cache --- \texttt{Dispose()} could race a concurrently in-flight
+\texttt{GetSoundEffect()} decode --- fixed with a mutex. Two intermittent, undiagnosed
+crashes in the full test suite remain open at the time of writing, both resistant to
+diagnosis under both \texttt{gdb} and Valgrind so far.
+
+\section{Microphone}
+
+\cnaclass{Microphone} provides real SDL3 capture-device enumeration and streaming, a
+\texttt{BufferReady} event, and enforces a buffer-duration constraint of 100 to 1000
+milliseconds in multiples of 10 milliseconds --- matching real XNA's own documented
+constraint on this API exactly.

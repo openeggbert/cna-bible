@@ -4,8 +4,8 @@ Two-volume LaTeX technical book about the `openeggbert/cna` ecosystem. Source li
 `latex/volume1/` and `latex/volume2/`. Build with:
 
 ```bash
-cd latex && make volume1   # -> volume1/main.pdf  (106 pages, complete)
-cd latex && make volume2   # -> volume2/main.pdf  (in progress)
+cd latex && make volume1   # -> volume1/main.pdf  (106 pages, COMPLETE)
+cd latex && make volume2   # -> volume2/main.pdf  (84 pages, Part I complete, rest in progress)
 ```
 
 ## Scope note
@@ -33,26 +33,23 @@ All 24 chapters across all 4 parts are written, source-grounded, and compile cle
 
 ## Volume II — The Ecosystem, the Platforms, and the Practice
 
-Structure updated to add a dedicated Media chapter (was missing). Current chapter numbering:
-
-### Part I — Input, Audio, Media, Devices, Networking and Services
-- [ ] Ch.1 Input — placeholder; **full research notes gathered** (Keyboard/Mouse/GamePad/
-      Touch/Gestures + CNA::Input NOXNA extensions Joysticks/Sensors/Power/Haptics,
-      docs/input-*.md, real bugs found)
-- [ ] Ch.2 Audio — placeholder; **full research notes gathered** (SoundEffect family,
-      AudioEngine/SoundBank/WaveBank/Cue XACT model over SDL3_mixer, NEXTaudio.md findings)
-- [ ] Ch.3 Media — placeholder; **full research notes gathered** (Song/Album/Playlist/
-      MediaPlayer/VideoPlayer — note: README's "14 shells" claim is STALE, NEXTmedia.md
-      shows 224/231 tasks done, real implementations)
-- [ ] Ch.4 Devices/Sensors — placeholder (not yet researched)
-- [ ] Ch.5 GamerServices — placeholder; **full research notes gathered** (Gamer/
-      SignedInGamer/Leaderboards/Achievements real+local, Guide mostly stub w/ 2 real
-      overlay UIs)
-- [ ] Ch.6 Networking — placeholder; **full research notes gathered** (NetworkSession/ENet,
-      SystemLink real, PlayerMatch/Ranked stub, real bugs found+fixed)
-- [ ] Ch.7 Avatar — placeholder; **full research notes gathered** (base API faithfully
-      inert per decompiled XNA assembly; SkinnedModelEXT is the separate real-rendering
-      extension)
+### Part I — Input, Audio, Media, Devices, Networking and Services — **COMPLETE**
+- [x] Ch.1 Input — written, source-grounded (event pipeline, Keyboard/Mouse/GamePad/Touch,
+      CNA::Input NOXNA extensions, real bugs found+fixed, platform notes)
+- [x] Ch.2 Audio — written, source-grounded (SDL3_mixer-backed XACT model, real user-bug-
+      triggered audit findings, accepted deviations)
+- [x] Ch.3 Media — written, source-grounded (corrects README's stale "14 shells" claim —
+      224/231 tasks actually done; Song/Album/Playlist/MediaPlayer/VideoPlayer; the FNA-vs-
+      real-XNA Song.Album/Artist/Genre gap as a methodology lesson)
+- [x] Ch.4 Devices/Sensors — written, source-grounded (SensorBase concurrency engineering,
+      real Accelerometer/Gyroscope, Android-only Compass/Motion, VibrateController, plus the
+      wholly-NOXNA CNA::Devices desktop layer: Camera/SystemTray/DisplayInfo/etc.)
+- [x] Ch.5 GamerServices — written, source-grounded (real+locally-persisted vs. documented
+      stub split, Guide's two real overlay UIs vs. its mostly-stub Show* family)
+- [x] Ch.6 Networking — written, source-grounded (NetworkSession/ENet, real vs. stub by
+      NetworkSessionType, real bugs found+fixed, one still-open leak named honestly)
+- [x] Ch.7 Avatar — written, source-grounded (faithful-inert base API vs. SkinnedModelEXT
+      real-rendering extension, contrast table)
 
 ### Part II — Sharp Runtime (Ch.8-10) — placeholders, not yet researched
 ### Part III — easy-gl and free-direct (Ch.11-12) — placeholders, not yet researched.
@@ -66,9 +63,12 @@ Structure updated to add a dedicated Media chapter (was missing). Current chapte
 2. Graphics core API (GraphicsDevice/SpriteBatch/textures/models/effects/state) — used,
    Vol.I Ch.9-15 done
 3. Backend architecture + all 11 backend docs — used, Vol.I Ch.16-24 done
-4. Input/Audio/Media/Net — gathered, not yet written (Vol.II Ch.1/2/3/6)
-5. GamerServices/Avatar — gathered, not yet written (Vol.II Ch.5/7)
+4. Input/Audio/Media/Net — used, Vol.II Ch.1/2/3/6 done
+5. GamerServices/Avatar — used, Vol.II Ch.5/7 done
+6. Devices/Sensors — read directly from source (SensorBase, Accelerometer, Compass,
+   VibrateController headers + devices-api-coverage.md), Vol.II Ch.4 done
 
-Still needed: Devices/Sensors research, sharp-runtime research, easy-gl/free-direct
-research, cross-platform (Windows/Wine, Emscripten, Android, verification methodology)
-research, and porting/practice/roadmap material.
+Still needed: sharp-runtime research, easy-gl/free-direct research, cross-platform
+(Windows/Wine, Emscripten, Android, verification methodology) research, and
+porting/practice/roadmap material (migration guide, Blupi case study, xna4-spec auditing,
+samples/examples, project practice, testing philosophy, roadmap, 3 appendices).
