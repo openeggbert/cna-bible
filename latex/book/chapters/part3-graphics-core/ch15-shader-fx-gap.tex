@@ -46,17 +46,31 @@ even one custom \texttt{.fx} shader compiled into its content does not, yet.
 \section{What does exist today: ShaderEffect, a runtime-compiled alternative}
 
 CNA does not leave custom shading entirely unaddressed --- it takes a different path than
-bytecode compatibility. A \texttt{ShaderEffect} class exists on the three backends where it
-has been built out (\textbf{D3D9}, \textbf{D3D11}, \textbf{D3D12}, all covered in
-Chapter~\ref{ch:direct3d-backends}), letting a game supply HLSL \emph{source} at runtime,
-compiled on the spot via \texttt{D3DCompile()} (or, on \texttt{D3D9} specifically, the same
-real \texttt{d3dcompiler\_47.dll} the stock-effect pipeline itself uses, isolated into its
-own link target so the rest of the \texttt{D3D9} backend can stay free of a
-\texttt{d3dcompiler} dependency). This is not the same thing as bytecode compatibility ---
-a game must supply new HLSL source, not reuse an existing compiled \texttt{.fx} blob --- but
-it is a real, working, pixel-verified path for adding custom shading to a CNA game today,
-provided you are targeting one of the three Direct3D backends and are willing to author (or
-port) the shader as source rather than load a precompiled asset.
+bytecode compatibility, and it is worth correcting a narrower impression this book itself
+could easily leave if it stopped at only the three Direct3D backends: \cnaclass{ShaderEffect}
+(\texttt{NOXNA}) is a genuinely cross-backend mechanism, with \texttt{CreateEffectBackend()}
+overridden --- meaning the mechanism is real, not a stub --- on \textbf{EasyGL},
+\textbf{Vulkan}, \textbf{BGFX}, \textbf{SdlGpu}, and all three Direct3D backends. EasyGL is, by
+a wide margin, the most exercised of these: 38 of the real examples/tests under this project's
+own \texttt{examples/} directory construct a \cnaclass{ShaderEffect} against it, versus one
+each for D3D11 and D3D12 and a handful for the others. The source \emph{language} differs by
+backend family, grounded directly in \cnaclass{ShaderEffect}'s own class comment and its real
+call sites: GLSL for EasyGL/Vulkan (\texttt{ShaderEffect(device, vertSrc, fragSrc)}, taking
+GLSL source text directly, not a file path), HLSL compiled on the spot via
+\texttt{D3DCompile()} for the three Direct3D backends (or, on \texttt{D3D9} specifically, the
+same real \texttt{d3dcompiler\_47.dll} the stock-effect pipeline itself uses, isolated into its
+own link target). \textbf{SDL\_Renderer}, by contrast, has no programmable shader stage at all
+and does not silently ignore a \cnaclass{ShaderEffect} passed to it --- per this backend's own
+documented \texttt{ThrowNo3D} convention (also covered in Chapter~\ref{ch:sdl-renderer}), it
+throws \texttt{std::runtime\_error} rather than misrender or silently drop the custom shading,
+verified by a real test that confirms exactly that.
+
+None of this is the same thing as bytecode compatibility --- a game must supply new shader
+\emph{source}, not reuse an existing compiled \texttt{.fx} blob, and that source is not
+portable as-is between the GLSL-speaking and HLSL-speaking backend families --- but it is a
+real, working, pixel-verified path for adding custom shading to a CNA game today, on most of
+the hardware-backed 3D backends, provided you are willing to author (or port) the shader as
+source per backend family rather than load one precompiled asset everywhere.
 
 \cnaclass{GpuDrawParams} (Chapter~\ref{ch:stock-effects}) carries a
 \texttt{customEffectBackend} pointer specifically to route a \texttt{ShaderEffect}-compiled
@@ -66,13 +80,54 @@ layer's \cnaclass{IEffectBackend} interface (Chapter~\ref{ch:backend-architectur
 the same interface a stock effect's compiled shader program is bound through, reused rather
 than duplicated for the custom-shader case.
 
+\subsection{A worked example: a minimal GLSL ShaderEffect, adapted from a real test}
+
+Adapted from \texttt{easygl\_shadereffect\_texturecube\_test.cpp}, a minimal
+cube-map-sampling fragment shader and its construction:
+
+\begin{lstlisting}
+const char* vertSrc = R"(#version 300 es
+precision highp float;
+layout(location = 0) in vec3 aPosition;
+void main() { gl_Position = vec4(aPosition, 1.0); }
+)";
+
+const char* fragSrc = R"(#version 300 es
+precision highp float;
+out vec4 FragColor;
+uniform samplerCube CubeSampler;
+uniform vec3 direction;
+void main() { FragColor = texture(CubeSampler, direction); }
+)";
+
+ShaderEffect effect(getGraphicsDeviceProperty(), vertSrc, fragSrc);
+if (!effect.IsEffectValid()) {
+    // compilation failed -- check the backend's own log output before drawing
+}
+
+effect.SetUniformInt("CubeSampler", 0);
+effect.SetUniformVec3("direction", dx, dy, dz);
+effect.SetTexture(0, environmentCube); // TextureCube overload, Task 1081
+\end{lstlisting}
+
+\texttt{IsEffectValid()} is the one check worth never skipping: unlike a stock effect, which
+is guaranteed to compile because its shader source ships with CNA itself, a
+\cnaclass{ShaderEffect} compiles arbitrary game-supplied source at runtime, so a typo or an
+unsupported GLSL feature on a given driver is a real, first-class failure mode this method
+exists specifically to surface --- silently drawing with an invalid program is exactly the
+kind of ``it compiles and something appears on screen'' failure Chapter~\ref{ch:spritebatch}
+already warned against.
+
 \section{The honest summary}
 
 If your porting target relies only on \cnaclass{SpriteBatch} and the five stock effects from
 Chapter~\ref{ch:stock-effects}, this gap does not touch you at all. If it relies on a custom
-compiled \texttt{.fx} shader loaded from content, it does --- today, on every backend except
-the three where \texttt{ShaderEffect} exists, and even there only if you can supply the
-shader as HLSL source rather than a precompiled binary. This is precisely the kind of
-qualified, specific claim Chapter~\ref{ch:what-is-cna} promised this book would preserve:
-not ``shaders don't work,'' and not ``shaders are fully supported,'' but a named, bounded gap
+compiled \texttt{.fx} shader loaded from content, it does --- today, on every backend, full
+stop, since bytecode compatibility itself does not exist anywhere yet. What changes per
+backend is only how much hand-porting a \cnaclass{ShaderEffect} rewrite costs: EasyGL and
+Vulkan take GLSL source directly, the three Direct3D backends take HLSL compiled on the spot,
+and SDL\_Renderer has no programmable shader stage to port to at all. This is precisely the
+kind of qualified, specific claim Chapter~\ref{ch:what-is-cna} promised this book would
+preserve: not ``shaders don't work,'' and not ``shaders are fully supported,'' but a named,
+bounded gap
 with a measured cost (23 of 86 samples) and a real, if partial, alternative already built.
