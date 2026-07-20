@@ -128,6 +128,65 @@ assert(System::Convert::ToInt32(3.5) == 4);  // was 3 before the fix -- .NET
                                               // since 4 is already even
 \end{lstlisting}
 
+\section{Two more findings from the same audit, worth their own worked examples}
+
+Two further findings from that first audit round are worth their own concrete treatment,
+because each illustrates a distinct failure shape beyond simple truncation, and this project's
+own source shows both bugs and both fixes side by side today.
+
+\cnaclass{Dictionary<TKey, TValue>}'s non-\texttt{const} indexer used to be a plain
+\texttt{TValue\&}, which could not distinguish a read access from a write access --- so reading
+a missing key silently inserted a default-constructed value, matching
+\texttt{std::unordered\_map::operator[]}'s own convention rather than real .NET's, where the
+indexer getter unconditionally throws \texttt{KeyNotFoundException} on any missing key. The
+quietly damning detail the audit surfaced: this exact bug had already been found and fixed once
+in this same codebase, in \cnaclass{Concurrent::ConcurrentDictionary}, via a dedicated
+\texttt{ValueProxy} wrapper whose own doc comment states plainly that it does \emph{not} insert
+a default --- the fix had simply never been propagated to the plain, non-concurrent
+\cnaclass{Dictionary}. It has been now:
+
+\begin{lstlisting}
+// Worked example: Dictionary's operator[] today, a ValueProxy return type
+// (not a plain TValue&) so a read and a write can be told apart, exactly
+// mirroring the precedent ConcurrentDictionary::ValueProxy already set.
+[[nodiscard]] ValueProxy operator[](const TKey& key) { return ValueProxy(this, key); }
+
+[[nodiscard]] const TValue& operator[](const TKey& key) const
+{
+    auto it = map_.find(key);
+    if (it == map_.end())
+        throw KeyNotFoundException("The given key was not present in the dictionary.");
+    return it->second;
+}
+\end{lstlisting}
+
+\cnaclass{Concurrent::ConcurrentDictionary::GetOrAdd} / \texttt{AddOrUpdate} had a second, more
+subtle problem the audit also caught: both held their internal \texttt{std::mutex} for the
+\emph{entire} call, including the user-supplied factory callback's own invocation. Since
+\texttt{std::mutex} is non-recursive, a factory that reentrantly called back into the very same
+dictionary instance --- a realistic memoization pattern, not a contrived edge case --- would
+deadlock the calling thread against itself. The fix moves the factory call outside the lock
+entirely, matching real .NET's own documented contract for this method precisely (the factory
+may run without the lock held and, under real contention, may even be invoked more than once,
+with the loser's result discarded):
+
+\begin{lstlisting}
+// Worked example: GetOrAdd today -- the factory call is genuinely outside
+// both lock_guard scopes, so a reentrant factory can no longer self-deadlock.
+TValue GetOrAdd(const TKey& key, std::function<TValue(const TKey&)> factory)
+{
+    {
+        std::lock_guard<std::mutex> lk(mutex_);
+        auto it = map_.find(key);
+        if (it != map_.end()) return it->second;
+    }
+    TValue v = factory(key);   // deliberately unlocked -- see the note above
+    std::lock_guard<std::mutex> lk(mutex_);
+    auto [it, inserted] = map_.emplace(key, std::move(v));
+    return it->second;
+}
+\end{lstlisting}
+
 \section{A second, independent audit, and what sanitizers found that reasoning alone did not}
 
 A further, separate audit produced seven more findings, six fixed in the same session ---

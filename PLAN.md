@@ -177,7 +177,7 @@ ever needed).
 | 31 | Avatar | 179 (was 131) | 55 | Worked examples for the faithful-vs-real-rendering bridge (EnableRealRenderingEXT/DrawRealEXT) and wardrobe hot-swapping (AttachPartEXT/RemovePartEXT), grounded in real headers | **In progress (~4 of ~55 pages)** |
 | 32 | Storage | 124 (was 78) | 30 | Worked examples for the full device-selection-to-open-container lifecycle and file read/write, plus the unique_ptr-ownership finding, grounded in real headers | **In progress (~3 of ~30 pages)** |
 | 33 | Sharp Runtime Overview | 167 (was 116) | 40 | Worked examples for MulticastAction token-based removal and Task::ContinueWith's synchronous-execution contract, grounded in real headers | **In progress (~5 of ~40 pages)** |
-| 34 | Sharp Runtime Namespaces | 162 (was 90) | 70 | **Table description is stale** — the chapter's real title/scope is "Strings, Streams, and a Real Audit History" (String/StringBuilder, Stream, and the two post-stabilization audit narratives); TimeSpan/EventHandler are already covered in Chapter 33, not here. Added worked examples for String/StringBuilder, a minimal Stream subclass, and the Convert::ToInt32 rounding-bug repro | **In progress (~5 of ~70 pages)** |
+| 34 | Sharp Runtime Namespaces | 221 (was 162) | 70 | Added two more real audit findings as worked examples (Dictionary's operator[] ValueProxy fix, ConcurrentDictionary::GetOrAdd's reentrancy-deadlock fix), grounded in `POST_STABILIZATION_AUDIT.md` and confirmed both fixes are live in the real headers | **In progress (~7 of ~70 pages)** |
 | 35 | Parity Philosophy | 134 (was 111) | 35 | Worked example contrasting the three delegate tiers (Action/Func alias, System::Delegate::Combine/Remove, MulticastAction), grounded in real headers | **In progress (~6 of ~35 pages)** |
 | 36 | EasyGL Deep Dive | 151 (was 112) | 55 | Worked examples for Device's per-feature capability gating and the Program::uniform_block_index/Framebuffer typed-reference fixes, grounded in real headers; also fixed two pre-existing single-long-identifier overfull-hbox defects | **In progress (~5 of ~55 pages)** |
 | 37 | free-direct Deep Dive | 65 | ~2 (no change) | **Stays marginal per author confirmation 2026-07-20 — do not expand** | N/A — intentionally frozen |
@@ -1211,3 +1211,22 @@ stays frozen by explicit author decision, not left incomplete.
   recompiled clean (299 pages total, 0 undefined references, 0 duplicate-label warnings); all
   six of the chapter's own pages (189-194, the last one a normal blank right-hand-start padding
   page) verified by rendering to PNG and reading them back.
+- **2026-07-20 (same session, "pokracuj"):** Chapter 34 (Sharp Runtime: Strings, Streams, and a
+  Real Audit History) — depth pass, picked as the chapter with the next-largest page-target gap
+  after Chapter 30. Read `/workspace/sharp-runtime/POST_STABILIZATION_AUDIT.md` in full (already
+  the chapter's own source for its one named finding, `Convert::ToXxx` truncation) and picked
+  two more of its twenty findings for full worked treatment: (1)
+  `Dictionary<TKey,TValue>`'s non-`const` indexer used to silently auto-insert a default value
+  on a missing key rather than throwing `KeyNotFoundException`, exactly the same bug the audit
+  notes had already been found and fixed once before in `ConcurrentDictionary` via a dedicated
+  `ValueProxy` wrapper — the fix had simply never been propagated; (2)
+  `ConcurrentDictionary::GetOrAdd`/`AddOrUpdate` held their lock across the user-supplied
+  factory callback's own invocation, so a reentrant factory (a realistic memoization pattern)
+  would deadlock against itself, fixed by moving the factory call outside the lock to match
+  real .NET's own documented contract. Verified both fixes are live in the real headers
+  (`Dictionary.hpp`'s `ValueProxy`, `ConcurrentDictionary.hpp`'s unlocked `factory(key)` call)
+  before writing either worked example, rather than assuming the audit's own "subsequently
+  fixed" framing without checking. Chapter grows from 162 to 221 lines (~5 to ~7 of a ~70-page
+  target). Volume recompiled clean (301 pages total, 0 undefined references, 0 duplicate-label
+  warnings); all six of the chapter's own pages (209-214, the last one a normal blank
+  right-hand-start padding page) verified by rendering to PNG and reading them back.

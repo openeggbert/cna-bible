@@ -99,7 +99,20 @@ build error from `\checkmark` (needs `amssymb`, not loaded in this book's preamb
 it by using the plain word "done" instead. Prefer plain text over a symbol that needs a new
 dependency unless there's a strong reason to add the package project-wide.
 
-## Chapter 30 (Networking) just got a real depth pass
+## Chapter 34 (Sharp Runtime Namespaces) just got a depth pass too
+
+Grew 162 → 221 lines (~5 to ~7 of a ~70-page target) — the next-largest page-target gap after
+Chapter 30. Read `/workspace/sharp-runtime/POST_STABILIZATION_AUDIT.md` again (the chapter's own
+existing source, already mined once for the `Convert::ToXxx` truncation bug) and picked two more
+of its twenty findings for full worked treatment: `Dictionary`'s indexer auto-insert-instead-of-
+throw bug (the same bug already fixed once in `ConcurrentDictionary` via `ValueProxy`, never
+propagated) and `ConcurrentDictionary::GetOrAdd`'s lock-across-callback reentrancy deadlock.
+Verified both fixes are actually live in the real headers before writing either example — worth
+doing whenever an audit doc's own "subsequently fixed" framing is the only evidence a fix
+landed. Full detail in PLAN.md's session log. Volume compiles clean at 301 pages, 0 undefined
+refs; all six of the chapter's own pages (209-214) PNG-rendered and confirmed defect-free.
+
+## Chapter 30 (Networking) got a real depth pass
 
 Grew 170 → 235 lines (~5 to ~7 of a ~70-page target) — picked as the chapter with one of the
 largest absolute page-target gaps. Added a full worked account of host migration (the
