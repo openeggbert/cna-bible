@@ -2,7 +2,7 @@
 \label{ch:dx3-freedirect-backend}
 
 \texttt{DX3} is CNA's second 2D-only backend, and its odd one out architecturally: it does
-not use SDL3's 2D API at all, instead fronting \texttt{IDirectDraw}/\texttt{IDirectDrawSurface}-shaped
+not use SDL3's 2D API at all, instead fronting \texttt{IDirectDraw} / \texttt{IDirectDrawSurface}-shaped
 calls against \texttt{free-direct}, the narrow DirectDraw reimplementation introduced in
 Chapter~\ref{ch:ecosystem-map} and covered as its own project later in this book. This chapter
 covers only what is specific to CNA's own backend layer on top of it; this book's
@@ -49,17 +49,40 @@ documentation commit rather than by rewriting project history.
 \section{Known, permanent limitations}
 
 No 3D pipeline exists, matching \texttt{free-direct}'s own explicit ``Direct3D not
-implemented'' stance; 8-bit palette surfaces and \texttt{GetDC}/\texttt{SetPalette}-style
+implemented'' stance; 8-bit palette surfaces and \texttt{GetDC} / \texttt{SetPalette}-style
 GDI-adjacent calls are unsupported, since XNA itself has no palette-texture concept to begin
 with; mip levels above zero throw, since \texttt{IDirectDrawSurface} has no native mip chain;
 and \texttt{SetPresentationMode()} is honestly downgraded from an earlier full-pass mark to a documented
 partial: it stores the requested presentation mode but never changes the actual physical
 output scale, always presenting in letterbox regardless --- a real, acknowledged limitation
 that would require a change inside \texttt{free-direct} itself to close, not something fixable
-from CNA's side alone. \texttt{DirectSound}/\texttt{DirectPlay} networking are explicitly out
+from CNA's side alone. \texttt{DirectSound} / \texttt{DirectPlay} networking are explicitly out
 of scope for this backend by the project owner's own instruction --- CNA's own audio and
-networking go through the ordinary backend-agnostic paths from Chapters~6 and~5 of this book,
-not through \texttt{free-direct} at all.
+networking go through the ordinary backend-agnostic paths from Chapter~\ref{ch:audio-system}
+and Chapter~\ref{ch:networking} of this book, not through \texttt{free-direct} at all.
+
+\subsection{A worked example: why matching raw factors is not enough to detect a preset}
+
+The blend-preset misdetection bug above is worth working through with real factor values,
+since ``matched the wrong preset'' undersells what is actually at stake.
+\texttt{BlendState.cpp} constructs \cnaclass{BlendState::AlphaBlend} with two color factors:
+\texttt{ColorSourceBlend} is \texttt{Blend::One}, and \texttt{ColorDestinationBlend} is
+\texttt{Blend::InverseSourceAlpha}. A hypothetical custom state sharing exactly those two
+factors but pairing them with
+\texttt{BlendFunction::Subtract} instead of the preset's own (default) \texttt{Add} computes a
+genuinely different result whenever the destination pixel is not already fully black:
+$\mathit{src} + \mathit{dst} \times (1 - \mathit{srcA})$ versus
+$\mathit{src} - \mathit{dst} \times (1 - \mathit{srcA})$ --- the two only coincide in the
+degenerate case where the destination-factor term itself is zero (as it happens to be for
+\cnaclass{BlendState::Opaque}'s own \texttt{Blend::Zero} destination factor, which is exactly
+why a factors-only comparison against \emph{that specific} preset would have stayed silently
+harmless; \texttt{AlphaBlend}'s nonzero destination factor is what turns the same class of
+detection bug into a real, visible divergence once a game draws over anything already on
+screen). Detecting a preset purely from its blend factors, without also checking both
+\cnaclass{BlendFunction} fields, is exactly the kind of bug that passes every test built
+against a freshly-cleared target and only misrenders once real translucent content is drawn
+over something already there --- precisely what this backend's fix (checking
+\cnaclass{BlendFunction} as well as the raw factors before matching a preset) closes.
 
 Unusually for a backend chapter in this book, this one closes with the project's own summary
 line rather than a caveat: ``no BLOCKED decisions remain open for this backend.''
