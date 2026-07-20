@@ -17,6 +17,38 @@ itself enforces no state-object immutability either way --- so this is a differe
 aliasing semantics, not a correctness regression against an immutability guarantee that never
 existed.
 
+\subsection{A worked example: the by-value semantics, made concrete}
+
+The architectural deviation named above --- CNA copies a state object into the device rather
+than aliasing it --- is easy to state abstractly and easy to get wrong in practice, so it is
+worth seeing directly. \texttt{GraphicsDevice::setBlendStateProperty(const BlendState\&)}
+takes its argument by \texttt{const} reference, but stores an internal copy; the mutable
+overload of \texttt{getBlendStateProperty()} then returns a reference to \emph{that stored
+copy}, not to whatever object was originally passed in:
+
+\begin{lstlisting}
+BlendState custom;
+custom.setColorSourceBlendProperty(Blend::SourceAlpha);
+custom.setColorDestinationBlendProperty(Blend::One);   // additive-style blend
+device.setBlendStateProperty(custom);
+
+custom.setColorSourceBlendProperty(Blend::Zero);        // mutate the ORIGINAL afterward
+// device.getBlendStateProperty().getColorSourceBlendProperty() is still SourceAlpha here --
+// the device's own copy was made at the setBlendStateProperty() call, and is now
+// completely independent of `custom`.
+
+device.getBlendStateProperty().setColorSourceBlendProperty(Blend::One); // this DOES take
+// effect immediately, because it mutates the device's own stored copy directly.
+\end{lstlisting}
+
+The practical rule this implies, for anyone porting real XNA/FNA code that relies on the
+opposite (reference-type, retroactive) behavior: never assume re-mutating a
+\cnaclass{BlendState} variable after assigning it to a device will change anything on that
+device. If a game needs to tweak blend settings per-frame, mutate through
+\texttt{device.getBlendStateProperty()} directly, or construct and assign a fresh state object
+every time --- either is correct in CNA; only the ``mutate the original and expect the device
+to see it'' pattern from real XNA silently does nothing.
+
 \section{BlendState}
 
 Four presets --- \texttt{Additive}, \texttt{AlphaBlend}, \texttt{NonPremultiplied},
@@ -24,7 +56,7 @@ Four presets --- \texttt{Additive}, \texttt{AlphaBlend}, \texttt{NonPremultiplie
 destination triples independently, four independent \texttt{ColorWriteChannels} masks (one
 per potential MRT slot), a \texttt{BlendFactor} color, and a \texttt{MultiSampleMask}.
 \cnaclass{Blend} has thirteen values (\texttt{One}, \texttt{Zero}, the four
-source/destination color and alpha pairs, \texttt{BlendFactor}/\texttt{InverseBlendFactor},
+source/destination color and alpha pairs, \texttt{BlendFactor} / \texttt{InverseBlendFactor},
 and \texttt{SourceAlphaSaturation}); \cnaclass{BlendFunction} has five (\texttt{Add},
 \texttt{Subtract}, \texttt{ReverseSubtract}, \texttt{Max}, \texttt{Min}).
 \texttt{ColorWriteChannels} is a flags enum with the same hand-implemented bitwise operator
@@ -43,14 +75,14 @@ five separate pixel tests before the fix replaced it with a genuine per-\cnaclas
 
 Three presets (\texttt{Default} --- depth test and write on, \texttt{LessEqual} ---,
 \texttt{DepthRead} --- test on, write off ---, and \texttt{None} --- both off) sit atop a
-sixteen-property surface: \texttt{DepthBufferEnable}/\texttt{DepthBufferWriteEnable}/%
+sixteen-property surface: \texttt{DepthBufferEnable} / \texttt{DepthBufferWriteEnable}/%
 \texttt{DepthBufferFunction}, and a full stencil-test configuration
 (\texttt{StencilEnable}, \texttt{StencilFunction}, \texttt{StencilMask}/%
 \texttt{StencilWriteMask}, \texttt{ReferenceStencil}, the three stencil-operation slots for
 pass/fail/depth-fail, \texttt{TwoSidedStencilMode}, and four separate counter-clockwise-face
 variants of the same operations). \cnaclass{CompareFunction} has eight values;
 \cnaclass{StencilOperation} has eight (\texttt{Keep}, \texttt{Zero}, \texttt{Replace},
-\texttt{Increment}/\texttt{Decrement} and their saturating variants, \texttt{Invert}).
+\texttt{Increment} / \texttt{Decrement} and their saturating variants, \texttt{Invert}).
 
 Depth testing itself is solid: \texttt{DepthBufferWriteEnable} and the full five-value
 \texttt{DepthBufferFunction} sweep both verify correctly on EasyGL and (as of a fix) Vulkan.
@@ -94,7 +126,7 @@ on directly) and Vulkan (\texttt{VK\_POLYGON\_MODE\_LINE}). \texttt{DepthBias} a
 \texttt{SlopeScaleDepthBias} have one known, pre-existing failure at an extreme magnitude
 (\texttt{DepthBias = -1e6}) on Vulkan specifically --- the other three sub-cases pass, and
 this was not re-investigated as part of this state object's own audit. BGFX's
-\texttt{CullMode}/\texttt{FillMode}/\texttt{DepthBias}/\texttt{ScissorTestEnable} are, by
+\texttt{CullMode} / \texttt{FillMode} / \texttt{DepthBias} / \texttt{ScissorTestEnable} are, by
 design, not independently pixel-verified at all --- BGFX has no GPU-readback API in this
 project, so its state coverage is smoke-test/no-regression only, a scope difference worth
 remembering whenever this book or the project's own docs describe a BGFX row as
@@ -102,19 +134,19 @@ remembering whenever this book or the project's own docs describe a BGFX row as
 
 \section{SamplerState}
 
-Six presets --- \texttt{AnisotropicClamp}/\texttt{Wrap}, \texttt{LinearClamp}/\texttt{Wrap},
-\texttt{PointClamp}/\texttt{Wrap} --- cover exactly the combinations real FNA ships, no more.
-Seven properties: \texttt{AddressU}/\texttt{V}/\texttt{W} (\cnaclass{TextureAddressMode}:
+Six presets --- \texttt{AnisotropicClamp} / \texttt{Wrap}, \texttt{LinearClamp} / \texttt{Wrap},
+\texttt{PointClamp} / \texttt{Wrap} --- cover exactly the combinations real FNA ships, no more.
+Seven properties: \texttt{AddressU} / \texttt{V} / \texttt{W} (\cnaclass{TextureAddressMode}:
 \texttt{Wrap}, \texttt{Clamp}, \texttt{Mirror}), \texttt{Filter} (\cnaclass{TextureFilter},
 nine values spanning point/linear/anisotropic and their per-mip-stage combinations),
 \texttt{MaxAnisotropy}, \texttt{MaxMipLevel}, \texttt{MipMapLevelOfDetailBias}.
 
 The central, now-fixed finding here was not about the address-mode or filter mapping tables
 themselves --- both were correct in isolation for as long as they were tested --- but about
-whether \texttt{GraphicsDevice.SamplerStates}/\texttt{VertexSamplerStates} were actually
+whether \texttt{GraphicsDevice.SamplerStates} / \texttt{VertexSamplerStates} were actually
 \emph{applied} before a 3D draw at all. They were not, for three separate, backend-specific
 reasons: on EasyGL, eighteen of the \texttt{DrawUserPrimitives}/%
-\texttt{DrawUserIndexedPrimitives}/\texttt{DrawInstancedPrimitives} overloads simply never
+\texttt{DrawUserIndexedPrimitives} / \texttt{DrawInstancedPrimitives} overloads simply never
 called the internal sampler-application step that \texttt{DrawPrimitives}/%
 \texttt{DrawIndexedPrimitives} did call; on Vulkan, the dual-texture descriptor-set path
 hardcoded a default sampler into its slots regardless of what sampler state was actually
@@ -131,9 +163,9 @@ too), because CNA does not set \texttt{GL\_TEXTURE\_MAX\_LEVEL} per texture, and
 mip-aware filter unconditionally to the common non-mipmapped case would render as GL-incomplete
 (solid black) instead. Second, and more severe: \texttt{Texture2D::SetData} at a mip level
 above~0 was a \emph{total, silent no-op} on both Vulkan and BGFX --- the same severity class
-of bug as the \cnaclass{Texture3D}/\cnaclass{TextureCube} \texttt{GetData} no-op from
+of bug as the \cnaclass{Texture3D} / \cnaclass{TextureCube} \texttt{GetData} no-op from
 Chapter~\ref{ch:textures-rendertargets} --- and Vulkan additionally hardcoded a single mip
-level and never set a sampler's \texttt{minLod}/\texttt{maxLod} at all. Both are now fixed on
+level and never set a sampler's \texttt{minLod} / \texttt{maxLod} at all. Both are now fixed on
 all three hardware backends: mip-level \texttt{SetData} is real GPU upload everywhere, and
 EasyGL's \texttt{GL\_TEXTURE\_MAX\_LEVEL} incompleteness bug is fixed alongside it.
 Anisotropic filtering itself: correct on Vulkan (queries the real device capability and
