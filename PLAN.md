@@ -169,7 +169,7 @@ ever needed).
 | # | Chapter | Current (lines) | Target (pages) | Approach | Status |
 |---|---------|-----------------:|----------------:|----------|--------|
 | 25 | Input System | 534 (was 170) | 70 | Full method references + worked examples for KeyboardState/Keyboard's EXT scancode surface, MouseState/Mouse's relative-mouse-mode EXT surface, GamePadState/the three GamePadDeadZone modes, TouchCollection/TouchLocation/GestureSample, TextInputEXT (IME-aware composition), and all five NOXNA-only device subsystems (Clipboard/Joysticks/Sensors/Power/Haptics) | **In progress (~10 of ~70 pages)** |
-| 26 | Audio System | 118 | 60 | Full SoundEffect family docs + examples | Not started |
+| 26 | Audio System | 317 (was 118) | 60 | Full method references + worked examples for SoundEffect, SoundEffectInstance/Apply3D 3D audio, DynamicSoundEffectInstance streaming, the AudioEngine/SoundBank/WaveBank/Cue XACT playback model, and Microphone capture | **In progress (~8 of ~60 pages)** |
 | 27 | Media | 103 | 45 | Full Song/MediaPlayer/MediaLibrary docs + examples | Not started |
 | 28 | Devices and Sensors | 115 | 45 | Full sensor API docs + examples | Not started |
 | 29 | GamerServices | 117 | 55 | Full Achievement/Leaderboard/Gamer docs + examples | Not started |
@@ -634,3 +634,33 @@ current real total of 266 pages.
   page, not a clean log. Chapter grows from 422 to 534 lines (~8 to ~10 of a ~70-page target).
   Volume recompiled clean (272 pages total, 1146 index entries, 0 undefined references, 0
   duplicate-label warnings).
+- **2026-07-20 (same session, "udelej kapitolu audio"):** Chapter 26 (Audio System) — the
+  second former-Volume-II chapter to get its first real expansion pass. Read the real headers
+  for `SoundEffect`, `SoundEffectInstance`, `DynamicSoundEffectInstance`, `AudioEngine`,
+  `SoundBank`, `WaveBank`, `Cue`, `AudioListener`/`AudioEmitter`, and `Microphone` directly,
+  and added full method references + worked examples for each: `SoundEffect`'s four static
+  process-wide mixing knobs and three constructor families (worked example: loading from raw
+  headerless PCM); `SoundEffectInstance`'s `Apply3D`, with a verified finding read from
+  `SoundEffectInstance.cpp` — calling `Apply3D` even once permanently latches an internal
+  `is3D` flag that never resets, so its derived attenuation/pan/Doppler values keep governing
+  output on every later call, even though `Volume`/etc.\ setters still update their own
+  properties independently (worked example: a 3D explosion sound tracking a moving listener);
+  `DynamicSoundEffectInstance`'s pull-based `BufferNeeded`/`SubmitBuffer`/`SubmitFloatBufferEXT`
+  streaming model (worked example: a procedurally generated tone); the `AudioEngine`/
+  `SoundBank`/`WaveBank`/`Cue` XACT object model, distinguishing `GetCue` (caller-owned) from
+  `PlayCue` (bank-owned, fire-and-forget, cleaned up by `AudioEngine::Update()`'s sweep)
+  (worked example: a footstep cue driven by a global XACT runtime variable, plus a held
+  looping engine-sound `Cue`); and `Microphone`'s capture/enumeration surface, with a verified
+  finding that `BufferDuration`'s 100–1000ms-in-multiples-of-10 constraint is enforced by
+  actually throwing `ArgumentOutOfRangeException`, not just documented (worked example:
+  microphone capture piped directly into a `DynamicSoundEffectInstance` for live playback).
+  Caught and fixed one constructor-signature mistake in a first draft before finalizing
+  (`SoundBank`/`WaveBank` take an `AudioEngine*` pointer, not a reference — the worked example
+  originally passed the engine by value). Applied the same `/`-spacing fix for the
+  overfull-hbox defect class (29 instances caught proactively before the first build) and
+  verified all eight of the chapter's own pages by rendering to PNG and reading them back —
+  confirmed clean with no visible cutoff despite a few residual overfull-hbox log warnings
+  under 40pt, consistent with the "log warning alone doesn't mean a visible defect" lesson
+  from the prior two entries. Chapter grows from 118 to 317 lines (~4 to ~8 of a ~60-page
+  target). Volume recompiled clean (276 pages total, 1164 index entries, 0 undefined
+  references, 0 duplicate-label warnings).

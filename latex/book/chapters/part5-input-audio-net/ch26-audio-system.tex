@@ -39,22 +39,176 @@ precisely. \cnaclass{DynamicSoundEffectInstance} supports both integer and, as a
 \texttt{PendingBufferCount} only decreases once a submitted chunk is genuinely consumed by
 playback, matching FNA's own behavior rather than decrementing eagerly at submission time.
 
+\subsection{Full method reference: SoundEffect}
+
+\cnaclass{SoundEffect} exposes four static, process-wide mixing knobs, read directly from its
+header --- \texttt{MasterVolume}, \texttt{DistanceScale}, \texttt{DopplerScale}, and
+\texttt{SpeedOfSound} --- all consulted by every live \cnaclass{SoundEffectInstance} at once,
+not per-instance settings. Beyond \texttt{CreateInstance()} and the static, fire-and-forget
+\texttt{Play(volume, pitch, pan)} convenience helper already named above, three constructor
+families exist: a \texttt{NOXNA} file-path constructor for loading directly from an asset name
+(not part of the real XNA~4.0 API, which only ever loads through
+\cnaclass{ContentManager}); two raw-buffer constructors (a full-format one taking explicit
+channel count/sample rate/loop points, and a simpler one assuming mono 16-bit PCM at a given
+sample rate) --- both requiring \emph{headerless} PCM data as already emphasized;
+\texttt{GetSampleDuration} / \texttt{GetSampleSizeInBytes} (both static) convert between a raw
+buffer's byte size and its playback duration, in either direction, for PCM data at a given
+format --- the calculation a streaming or dynamically-generated sound needs to know how large
+a buffer to allocate for a target duration, or how long a given buffer will actually play for.
+
+\begin{lstlisting}
+// Worked example: loading a sound effect from raw, headerless PCM data
+// (e.g. procedurally synthesized, or decoded by application code from a
+// format SoundEffect itself doesn't parse) and playing it once.
+std::vector<SharpRuntime::bytecs> pcmData = SynthesizeBeep(440.0f, 0.2f);  // 440 Hz, 200 ms
+
+const SoundEffect beep(pcmData, 44100, AudioChannels::Mono);
+beep.Play(1.0f, 0.0f, 0.0f);   // volume, pitch (semitone-equivalent), pan
+\end{lstlisting}
+
+\subsection{Full method reference: SoundEffectInstance and 3D audio}
+
+Beyond \texttt{Volume} / \texttt{Pan} / \texttt{Pitch} / \texttt{IsLooped} / \texttt{State} (a
+\cnaclass{SoundState}: \texttt{Playing} / \texttt{Paused} / \texttt{Stopped}) and
+\texttt{Play} / \texttt{Pause} / \texttt{Resume} / \texttt{Stop} (with an \texttt{immediate} overload
+distinguishing a hard cut from a natural fade-out), \texttt{Apply3D(listener, emitter)} is
+where this class's real complexity lives. \cnaclass{AudioListener} and \cnaclass{AudioEmitter}
+both carry the same four \cnaclass{Vector3} fields --- \texttt{Position}, \texttt{Forward},
+\texttt{Up}, \texttt{Velocity} --- mirroring a camera's own transform properties from
+Chapter~9, plus \cnaclass{AudioEmitter}'s own \texttt{DopplerScale}. Calling \texttt{Apply3D}
+even once permanently changes how the instance behaves from then on: reading
+\texttt{SoundEffectInstance.cpp} directly confirms it latches an internal \texttt{is3D} flag
+that never resets, matching FNA's own equivalent latch --- once \texttt{Apply3D} has run, its
+derived attenuation/pan/Doppler values keep governing the actual audio output on every later
+\texttt{Play()} / \texttt{setVolumeProperty()}/etc.\ call, not just the call that invoked
+\texttt{Apply3D} itself, even though those setters still update their own properties
+independently (so a caller reading \texttt{Volume} back still sees what it last set, even
+though the real output is governed by \texttt{Apply3D}'s computation instead).
+
+\begin{lstlisting}
+// Worked example: positioning a 3D sound effect relative to a moving
+// listener -- Apply3D must be called at least once for spatial
+// attenuation/pan to take effect at all, and every frame afterward to
+// track a moving emitter or listener.
+AudioListener listener;
+listener.setPositionProperty(cameraPosition);
+listener.setForwardProperty(cameraForward);
+listener.setUpProperty(Vector3::Up);
+listener.setVelocityProperty(cameraVelocity);   // needed for Doppler
+
+AudioEmitter emitter;
+emitter.setPositionProperty(explosionWorldPosition);
+emitter.setVelocityProperty(Vector3::Zero);      // a stationary emitter
+
+explosionInstance.Apply3D(listener, emitter);
+explosionInstance.Play();
+\end{lstlisting}
+
+As this chapter's own opening already stated, this is a genuine \emph{approximation} rather
+than full 3D audio --- there is no real Doppler shift computed per-sample, no multi-speaker
+diffusion, and \texttt{DistanceScale} / \texttt{DopplerScale} / \texttt{SpeedOfSound} exist purely
+to tune that approximation's distance-attenuation and pan-based Doppler curves, not to enable
+capabilities SDL3\_mixer's own mixing model does not have.
+
+\subsection{Full method reference: DynamicSoundEffectInstance}
+
+\cnaclass{DynamicSoundEffectInstance} inverts the usual ``load a complete asset, then play
+it'' flow into a pull-based streaming model, the correct tool for procedurally generated audio
+(synthesized tones, streamed voice/network audio) where the complete sample data does not
+exist up front. \texttt{BufferNeeded} (a \texttt{System::EventHandler<System::EventArgs>} ---
+Chapter~34 covers this event type in full) fires when the internal queue is running low and
+more data should be submitted; \texttt{SubmitBuffer(buffer)} (headerless 16-bit PCM, matching
+\cnaclass{SoundEffect}'s own raw-buffer requirement) queues one more chunk, with a second
+overload accepting an explicit offset/count sub-range of a larger buffer without copying it
+first. The \texttt{NOXNA} \texttt{SubmitFloatBufferEXT(buffer)} sibling accepts normalized
+\texttt{float} samples directly instead, for application code that already generates audio in
+floating-point form and would otherwise need to manually quantize to 16-bit integers first ---
+real XNA has no equivalent at all, since the strict API only ever accepts integer PCM.
+\texttt{PendingBufferCount} (already named above) is the standard way to decide whether
+\texttt{BufferNeeded} needs a response right now or the queue still has enough buffered ahead.
+
+\begin{lstlisting}
+// Worked example: a procedurally generated tone using the pull-based
+// streaming model -- BufferNeeded drives generation, rather than the
+// whole sound needing to exist as one complete buffer up front.
+DynamicSoundEffectInstance tone(44100, AudioChannels::Mono);
+tone.BufferNeeded += [&tone](System::Object*, const System::EventArgs&)
+{
+    // Keep two chunks queued ahead so playback never starves waiting
+    // for the next one to be generated.
+    while (tone.getPendingBufferCountProperty() < 2)
+    {
+        tone.SubmitBuffer(GenerateNextSineChunk(440.0f));
+    }
+};
+tone.Play();
+\end{lstlisting}
+
 \section{The XACT object model: AudioEngine, SoundBank, WaveBank, Cue}
 
 \cnaclass{AudioEngine} parses a compiled \texttt{.xgs} settings file and owns the lifecycle of
-every \cnaclass{SoundBank}/\cnaclass{WaveBank}/\cnaclass{Cue} built from it, including
+every \cnaclass{SoundBank} / \cnaclass{WaveBank} / \cnaclass{Cue} built from it, including
 per-category instance-limit enforcement and both global and cue-scoped XACT runtime
 variables. \cnaclass{WaveBank} supports both a fully in-memory mode and a real streaming mode
 (reading by offset and packet size rather than loading everything up front).
 \cnaclass{SoundBank::Dispose()} force-stops every cue it ever produced, matching the real
 FACT engine's own \texttt{FACTSoundBank\_Destroy} behavior exactly. \cnaclass{Cue} implements
-the full XACT playback state machine (\texttt{Created}/\texttt{Preparing}/\texttt{Prepared}/%
-\texttt{Playing}/\texttt{Stopping}/\texttt{Stopped}) with an independent \texttt{paused}
+the full XACT playback state machine (\texttt{Created}, \texttt{Preparing}, \texttt{Prepared},
+\texttt{Playing}, \texttt{Stopping}, \texttt{Stopped}) with an independent \texttt{paused}
 flag layered on top of \texttt{Playing} --- matching FACT's own bitmask-shaped state rather
 than a naive single enum --- real fade-in/fade-out ramps, per-tick re-evaluation of
 Runtime Parameter Control curves, and all five of XACT's randomized track-variation selection
 algorithms (\texttt{Ordered}, \texttt{OrderedFromRandom}, \texttt{Random},
 \texttt{RandomNoRepeats}, \texttt{Shuffle}).
+
+\subsection{Full method reference and a worked example: playing a cue}
+
+\cnaclass{AudioEngine}'s own public surface beyond construction (from a compiled
+\texttt{.xgs} settings file) is small and mostly about the two global runtime-variable
+categories XACT content can reference: \texttt{GetGlobalVariable} / \texttt{SetGlobalVariable}
+read/write an engine-wide named variable (an RPC curve or a piece of gameplay code can both
+read the same value --- a common use is a global ``player health'' or ``distance to danger''
+variable that several different sound cues' volume/pitch RPC curves all key off of at once),
+\texttt{GetCategory(name)} returns an \cnaclass{AudioCategory} handle for bulk
+\texttt{Pause} / \texttt{Resume} / \texttt{Stop} / \texttt{SetVolume} control over every cue in one
+named category simultaneously (the standard technique for a game-wide ``mute music'' or
+``duck all SFX during a cutscene'' toggle), and \texttt{Update()} must be called once per
+frame --- it is what actually sweeps finished fire-and-forget cues and advances every active
+cue's fade/RPC state, mirroring FACT's own \texttt{FACTAudioEngine\_DoWork} call.
+\cnaclass{SoundBank::GetCue(name)} returns an owned \cnaclass{Cue} the caller controls
+explicitly (holds a reference, can call \texttt{SetVariable}, decides when to
+\texttt{Play} / \texttt{Stop} it); \texttt{PlayCue(name)} and its 3D overload,
+\texttt{PlayCue(name, listener, emitter)}, are the fire-and-forget alternative --- the bank
+creates and owns the \cnaclass{Cue} internally, and \texttt{AudioEngine::Update()}'s sweep
+(named above) is what eventually cleans it up once playback finishes, not the caller.
+
+\begin{lstlisting}
+// Worked example: a footstep cue whose pitch varies with the player's
+// current speed, via a global XACT runtime variable an RPC curve
+// authored in the XACT project reads -- the standard way gameplay code
+// drives audio parameters without the audio system needing to know
+// anything about game-specific concepts like "speed" directly.
+AudioEngine engine("Content/Audio/GameAudio.xgs");
+SoundBank soundBank(&engine, "Content/Audio/Sounds.xsb");
+WaveBank waveBank(&engine, "Content/Audio/Sounds.xwb");
+
+// Each frame, before any cue that reads "PlayerSpeed" plays:
+engine.SetGlobalVariable("PlayerSpeed", currentPlayerSpeed);
+
+// Fire-and-forget: the bank owns this Cue's lifetime from here on.
+soundBank.PlayCue("footstep");
+
+// A held, caller-managed Cue instead, for a looping engine sound that
+// needs to be stopped explicitly later:
+Cue* engineLoop = soundBank.GetCue("engine_loop");
+engineLoop->Play();
+// ... later, when the vehicle is destroyed:
+engineLoop->Stop(AudioStopOptions::AsAuthored);   // respects authored fade-out
+delete engineLoop;
+
+// Once per frame, unconditionally:
+engine.Update();
+\end{lstlisting}
 
 \section{A real user-reported bug, and the audit it triggered}
 
@@ -79,7 +233,7 @@ the source sample rate is declared correctly.
 
 A separate, real stereo-panning bug was found and fixed for \cnaclass{SoundEffectInstance}:
 a hard pan used to eliminate the opposite channel entirely rather than crossfeed-blending it
-down, corrected for the \texttt{Play}/\texttt{Apply3D}/pan-setter paths --- but the static,
+down, corrected for the \texttt{Play}/\texttt{Apply3D} / pan-setter paths --- but the static,
 fire-and-forget \texttt{SoundEffect::Play(volume, pitch, pan)} convenience helper still
 carries the old, unfixed behavior, tracked separately rather than silently left inconsistent
 without a record.
@@ -116,3 +270,48 @@ diagnosis under both \texttt{gdb} and Valgrind so far.
 \texttt{BufferReady} event, and enforces a buffer-duration constraint of 100 to 1000
 milliseconds in multiples of 10 milliseconds --- matching real XNA's own documented
 constraint on this API exactly.
+
+\subsection{Full method reference and a worked example}
+
+Device discovery is entirely static: \texttt{Microphone::All} (a
+\texttt{std::vector<Microphone*>}) enumerates every capture device SDL3 reports,
+\texttt{Microphone::Default} returns the platform's default one (or \texttt{nullptr} if none
+exists), and neither list ever needs to be freed by the caller --- every \cnaclass{Microphone}
+instance is owned internally and lives for the process's lifetime. Per-instance,
+\texttt{State} (a \cnaclass{MicrophoneState}: \texttt{Started} / \texttt{Stopped}) and
+\texttt{IsHeadset} / \texttt{SampleRate} describe the device; \texttt{BufferDuration} is the
+get/set threshold controlling how often \texttt{BufferReady} fires --- reading its setter's own
+doc comment confirms the 100--1000ms-in-multiples-of-10 constraint is enforced by actually
+throwing \texttt{System::ArgumentOutOfRangeException} for an out-of-range value, not merely
+documented and left unchecked. \texttt{Start()} / \texttt{Stop()} begin/end capture;
+\texttt{GetData(buffer)} (and its offset/count sub-range overload) drains whatever captured
+audio is currently queued into a caller-supplied buffer, returning the number of bytes
+actually written --- the correct way to read \texttt{BufferReady}'s payload, since the event
+itself carries no data, only a notification that some is now available.
+\texttt{GetSampleDuration} / \texttt{GetSampleSizeInBytes} mirror \cnaclass{SoundEffect}'s own
+pair, converting between a raw capture buffer's byte size and its duration for this specific
+device's sample rate.
+
+\begin{lstlisting}
+// Worked example: capturing microphone input and feeding it straight
+// into a DynamicSoundEffectInstance for live playback -- the standard
+// "hear yourself" or voice-chat-passthrough pattern, bridging capture
+// and playback through the same headerless-PCM buffer format both
+// classes share.
+Microphone* mic = Microphone::getDefaultProperty();
+DynamicSoundEffectInstance playback(mic->getSampleRateProperty(), AudioChannels::Mono);
+
+mic->BufferReady += [mic, &playback](System::Object*, const System::EventArgs&)
+{
+    std::vector<SharpRuntime::bytecs> captured(4096);
+    const int bytesRead = mic->GetData(captured);
+    if (bytesRead > 0)
+    {
+        captured.resize(bytesRead);
+        playback.SubmitBuffer(captured);
+    }
+};
+
+mic->Start();
+playback.Play();
+\end{lstlisting}

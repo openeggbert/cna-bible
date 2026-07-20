@@ -14,44 +14,53 @@ be stale relative to what's happened since — trust the conversation over this 
 numbering). Chapters 25–48 = former Volume II (Parts V–IX, renumbered +24). Appendices A–F.
 Full renumbering table is in `PLAN.md`'s merge session-log entry.
 
-**Chapter 25 (Input System) is now essentially fully expanded at the "reference + worked
-example per major type" depth**, though still well short of its ~70-page target (currently
-534 lines, ~10 pages). Every named subsystem now has a full method reference and at least one
-worked example: `Keyboard`/`KeyboardState` (incl. `GetKeyFromScancodeEXT`), `Mouse`/
-`MouseState` (incl. relative-mouse-mode), `GamePad`/`GamePadState`/`GamePadDeadZone`,
-`TouchPanel`/`TouchCollection`/`GestureSample`, `TextInputEXT`, and all five NOXNA-only device
-subsystems (`Clipboard`, `Joysticks`, `Sensors`, `Power`, `Haptics`). The "Platform-specific
-behavior" and "Status" sections at the end are unchanged from before this session's work
-started (still just narrative, no worked examples) — those are the remaining known gap if
-returning to this chapter specifically, though there may not be much real additional content
-to add there (they're already fairly complete narrative, not reference material).
+**Two former-Volume-II chapters now have a first real expansion pass**: Chapter 25 (Input
+System, 170 → 534 lines, ~4 → ~10 of a ~70-page target) and, this session, **Chapter 26 (Audio
+System, 118 → 317 lines, ~4 → ~8 of a ~60-page target)**. Both follow the same pattern: full
+method references + worked examples for every named class, each grounded in a direct
+header/source read, with real verified findings (not just API summaries) called out
+explicitly.
 
-Volume currently compiles to **272 pages, 1146 index entries, 0 undefined references, 0
+### What Chapter 26 got this session
+
+- **`SoundEffect`**: four static process-wide mixing knobs, three constructor families.
+  Worked example: loading from raw headerless PCM.
+- **`SoundEffectInstance`/`Apply3D`**: a verified finding read from `SoundEffectInstance.cpp`
+  — calling `Apply3D` even once permanently latches an internal `is3D` flag that never resets,
+  so its derived attenuation/pan/Doppler values keep governing output on every later call.
+  Worked example: a 3D explosion sound tracking a moving listener.
+- **`DynamicSoundEffectInstance`**: the pull-based `BufferNeeded`/`SubmitBuffer` streaming
+  model. Worked example: a procedurally generated tone.
+- **`AudioEngine`/`SoundBank`/`WaveBank`/`Cue`**: the XACT object model, distinguishing
+  `GetCue` (caller-owned) from `PlayCue` (bank-owned, fire-and-forget). Worked example: a
+  footstep cue driven by a global XACT runtime variable, plus a held looping engine sound.
+- **`Microphone`**: a verified finding that `BufferDuration`'s constraint is enforced by
+  actually throwing, not just documented. Worked example: mic capture piped into playback.
+
+Caught and fixed a real constructor-signature mistake in a first draft (`SoundBank`/`WaveBank`
+take `AudioEngine*`, not a reference) before finalizing.
+
+Volume currently compiles to **276 pages, 1164 index entries, 0 undefined references, 0
 duplicate-label warnings**.
 
-### A recurring defect class — watch for this in every future chapter
+### The `/`-spacing overfull-hbox defect class — now a routine check
 
-Two consecutive passes on Chapter 25 both turned up the same LaTeX typographic bug: a
-`\texttt{A}/\texttt{B}` (or `\texttt{A}/%`-newline-continued) chain with **no space around the
-slash** is one unbreakable token to LaTeX. When the combined text is long, this causes
-overfull-hbox warnings — sometimes severe enough (up to ~225pt, ~3 inches) to visibly run text
-off the page edge. **After any batch of edits to a chapter with dense multi-method-name
-descriptions**, before considering it done:
-1. `grep -n '}/\\texttt{\|}/\\cnaclass{'` on the file you just edited — fix any hit by adding a
-   space (`} / \texttt{`) unless it's short enough to clearly not matter.
-2. Also check for the sneakier `}/%`-newline-continuation variant, which doesn't match that
-   grep — visually skim any paragraph with a lot of inline `\texttt{}` names.
-3. `grep -i overfull main.log` after building, for the specific file/line range — anything
-   over ~40pt is worth rendering the actual page to PNG and reading it back, since the log
-   warning alone doesn't tell you whether it's a real visible defect or a harmless loose line.
+Three consecutive chapters (25, and now 26) have needed the same fix: a
+`\texttt{A}/\texttt{B}` chain with no space around the slash is one unbreakable LaTeX token,
+and when long enough this causes overfull-hbox warnings, sometimes severe enough to visibly
+cut text off the page edge. **This is now a routine step, not a one-off fix**:
+1. Before the first build of any batch, `grep -n '}/\\texttt{\|}/\\cnaclass{'` on the file(s)
+   you edited and add a space (`} / \texttt{`) to any long chain.
+2. Also watch for the sneakier `}/%`-newline-continuation variant (doesn't match that grep).
+3. After building, `grep -i overfull main.log` for the file/line range you touched. This
+   session confirmed (again) that a residual warning under ~40pt does not reliably mean a
+   visible defect — render the actual page to PNG and read it back before spending more time
+   chasing a warning that may already look fine.
 
 ## What to do next
 
-1. **Move to Chapter 26 (Audio System)** or another Part V–IX chapter (Chapters 27–32 are
-   Media, Devices/Sensors, GamerServices, Networking, Avatar, Storage) — same systematic
-   approach that worked for Chapters 7 and 25: read the real headers, find full method
-   references and real verified findings, add worked examples, watch for the `/`-spacing
-   defect class above.
+1. **Move to Chapter 27 (Media)** or another Part V–IX chapter (28 Devices/Sensors, 29
+   GamerServices, 30 Networking, 31 Avatar, 32 Storage) — same systematic approach.
 2. **Deepen Chapter 9 (GraphicsDevice)** further, or start Chapter 13 (Stock Effects) — both
    still open Part I–IV targets, untouched for several sessions now.
 3. Chapter 7 (Math and Core Types) is at ~33 of a ~110-page target after three sessions — a
@@ -64,22 +73,23 @@ at face value.**
 
 - Branch: `claude/cna-bible-book-09gxp0`. Push there; never force-push.
 - Build: `cd latex && make book` → `latex/book/main.pdf`. Check the log for `undefined`,
-  `multiply defined`/`multiply-defined`, AND `overfull` (see above) every time.
+  `multiply defined`/`multiply-defined`, AND `overfull` every time (see above).
 - Small commits, pushed often — see `CLAUDE.md` for the full methodology list.
 - `/workspace/cna` (or wherever `cna` gets cloned) does not persist across sessions — if a
   screenshot or source re-read needs a working clone, redo it per
   `tools/cna-screenshot-infra/README.md`.
 - After embedding any new screenshot OR any dense full-method-reference section, verify it
   actually rendered correctly by converting the relevant compiled PDF page to an image and
-  reading it back (`pdftoppm` + the `Read` tool) — a page can "build successfully" while still
-  visibly cutting off text.
+  reading it back (`pdftoppm` + the `Read` tool).
 - Printed page numbers and physical PDF page numbers differ (front matter uses roman
   numerals) — search by content (`pdftotext -f N -l N`) rather than assuming printed page N
   is physical page N.
 - Prefer real `\ref{ch:label}` over a plain-text `Chapter~N` citation when a label already
   exists and you're touching that paragraph anyway.
 - Verify hand-derived numeric/algebraic claims with an actual computation before writing them
-  into the book.
+  into the book. Also double-check constructor/method signatures against the real header
+  before writing a worked example that calls them — this session caught a
+  reference-vs-pointer mistake this way before it shipped.
 - To find genuine gaps in an already-"complete-looking" chapter, systematically grep the real
   header for every type/class it covers and diff against what the chapter's prose actually
   mentions.
