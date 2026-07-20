@@ -49,7 +49,7 @@ cmake --build build-sdlrenderer --target CNA CnaTests
 \end{lstlisting}
 
 This one-flag swap is the whole point of the backend abstraction covered in
-Chapter~\ref{ch:backend-architecture} --- the same \texttt{CNA}/\texttt{CnaTests} build
+Chapter~\ref{ch:backend-architecture} --- the same \texttt{CNA} / \texttt{CnaTests} build
 targets exist regardless of which of the eleven backends in
 Table~\ref{tab:backend-option-list} you select.
 
@@ -78,6 +78,62 @@ Windows-only via cross-compilation; see Chapter~\ref{ch:direct3d-backends} for i
 invocation, which additionally requires \texttt{-DCNA\_BUILD\_TESTS=ON}.}
 \label{tab:backend-option-list}
 \end{table}
+
+\section{The full CMake option reference}
+\label{sec:cmake-option-reference}
+
+\texttt{-DCNA\_GRAPHICS\_BACKEND} is the option most build invocations in this book set
+explicitly, but CNA's top-level \texttt{CMakeLists.txt} declares several more, every one of
+them read directly from that file rather than assumed from memory:
+
+\begin{center}
+\begin{tabularx}{\textwidth}{llX}
+\toprule
+\textbf{Option} & \textbf{Default} & \textbf{Effect} \\
+\midrule
+\texttt{CNA\_USE\_CCACHE} & \texttt{ON} & Auto-detects \texttt{ccache} and wires it in as the
+  C/C\texttt{++} compiler launcher for both CNA and \texttt{sharp-runtime}, unless a launcher
+  is already set. \\
+\texttt{CNA\_BUILD\_TESTS} & \texttt{ON} & Builds the \texttt{CnaTests} GoogleTest target and
+  registers CTest entries. \\
+\texttt{CNA\_NOXNA} & \texttt{OFF} & Enables an opt-in, project-specific extended render
+  pipeline (see below) --- unrelated to the \texttt{NOXNA} marker macro from
+  Chapter~\ref{ch:design-philosophy}. \\
+\texttt{CNA\_DEVICES} & \texttt{OFF} & Enables CNA-specific device/sensor extensions beyond
+  XNA 4.0 (battery, camera, clipboard, and similar). \\
+\texttt{CNA\_ENABLE\_NET} & \texttt{ON} & Builds \cnans{Net} and \cnans{GamerServices}
+  networking; pulls in the vendored ENet dependency when on. \\
+\texttt{CNA\_USE\_SYSTEM\_SDL} & \texttt{OFF} & Uses \texttt{find\_package} for system SDL3
+  packages instead of the vendored submodules (see above). \\
+\texttt{CNA\_TEST\_DISPLAY} & \texttt{":0"} & The \texttt{DISPLAY} value baked into every
+  GPU/window-creating CTest's environment; override to point the suite at a virtual display
+  (e.g.\ Xvfb) instead of a real desktop. \\
+\texttt{CNA\_SANITIZE} & \emph{(empty)} & Comma-separated sanitizer list (e.g.\
+  \texttt{address,undefined}) added to both compile and link flags project-wide; diagnostics
+  only, never for a shipped build. \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Every one of these is independent of \texttt{-DCNA\_GRAPHICS\_BACKEND}
+(Table~\ref{tab:backend-option-list}).
+
+\begin{sourcenote}
+\textbf{Two same-shaped names, two unrelated things.} \texttt{CNA\_NOXNA} (a CMake
+\texttt{option()}, off by default) and \texttt{NOXNA} (the marker macro from
+\S\ref{sec:noxna}) share a name fragment purely by coincidence of naming convention, not by
+design --- confusing the two is an easy real mistake to make when skimming the source. The
+marker macro tags an individual declaration as ``not part of stock XNA 4.0'' and is present in
+every build regardless of any flag. \texttt{CNA\_NOXNA} the CMake option instead gates an
+entirely separate, genuinely optional feature: a settings-bag-only ``extended render
+pipeline'' (\cnaclass{RenderPipelineSettings}, under \cnans{CNA::Graphics}, guarded behind
+\texttt{\#ifdef CNA\_NOXNA} in its own header) covering HDR exposure/gamma, tonemapping mode,
+shadow quality, and PBR material settings. Its own header comment is explicit about scope:
+it ``does not perform any rendering itself'' --- it is configuration a backend can read and
+act on, with backend support for each individual feature not yet implemented across the board
+as of the snapshot this book draws from. Building with plain \texttt{cmake -S . -B build}
+(the option's own \texttt{OFF} default) never compiles this pipeline in at all.
+\end{sourcenote}
 
 \section{Windows, natively and cross-compiled}
 
@@ -163,7 +219,7 @@ in Part~IV.
 \begin{sourcenote}
 \textbf{On CI coverage.} As documented in CNA's own README, project CI is Linux-only and
 partial: at the time this book's source material was gathered, CI ran only the
-\texttt{Input} and \texttt{Devices}/\texttt{Sensors} GoogleTest suites --- not the full
+\texttt{Input} and \texttt{Devices} / \texttt{Sensors} GoogleTest suites --- not the full
 roughly 4\,370-test unit suite, and not the roughly 490-test GPU pixel-test suite across the
 four established graphics backends. Everything this book states about Graphics-layer
 correctness is verified by running the suites locally and by hand, not by an automated
