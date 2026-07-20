@@ -132,7 +132,7 @@ numbers below are unchanged by the merge.
 | # | Chapter | Current (lines) | Target (pages) | Approach | Status |
 |---|---------|-----------------:|----------------:|----------|--------|
 | 1 | What Is CNA | 215 (was 145) | 20 | Added a concrete completion-numbers paragraph (92.7% FNA type coverage, per-namespace breakdown), a worked audit-methodology example (the Media Song::Album/Artist/Genre finding that survived eight FNA-only review passes), a real project-history section (first commit 2025-02-22, phase/task tracking, Phase 72 worked example), and a Licensing section (Ms-PL); fixed a stale placeholder Chapter reference | **In progress (~4 of ~20 pages, not yet PDF-verified — latexmk unavailable this session)** |
-| 2 | Ecosystem Map | 141 | 25 | Deeper per-repo detail, more cross-links | Not started |
+| 2 | Ecosystem Map | 155 (was 141) | 25 | Fixed three stale "Chapter references in Part~N" placeholders into real \ref{}s (Ch.33/34/35, Ch.36, Ch.44); added easy-gl's own scope-vs-CNA's-EASYGL-backend distinction and free-direct's real split-by-transport test-suite detail (ENet 1/1, loopback 7/8-by-design) | **In progress (~4 of ~25 pages, PDF-verified clean)** |
 | 3 | Design Philosophy | 256 | 30 | More NOXNA-discipline worked examples | Not started |
 | 4 | Building CNA | 173 | 35 | Full CMake option reference, per-platform build walkthroughs | Not started |
 | 5 | First Game | 131 | 40 | Multiple complete worked example programs, step-by-step | Not started |
