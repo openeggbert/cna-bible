@@ -12,86 +12,74 @@ be stale relative to what's happened since — trust the conversation over this 
 targets ~1,305 pages Vol.I / ~1,163 pages Vol.II). Both earlier scope conflicts (free-direct/
 cna-extended staying marginal; screenshots real-or-nothing) are resolved — don't re-litigate.
 
-**This session worked exclusively on Vol.I Ch.7 (Math and Core Types)**, per an explicit
-author instruction to find and fix everything missing in that one chapter. It grew from
-270 → 1240 lines (~4 → ~24-25 of a ~110-page target, measured by pdftotext-searching the PDF
-for the chapter's own opening sentence and Chapter 8's heading to bound its real page range).
-**Be honest about this with the author if asked: the chapter is substantially deepened and a
-real number of previously-unnoticed gaps got fixed, but it remains well short of the
-~110-page target even after a session focused on it exclusively.** Reaching that target for
-real is several more sessions of the same kind of direct-source-reading work, not one more
-pass.
+**Two consecutive sessions have now worked exclusively on Vol.I Ch.7 (Math and Core Types)**,
+per explicit author instruction both times. It has grown from 270 → 1473 lines (~4 → ~29 of a
+~110-page target, measured by pdftotext-searching the compiled PDF for the chapter's own
+opening sentence and Chapter 8's heading, not estimated from line count alone). **Be honest
+about this with the author if asked: the chapter keeps getting genuinely, substantively
+deeper — every session so far has found and fixed real gaps, not padded — but it is still
+under 30% of its page target after two sessions focused on nothing else.** Reaching ~110 pages
+this way is realistically several more sessions of the same density of work.
 
-### What actually got fixed this session (the important part)
+### What this session added (on top of the prior session's shared-surface/Length/Decompose/Concatenate work)
 
-The most valuable finding wasn't a new worked example — it was systematically grepping every
-type's real header against the chapter's existing prose and discovering that
-**`Equals`/`GetHashCode`/`ToString` are implemented by every single type in this chapter, but
-had never been mentioned anywhere in the text.** Fixed with a new section right after the
-chapter intro (`\S`\texttt{sec:shared-debug-surface}) documenting the shared triad once. That
-same pass made good on the chapter's own opening-paragraph claim about
-`CheckForNaNs()`/`getDebugDisplayStringProperty()`, and turned up two genuine findings while
-verifying it: (1) neither helper is ever called from anywhere outside its own defining `.cpp`
-file anywhere in the codebase (no test, no example, no other class; no `.natvis`/LLDB
-summary-provider file exists either — both are currently unreachable through any public code
-path); (2) the three vector types' `CheckForNaNs()` runs unconditionally in every build, while
-`Matrix`'s and `Quaternion`'s are wrapped in `#if !defined(NDEBUG)` and compile to nothing in a
-release build.
+Worked through the prior session's own "known remaining gaps" list item by item, each as a new
+`\subsection` with source-grounded code:
 
-Also fixed a real accuracy gap: the vector "full method reference" never mentioned
-`Length()`/`LengthSquared()`, despite the chapter's own very first worked example already
-calling `toTarget.Length()` without the method ever having been named anywhere in the text.
+- **`Vector4`'s extra `Transform(Vector2/Vector3 input) -> Vector4` overloads**: tied to
+  something real rather than invented — CNA's own `SOFTWARE` backend rasterizer
+  (`SoftwareGraphicsBackend.cpp`) calls exactly this overload to build clip-space vertices
+  before the perspective divide; `Vector3::Transform` would have silently discarded the `W`
+  component that step needs.
+- **`Matrix::CreateBillboard`**: worked example plus its real degenerate-case handling
+  (`BillboardEpsilon = 0.0001f`, falling back to `cameraForwardVector`/`Vector3::Forward` when
+  object and camera positions coincide).
+- **`Matrix::CreateShadow`/`CreateReflection`**: worked example plus a real asymmetry —
+  `CreateReflection` normalizes its input `Plane` defensively; `CreateShadow` does not. Caught
+  and fixed a matrix-multiplication-order mistake in this example's own first draft before
+  finalizing it (row-vector convention: the object's own world matrix goes on the left).
+- **`Plane::Transform`**: worked example demonstrating the real inverse-transpose technique it
+  uses internally. The first draft used an axis-aligned normal under a diagonal scale — a
+  quick Python check showed this produces **no visible discrepancy** between the naive and
+  correct approaches (an axis-aligned normal under a diagonal scale doesn't change direction).
+  Replaced with a genuinely sloped normal and re-verified numerically before writing it down.
+- **`BoundingBox::Contains(Vector3)`**: a dedicated trigger-volume worked example.
+- **`BoundingFrustum::Contains`** (vs. `Intersects`): a worked example built around a real
+  finding read from `BoundingFrustum.cpp` — it short-circuits to `Disjoint` the moment any one
+  of the six planes tests `Front`, and only reports full `Contains` when every plane comes back
+  `Back` — exactly the distinction a LOD system can use to skip per-submesh culling.
 
-Other real, source-verified additions this session: a full reference + worked example for
-`Point` (previously only described in passing inside the Rectangle section); a full reference
-for `CurveKeyCollection`'s `Count`/`IsReadOnly`/`Item`/`Clear`/`Clone`/`Contains`/`CopyTo`/
-`IndexOf`/`RemoveAt`; a `Matrix` arithmetic-statics reference plus a `Decompose` worked example
-(which itself turned up two more findings: a locally-duplicated `WithinEpsilon` in
-`Matrix.cpp`'s own anonymous namespace, and a documented FNA-vs-CNA negative-zero sign
-divergence); a `Quaternion` `Concatenate`-vs-`Multiply`/`operator*` ordering finding — derived
-by hand from both methods' component formulas, then **verified numerically with a standalone
-Python script** across five random quaternion pairs — showing `Concatenate(value1, value2)`
-computes exactly `Multiply(value2, value1)`, i.e. the promised "value1 applied first" reading
-is actually the right-to-left reading of `operator*`, not the left-to-right one the argument
-order suggests; a second `Ray` worked example (nearest-of-several picking, since `Intersects`
-calls don't return hits in distance order); and a precise correction to `Rectangle::IsEmpty`
-(checks all four fields equal zero, not just zero area).
-
-Volume I currently compiles to **145 pages, 716 index entries, 0 undefined references**.
+Volume I currently compiles to **149 pages, 740 index entries, 0 undefined references**.
 **Volume II has not been touched in the expansion pass at all yet.**
 
-### Known remaining gaps in Chapter 7 specifically (start here if returning to it)
+### Known remaining gaps in Chapter 7 (start here if returning to it again)
 
-- Vector2/Vector4-specific worked examples — both are currently only exercised via the shared
-  Vector2 example and Matrix/Quaternion `Transform` overloads, never with anything
-  Vector4-specific (e.g. its extra `Transform(Vector2/Vector3 input) -> Vector4` overloads).
-- `Plane::Transform` has no worked example (only `DotCoordinate` does).
-- `BoundingBox`/`BoundingFrustum` each still lack a worked example of their own beyond the
-  shared bounding-volume examples (frustum culling, `CreateFromPoints`).
-- `Matrix`'s billboard, constrained-billboard, shadow, and reflection factory methods are
-  described in the reference table but none has a worked example.
+- `Matrix::CreateConstrainedBillboard` still has no worked example (only plain
+  `CreateBillboard` does now).
+- `Matrix::CreateOrthographic`/`CreateOrthographicOffCenter` have no worked example — every
+  existing Matrix example in this chapter uses a perspective projection.
+- `BoundingSphere::Transform` (translation + uniform scale only) has no worked example
+  demonstrating its documented limitation with a non-uniform scale.
+- `Quaternion::Lerp` vs. `Slerp` — the chapter documents both and has a `Slerp` worked example,
+  but no side-by-side example showing *why* `Lerp`'s non-uniform angular velocity actually
+  matters (e.g. a visible speed-up/slow-down artifact over a large rotation).
 - The chapter's target of ~110 pages implies substantially more per-type depth than a
-  reference table + 1-2 worked examples each — consider whether further sessions should keep
-  adding worked examples/findings at this same density, or whether the ~110-page figure itself
-  needs revisiting with the author once the "what's actually missing" question has been asked
-  of most chapters, not just this one.
+  reference table + 2-3 worked examples each — as flagged in the prior session's note, it may
+  be worth revisiting the ~110-page figure itself with the author once "what's actually
+  missing" has been asked of more chapters than just this one.
 
-### Other chapters, for context (untouched this session)
+### Other chapters, for context (untouched these last two sessions)
 
-- **Vol.I Ch.9 (GraphicsDevice)**: 171 → 872 lines (~4 → ~23 of a ~90-page target), unchanged
-  since the prior session. Full method coverage, three real backend-specific gaps documented
-  (SpriteBatch/RenderTarget2D sampling; `SupportsCapability(MultipleRenderTargets)`;
-  `IsProfileSupported`/`QueryRenderTargetFormat`/`QueryBackBufferFormat` only genuinely
-  hardware-checked on D3D9), a multi-monitor `Adapters` enumeration subsection, a private
-  lifecycle section, four worked examples with two real screenshots.
-- Four screenshot demos exist in `tools/cna-screenshot-infra/` — unchanged this session, no
-  new demo was needed (this session's additions were all numeric/source-grounded, not
-  screenshot-based).
+- **Vol.I Ch.9 (GraphicsDevice)**: 171 → 872 lines (~4 → ~23 of a ~90-page target). Full method
+  coverage, three real backend-specific gaps documented, a multi-monitor `Adapters`
+  enumeration subsection, a private lifecycle section, four worked examples with two real
+  screenshots.
+- Four screenshot demos exist in `tools/cna-screenshot-infra/` — unchanged these last two
+  sessions; no new demo was needed (recent additions have all been numeric/source-grounded).
 
 ## What to do next
 
-1. **If continuing Chapter 7**: work through the "known remaining gaps" list above — each is a
-   concrete, scoped addition, not a re-read of what's already there.
+1. **If continuing Chapter 7**: work through the "known remaining gaps" list above.
 2. **Start Volume II** — it is at 0% of its own Phase 1 progress and is the single highest-value
    thing to do next across the whole project. Ch.1 (Input System, ~70-page target) is a
    reasonable opening chapter.
@@ -115,13 +103,16 @@ treat this section as stale and re-derive current state from the repo itself.
 - Avoid hardcoding a section/figure number as plain text inside a code comment or prose — say
   "earlier in this chapter" instead when a real `\ref{}` isn't handy.
 - When adding a new `\S\ref{...}` cross-reference, double check the label actually exists
-  (`grep -n "label{...}"`) before compiling.
-- **New this session**: when a hand-derived numeric/algebraic claim (e.g. "these two formulas
-  are equivalent under argument swap") is going into the book, verify it with an actual
-  computation (a throwaway Python/C++ script), not just by eye — one such claim in this
-  session (`Concatenate` vs `Multiply`) was verified this way before being written down.
-- **New this session**: to find genuine gaps in an already-"complete-looking" chapter,
-  systematically grep the real header for every type it covers and diff against what the
-  chapter's prose actually mentions — don't assume a "full method reference" is actually full
-  just because it reads as thorough. This is how the `Equals`/`GetHashCode`/`ToString` gap (the
-  single highest-value fix this session) was found.
+  before compiling.
+- **Verify hand-derived numeric/algebraic claims with an actual computation** (a throwaway
+  Python/C++ script) before writing them into the book — this session's `Plane::Transform`
+  example would have shipped a misleading (accidentally-non-discrepant) worked example without
+  that check; the prior session's `Concatenate`-vs-`Multiply` finding was caught the same way.
+- **To find genuine gaps in an already-"complete-looking" chapter**, systematically grep the
+  real header for every type it covers and diff against what the chapter's prose actually
+  mentions — this is how both sessions' highest-value findings surfaced (the missing
+  `Equals`/`GetHashCode`/`ToString` mention, and this session's clip-space `Vector4::Transform`
+  tie-in to the real `SOFTWARE` backend source).
+- **Double-check matrix/quaternion composition order** against XNA's row-vector convention
+  before writing a multi-matrix worked example — this session caught and fixed one such mistake
+  (`characterWorldMatrix * shadowMatrix`, not the reverse) before it shipped.

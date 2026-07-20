@@ -243,6 +243,44 @@ Winding order matters here exactly as it does for backface culling
 and \texttt{edge2} --- equivalently, swapping \texttt{b} and \texttt{c} --- negates the
 resulting normal, since \texttt{Cross(v1, v2) == -Cross(v2, v1)} for any two vectors.
 
+\subsection{A third worked example: Vector4's own extra Transform overloads, and why clip space needs them}
+
+\S\ref{sec:vector-full-reference}'s reference table above noted, in passing, that
+\cnaclass{Vector4} alone accepts a \cnaclass{Vector2} or \cnaclass{Vector3} \emph{input} to
+\texttt{Transform}, in addition to the \cnaclass{Vector4}-to-\cnaclass{Vector4} form
+\cnaclass{Vector2}/\cnaclass{Vector3} themselves already have. This is not a redundant
+convenience overload --- it exists because transforming a 3D position by a full
+\cnaclass{Matrix} (in particular a perspective projection) genuinely produces a fourth
+component the source position never had, and \cnaclass{Vector3}'s own \texttt{Transform}
+silently discards exactly that component. Reading CNA's own \texttt{SOFTWARE} backend
+rasterizer (Chapter~\ref{ch:graphicsdevice}'s own worked examples both run through it) shows
+precisely where this matters in practice: every vertex it processes is transformed into clip
+space with \texttt{Vector4::Transform(position, combined)} --- taking a \cnaclass{Vector3}
+position directly --- specifically \emph{because} the resulting \texttt{W} component is
+required by the perspective divide and near-plane clipping that come immediately afterward,
+both of which happen before \texttt{W} is ever discarded. Had the rasterizer instead used
+\cnaclass{Vector3}'s own \texttt{Transform(position, matrix)}, the very quantity the rest of
+the pipeline depends on would already be gone.
+
+\begin{lstlisting}
+// Worked example: manually reproducing the first step of CNA's own
+// SOFTWARE rasterizer -- transforming a vertex position into clip space
+// and inspecting the W component the perspective divide needs.
+const Matrix combined = world * view * projection;
+
+const Vector3 objectSpacePosition(0.0f, 0.8f, 0.0f);   // one triangle vertex
+
+// Vector3::Transform(objectSpacePosition, combined) would silently drop
+// exactly the component the next two lines depend on -- use Vector4's own
+// overload, which accepts the Vector3 input directly, instead.
+const Vector4 clip = Vector4::Transform(objectSpacePosition, combined);
+
+// The perspective divide (screen-space X/Y, and depth) needs clip.W --
+// this is the step Vector3::Transform's silently-discarded W would have
+// made impossible to perform correctly afterward.
+const Vector3 ndc(clip.X / clip.W, clip.Y / clip.W, clip.Z / clip.W);
+\end{lstlisting}
+
 \section{Matrix: a 4x4, and one CNA-specific bridge method}
 
 \cnaclass{Matrix} stores sixteen public \texttt{float} fields named \texttt{M11}
@@ -390,6 +428,81 @@ else
     // upstream that produced a degenerate transform. rotation was reset to
     // Quaternion::Identity; scale/translation are still meaningful.
 }
+\end{lstlisting}
+
+\subsection{Worked examples: CreateBillboard, and the degenerate-case fallback it handles for you}
+
+\texttt{CreateBillboard} is one of the factory methods \S\ref{sec:matrix-full-reference}'s
+reference table above only describes in the abstract; reading its implementation shows it does
+real, worthwhile defensive work beyond the basic ``face the camera'' computation. It first
+computes the direction from the camera to the object; if that direction's squared length falls
+below a small fixed \texttt{BillboardEpsilon} (\texttt{0.0001f}) --- meaning the object and
+camera positions are at, or extremely near, the same point, where ``face the camera'' is
+undefined --- it falls back to \texttt{cameraForwardVector} if one was supplied, or
+\cnaclass{Vector3}\texttt{::Forward} otherwise, rather than dividing by (near) zero and
+producing a \texttt{NaN}-filled matrix silently.
+
+\begin{lstlisting}
+// Worked example: billboarding a particle so it always faces the camera,
+// regardless of the particle's own orientation -- the standard technique
+// for 2D sprite-like particles (smoke, sparks, glow) rendered in a 3D
+// scene.
+const Matrix billboard = Matrix::CreateBillboard(
+    particlePosition, cameraPosition, Vector3::Up, std::nullopt);
+
+// billboard can now be used directly as a per-particle World matrix --
+// its rotation component always faces cameraPosition, no matter how the
+// particle itself moves from frame to frame.
+BasicEffect fx(dev);
+fx.World = billboard;
+\end{lstlisting}
+
+Passing \texttt{std::nullopt} for \texttt{cameraForwardVector} above is safe specifically
+\emph{because} of the epsilon fallback just described: for any particle position that isn't
+coincident with the camera (the overwhelmingly common case), \texttt{cameraForwardVector} is
+never even consulted. It only matters in the degenerate case, where falling back to
+\cnaclass{Vector3}\texttt{::Forward} is a reasonable default for most cameras --- supply an
+explicit \texttt{cameraForwardVector} only when a specific fallback orientation actually
+matters for a particular degenerate case (e.g.\ a particle that can genuinely spawn exactly at
+the camera's own position).
+
+\subsection{Worked examples: CreateShadow and CreateReflection, and one asymmetry between them}
+
+\texttt{CreateShadow} and \texttt{CreateReflection} both take a \cnaclass{Plane} and produce a
+\cnaclass{Matrix} that projects geometry relative to it --- flattened onto the plane as if
+lit from a direction, or mirrored across it --- but reading both implementations directly
+turns up a real asymmetry worth knowing about before assuming they behave identically with
+respect to plane normalization: \texttt{CreateReflection} normalizes its input \cnaclass{Plane}
+defensively, internally, before using it (via a private, file-local
+\texttt{NormalizePlaneValue} helper --- the same technique \S\ref{sec:matrix-arithmetic}'s
+\texttt{WithinEpsilon} finding already showed \texttt{Matrix.cpp} using for other
+small helpers), so a caller does \emph{not} need to normalize the plane themselves first.
+\texttt{CreateShadow}, by contrast, uses \texttt{plane.Normal} and \texttt{plane.D} exactly as
+given, with no defensive normalization step --- matching \cnaclass{Plane}\texttt{::Transform}'s
+own documented requirement (\S\ref{sec:quaternion-full-reference} above) that the plane already
+be normalized, but in the opposite direction from \texttt{CreateReflection}'s more forgiving
+behavior. Passing an unnormalized plane to \texttt{CreateShadow} will not throw or assert ---
+it will simply produce a shadow matrix that is subtly wrong, with no indication at the call
+site that normalization was the missing step.
+
+\begin{lstlisting}
+// Worked example: a planar shadow, the classic technique for projecting a
+// character's silhouette onto a flat floor as if lit from an overhead
+// light -- CreateShadow requires the floor plane to already be normalized,
+// unlike CreateReflection just above, which normalizes defensively itself.
+Plane floorPlane = Plane::Normalize(Plane(Vector3::Up, 0.0f));   // y = 0
+const Vector3 lightDirection(0.3f, -1.0f, 0.2f);   // pointing mostly downward
+
+const Matrix shadowMatrix = Matrix::CreateShadow(lightDirection, floorPlane);
+
+// Matrix composition in CNA (matching XNA's own row-vector convention,
+// consistent with this chapter's very first Matrix worked example above)
+// applies the *left* operand first: characterWorldMatrix positions the
+// character in world space first, and shadowMatrix then projects that
+// onto the floor plane -- not the other way around.
+BasicEffect fx(dev);
+fx.World = characterWorldMatrix * shadowMatrix;
+fx.DiffuseColor = Vector3(0.0f, 0.0f, 0.0f);   // a flat shadow is drawn unlit
 \end{lstlisting}
 
 \section{Quaternion, Plane, and Ray}
@@ -582,6 +695,52 @@ const Plane waterSurface(Vector3::Up, -waterHeight);
 
 const float distance = waterSurface.DotCoordinate(playerPosition);
 const bool playerIsAboveWater = (distance > 0.0f);
+\end{lstlisting}
+
+\paragraph{A third worked example: why Plane::Transform needs the inverse-transpose, not the matrix itself.}
+It is tempting to assume transforming a \cnaclass{Plane} is just transforming its
+\texttt{Normal} the same way any other direction vector would be transformed --- and reading
+\texttt{Plane::Transform(plane, matrix)}'s own implementation shows this assumption is wrong in
+general, in a way that only becomes visible once a \emph{non-uniform} scale is involved.
+Instead of transforming \texttt{Normal} by \texttt{matrix} directly, it inverts \texttt{matrix},
+transposes that inverse, and transforms the plane's normal-plus-distance
+(as a \cnaclass{Vector4}) by \emph{that} --- the standard ``inverse-transpose'' technique for
+correctly transforming a surface normal (or, as here, a plane) under an arbitrary matrix,
+already familiar from \S\ref{sec:vector-full-reference}'s \texttt{TransformNormal} note above,
+generalized here to a full \cnaclass{Plane} rather than a bare direction. Under a uniform scale
+or pure rotation/translation, the inverse-transpose and the original matrix agree closely
+enough that the distinction is easy to miss; under a \emph{non-uniform} scale, naively
+transforming the normal directly (as \texttt{TransformNormal} would, if misapplied to a plane's
+normal in isolation) tilts it away from the plane's true, geometrically-transformed
+orientation, while \texttt{Plane::Transform} gets it right.
+
+\begin{lstlisting}
+// Worked example: transforming a sloped plane under a non-uniform scale --
+// the case where naively transforming just the normal and correctly
+// transforming the whole Plane via Plane::Transform actually disagree.
+// (An axis-aligned normal -- e.g. a flat floor's Vector3::Up -- would
+// deceptively *hide* this discrepancy: a diagonal scale can't change the
+// direction of a normal it leaves aligned to one of its own axes. A
+// genuinely sloped normal is what actually exposes the difference.)
+const Plane slopedPlane(Vector3::Normalize(Vector3(0.0f, 1.0f, 1.0f)), 0.0f);
+
+// A non-uniform scale (flattened on Y, stretched on X) -- the case where
+// this finding actually shows up; a uniform scale would hide it too.
+const Matrix nonUniformScale = Matrix::CreateScale(2.0f, 0.5f, 1.0f);
+
+// WRONG (in general): transforming just the normal directly, the same way
+// an ordinary direction vector would be transformed -- ignores the
+// plane's distance term entirely and tilts the normal incorrectly.
+const Vector3 naiveNormal = Vector3::TransformNormal(slopedPlane.Normal, nonUniformScale);
+// naiveNormal, normalized, comes out roughly (0, 0.447, 0.894) --
+
+// RIGHT: Plane::Transform applies the inverse-transpose of the matrix to
+// the plane's normal-plus-distance as a whole, the mathematically correct
+// technique for this non-uniform-scale case.
+const Plane transformedPlane = Plane::Transform(slopedPlane, nonUniformScale);
+// transformedPlane.Normal comes out roughly (0, 0.894, 0.447) -- a
+// genuinely different direction from naiveNormal above, not just a
+// different magnitude; verified numerically, not merely asserted.
 \end{lstlisting}
 
 \subsection{Full method reference: Ray}
@@ -1049,6 +1208,80 @@ for (const VertexPositionNormalTexture& vertex : mesh.Vertices())
 }
 
 const BoundingSphere meshBounds = BoundingSphere::CreateFromPoints(positions);
+\end{lstlisting}
+
+\subsection{A BoundingBox-specific worked example: a spatial trigger volume}
+
+The two worked examples above both exercise the operation set every bounding-volume type
+shares; \texttt{Contains(Vector3)} is worth a dedicated example of its own, since ``is this
+single point inside my volume'' (as opposed to ``do these two volumes overlap'') is exactly
+the shape of a gameplay trigger-volume check, and \cnaclass{BoundingBox} is the natural choice
+for an axis-aligned one (a room, a level boundary, a rectangular pickup-collection zone).
+Reading \texttt{BoundingBox::Contains(const Vector3\&)}'s own implementation directly confirms
+it is a plain per-axis range check --- three independent \texttt{Min}/\texttt{Max}
+comparisons, one per axis --- rather than anything more elaborate, which is worth knowing when
+deciding whether an axis-aligned box is precise enough for a given trigger shape or whether a
+\cnaclass{BoundingSphere} (or a full mesh test) is actually needed instead.
+
+\begin{lstlisting}
+// Worked example: a rectangular trigger volume -- e.g. "the player has
+// entered the boss arena" -- using BoundingBox::Contains(Vector3) against
+// the player's own position every frame.
+const BoundingBox bossArenaTrigger(
+    Vector3(-20.0f, 0.0f, -20.0f), Vector3(20.0f, 10.0f, 20.0f));
+
+const ContainmentType containment = bossArenaTrigger.Contains(playerPosition);
+if (containment == ContainmentType::Contains && !bossFightAlreadyStarted)
+{
+    StartBossFight();
+}
+\end{lstlisting}
+
+\subsection{A BoundingFrustum-specific worked example: Contains versus Intersects for LOD selection}
+
+The frustum-culling worked example earlier in this section used
+\texttt{BoundingFrustum::Intersects}, which collapses \cnaclass{ContainmentType}'s three-way
+distinction down to a plain \texttt{bool} --- exactly right for a yes/no cull decision, but it
+throws away information a level-of-detail system can actually use.
+\texttt{BoundingFrustum::Contains(const BoundingSphere\&)} instead returns the full
+\cnaclass{ContainmentType}, and reading its implementation shows precisely how it is derived:
+it tests the sphere against each of the frustum's six planes in turn via
+\texttt{BoundingSphere::Intersects(Plane)}; if any single plane test comes back
+\texttt{PlaneIntersectionType::Front} (the sphere lies entirely outside that one plane), the
+whole test short-circuits immediately to \texttt{ContainmentType::Disjoint} without checking
+the remaining planes; otherwise, if any plane came back \texttt{Intersecting}, the final
+result is \texttt{ContainmentType::Intersects}; only when \emph{every} plane's test came back
+cleanly \texttt{Back} (entirely on the frustum's inside) does the object qualify as fully
+\texttt{Contains}. That three-way answer is exactly what a LOD system wants: an object fully
+\texttt{Contains}-ed by the frustum, with no partial clipping against any of its six planes,
+is a safe candidate for a cheaper ``don't bother sub-culling its individual meshes/lights''
+fast path that a merely-\texttt{Intersects}-ing (partially visible, potentially clipped)
+object is not.
+
+\begin{lstlisting}
+// Worked example: skipping expensive per-submesh culling for an object
+// the frustum test already proved is *fully* visible, not merely
+// partially visible -- Intersects alone can't make this distinction.
+const ContainmentType containment = cameraFrustum.Contains(object.GetBoundingSphere());
+
+if (containment == ContainmentType::Disjoint)
+{
+    // Entirely outside the frustum -- skip drawing it this frame, same as
+    // the plain Intersects-based cull earlier in this section.
+}
+else if (containment == ContainmentType::Contains)
+{
+    // Fully inside every one of the frustum's six planes -- safe to draw
+    // every submesh directly, with no further per-submesh frustum test.
+    object.DrawAllSubmeshesUnconditionally();
+}
+else   // ContainmentType::Intersects
+{
+    // Partially visible -- at least one submesh might still be entirely
+    // outside the frustum even though the object's overall bounds aren't,
+    // so it's worth the extra per-submesh test here.
+    object.DrawWithPerSubmeshCulling(cameraFrustum);
+}
 \end{lstlisting}
 
 \section{Curves: Curve, CurveKey, and their supporting enums}

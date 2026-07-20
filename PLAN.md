@@ -134,7 +134,7 @@ question silently.
 | 4 | Building CNA | 173 | 35 | Full CMake option reference, per-platform build walkthroughs | Not started |
 | 5 | First Game | 131 | 40 | Multiple complete worked example programs, step-by-step | Not started |
 | 6 | Game Loop | 216 | 40 | Full `Game`/`GameTime`/`GameWindow` method-by-method docs + examples | Not started |
-| 7 | Math and Core Types | 1240 (was 270) | 110 | All 11 type-families have full reference + worked examples, several with a second; new chapter-wide "shared surface" section covering Equals/GetHashCode/ToString and a precise map of which types actually have CheckForNaNs/getDebugDisplayStringProperty (2 real findings: neither helper is ever called from anywhere in the codebase; CheckForNaNs is release-mode-gated on Matrix/Quaternion but unconditional on the three vector types); Vector Length/LengthSquared now documented (previously used in the chapter's own worked example without ever being named); Matrix arithmetic statics + Decompose worked example (2 more findings: a locally-duplicated WithinEpsilon, a documented negative-zero sign edge case); Quaternion Concatenate-vs-Multiply/operator* ordering finding, numerically verified; Point and CurveKeyCollection now have full references; Rectangle's IsEmpty documented precisely (checks all 4 fields, not just area); Ray has a second worked example (nearest-of-several picking) | **In progress (~24-25 of ~110 pages) --- session focused entirely on this chapter; still well short of target, see PLAN.md session log for full list of what's still missing** |
+| 7 | Math and Core Types | 1473 (was 270) | 110 | All 11 type-families have full reference + worked examples, most with 2-3; chapter-wide "shared surface" section (Equals/GetHashCode/ToString + CheckForNaNs/getDebugDisplayStringProperty findings); Vector Length/LengthSquared documented; Matrix arithmetic statics + Decompose, CreateBillboard (epsilon fallback), CreateShadow/CreateReflection (normalization asymmetry) worked examples; Vector4's extra Transform overloads tied to the real SOFTWARE-backend clip-space code; Quaternion Concatenate-vs-Multiply ordering (numerically verified); Plane::Transform inverse-transpose finding (numerically verified); Point and CurveKeyCollection full references; Rectangle IsEmpty corrected; Ray second worked example; BoundingBox-specific (trigger volume) and BoundingFrustum-specific (Contains-vs-Intersects LOD) worked examples | **In progress (~29 of ~110 pages) --- two consecutive sessions focused entirely on this chapter; still well short of target, see PLAN.md session log for what's still missing** |
 | 8 | Content and Assets | 125 | 55 | Full `ContentManager` API + CNJ/XNB worked walkthroughs | Not started |
 | 9 | GraphicsDevice | 872 (was 171) | 90 | Full method-by-method docs for the 887-line header; two real, verified backend-specific gaps found and documented (SpriteBatch can't sample a RenderTarget2D; SupportsCapability(MultipleRenderTargets) always returns true even where MRT silently fails); full private-implementation lifecycle section (window/backend/virtual-resolution) traced from GraphicsDevice.cpp, ties directly to Ch.6's PresentationMode; new GraphicsAdapter multi-monitor enumeration + a third real gap (IsProfileSupported/QueryRenderTargetFormat/QueryBackBufferFormat are only genuinely hardware-checked on D3D9, honestly documented as `true`/simplified stubs on the other nine backends) | **In progress (~23 of ~90 pages)** |
 | 10 | SpriteBatch | 130 | 55 | Every `Begin`/`Draw`/`DrawString` overload documented + examples | Not started |
@@ -415,3 +415,44 @@ Ch.13 that is now frozen at ~2 pages per the author's confirmation above).
   `BoundingBox`/`BoundingFrustum`-specific (as opposed to shared-bounding-volume) worked
   example; and deeper coverage of `Matrix`'s billboard/shadow/reflection factory methods, none
   of which have a worked example at all yet.
+- **2026-07-20 (same session, "pokracuj na kapitole 7, zjisti co vse v te kapitole muze byt a
+  dej to do podkapitol, musi tam byt i priklady kodu"):** Continued the same chapter, working
+  straight through the previous entry's own "known remaining gaps" list, each as a new
+  `\subsection` with source-grounded code. `Vector4`'s extra `Transform(Vector2/Vector3 input)
+  -> Vector4` overloads got a worked example tied to something real rather than invented: grep
+  found CNA's own `SOFTWARE` backend rasterizer (`SoftwareGraphicsBackend.cpp`) calls exactly
+  this overload, `Vector4::Transform(position, combined)`, to build clip-space vertices before
+  the perspective divide and near-plane clipping — `Vector3::Transform` would have silently
+  discarded the very `W` component that pipeline needs, which is precisely why the distinct
+  overload exists. `Matrix::CreateBillboard` got a worked example plus its real degenerate-case
+  handling (a `BillboardEpsilon = 0.0001f` guard against object/camera coincidence, falling back
+  to `cameraForwardVector` or `Vector3::Forward`). `CreateShadow`/`CreateReflection` got a
+  worked example plus a real asymmetry: `CreateReflection` normalizes its input `Plane`
+  defensively (reusing the same file-local-helper pattern as the `WithinEpsilon` finding from
+  the prior entry); `CreateShadow` does not, matching `Plane::Transform`'s own documented
+  normalization requirement but in the opposite direction from `CreateReflection` — caught and
+  fixed a matrix-composition-order mistake in the shadow example's own draft (had the shadow
+  and character-world matrices multiplied in the wrong order relative to XNA's row-vector
+  convention; corrected against the chapter's own established convention before finalizing).
+  `Plane::Transform` got a worked example demonstrating the real inverse-transpose technique it
+  uses internally — and a numerically-verified correction along the way: the first drafted
+  example used an axis-aligned normal (`Vector3::Up`) under a diagonal scale, which a quick
+  Python check showed produces *no* visible discrepancy between the naive and correct
+  approaches (an axis-aligned normal under a diagonal scale doesn't change direction, only
+  magnitude) — replaced with a genuinely sloped normal, re-verified numerically
+  (`naive ≈ (0, 0.447, 0.894)` vs. `correct ≈ (0, 0.894, 0.447)`, a real, large directional
+  difference) before writing it into the book. `BoundingBox::Contains(Vector3)` got a
+  dedicated trigger-volume worked example; `BoundingFrustum::Contains` (as opposed to
+  `Intersects`) got a worked example built around a real finding read from
+  `BoundingFrustum.cpp`: it short-circuits to `ContainmentType::Disjoint` the moment any one of
+  the six frustum planes tests `Front`, without checking the remaining planes, and only
+  reports full `Contains` when every plane comes back cleanly `Back` — exactly the distinction
+  a level-of-detail system can use to skip per-submesh culling for fully-visible objects.
+  Chapter grows from 1240 to 1473 lines; its actual page span (bounded by pdftotext-searching
+  for the chapter's own opening sentence and Chapter 8's heading) grows from ~24-25 to ~29 of
+  the ~110-page target. Volume I recompiled clean (149 pages total, 740 index entries, 0
+  undefined references). **Honest scope note, unchanged in spirit from the prior entry**: two
+  consecutive sessions have now focused exclusively on this one chapter and it is still under
+  30% of its page target — every addition so far has been a real, source-verified worked
+  example or finding, not padding, but reaching ~110 pages this way will take several more
+  sessions of the same density of work, not one or two.
