@@ -181,7 +181,7 @@ ever needed).
 | 35 | Parity Philosophy | 134 (was 111) | 35 | Worked example contrasting the three delegate tiers (Action/Func alias, System::Delegate::Combine/Remove, MulticastAction), grounded in real headers | **In progress (~6 of ~35 pages)** |
 | 36 | EasyGL Deep Dive | 151 (was 112) | 55 | Worked examples for Device's per-feature capability gating and the Program::uniform_block_index/Framebuffer typed-reference fixes, grounded in real headers; also fixed two pre-existing single-long-identifier overfull-hbox defects | **In progress (~5 of ~55 pages)** |
 | 37 | free-direct Deep Dive | 65 | ~2 (no change) | **Stays marginal per author confirmation 2026-07-20 — do not expand** | N/A — intentionally frozen |
-| 38 | Windows/Wine | 103 | 45 | Deeper verification detail | Not started |
+| 38 | Windows/Wine | 137 (was 103) | 45 | Real shell-invocation worked examples for the MinGW-w64 toolchain and the DXVK self-verifying gate (including its two escape hatches), grounded in the actual scripts | **In progress (~4 of ~45 pages)** |
 | 39 | Web/Emscripten | 88 | 40 | Deeper build/deploy detail | Not started |
 | 40 | Android/NDK | 82 | 40 | Deeper build/deploy detail | Not started |
 | 41 | Verification Methodology | 68 | 35 | More worked audit examples | Not started |
@@ -926,3 +926,20 @@ current real total of 266 pages.
 
 **Part VI (Chapters 33-37) is now fully swept**: 33-36 all have a first expansion pass; 37
 stays frozen by explicit author decision, not left incomplete.
+- **2026-07-20 (same session, "pokracuj"):** Chapter 38 (Windows/Wine) — first expansion pass,
+  and the first Part VIII chapter touched this session. This chapter is tooling/verification-
+  methodology narrative, not a C++ API reference, so "worked examples" here meant real shell
+  invocations grounded in the actual scripts rather than C++ code. Read
+  `cmake/toolchains/mingw-w64.cmake` and `scripts/run-wine-dxvk.sh` directly (both from the
+  `cna` repo, already cloned earlier this session at `/workspace/cna`). Added one real detail
+  not previously in the text: the DXVK self-verifying gate is not unconditional — it has two
+  deliberate, narrowly-scoped escape hatches its own comments explain precisely,
+  `CNA_D3D11_ALLOW_WINED3D=1` (a genuinely deliberate one-off non-DXVK diagnostic run, not for
+  normal test runs) and `CNA_D3D11_SKIP_DXVK_GATE=1` (for a binary that legitimately never
+  creates a D3D11 device at all, which would otherwise be misreported as a silent fallback for
+  entirely unrelated reasons). Added two worked examples: the exact cross-compilation
+  invocation from the toolchain file's own header comment, and all three real invocation shapes
+  of `run-wine-dxvk.sh` (normal gated run, the diagnostic bypass, the device-less-binary
+  bypass). Chapter grows from 103 to 137 lines (~4 to ~4 of a ~45-page target). Volume
+  recompiled clean (285 pages total, 0 undefined references, 0 duplicate-label warnings); all
+  four of the chapter's own pages verified by rendering to PNG and reading them back.

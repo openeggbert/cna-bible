@@ -10,12 +10,21 @@ own explanation.
 
 \texttt{cmake/toolchains/mingw-w64.cmake} is a short, standard CMake cross-toolchain file:
 it sets \texttt{CMAKE\_SYSTEM\_NAME} to \texttt{Windows}, locates the
-\texttt{x86\_64-w64-mingw32-gcc}/\texttt{g++} toolchain (falling back to a 32-bit triple if
+\texttt{x86\_64-w64-mingw32-gcc} / \texttt{g++} toolchain (falling back to a 32-bit triple if
 the 64-bit one is not found), and isolates the cross-root so CMake's own
 \texttt{find\_package} calls never accidentally pick up a host Linux library. The invocation
 is exactly what Chapter~\ref{ch:building-cna} already showed:
 \texttt{-DCMAKE\_TOOLCHAIN\_FILE=cmake/toolchains/mingw-w64.cmake}, alongside whichever
 backend option is being targeted.
+
+\begin{lstlisting}[style=cnashell]
+# Worked example: the exact invocation this toolchain file's own header
+# comment documents, run from the cna repo root.
+cmake -B build-windows \
+      -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/mingw-w64.cmake \
+      -DCNA_GRAPHICS_BACKEND=SDL_RENDERER
+cmake --build build-windows
+\end{lstlisting}
 
 \section{Three Wine prefixes, never one}
 
@@ -34,7 +43,7 @@ day, deliberately left alone rather than experimented on.
 
 \section{The self-verifying gate: catching a silent fallback before it corrupts a result}
 
-Every \texttt{scripts/run-wine-dxvk*.sh}/\texttt{run-wine-vkd3d.sh} runner shares one
+Every \texttt{scripts/run-wine-dxvk*.sh} / \texttt{run-wine-vkd3d.sh} runner shares one
 critical property: none of them simply trust that DXVK or vkd3d-proton is actually in effect.
 Each one captures the target program's own log output and greps it for a translation-layer-specific
 marker --- a real \texttt{DXVK: <version>} line, or a real \texttt{vkd3d-proton -
@@ -45,6 +54,31 @@ misconfigured prefix could silently render through Wine's own, much less accurat
 Direct3D implementation instead of the real GPU-accelerated translation layer the whole
 verification methodology depends on, and every pixel-test result from that run would be
 comparing CNA against the wrong thing without anyone noticing.
+
+The gate itself is not unconditional, and reading \texttt{run-wine-dxvk.sh} directly surfaces
+two deliberate, narrowly-scoped escape hatches its own comments explain precisely.
+\texttt{CNA\_D3D11\_ALLOW\_WINED3D=1} bypasses it for a genuinely deliberate one-off,
+non-DXVK diagnostic run --- reproducing an original vanilla-Wine spike result, for instance ---
+and is explicitly documented as not for normal test runs.
+\texttt{CNA\_D3D11\_SKIP\_DXVK\_GATE=1} covers a different, equally real case: a binary that
+legitimately never creates a D3D11 device at all (pure-function mapping-table checks, for
+instance), which would never print a DXVK marker line for entirely unrelated, legitimate
+reasons --- without this second escape hatch, the gate would misreport that binary's clean run
+as a WineD3D fallback it never actually had.
+
+\begin{lstlisting}[style=cnashell]
+# Worked example: a normal, gated run -- fails loudly if DXVK didn't
+# actually handle it, rather than silently comparing against WineD3D.
+scripts/run-wine-dxvk.sh build-windows/CnaD3D11Tests.exe
+
+# A deliberate, one-off diagnostic run against plain WineD3D instead --
+# NOT for normal test runs, per the script's own documented contract.
+CNA_D3D11_ALLOW_WINED3D=1 scripts/run-wine-dxvk.sh build-windows/CnaD3D11Tests.exe
+
+# A binary that never creates a D3D11 device at all (pure mapping-table
+# checks) -- skips the gate rather than being misreported as a fallback.
+CNA_D3D11_SKIP_DXVK_GATE=1 scripts/run-wine-dxvk.sh build-windows/D3DCommonMappingTests.exe
+\end{lstlisting}
 
 \section{D3D12's extra wrinkle: Proton, not plain Wine}
 
@@ -99,5 +133,5 @@ tool exists specifically because it needs no live rendering device --- extending
 anything that does (a stock effect's actual rendered output, for instance) was evaluated and
 explicitly deferred as a substantially larger undertaking, left for the D3D9 oracle to cover
 instead. One real, if narrow, divergence this tool did catch: \cnaclass{IndexElementSize}'s
-\texttt{SixteenBits}/\texttt{ThirtyTwoBits} values did not match FNA's own \texttt{0}/\texttt{1}
+\texttt{SixteenBits} / \texttt{ThirtyTwoBits} values did not match FNA's own \texttt{0} / \texttt{1}
 numbering at all --- confirmed and fixed once this comparison surfaced it.
