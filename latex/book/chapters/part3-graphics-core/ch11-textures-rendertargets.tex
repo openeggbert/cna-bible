@@ -21,7 +21,7 @@ than FNA's \texttt{internal}, because three of the four real call sites in CNA a
 other 26 \cnaclass{SurfaceFormat} values (the original 20 XNA values plus 7 FNA-only
 extensions like \texttt{ColorBgraEXT}, \texttt{ColorSrgbEXT}, and the block-compressed
 \texttt{Bc7EXT} family) cannot be used to construct a texture at all today, regardless of
-backend. \texttt{Dxt1}/\texttt{Dxt3}/\texttt{Dxt5} are the one partial exception, but only
+backend. \texttt{Dxt1} / \texttt{Dxt3} / \texttt{Dxt5} are the one partial exception, but only
 through the \texttt{.dds} loading path in \texttt{Texture2D::FromStream}
 (\S\ref{sec:texture-streams}), which CPU-decompresses to RGBA8 rather than uploading a real
 compressed texture --- an eight-times VRAM overhead, and no native GPU compressed path exists
@@ -50,12 +50,47 @@ mechanism every other texture type goes through.
 \texttt{NOXNA} overloads --- real XNA has no such constructor, since real XNA loads textures
 exclusively through the compiled content pipeline), or via \texttt{FromStream} (device plus
 stream, or a five-argument form that resizes/crops to an explicit width, height, and
-\texttt{zoom} fit-vs-cover flag). \texttt{SetData}/\texttt{GetData} cover full-array and
+\texttt{zoom} fit-vs-cover flag). \texttt{SetData} / \texttt{GetData} cover full-array and
 partial (level, rectangle, start index, element count) forms, all \cnaclass{Color}-only.
-\texttt{SaveAsPng}/\texttt{SaveAsJpeg} round out the surface, alongside several
+\texttt{SaveAsPng} / \texttt{SaveAsJpeg} round out the surface, alongside several
 \texttt{NOXNA} escape hatches (\texttt{GetBackend()}, \texttt{GetCpuPixelsWeak()},
 \texttt{CreateFromPixels}) that exist for interop with CNA's own content-pipeline and testing
 code rather than for game code.
+
+\subsection{A worked example: building a texture from raw pixel data}
+
+Every one of the API traits described above is visible in one small, real pattern: building a
+procedural texture entirely from \cnaclass{Color} data, with no file on disk at all --- a
+checkerboard, grounded directly in the real constructor and \texttt{SetData} / \texttt{GetData}
+signatures in \texttt{Texture2D.hpp}:
+
+\begin{lstlisting}
+const int size = 64;
+Texture2D checker(getGraphicsDeviceProperty(), size, size); // defaults to SurfaceFormat::Color
+
+std::vector<Color> pixels(size * size);
+for (int y = 0; y < size; ++y) {
+    for (int x = 0; x < size; ++x) {
+        bool light = ((x / 8) + (y / 8)) % 2 == 0;
+        pixels[y * size + x] = light ? Color::White : Color::Black;
+    }
+}
+checker.SetData(pixels.data(), static_cast<int>(pixels.size()));
+
+// Read a single pixel back to verify -- GetData is a real round trip, not a cache echo:
+Color topLeft;
+checker.GetData(&topLeft, 0, 1);
+\end{lstlisting}
+
+Two constraints from this chapter's own opening section apply directly to this example, not
+just in the abstract: the two-argument \texttt{Texture2D(device, width, height)} constructor
+defaults to \cnaclass{SurfaceFormat::Color}, the one format \texttt{ValidateFormat} actually
+accepts --- passing any of the other 26 \cnaclass{SurfaceFormat} values to the explicit-format
+constructor overload throws immediately, before a single pixel is ever uploaded. And because
+\texttt{SetData} / \texttt{GetData} are \cnaclass{Color}-only (no generic-template overload for
+an arbitrary pixel struct, unlike real XNA's \texttt{T[]} generic form), a game working with
+any other in-memory pixel representation must convert to \cnaclass{Color} before calling
+\texttt{SetData} --- there is no faster typed path around it.
 
 \subsection{FromStream format support}
 \label{sec:texture-streams}
@@ -170,14 +205,16 @@ and both maintain a private \texttt{cpuShadow\_} byte buffer purely to support
 \texttt{GetData()} without requiring a real per-backend GPU readback path --- since nothing
 in CNA's own pipeline ever writes GPU-side data back into one of these buffers, a CPU-side
 shadow copy is a faithful, sufficient implementation of read-your-own-writes semantics.
-\cnaclass{VertexBuffer::SetData}/\texttt{GetData} are typed per concrete vertex struct
-(\cnaclass{VertexPositionColor}, \cnaclass{VertexPositionColorTexture},
-\cnaclass{VertexPositionNormalTexture}, \cnaclass{VertexPositionTexture}, plus a
+\cnaclass{VertexBuffer::SetData} / \texttt{GetData} are typed per concrete vertex struct ---
+\cnaclass{VertexPositionColor},
+\cnaclass{VertexPositionColorTexture},
+\cnaclass{VertexPositionNormalTexture}, and
+\cnaclass{VertexPositionTexture} --- plus a
 \texttt{NOXNA} skinned variant and a raw \texttt{SetDataRaw(data, count, stride)} escape hatch
 for layouts with no dedicated XNA struct). \cnaclass{DynamicVertexBuffer} and
 \cnaclass{DynamicIndexBuffer} add \texttt{IsContentLost} (always \texttt{false}) and
 \texttt{SetData(..., SetDataOptions)} overloads --- but the \texttt{dynamic} construction flag
-and the \texttt{Discard}/\texttt{NoOverwrite} streaming hints are both accepted purely for API
+and the \texttt{Discard} / \texttt{NoOverwrite} streaming hints are both accepted purely for API
 conformance and currently ignored by every backend: static and dynamic buffers take the
 identical GPU upload path today, regardless of the hint given.
 
@@ -188,7 +225,7 @@ The single most important fact in this section is one that is easy to miss readi
 isolation: \textbf{every hardware backend selects its GPU vertex-attribute layout from the raw
 byte stride of the bound vertex buffer, not from the \cnaclass{VertexDeclaration}'s own
 element list.} \cnaclass{VertexDeclaration} is stored and used to compute the stride, and its
-individual \cnaclass{VertexElementFormat}/\cnaclass{VertexElementUsage} mapping tables are
+individual \cnaclass{VertexElementFormat} / \cnaclass{VertexElementUsage} mapping tables are
 each individually correct on EasyGL, Vulkan, and BGFX --- but they are consulted only as an
 audit reference today, not by the active draw dispatch. Exactly five hardcoded strides render
 correctly: 16 bytes (\cnaclass{VertexPositionColor}), 20 (\cnaclass{VertexPositionTexture}),
