@@ -258,6 +258,49 @@ the note above, not a placeholder or a rendering mistake in this example's own c
 \label{fig:ch09-rendertarget-roundtrip}
 \end{figure}
 
+\subsection{Multiple render targets: where MRT is (and is not) real}
+\label{sec:worked-mrt}
+
+\texttt{SetRenderTargets} accepts a \texttt{std::vector<RenderTargetBinding>} specifically to
+support multiple-render-target (MRT) rendering --- a single draw call writing to several
+render targets at once (a deferred-rendering G-buffer, writing albedo/normal/depth in one
+pass, is the classic use case):
+
+\begin{lstlisting}
+RenderTarget2D albedoTarget(dev, 512, 512);
+RenderTarget2D normalTarget(dev, 512, 512);
+
+const std::vector<RenderTargetBinding> gbuffer = {
+    RenderTargetBinding(&albedoTarget),
+    RenderTargetBinding(&normalTarget),
+};
+dev.SetRenderTargets(gbuffer);
+// ... a shader writing to SV_Target0 and SV_Target1 draws into both at once ...
+dev.SetRenderTarget(nullptr);
+\end{lstlisting}
+
+Whether this code actually writes to \emph{both} targets in one draw call, however, depends
+entirely on which backend compiled it --- and this is worth stating precisely rather than
+assuming uniform behavior, per \S\ref{sec:worked-rendertarget}'s own reminder that this
+chapter's screenshot tooling exposed a real backend-specific gap once already this chapter.
+\cnaclass{IGraphicsBackend}'s own base implementation of \texttt{SetRenderTargets} is
+documented directly in its header comment: ``Default: binds the first target via
+\texttt{SetRenderTarget2D}; backends with MRT support should override'' --- in other words,
+a backend that never overrides it silently binds only \texttt{rts[0]} and drops every
+additional target with no error or warning at all. Reading each backend's own
+\texttt{.cpp} directly rather than assuming: \textbf{EasyGL} genuinely overrides it, with a
+real multi-attachment framebuffer path handling \texttt{count > 1} distinctly from the
+single-target case (Chapter~\ref{ch:easygl-backend} covers this backend's own feature depth
+further); the \textbf{SOFTWARE} backend this chapter's own screenshots use does
+\emph{not} override it at all, and therefore silently falls back to the single-target default
+--- a real, verified, currently-uncorrected limitation of this one backend, not a general CNA
+constraint. This is precisely why the MRT code sample above is left unscreenshotted in this
+chapter: running it against \texttt{SOFTWARE} would render only into \texttt{albedoTarget} and
+silently produce nothing in \texttt{normalTarget}, which would misleadingly look like a
+successful MRT demonstration to a reader who couldn't see the backend-specific caveat --- the
+source-level finding here is the honest way to convey this, not a screenshot that would need a
+paragraph of caption disclaiming what it doesn't actually show.
+
 \section{Vertex and index buffer binding}
 \label{sec:vertex-index-binding}
 
@@ -363,6 +406,25 @@ it's \texttt{nullptr}. All three are the same narrowing-to-\texttt{Color} patter
 \texttt{GetBackBufferData<T>} has no CNA equivalent for any element type other than
 \cnaclass{Color}.
 
+Every screenshot this chapter (and Chapter~\ref{ch:math-core-types}'s own worked examples)
+embeds as a real, unedited figure is ultimately produced through this exact method --- the
+\texttt{NOXNA SaveBackBufferScreenshotEXT()} test helper this book's own tooling uses
+(\texttt{tools/cna-screenshot-infra/} in the book's own repository, not part of CNA itself)
+is a thin wrapper that reads the whole back buffer with the rectangle-less
+\texttt{GetBackBufferData(Color*, int)} overload and hands the resulting pixel array to
+\cnaclass{Texture2D::SaveAsPng}-equivalent PNG encoding. The same pattern applies equally to a
+narrower, single-pixel read for color-picking or a debug pixel probe:
+
+\begin{lstlisting}
+// Worked example: read one pixel back to verify what was actually drawn
+// there -- the same technique this chapter's own numeric verification of
+// the render-target round trip (earlier in this chapter) used.
+Color pixel(0, 0, 0, 0);
+const Rectangle probeRegion(x, y, 1, 1);
+dev.GetBackBufferData(&probeRegion, &pixel, 0, 1);
+// pixel now holds the real, rendered color at (x, y).
+\end{lstlisting}
+
 \section{NOXNA helper and diagnostic methods}
 \label{sec:noxna-helpers}
 
@@ -434,6 +496,44 @@ A cluster of methods exist purely to support tooling, testing, and backend-inter
   resources exist against the current backend --- it destroys and replaces the backend outright
   rather than performing a real, resource-preserving reset.
 \end{description}
+
+\begin{lstlisting}
+// Worked example: defensively check a capability before relying on it,
+// rather than calling it and handling whatever exception results --
+// exactly the pattern SupportsCapability's own doc comment recommends.
+// GraphicsCapability::ThreeD is a real, correctly-wired example: SDL_Renderer,
+// DX3, and Canvas (Chapters 17, 24, 23) all genuinely override this check
+// and throw std::runtime_error from every 3D call otherwise.
+if (dev.SupportsCapability(CNA::GraphicsCapability::ThreeD))
+{
+    // safe to issue 3D draw calls, bind vertex/index buffers, etc.
+}
+else
+{
+    std::printf("3D unsupported on backend: %.*s\n",
+                static_cast<int>(dev.GetGraphicsBackendName().size()),
+                dev.GetGraphicsBackendName().data());
+    // fall back to a 2D-only rendering path instead
+}
+\end{lstlisting}
+
+\begin{sourcenote}
+\textbf{A second, closely related finding, discovered by directly reading every backend's own
+\texttt{SupportsCapability} override rather than assuming the capability system is uniformly
+reliable.} \texttt{IGraphicsBackend::SupportsCapability}'s own default implementation --- used
+by any backend that doesn't override a specific capability --- returns \texttt{true}
+unconditionally. \texttt{CNA::GraphicsCapability::MultipleRenderTargets} exists in the enum
+specifically to let a caller check MRT support ahead of time, exactly as
+\S\ref{sec:worked-mrt} above recommends, but it is never actually referenced by any backend's
+\texttt{SupportsCapability} override anywhere in the codebase --- meaning
+\texttt{SupportsCapability(MultipleRenderTargets)} currently returns \texttt{true}
+\emph{universally}, including on the \texttt{SOFTWARE} backend, where
+\S\ref{sec:worked-mrt} already demonstrated \texttt{SetRenderTargets} silently drops every
+target past the first. The capability query that exists specifically to protect a caller from
+this exact gap does not currently protect against it --- a real, precise, second-order finding
+about the capability system's own incompleteness, not a criticism of the MRT gap itself (which
+the header's own doc comment already names honestly as backend-dependent).
+\end{sourcenote}
 
 \section{Resource tracking and disposal ordering}
 \label{sec:resource-lifetime}

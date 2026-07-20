@@ -136,7 +136,7 @@ question silently.
 | 6 | Game Loop | 216 | 40 | Full `Game`/`GameTime`/`GameWindow` method-by-method docs + examples | Not started |
 | 7 | Math and Core Types | 758 (was 270) | 110 | All 11 type-families now have a full method/constructor reference (Vector2/3/4, Matrix, Quaternion, Plane, Ray, Rectangle, Point, Color, MathHelper, 3 Bounding types, Curve/CurveKey) plus worked examples per group and 2 real screenshots | **In progress (~22 of ~110 pages; every type-family covered at least once, depth can still grow further)** |
 | 8 | Content and Assets | 125 | 55 | Full `ContentManager` API + CNJ/XNB worked walkthroughs | Not started |
-| 9 | GraphicsDevice | 622 (was 171) | 90 | Full method-by-method docs for the 887-line header; render-target worked example found and documented a real SOFTWARE-backend bug (SpriteBatch can't sample a RenderTarget2D) | **In progress (~16 of ~90 pages)** |
+| 9 | GraphicsDevice | 722 (was 171) | 90 | Full method-by-method docs for the 887-line header; two real, verified backend-specific gaps found and documented (SpriteBatch can't sample a RenderTarget2D; SupportsCapability(MultipleRenderTargets) always returns true even where MRT silently fails) | **In progress (~19 of ~90 pages)** |
 | 10 | SpriteBatch | 130 | 55 | Every `Begin`/`Draw`/`DrawString` overload documented + examples | Not started |
 | 11 | Textures and Render Targets | 207 | 60 | Full `Texture2D`/`RenderTarget2D` API + examples | Not started |
 | 12 | Models and Meshes | 103 | 60 | Full `Model`/`ModelMesh`/`ModelBone` family + examples | Not started |
@@ -282,3 +282,20 @@ Ch.13 that is now frozen at ~2 pages per the author's confirmation above).
   ~16 of a ~90-page target). Volume I recompiled clean (131 pages total, 636 index entries, 0
   undefined references). This finding, the demo source, and the updated CMake patch are all
   preserved in `tools/cna-screenshot-infra/` for reproducibility.
+- **2026-07-20 (same session, Chapter 9 deepened further):** Continued on Ch.9 per author
+  instruction. Added a multiple-render-target (MRT) subsection: read every backend's own
+  `SetRenderTargets` override directly rather than assuming uniform support, confirmed EasyGL
+  genuinely implements per-target MRT while the `SOFTWARE` backend never overrides the shared
+  `IGraphicsBackend` default (which silently binds only `rts[0]` and drops the rest, per its
+  own doc comment) — deliberately did *not* screenshot an MRT example against `SOFTWARE`, since
+  it would misleadingly look successful while only writing one of two targets; explained the
+  gap from source instead. While writing a `SupportsCapability` worked example, found a related,
+  second real gap: `GraphicsCapability::MultipleRenderTargets` exists in the enum but is never
+  referenced by any backend's `SupportsCapability` override, so it returns `true` universally
+  (via the interface's own "default: true for everything" fallback) even on `SOFTWARE`, where
+  MRT demonstrably fails — the capability check that exists specifically to guard against this
+  gap doesn't actually catch it. Also added worked examples for back-buffer readback (single-
+  pixel probe) and a working `SupportsCapability(ThreeD)` pattern (verified against real
+  SDL_Renderer/DX3/Canvas source, unlike the MRT capability). Chapter grows from 622 to 722
+  lines (~16 to ~19 of a ~90-page target). Volume I recompiled clean (133 pages total, 638
+  index entries, 0 undefined references).
