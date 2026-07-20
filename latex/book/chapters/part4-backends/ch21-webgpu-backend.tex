@@ -48,7 +48,7 @@ and still be measurably wrong.
 
 \section{3D: real depth testing, a real gap found while adding it}
 
-The first 3D draw path (\texttt{DrawColoredPrimitives}/\texttt{DrawIndexedColoredPrimitives})
+The first 3D draw path (\texttt{DrawColoredPrimitives} / \texttt{DrawIndexedColoredPrimitives})
 was verified with a genuine near/far depth-ordering test rather than trusting draw order
 alone. Building it surfaced a real, previously-invisible gap: applying a
 \cnaclass{DepthStencilState} had no effect on this backend at all before this point --- the
@@ -78,12 +78,39 @@ not actually cover it the way a caller would expect. Mip generation for \cnaclas
 and \cnaclass{TextureCube} is implemented as a genuine filtered downsample (a series of
 full-screen-triangle render passes, since \texttt{wgpu-native} v29 has no direct
 blit-image-equivalent call) --- and, notably, this backend auto-regenerates mip content on
-every level-0 write to a plain \cnaclass{Texture2D}/\cnaclass{TextureCube}, which neither real
+every level-0 write to a plain \cnaclass{Texture2D} / \cnaclass{TextureCube}, which neither real
 XNA/FNA nor any other CNA backend does (every other backend only regenerates mips on
 render-target unbind). This is documented explicitly as a deliberate divergence that makes
 this specific behavior strictly \emph{better} than every other backend's, while still being
 genuinely different --- worth knowing if you are relying on mip regeneration timing to match
 across backends.
+
+\subsection{A worked example: the still-open render-target-size trap}
+
+The \cnaclass{RenderTargetCube} sprite-geometry bug named above is easy to reproduce
+mentally, and worth walking through precisely because it produces no error of any kind ---
+only a subtly wrong result:
+
+\begin{lstlisting}
+device.SetRenderTarget(&smallOffscreenTarget); // e.g. a 256x256 render target,
+                                                // while the game window is 1920x1080
+spriteBatch.Begin();
+spriteBatch.Draw(sourceTexture, Vector2::Zero, Color::White); // "fill the target"
+spriteBatch.End();
+\end{lstlisting}
+
+On a backend without this bug, a sprite meant to cover the entire currently-bound render
+target is sized and positioned relative to \emph{that target's own} dimensions. On this
+backend, sprite geometry is instead computed from the back buffer's logical dimensions
+unconditionally --- so the same \texttt{Draw()} call above, intended to fill a
+$256\times256$ off-screen target, is actually sized as though it were filling the full
+$1920\times1080$ window, silently covering far more (or, depending on aspect ratio,
+differently-shaped) area than the render target it is actually being drawn into. Nothing about
+this throws or logs; the only symptom is visually wrong content in the resulting render
+target, which then propagates into whatever samples it afterward. The practical mitigation
+until this is fixed: avoid drawing \cnaclass{SpriteBatch} content into a render target whose
+dimensions differ from the back buffer's own on this specific backend, or verify the result
+with an actual pixel readback rather than trusting the call to behave as documented.
 
 \section{What remains open}
 
@@ -103,6 +130,6 @@ This backend's own verification runs on a native automated CTest suite (graceful
 where no Wayland/X11 display is available) plus a battery of dedicated pixel-assertion tests
 per feature area, and the one independent real-game integration test described above. It is
 explicitly \emph{not} covered by the oracle-versus-real-XNA methodology
-Chapter~\ref{ch:direct3d-backends} describes for \texttt{D3D9}/\texttt{D3D11}/\texttt{D3D12}
+Chapter~\ref{ch:direct3d-backends} describes for \texttt{D3D9} / \texttt{D3D11} / \texttt{D3D12}
 --- that comparison against a genuine, running XNA~4.0 reference is reserved for the three
 Direct3D backends specifically, not applied here.

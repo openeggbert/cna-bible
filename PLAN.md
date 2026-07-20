@@ -151,7 +151,7 @@ numbers below are unchanged by the merge.
 | 18 | EasyGL Backend | 126 (was 100) | 65 | Added a worked example computing the exact SpriteBatch quad ceiling (16,384) from the chapter's own `uint16_t`-index finding, with practical mitigations for a game likely to approach it | **In progress (~4 of ~65 pages, PDF-verified clean)** |
 | 19 | Vulkan Backend | 139 (was 110) | 65 | Added a worked `OcclusionQuery` culling example (real `Begin`/`End`/`getIsCompleteProperty`/`getPixelCountProperty` surface), incl. a restated rule for the chapter's own render-pass-boundary summing gap | **In progress (~4 of ~65 pages, PDF-verified clean)** |
 | 20 | BGFX Backend | 115 (was 87) | 55 | Added a worked example checking a `VertexDeclaration` for a `Color` attribute (real `VertexElement`/`VertexElementUsage` accessors) to recognize the black-mesh bug's real trigger condition ahead of time | **In progress (~4 of ~55 pages, PDF-verified clean)** |
-| 21 | WebGPU Backend | 108 | 45 | Deeper feature-by-feature coverage | Not started |
+| 21 | WebGPU Backend | 135 (was 108) | 45 | Added a worked example walking through the still-open `RenderTargetCube` sprite-geometry bug (real `SetRenderTarget` call), showing the silent-wrong-size failure mode and its practical mitigation | **In progress (~4 of ~45 pages, PDF-verified clean)** |
 | 22 | Direct3D Backends | 152 | 85 | Split attention across D3D9/D3D11/D3D12 in full | Not started |
 | 23 | Canvas/ASCII Backends | 139 | 40 | More worked examples | Not started |
 | 24 | DX3/free-direct Backend | 65 | 30 | Deeper coverage (see free-direct conflict note above) | Not started |
