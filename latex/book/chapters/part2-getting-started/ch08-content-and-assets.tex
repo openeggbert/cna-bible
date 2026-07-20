@@ -46,11 +46,12 @@ type-safe C\texttt{++} registration API, not an embedded scripting language.
 
 One asset type is deliberately \emph{not} part of the unified \texttt{.cnj} format, by an
 explicit, reasoned decision: the Avatar system's \cnaclass{SkinnedModelEXT}
-(Chapter~31) keeps its own separate \texttt{.skinnedmodel.json} extension, because real
-cross-language tooling already depends on that specific extension name, because it already
+(Chapter~\ref{ch:avatar}) keeps its own separate \texttt{.skinnedmodel.json} extension, because
+real cross-language tooling already depends on that specific extension name, because it already
 carried the most mature test coverage of any loose-file reader in the project at the time
 \texttt{.cnj} unification happened, and because it is explicitly a distinct,
-non-\cnaclass{Model}-shaped system in the first place (Chapter~31 covers exactly why).
+non-\cnaclass{Model}-shaped system in the first place (Chapter~\ref{ch:avatar} covers exactly
+why).
 
 \section{The gap, reopened: a real, growing .xnb binary reader}
 \label{sec:xnb-and-cnj-model}
@@ -61,7 +62,7 @@ Here is the correction this chapter most needs to make plainly: CNA's owner late
 document: container parsing, binary primitives, and a first real \cnaclass{Texture2D} reader
 are complete; real LZX decompression is implemented and verified against real compressed
 fixtures, including a differential-testing pass against FNA's own reference decompressor
-(run under Mono, the same technique Chapter~37 describes for
+(run under Mono, the same technique Chapter~\ref{ch:what-is-cna} describes for
 \texttt{tools/fna-reference/}) that found and fixed a real heap-buffer-overflow in the
 process; and \cnaclass{SpriteFont}, all five stock effects, \cnaclass{SoundEffect} (at least
 one real wave-format variant), \cnaclass{Song}, and the general
@@ -99,9 +100,74 @@ present. This remains the simplest path for a small, from-scratch CNA project, a
 exactly what the resolution order in the previous section falls through to only after the
 other two have both been tried and found nothing.
 
+\section{ContentManager: constructing it and calling Load}
+
+The class every asset ultimately passes through, read directly from
+\texttt{ContentManager.hpp}, has three constructors --- \texttt{explicit
+ContentManager(IServiceProvider*)}, \texttt{ContentManager(IServiceProvider*, const
+std::string\& rootDirectory)}, and a \texttt{NOXNA}-tagged no-argument
+\texttt{ContentManager()} that defaults \texttt{RootDirectory} to \texttt{"Content"} --- plus
+the small set of methods a game actually calls day to day:
+
+\begin{lstlisting}
+// A Game already owns one ContentManager, built for it -- LoadContent() is where
+// a real game reaches for it, per Chapter 5's ordering constraint:
+ContentManager& content = getContentProperty();
+content.setRootDirectoryProperty("Content");
+
+auto logo = content.Load<Texture2D>("sprites/logo");   // no extension in the name
+auto font = content.Load<SpriteFont>("fonts/hud");
+
+content.Unload();  // releases every asset this manager has loaded
+\end{lstlisting}
+
+\texttt{Load<T>(const std::string\& assetName) -> T} is a template, not a virtual dispatch ---
+the asset name carries no extension, since resolving one is exactly the three-way order this
+chapter already covered (\texttt{.xnb}, then the literal path, then \texttt{.cnj}). Two
+\texttt{NOXNA} extension points exist for cases the built-in readers don't cover:
+\texttt{RegisterTypeReader<T>(std::unique\_ptr<LooseFileContentTypeReader<T>>)} for a whole new
+loose-file type, and \texttt{RegisterCnjLoader<T>(name, CnjLoaderFn<T>)} for a new named
+\texttt{.cnj} ``type'' string resolving to an existing C\texttt{++} type --- the mechanism
+\S\ref{sec:cnj} already named as the reason a game never needs to invent its own ad-hoc JSON
+format for a custom asset type.
+
+\begin{sourcenote}
+\textbf{A worked example: asking the content root what it would actually resolve.} Rather than
+just describing the three-way resolution order in the abstract, CNA ships a real,
+\texttt{NOXNA}-tagged introspection tool that answers it concretely for a whole content tree at
+once: \texttt{ContentManager::GetContentManifest()} scans the content root (lazily, on first
+call, via a private \texttt{RefreshContentManifest()}) and returns one
+\cnaclass{ContentManifestEntry} per logical asset name, reading directly from
+\texttt{ContentManifestEntry.hpp}:
+
+\begin{lstlisting}
+for (const ContentManifestEntry& entry : content.GetContentManifest()) {
+    std::cout << entry.relativePath << ": ";
+    if (entry.hasXnb) {
+        std::cout << "resolves via .xnb"; // wins outright when present
+    } else if (!entry.nativeExtensions.empty()) {
+        std::cout << "resolves via direct load (" << entry.nativeExtensions[0] << ")";
+    } else if (entry.hasCnj) {
+        std::cout << "resolves via .cnj only";
+    }
+    std::cout << "\n";
+}
+\end{lstlisting}
+
+Each \cnaclass{ContentManifestEntry} exposes exactly the three booleans/lists this chapter's
+resolution-order section depends on --- \texttt{hasXnb}, \texttt{hasCnj}, and
+\texttt{nativeExtensions} --- plus, when a \texttt{.xnb} file is present and readable,
+\texttt{xnbReaderNames}: the canonical reader-type names its own type-reader table references,
+letting a companion method, \texttt{GetXnbReaderUsageSummary()}, aggregate across an entire
+content tree which reader types are actually exercised and whether
+\cnaclass{ContentTypeReaderManager} currently has a registered reader for each one --- a real,
+runnable way to answer ``which of my compiled XNA content's readers does CNA not support yet''
+without reading a single byte of any individual \texttt{.xnb} file by hand.
+\end{sourcenote}
+
 \section{What this means for porting}
 
-Chapter~42's migration guide covers this in full practical detail, but the
+Chapter~\ref{ch:migration-guide}'s migration guide covers this in full practical detail, but the
 short version, now that this chapter has given the corrected picture, is worth stating here:
 porting an existing XNA/FNA game's compiled \texttt{.xnb} content is, for the specific asset
 types \S\ref{sec:xnb-and-cnj-model} named as complete (textures, sprite fonts, stock effects,
@@ -119,6 +185,7 @@ Every class in the chapters ahead --- \cnaclass{Texture2D}, \cnaclass{Model}, th
 effects --- is describable purely in terms of its runtime API, independent of which of this
 chapter's three loading paths actually produced a live instance of it. This chapter's
 distinction matters specifically at the boundary between ``I have an asset file'' and ``I have
-a live CNA object,'' which is exactly the boundary Chapter~42's migration guide and the
-\texttt{cna-samples}/\texttt{cna-examples} chapter (Chapter~45) come back to when the asset in
+a live CNA object,'' which is exactly the boundary Chapter~\ref{ch:migration-guide}'s migration guide and the
+\texttt{cna-samples} / \texttt{cna-examples} chapter (Chapter~\ref{ch:samples-and-examples})
+come back to when the asset in
 question was originally authored for real XNA rather than for CNA from scratch.
