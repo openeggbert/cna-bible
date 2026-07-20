@@ -134,7 +134,7 @@ question silently.
 | 4 | Building CNA | 173 | 35 | Full CMake option reference, per-platform build walkthroughs | Not started |
 | 5 | First Game | 131 | 40 | Multiple complete worked example programs, step-by-step | Not started |
 | 6 | Game Loop | 216 | 40 | Full `Game`/`GameTime`/`GameWindow` method-by-method docs + examples | Not started |
-| 7 | Math and Core Types | 1473 (was 270) | 110 | All 11 type-families have full reference + worked examples, most with 2-3; chapter-wide "shared surface" section (Equals/GetHashCode/ToString + CheckForNaNs/getDebugDisplayStringProperty findings); Vector Length/LengthSquared documented; Matrix arithmetic statics + Decompose, CreateBillboard (epsilon fallback), CreateShadow/CreateReflection (normalization asymmetry) worked examples; Vector4's extra Transform overloads tied to the real SOFTWARE-backend clip-space code; Quaternion Concatenate-vs-Multiply ordering (numerically verified); Plane::Transform inverse-transpose finding (numerically verified); Point and CurveKeyCollection full references; Rectangle IsEmpty corrected; Ray second worked example; BoundingBox-specific (trigger volume) and BoundingFrustum-specific (Contains-vs-Intersects LOD) worked examples | **In progress (~29 of ~110 pages) --- two consecutive sessions focused entirely on this chapter; still well short of target, see PLAN.md session log for what's still missing** |
+| 7 | Math and Core Types | 1632 (was 270) | 110 | All 11 type-families have full reference + worked examples, most with 2-4; chapter-wide "shared surface" section; Vector Length/LengthSquared, Vector4 clip-space Transform (tied to real SOFTWARE-backend code); Matrix arithmetic statics + Decompose, CreateBillboard/CreateConstrainedBillboard (two independent epsilon fallbacks), CreateShadow/CreateReflection (normalization asymmetry), CreateOrthographic (shadow-map worked example, tied to real CNA test source) worked examples; Quaternion Concatenate-vs-Multiply and Lerp-vs-Slerp angular-velocity findings (both numerically verified); Plane::Transform inverse-transpose finding (numerically verified); Point and CurveKeyCollection full references; Rectangle IsEmpty corrected; Ray second worked example; BoundingBox-specific, BoundingFrustum-specific, and BoundingSphere::Transform (non-uniform-scale, numerically verified) worked examples | **In progress (~33 of ~110 pages) --- three consecutive sessions focused entirely on this chapter; still well short of target, see PLAN.md session log for what's still missing** |
 | 8 | Content and Assets | 125 | 55 | Full `ContentManager` API + CNJ/XNB worked walkthroughs | Not started |
 | 9 | GraphicsDevice | 872 (was 171) | 90 | Full method-by-method docs for the 887-line header; two real, verified backend-specific gaps found and documented (SpriteBatch can't sample a RenderTarget2D; SupportsCapability(MultipleRenderTargets) always returns true even where MRT silently fails); full private-implementation lifecycle section (window/backend/virtual-resolution) traced from GraphicsDevice.cpp, ties directly to Ch.6's PresentationMode; new GraphicsAdapter multi-monitor enumeration + a third real gap (IsProfileSupported/QueryRenderTargetFormat/QueryBackBufferFormat are only genuinely hardware-checked on D3D9, honestly documented as `true`/simplified stubs on the other nine backends) | **In progress (~23 of ~90 pages)** |
 | 10 | SpriteBatch | 130 | 55 | Every `Begin`/`Draw`/`DrawString` overload documented + examples | Not started |
@@ -456,3 +456,34 @@ Ch.13 that is now frozen at ~2 pages per the author's confirmation above).
   30% of its page target — every addition so far has been a real, source-verified worked
   example or finding, not padding, but reaching ~110 pages this way will take several more
   sessions of the same density of work, not one or two.
+- **2026-07-20 (same session, "pokracuj"):** Third consecutive session on Chapter 7, working
+  through the prior entry's own remaining-gaps list again. `Matrix::CreateConstrainedBillboard`
+  got a worked example (a tree-foliage billboard constrained to the vertical axis) plus a real
+  second finding: it reuses `CreateBillboard`'s object/camera-coincidence epsilon but adds an
+  independent second guard, `BillboardParallelEpsilon = 0.9982547f` (computed precisely as
+  ${\approx}3.39°$ from exactly parallel), for the case where the camera direction is nearly
+  parallel to the constrained rotation axis itself. `Matrix::CreateOrthographic` got a worked
+  example built around a real one in CNA's own test suite
+  (`easygl_shadowmapping_createshadowmap_shader_test.cpp`): a directional light's shadow-map
+  view-projection matrix, with a precise explanation of *why* orthographic (not perspective)
+  is correct here — its `M14`/`M24`/`M34` are always zero and `M44` is always `1.0f`, so clip-space
+  `W` never varies with depth, unlike the perspective case this chapter's own
+  `Vector4::Transform` clip-space finding (prior session) already covered. Added a
+  `Quaternion::Lerp`-vs-`Slerp` angular-velocity worked example, numerically verified with a
+  standalone script before writing it down (same discipline as the `Concatenate`/`Multiply`
+  and `Plane::Transform` findings): both agree exactly at $t=0$, $0.5$, and $1$ for a
+  150-degree test rotation, but disagree everywhere else — `Slerp` tracks $t \times 150°$
+  exactly at every sampled point, while `Lerp` measured $11.9°$ (not $15°$) at $t=0.1$ and
+  symmetrically overshot to $138.1°$ (not $135°$) at $t=0.9$, an ease-in/ease-out pattern
+  symmetric around the midpoint where both necessarily agree. Added a
+  `BoundingSphere::Transform` worked example under a non-uniform scale, confirming precisely
+  (both by reading `BoundingSphere.cpp` and by hand-computing the expected value) that the
+  resulting radius is the original radius times the *largest* single axis scale factor — a
+  deliberately conservative choice that keeps the sphere a valid (if loose) bounding volume
+  rather than merely wrong. Chapter grows from 1473 to 1632 lines; its actual page span grows
+  from ~29 to ~33 of the ~110-page target (pdftotext-bounded, same method as before). Volume I
+  recompiled clean (153 pages total, 744 index entries, 0 undefined references). **Scope note,
+  unchanged in spirit**: three consecutive sessions now, still at ~30% of target — the
+  remaining known gaps list (in `NEXT.md`) is nearly exhausted at this point, meaning a future
+  session returning to this chapter will need to find fresh gaps the same grep-every-header
+  way the earlier sessions did, rather than working off an existing list.

@@ -466,6 +466,37 @@ explicit \texttt{cameraForwardVector} only when a specific fallback orientation 
 matters for a particular degenerate case (e.g.\ a particle that can genuinely spawn exactly at
 the camera's own position).
 
+\subsection{A worked example: CreateConstrainedBillboard, and its second, stricter epsilon}
+
+\texttt{CreateConstrainedBillboard} solves a different problem than plain
+\texttt{CreateBillboard}: rather than always facing the camera on every axis, it billboards
+around one fixed \texttt{rotateAxis} only --- the standard technique for a tree, a grass
+blade, or a torch flame billboard sprite, all of which should stay upright rather than tilting
+to fully face the camera the way a spherical particle billboard does. Reading its
+implementation shows it reuses \texttt{CreateBillboard}'s own \texttt{BillboardEpsilon}
+object/camera-coincidence guard, but adds a \emph{second}, independent degenerate case unique
+to the constrained form: what happens when the camera direction is nearly \emph{parallel} to
+\texttt{rotateAxis} itself, the case where ``rotate around this axis to face the camera'' has
+no well-defined answer (looking straight down the axis a tree trunk billboard is meant to
+stay upright around, for instance). This second case is guarded by its own threshold,
+\texttt{BillboardParallelEpsilon} --- \texttt{0.9982547f}, a dot-product magnitude corresponding
+to approximately $3.39°$ from exactly parallel --- and falls back first to
+\texttt{objectForwardVector} if supplied, and failing that to whichever of
+\cnaclass{Vector3}\texttt{::Right}/\texttt{::Forward} is itself less nearly parallel to
+\texttt{rotateAxis}, rather than producing a degenerate (zero-length) right vector from an
+near-parallel cross product.
+
+\begin{lstlisting}
+// Worked example: billboarding a tree's foliage sprite so it always turns
+// to face the camera around the vertical (Y) axis only, keeping the tree
+// upright rather than tilting -- CreateBillboard alone would tilt it.
+const Matrix foliageBillboard = Matrix::CreateConstrainedBillboard(
+    treePosition, cameraPosition, Vector3::Up, std::nullopt, std::nullopt);
+
+BasicEffect fx(dev);
+fx.World = foliageBillboard;
+\end{lstlisting}
+
 \subsection{Worked examples: CreateShadow and CreateReflection, and one asymmetry between them}
 
 \texttt{CreateShadow} and \texttt{CreateReflection} both take a \cnaclass{Plane} and produce a
@@ -504,6 +535,49 @@ BasicEffect fx(dev);
 fx.World = characterWorldMatrix * shadowMatrix;
 fx.DiffuseColor = Vector3(0.0f, 0.0f, 0.0f);   // a flat shadow is drawn unlit
 \end{lstlisting}
+
+\subsection{A worked example: CreateOrthographic for a shadow map's light-space projection}
+
+Every \texttt{Matrix} worked example so far in this chapter has used
+\texttt{CreatePerspectiveFieldOfView}; \texttt{CreateOrthographic} solves a genuinely different
+problem, and CNA's own test suite shows exactly where it matters in practice: building the
+light-space view-projection matrix a directional-light shadow map renders depth from. Reading
+\texttt{CreateOrthographic}'s implementation directly (and confirmed by a worked comment in
+CNA's own shadow-mapping test, \texttt{easygl\_shadowmapping\_createshadowmap\_shader\_test.cpp})
+shows precisely why an orthographic projection, not a perspective one, is the right tool here:
+its \texttt{M14}/\texttt{M24}/\texttt{M34} components are all zero and \texttt{M44} is exactly
+\texttt{1.0f}, so \emph{every} transformed position's resulting clip-space \texttt{W} is
+\texttt{1} regardless of its distance from the light --- unlike
+\S\ref{sec:vector-full-reference}'s own \texttt{Vector4::Transform} clip-space finding above,
+where a \emph{perspective} projection's \texttt{W} genuinely varies with depth and the
+perspective divide does real work. A directional light has no single position for distance to
+vary from in the first place (it's a direction, not a point), which is exactly why its
+shadow-map projection should never need a perspective divide at all.
+
+\begin{lstlisting}
+// Worked example: a directional light's shadow-map view-projection matrix
+// -- an orthographic (not perspective) projection, since a directional
+// light has no single position for a perspective projection's distance
+// falloff to be measured from.
+const Matrix lightView = Matrix::CreateLookAt(
+    lightPosition, lightPosition + lightDirection, Vector3::Up);
+const Matrix lightProjection = Matrix::CreateOrthographic(
+    shadowMapWorldWidth, shadowMapWorldHeight, nearPlane, farPlane);
+const Matrix lightViewProjection = lightView * lightProjection;
+
+// Render the scene's depth from the light's own point of view, using
+// lightViewProjection in place of the main camera's usual perspective
+// view/projection chain, to build the shadow map itself.
+\end{lstlisting}
+
+For a fixed-size shadow-casting area (as opposed to one that needs to track a moving camera's
+visible frustum, which CNA's own test file's comments note is what its \emph{sample}
+application layer does, via a separate helper this chapter's own scope doesn't cover), the
+plain, centered \texttt{CreateOrthographic} above is sufficient; the off-center form,
+\texttt{CreateOrthographicOffCenter}, exists for the same reason
+\texttt{CreatePerspectiveOffCenter} does --- letting the projected volume's center not
+coincide with the view axis, useful for a split shadow-map atlas region or an asymmetric UI
+projection rather than the common symmetric case.
 
 \section{Quaternion, Plane, and Ray}
 
@@ -607,6 +681,57 @@ currentFacing = Quaternion::Slerp(currentFacing, targetFacing, turnAmount);
 
 const Matrix orientation = Matrix::CreateFromQuaternion(currentFacing);
 \end{lstlisting}
+
+\paragraph{Why the worked example above uses Slerp, not Lerp: a numeric comparison.}
+\S\ref{sec:quaternion-full-reference}'s reference table above already states that
+\texttt{Lerp}'s interpolation rate is ``not perfectly uniform in angle the way \texttt{Slerp}
+is''; it is worth actually measuring that non-uniformity rather than taking the claim on
+faith. Both methods --- read directly from \texttt{Quaternion.cpp} --- pick the shorter of the
+two possible arcs between the input quaternions (by checking their dot product's sign and
+negating one side if it's negative, since a quaternion and its negation represent the same
+rotation, so either arc is a geometrically valid choice and only one of them is the
+\emph{short} way around), and \texttt{Lerp} normalizes its result at the end so it always
+lands back on the unit hypersphere --- but \texttt{Lerp} otherwise interpolates the four raw
+components in a
+straight line through the hypersphere's interior before that final normalization, while
+\texttt{Slerp} interpolates along the sphere's surface directly. Comparing both against a
+150-degree rotation (large enough to make the difference clearly visible; a small rotation
+would hide it almost entirely, a lesson worth keeping in mind whenever a worked example's own
+test case needs to actually reveal the effect it claims to demonstrate) and measuring the
+resulting rotation angle at several points along $t \in [0, 1]$, rather than only at the
+endpoints, shows precisely what ``not perfectly uniform'' means in practice:
+
+\begin{lstlisting}
+// Worked example: measuring Lerp's actual non-uniformity against Slerp's
+// guaranteed-uniform angular velocity, across a large (150-degree)
+// rotation -- a small rotation would make the two methods look nearly
+// identical and hide the difference this example exists to show.
+const Quaternion start = Quaternion::Identity;
+const Quaternion end = Quaternion::CreateFromAxisAngle(
+    Vector3::Backward, MathHelper::ToRadians(150.0f));
+
+for (const float t : { 0.10f, 0.25f, 0.40f, 0.50f, 0.60f, 0.75f, 0.90f })
+{
+    const Quaternion lerped = Quaternion::Lerp(start, end, t);
+    const Quaternion slerped = Quaternion::Slerp(start, end, t);
+    // ... measure each result's rotation angle from `start` here ...
+}
+\end{lstlisting}
+
+Run numerically (independently of CNA's C\texttt{++}, as a cross-check against the exact same
+component formulas both methods use), the two methods agree \emph{exactly} at $t=0$, $t=0.5$,
+and $t=1$ --- $0°$, $75°$, and $150°$ respectively, for both --- but disagree everywhere else
+along the way: \texttt{Slerp} tracks the expected uniform angle ($t \times 150°$) exactly at
+every sampled $t$, while \texttt{Lerp} measured $11.9°$ (not $15°$) at $t=0.1$, $33.0°$ (not
+$37.5°$) at $t=0.25$, and symmetrically \emph{overshoots} on the other side of the midpoint ---
+$92.5°$ (not $90°$) at $t=0.6$, $138.1°$ (not $135°$) at $t=0.9$. In other words, \texttt{Lerp}
+doesn't merely approximate uniform angular motion with some evenly-distributed error --- it
+eases in through the first half of the interpolation and eases back out through the second
+half, symmetric around the exact midpoint where both methods necessarily agree. For a single
+short turn (as in the worked example above) this is imperceptible; for a long, slow rotation
+where the easing itself would read as an unwanted acceleration/deceleration artifact,
+\texttt{Slerp}'s extra trigonometric cost buys a real, measurable difference, not merely a
+theoretical one.
 
 \paragraph{A second worked example: proving Quaternion and Matrix rotations actually agree.}
 \S\ref{sec:matrix-full-reference}'s worked example rotated a triangle with
@@ -1283,6 +1408,40 @@ else   // ContainmentType::Intersects
     object.DrawWithPerSubmeshCulling(cameraFrustum);
 }
 \end{lstlisting}
+
+\subsection{A worked example: BoundingSphere::Transform under a non-uniform scale}
+
+\S\ref{sec:bounding-volumes}'s own prose above already states, from
+\cnaclass{BoundingSphere}\texttt{::Transform}'s doc comment, that a shearing or non-uniform
+scale does not turn the sphere into an ellipsoid, since \cnaclass{BoundingSphere} has no
+representation for one --- but it is worth reading the actual implementation to see precisely
+\emph{how} it handles a non-uniform scale, rather than assuming it simply breaks or silently
+produces a wrong result. It computes the squared length of each of the upper-left
+$3\times3$ sub-matrix's three rows independently, takes the \emph{largest} of the three, and
+scales the original radius by the square root of that largest value alone --- deliberately
+conservative, not merely wrong: the transformed sphere is guaranteed to still fully enclose
+the true (non-spherical) transformed shape, at the cost of being looser than necessary along
+the matrix's smaller-scaled axes.
+
+\begin{lstlisting}
+// Worked example: transforming a BoundingSphere by a non-uniform scale --
+// the resulting radius is scaled by the LARGEST of the three axis
+// factors, not an average or a per-axis distortion, so the sphere stays
+// a true bounding volume (if a loose one) rather than becoming wrong.
+const BoundingSphere original(Vector3::Zero, 1.0f);
+const Matrix nonUniformScale = Matrix::CreateScale(2.0f, 0.5f, 4.0f);
+
+const BoundingSphere transformed = original.Transform(nonUniformScale);
+// transformed.Radius comes out as exactly 4.0f -- the original radius (1)
+// times the largest single axis factor (4, the Z scale), not e.g. an
+// average of (2, 0.5, 4) or a per-axis-distorted ellipsoid approximation.
+\end{lstlisting}
+
+Knowing this precisely matters for a broad-phase collision or culling system that assumes a
+transformed \cnaclass{BoundingSphere} is always at least as large as the true transformed
+shape (safe for conservative culling) but not tighter than necessary (a performance, not a
+correctness, concern) --- both properties this implementation actually guarantees, once read
+directly rather than assumed from the type's name alone.
 
 \section{Curves: Curve, CurveKey, and their supporting enums}
 
