@@ -26,7 +26,7 @@ is a no-op, and every stock effect overrides it.
 
 \cnaclass{EffectParameter} carries full metadata (name, semantic, row/column counts,
 \cnaclass{EffectParameterClass}, \cnaclass{EffectParameterType}) plus typed
-\texttt{GetValue*}/\texttt{SetValue*} accessors for every scalar, vector, matrix, quaternion,
+\texttt{GetValue*} / \texttt{SetValue*} accessors for every scalar, vector, matrix, quaternion,
 string, and texture type XNA effects support. \cnaclass{EffectParameterCollection},
 \cnaclass{EffectPassCollection}, and \cnaclass{EffectTechniqueCollection} all store their
 elements behind \texttt{unique\_ptr} rather than by value, specifically so that a reference
@@ -57,11 +57,11 @@ default lighting behavior on every backend except the one built to be pixel-auth
 
 \section{BasicEffect}
 
-\cnaclass{BasicEffect} is the largest of the five: public \texttt{World}/\texttt{View}/%
+\cnaclass{BasicEffect} is the largest of the five: public \texttt{World} / \texttt{View}/%
 \texttt{Projection} fields, \texttt{VertexColorEnabled}, the full material color set
 (\texttt{DiffuseColor}, \texttt{EmissiveColor}, \texttt{SpecularColor}, \texttt{SpecularPower},
 \texttt{Alpha}, \texttt{AmbientLightColor}), \texttt{LightingEnabled}/%
-\texttt{PreferPerPixelLighting}, \texttt{TextureEnabled}/\texttt{Texture}, full
+\texttt{PreferPerPixelLighting}, \texttt{TextureEnabled} / \texttt{Texture}, full
 \texttt{DirectionalLight0/1/2}, and \texttt{EnableDefaultLighting()}. Its 22-property audit
 found and fixed several early default-value bugs (\texttt{VertexColorEnabled},
 \texttt{DirectionalLight0.Enabled}, and \texttt{DirectionalLight.Direction}'s default value
@@ -71,7 +71,7 @@ BGFX (three separate bugs, one per backend); the textured-plus-vertex-color-plus
 dropped \texttt{DiffuseColor} entirely on EasyGL and BGFX (Vulkan was already correct); and a
 shared bug across all three backends never checked \texttt{DirectionalLight0.Enabled} at all,
 so a disabled light kept lighting the surface regardless. BGFX carried one additional,
-much wider bug: its vertex-layout builder never declared \texttt{Normal}/\texttt{TexCoord0}
+much wider bug: its vertex-layout builder never declared \texttt{Normal} / \texttt{TexCoord0}
 attributes for any stride except the skinned 52-byte layout --- silently breaking lit-normal
 \emph{and} UV interpolation for every other stride, invisible until then because every prior
 test happened to use a UV-insensitive $1\times1$ texture. \texttt{EmissiveColor} was dropped
@@ -79,12 +79,48 @@ entirely in the no-lighting path on all three backends; ambient/emissive/specula
 and real specular highlights were all fixed afterward, leaving all three backends
 byte-identical for the full feature composition as of the most recent audit.
 
+\subsection{A worked example: a lit, textured cube}
+
+\cnaclass{BasicEffect} is deliberately the effect a first 3D CNA program reaches for, and its
+own real headers confirm why it reads like plain XNA rather than a wrapped shader system:
+\texttt{World} and \texttt{VertexColorEnabled} are ordinary public fields (matching real XNA's
+own field-not-property choice for this specific effect), while \texttt{Texture} and
+\texttt{TextureEnabled} go through the usual \texttt{getXProperty} / \texttt{setXProperty} pair:
+
+\begin{lstlisting}
+BasicEffect effect(getGraphicsDeviceProperty());
+effect.World = Matrix::CreateRotationY(rotationAngle);
+effect.setViewProperty(camera.View());
+effect.setProjectionProperty(camera.Projection());
+
+effect.setTextureEnabledProperty(true);
+effect.setTextureProperty(&cubeTexture);
+
+effect.EnableDefaultLighting();          // sets DirectionalLight0/1/2 to XNA's own defaults
+effect.DirectionalLight0.setDiffuseColorProperty(Vector3(1.0f, 0.95f, 0.9f)); // warm key light
+
+for (EffectPass& pass : effect.getCurrentTechniqueProperty()->getPassesProperty()) {
+    pass.Apply();
+    getGraphicsDeviceProperty().DrawIndexedPrimitives(/* ... */);
+}
+\end{lstlisting}
+
+\texttt{EnableDefaultLighting()} is worth calling before touching any individual
+\texttt{DirectionalLightN} property, not after --- reading its own implementation directly
+confirms it unconditionally overwrites \texttt{DirectionalLight0}'s diffuse color, direction,
+specular color, and enabled flag (and likewise for lights 1 and 2) every time it runs; setting
+\texttt{DirectionalLight0}'s diffuse color first and calling \texttt{EnableDefaultLighting()}
+second would silently overwrite the custom color right back to the default. This is exactly the kind of ordering trap the per-backend bug list below
+does \emph{not} cover, because it is a real API-usage hazard rather than a backend bug ---
+\texttt{EnableDefaultLighting()}'s own real behavior, faithfully ported, not a CNA-specific
+quirk.
+
 \section{AlphaTestEffect}
 
 \cnaclass{AlphaTestEffect} implements \texttt{IEffectMatrices} and \texttt{IEffectFog} only
 --- no lighting. \texttt{AlphaFunction} (a \cnaclass{CompareFunction}, defaulting to
 \texttt{Greater}) and \texttt{ReferenceAlpha} (an unclamped 0--255 int) implement the actual
-alpha test; \texttt{VertexColorEnabled}, \texttt{DiffuseColor}/\texttt{Alpha}, and
+alpha test; \texttt{VertexColorEnabled}, \texttt{DiffuseColor} / \texttt{Alpha}, and
 \texttt{Texture} round out the surface. Its audit found zero property-default bugs (the
 first test coverage for this effect written from scratch), and a full 8-value
 \cnaclass{CompareFunction} sweep passed 24 of 24 cases on all three backends. One real,
@@ -106,7 +142,7 @@ possibly-null texture, not just this one.
 \section{DualTextureEffect}
 
 Two independent texture slots (\texttt{Texture}, \texttt{Texture2}), plus
-\texttt{VertexColorEnabled}, \texttt{DiffuseColor}/\texttt{Alpha}, and fog --- no lighting.
+\texttt{VertexColorEnabled}, \texttt{DiffuseColor} / \texttt{Alpha}, and fog --- no lighting.
 The audit's headline finding is a real formula bug present on all three backends at once:
 FNA's real shader doubles the first texture's RGB value (\texttt{color.rgb *= 2}) before
 multiplying it against the overlay texture, and none of CNA's three backend shaders
@@ -158,7 +194,7 @@ output across all three backends.
 
 \cnaclass{SkinnedEffect} caps its bone palette at \texttt{MaxBones = 72} (a static constant
 that needed an out-of-line definition fix at one point for correct linkage), and exposes
-\texttt{SetBoneTransforms}/\texttt{GetBoneTransforms(count)}, a \texttt{WeightsPerVertex}
+\texttt{SetBoneTransforms} / \texttt{GetBoneTransforms(count)}, a \texttt{WeightsPerVertex}
 property restricted to 1, 2, or 4 (throwing otherwise), \texttt{SpecularColor}/%
 \texttt{SpecularPower}, full lighting and fog, and one \texttt{NOXNA} addition real XNA's
 \cnaclass{SkinnedEffect} does not have at all: \texttt{VertexColorEnabled}, added
@@ -166,9 +202,9 @@ specifically to support glTF-imported meshes carrying a \texttt{COLOR\_0} vertex
 The core skinning math itself --- identity, single-bone, and two-bone weighted blending ---
 was pixel-verified correct on all three backends with zero bugs found; the same
 \texttt{Clone()}-drops-a-field bug pattern from \cnaclass{EnvironmentMapEffect} recurred here
-too, this time silently resetting \texttt{SpecularColor}/\texttt{SpecularPower} to zero on
+too, this time silently resetting \texttt{SpecularColor} / \texttt{SpecularPower} to zero on
 every clone. Three further gaps were opened and closed together: \texttt{DirectionalLight1}/%
-\texttt{DirectionalLight2} were unforwarded; \texttt{SpecularColor}/\texttt{SpecularPower}
+\texttt{DirectionalLight2} were unforwarded; \texttt{SpecularColor} / \texttt{SpecularPower}
 had no GPU implementation on any backend at all (fixed with a real Blinn-Phong half-vector
 specular term); and \texttt{WeightsPerVertex} was a complete GPU no-op --- the skinning
 shader always summed all four bone weights regardless of what the property said, now fixed
