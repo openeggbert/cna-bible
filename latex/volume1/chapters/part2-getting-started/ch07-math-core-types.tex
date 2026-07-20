@@ -6,9 +6,85 @@ every stock effect, every backend --- passes values of the types in this chapter
 API. They live directly under \texttt{include/Microsoft/Xna/Framework/} (not in the
 \texttt{Graphics} sub-namespace), are all value types (C\texttt{++} \texttt{struct}s, matching
 XNA's own \texttt{struct} semantics rather than reference-type classes, with the sole
-exception of \cnaclass{BoundingFrustum}, discussed below), and each carries a private
-\texttt{getDebugDisplayStringProperty()} and \texttt{CheckForNaNs()} helper ported from FNA's
-own debug-visualizer tooling.
+exception of \cnaclass{BoundingFrustum}, discussed below), and most carry a private
+debug-display helper, and several also a \texttt{CheckForNaNs()} guard, both ported from FNA's
+own debug-visualizer tooling --- \S\ref{sec:shared-debug-surface} below documents exactly which
+types have which, and a real finding about how reachable either one actually is.
+
+\section{A shared surface: Equals, GetHashCode, ToString, and two debug-only helpers}
+\label{sec:shared-debug-surface}
+
+Before working through each type in turn, it's worth naming once what all eleven type
+families in this chapter share, rather than re-stating it eleven times: every one of them ---
+\cnaclass{Vector2}/\cnaclass{Vector3}/\cnaclass{Vector4}, \cnaclass{Matrix},
+\cnaclass{Quaternion}, \cnaclass{Plane}, \cnaclass{Ray}, \cnaclass{Rectangle},
+\cnaclass{Point}, \cnaclass{BoundingBox}, \cnaclass{BoundingSphere},
+\cnaclass{BoundingFrustum}, and \cnaclass{CurveKey} --- implements the same three-method
+identity surface read directly from each header: \texttt{bool Equals(const T\& other) const},
+a \texttt{GetHashCode() const} hash accessor --- though not at a uniform return type: the
+vectors, \cnaclass{Matrix}, and \cnaclass{Quaternion} return a plain \texttt{int};
+\cnaclass{Point} and \cnaclass{Rectangle} return \texttt{intcs}; \cnaclass{Plane},
+\cnaclass{Ray}, all three bounding-volume types, and \cnaclass{CurveKey} return
+\texttt{std::size\_t} --- a real, three-way inconsistency in the port across otherwise
+structurally identical methods, not a typo in this book --- and (all but \cnaclass{CurveKey})
+\texttt{std::string ToString() const}. This is CNA's C\texttt{++}
+expression of the same override every C\# \texttt{struct} gets for free from
+\texttt{System.ValueType}: C\texttt{++} has no boxing and no virtual dispatch on a value type
+the way .NET does, so each override has to be spelled out explicitly per type rather than
+inherited once. Most of these types (the vectors, \cnaclass{Matrix}, \cnaclass{Quaternion},
+\cnaclass{Plane}, \cnaclass{Ray}, \cnaclass{Rectangle}, \cnaclass{Point}) additionally provide
+\texttt{operator==}/\texttt{operator!=} as friend functions performing the identical
+component-wise comparison \texttt{Equals()} does --- both spellings reach the same comparison,
+so \texttt{a == b} and \texttt{a.Equals(b)} are interchangeable wherever both exist; the
+operator form is simply the more idiomatic C\texttt{++} spelling for everyday code, while
+\texttt{Equals()} exists to satisfy the same \texttt{System::IEquatable<T>}-style contract XNA
+itself expects.
+
+\paragraph{The debug-display helper: real, but only on some types, and privately unreachable.}
+The two members this chapter's own opening paragraph names --- a debug-display string helper
+and \texttt{CheckForNaNs()} --- are real, but neither is present on every type in this chapter,
+and reading each header directly is the only way to know which is which:
+\texttt{getDebugDisplayStringProperty()} exists (always \texttt{private}) on
+\cnaclass{Vector2}/\cnaclass{Vector3}/\cnaclass{Vector4}, \cnaclass{Matrix},
+\cnaclass{Quaternion}, \cnaclass{Rectangle}, \cnaclass{Point}, \cnaclass{BoundingBox}, and
+\cnaclass{BoundingFrustum}, but \emph{not} on \cnaclass{Plane}, \cnaclass{Ray},
+\cnaclass{BoundingSphere}, \cnaclass{CurveKey}, or \cnaclass{Curve}. \texttt{CheckForNaNs()} is
+narrower still, present only on the five genuinely floating-point-heavy types where a NaN
+component is a meaningful failure mode: \cnaclass{Vector2}, \cnaclass{Vector3},
+\cnaclass{Vector4}, \cnaclass{Matrix}, and \cnaclass{Quaternion}.
+
+Two things are worth verifying rather than assuming, and both turned out to be real findings
+once checked directly against the source:
+
+\begin{itemize}
+\item \textbf{Neither helper is ever actually called from anywhere else in the codebase.} A
+  project-wide search for call sites of \texttt{CheckForNaNs()} or
+  \texttt{getDebugDisplayStringProperty()} outside each type's own defining \texttt{.cpp} file
+  turns up nothing --- no test, no example program, no other framework class invokes either
+  one. \texttt{getDebugDisplayStringProperty()} is \texttt{private} on every type that has it,
+  with no public accessor anywhere, so nothing outside the type itself could call it even if it
+  wanted to. As shipped, both helpers are unreachable through any public code path; the most
+  plausible explanation, consistent with this chapter's opening claim that they're ``ported
+  from FNA's own debug-visualizer tooling,'' is that they exist to back an IDE
+  debugger-visualizer extension (the .NET convention this was ported from is the
+  \texttt{[DebuggerDisplay]} attribute) that has no C\texttt{++} counterpart wired up yet --- no
+  \texttt{.natvis} file (Visual Studio) or LLDB/GDB summary-provider script was found anywhere
+  in the repository. Worth knowing before assuming a call to either method exists somewhere
+  this book simply didn't happen to read.
+\item \textbf{\texttt{CheckForNaNs()}'s five implementations are not actually identical.} The
+  three vector types' versions run unconditionally, in every build configuration:
+  \texttt{Vector2::CheckForNaNs()} is a plain \texttt{if (std::isnan(X) ||
+  std::isnan(Y)) throw std::logic\_error(...)}, with no preprocessor guard at all.
+  \cnaclass{Matrix}'s and \cnaclass{Quaternion}'s versions, by contrast, are wrapped in
+  \texttt{\#if !defined(NDEBUG)} --- meaning they compile to nothing whatsoever in a release
+  build, while the three vector types' checks would still run (uselessly, since nothing calls
+  them) even there. Because no call site anywhere currently invokes any of the five, this
+  inconsistency has zero observable effect today --- but it is exactly the kind of small,
+  easy-to-miss divergence that would surface immediately if a future change wired
+  \texttt{CheckForNaNs()} into, say, a debug-only assertion after arithmetic operations, and it
+  is worth naming now, while it is still harmless, rather than after it causes a
+  release-vs-debug behavioral difference someone has to debug.
+\end{itemize}
 
 \section{Vectors: Vector2, Vector3, Vector4}
 
@@ -113,6 +189,16 @@ counterpart is never provided (these are always reached as \texttt{Vector3::Add(
   form for transforming a surface normal, where translating the normal itself would be
   meaningless.
 \end{description}
+
+The description list above --- and every other ``full method reference'' in this chapter ---
+deliberately covers only the \emph{static} operation surface; each vector type additionally
+provides five ordinary \emph{instance} methods that are easy to overlook precisely because
+they aren't part of the value/output-ref static-method pattern the rest of this section is
+built around: \texttt{float Length() const} and \texttt{float LengthSquared() const} (the
+worked example immediately below already calls \texttt{toTarget.Length()}, without this book
+having named the method it's calling until now), plus the shared
+\texttt{Equals}/\texttt{GetHashCode}/\texttt{ToString} identity triad documented once, for
+every type in this chapter, in \S\ref{sec:shared-debug-surface} above.
 
 \begin{lstlisting}
 // Worked example: normalize a direction, then move an object toward a
@@ -246,6 +332,66 @@ for the vector types.
   quaternion at all.
 \end{description}
 
+\subsection{Arithmetic statics and Decompose}
+\label{sec:matrix-arithmetic}
+
+Alongside the factory methods above, \cnaclass{Matrix} provides the same
+value/output-ref-paired arithmetic family the vector types do: \texttt{Add}/\texttt{Subtract}
+(component-wise, all sixteen fields), \texttt{Multiply} (both matrix-by-matrix, which is true
+$4\times4$ matrix multiplication rather than component-wise, and matrix-by-\texttt{float}
+scalar), \texttt{Divide} (matrix-by-matrix component-wise, and matrix-by-\texttt{float}
+scalar), \texttt{Negate}, \texttt{Invert} (the matrix inverse --- undefined, and not checked
+for, when the matrix is singular), \texttt{Transpose} (swaps rows and columns --- distinct
+from, and unrelated to, the \texttt{NOXNA ToColumnMajor} bridge method above, which transposes
+for a completely different reason), and \texttt{Lerp} (component-wise linear interpolation
+across all sixteen fields --- rarely what an application actually wants for interpolating a
+\emph{rotation}, since lerping a full transform matrix component-wise does not produce the same
+result as \texttt{Quaternion::Slerp} followed by \texttt{CreateFromQuaternion}; \texttt{Lerp}
+here is a direct per-field port of FNA's own method, not a recommendation).
+
+\texttt{Decompose(scale\&, rotation\&, translation\&) -> bool} is the one instance method in
+this family, and is worth reading precisely rather than assuming it succeeds unconditionally:
+per-axis scale is recovered first (as the length of each of the upper-left $3\times3$
+sub-matrix's three rows, sign-corrected), and \emph{only if all three axis scales are
+non-zero} does the method go on to extract a rotation quaternion from the remaining
+scale-normalized rotation sub-matrix and return \texttt{true}. If any axis scale is within epsilon of zero --- a degenerate, singular scale, not merely a
+very small non-zero one --- \texttt{rotation} is set to \texttt{Quaternion::Identity} and the
+method returns \texttt{false}, leaving the caller to decide how to handle a matrix that cannot
+be meaningfully decomposed. That epsilon check is itself worth a precise note: rather than
+calling \cnaclass{MathHelper}'s own \texttt{WithinEpsilon}, \texttt{Matrix.cpp} defines a
+private, file-local \texttt{WithinEpsilon} in its own anonymous namespace, hardcoding the same
+\texttt{FLT\_EPSILON} value (\texttt{1.192092896e-07f}) \cnaclass{MathHelper} computes at
+startup --- the source comment explains this duplication is deliberate, specifically to avoid
+a circular dependency between \texttt{Matrix.cpp} and \cnaclass{MathHelper} from this
+anonymous namespace, not an oversight. (The source carries one more precisely-documented,
+practically-inconsequential divergence from FNA worth naming for completeness: FNA's sign
+computation uses C\#'s \texttt{Math.Sign()}, which returns \texttt{0} for negative zero; CNA's
+uses \texttt{std::signbit}, which returns \texttt{true} for negative zero, giving a
+sign of $-1$ where FNA would give $0$ for that one specific edge case --- the source comment
+calls this out directly as an edge case with no practical impact, and this book found no
+scenario in which a real matrix hits it.)
+
+\begin{lstlisting}
+// Worked example: recovering a moving object's individual scale, rotation,
+// and translation back out of its combined world matrix -- useful for,
+// e.g., a debug inspector panel that needs to display them separately
+// rather than as one opaque 4x4 matrix.
+Vector3 scale, translation;
+Quaternion rotation;
+
+if (worldMatrix.Decompose(scale, rotation, translation))
+{
+    // scale/rotation/translation are all valid -- display or use them.
+}
+else
+{
+    // worldMatrix has a zero (or near-zero) scale on at least one axis --
+    // e.g. an object that was scaled flat to nothing on purpose, or a bug
+    // upstream that produced a degenerate transform. rotation was reset to
+    // Quaternion::Identity; scale/translation are still meaningful.
+}
+\end{lstlisting}
+
 \section{Quaternion, Plane, and Ray}
 
 \cnaclass{Quaternion} follows the same value/output-ref-pair convention as the vectors:
@@ -314,6 +460,27 @@ twin as well.
 \item[\texttt{Normalize(quaternion)}] the static, value-returning form; the instance method
   \texttt{void Normalize()} normalizes \texttt{*this} in place.
 \end{description}
+
+\paragraph{Making good on ``which side of operator* means what'': Concatenate is Multiply with its arguments swapped.}
+The \texttt{Concatenate} entry above promises to spell out an ordering \texttt{operator*}
+leaves ambiguous; comparing the two implementations directly (not merely their doc comments)
+shows precisely how they relate. \texttt{operator*(q1, q2)} is defined purely in terms of
+\texttt{Quaternion::Multiply(q1, q2)}, and expanding both \texttt{Multiply}'s and
+\texttt{Concatenate}'s component formulas term-by-term shows
+\texttt{Concatenate(value1, value2)} computes exactly the same result as
+\texttt{Multiply(value2, value1)} --- equivalently, \texttt{value2 * value1} via the operator
+--- \emph{not} \texttt{value1 * value2}. In other words, ``\texttt{value1} applied first, then
+\texttt{value2}'' (the composition order \texttt{Concatenate} promises) is the
+\emph{right-to-left} reading of quaternion multiplication: \texttt{operator*}/\texttt{Multiply}
+apply their \emph{right-hand} argument's rotation first. This matches the standard mathematical
+convention for composing rotations via multiplication (the same right-to-left reading
+\cnaclass{Matrix} multiplication uses for \texttt{world = rotation * translation}-style
+chains), but it is exactly the kind of detail that is easy to get backwards from the method
+names alone --- \texttt{Concatenate(a, b)} reads left-to-right in the source, while the
+rotation it actually applies first is \texttt{b}, not \texttt{a}. Reach for
+\texttt{Concatenate} specifically when the ``applied first / applied second'' reading needs to
+be unambiguous at the call site, and treat any direct \texttt{q1 * q2} in this book's own
+examples (or anyone else's) as applying \texttt{q2}'s rotation first.
 
 \begin{lstlisting}
 // Worked example: Slerp between two facing directions over one second,
@@ -441,6 +608,39 @@ if (const std::optional<float> hitDistance = pickRay.Intersects(targetSphere))
 }
 \end{lstlisting}
 
+\paragraph{A second worked example: picking the nearest of several candidates, not just the first hit.}
+The mouse-picking example above stopped at the first hit; a common follow-up mistake is
+assuming \texttt{Intersects} against a list of candidates already returns them in
+front-to-back order --- it does not, since each call is independent and knows nothing about
+any other candidate. Picking the \emph{nearest} object under the cursor, out of several whose
+bounding volumes the ray happens to intersect, means comparing every returned distance
+explicitly and keeping the smallest:
+
+\begin{lstlisting}
+// Worked example: pick the nearest of several candidate objects under the
+// cursor -- each Intersects call only reports whether/where *that one*
+// object was hit, so finding the nearest requires comparing distances
+// across every candidate explicitly, not trusting call order.
+const Ray pickRay(cameraPosition, pickDirection);
+
+const SceneObject* nearestHit = nullptr;
+float nearestDistance = std::numeric_limits<float>::max();
+
+for (const SceneObject& candidate : candidates)
+{
+    if (const std::optional<float> hitDistance =
+            pickRay.Intersects(candidate.GetBoundingBox()))
+    {
+        if (*hitDistance < nearestDistance)
+        {
+            nearestDistance = *hitDistance;
+            nearestHit = &candidate;
+        }
+    }
+}
+// nearestHit is null if the ray missed every candidate entirely.
+\end{lstlisting}
+
 \section{Rectangle and Point}
 
 \cnaclass{Rectangle} stores \texttt{intcs X, Y, Width, Height} --- the
@@ -451,7 +651,15 @@ table, not a raw C\texttt{++} \texttt{int} --- with derived get-only properties
 sizes''). \texttt{Contains} and \texttt{Intersects} each come in value-returning and
 output-ref forms against a coordinate pair, a \cnaclass{Point}, or another
 \cnaclass{Rectangle}; \texttt{Offset} and \texttt{Inflate} mutate in place; static
-\texttt{Intersect}/\texttt{Union} compute a new rectangle from two inputs.
+\texttt{Intersect}/\texttt{Union} compute a new rectangle from two inputs. A static
+\texttt{Empty} constant and a get-only \texttt{IsEmpty} property round out the surface ---
+worth reading precisely rather than assuming ``empty'' means ``zero area'': \texttt{IsEmpty}
+is implemented as \texttt{Width == 0 \&\& Height == 0 \&\& X == 0 \&\& Y == 0}, so a rectangle
+with zero width and height but a nonzero position (e.g.\ one produced by \texttt{Intersect}
+for two rectangles that touch at a single point away from the origin) does \emph{not} report
+\texttt{true} for \texttt{IsEmpty}, even though it has zero area --- checking
+\texttt{Width > 0 \&\& Height > 0} directly, as this section's own \texttt{Intersect} worked
+example below already does, is the correct test for ``has zero area,'' not \texttt{IsEmpty}.
 
 \cnaclass{Point} is the integer counterpart to \cnaclass{Vector2} --- \texttt{intcs X, Y} ---
 with component-wise \texttt{+}, \texttt{-}, \texttt{*}, and \texttt{/} operators implemented
@@ -528,6 +736,35 @@ Rectangle dirtyRegion = firstChangedWidget.Bounds;
 for (const Widget& widget : otherChangedWidgets)
 {
     dirtyRegion = Rectangle::Union(dirtyRegion, widget.Bounds);
+}
+\end{lstlisting}
+
+\subsection{Full method reference: Point}
+
+Beyond the shared \texttt{Equals}/\texttt{GetHashCode}/\texttt{ToString} triad
+(\S\ref{sec:shared-debug-surface}) and the four component-wise operators already named above,
+\cnaclass{Point}'s entire public surface is exactly two constructors (\texttt{Point()},
+zero-initializing, and \texttt{Point(intcs x, intcs y)}) plus the static \texttt{getZeroProperty()}
+accessor backing the \texttt{Zero} constant --- there is no \texttt{Distance}, \texttt{Lerp}, or
+any of the interpolation family \cnaclass{Vector2} has, since a \cnaclass{Point}'s two
+\texttt{intcs} components are not meaningfully interpolated the way floating-point components
+are. This is deliberately the smallest type in the chapter.
+
+\begin{lstlisting}
+// Worked example: converting between a tile-grid coordinate (Point) and a
+// pixel-space draw rectangle -- the conversion every tile-based renderer
+// needs at least once per visible tile, per frame.
+const Point tileGridSize(32, 32);   // pixels per tile
+
+Point TileToPixel(Point tileCoordinate)
+{
+    return tileCoordinate * tileGridSize;   // component-wise Point * Point
+}
+
+Rectangle TileDrawBounds(Point tileCoordinate)
+{
+    const Point topLeft = TileToPixel(tileCoordinate);
+    return Rectangle(topLeft.X, topLeft.Y, tileGridSize.X, tileGridSize.Y);
 }
 \end{lstlisting}
 
@@ -849,6 +1086,35 @@ adds the same \texttt{NOXNA} C\texttt{++}-iterator convenience surface
 (\texttt{iterator}/\texttt{const\_iterator}/\texttt{begin}/\texttt{end}/\texttt{cbegin}/%
 \texttt{cend}) already seen on \cnaclass{GameComponentCollection} in
 Chapter~\ref{ch:game-loop}.
+
+\subsection{Full method reference: CurveKeyCollection}
+
+Beyond \texttt{Add} and the \texttt{NOXNA} iterator surface already named above,
+\cnaclass{CurveKeyCollection} implements the same general-purpose ordered-collection surface
+\cnaclass{GameComponentCollection} does, read directly from its header:
+
+\begin{description}
+\item[\texttt{Count}] a get-only property returning the number of keys currently in the
+  collection.
+\item[\texttt{IsReadOnly}] a get-only property --- always \texttt{false} for a
+  \cnaclass{CurveKeyCollection} constructed normally; present to satisfy the same
+  generic-collection-interface shape XNA's own \texttt{ICollection<T>} expects, not because
+  a read-only \cnaclass{CurveKeyCollection} is ever actually produced anywhere in CNA.
+\item[\texttt{Item(index)} / \texttt{operator[](index)}] get/set access to one key by its
+  position in collection order (not by curve position) --- both a mutable and a
+  \texttt{const} overload exist for each.
+\item[\texttt{Clear()}] removes every key, leaving an empty collection.
+\item[\texttt{Clone()}] returns a full value copy of the collection --- distinct from a
+  reference/pointer copy, matching \cnaclass{CurveKeyCollection}'s own value-type semantics.
+\item[\texttt{Contains(item)}] returns whether an equal \cnaclass{CurveKey} (by its own
+  \texttt{Equals}, \S\ref{sec:shared-debug-surface}) already exists in the collection.
+\item[\texttt{CopyTo(array, arrayIndex)}] copies every key into a caller-supplied
+  \texttt{std::vector<CurveKey>}, starting at the given destination index --- the same
+  \texttt{ICollection<T>.CopyTo} shape XNA itself exposes.
+\item[\texttt{IndexOf(item)}] returns the collection-order index of an equal key, or a negative
+  sentinel if none is found.
+\item[\texttt{RemoveAt(index)}] removes the key at the given collection-order index.
+\end{description}
 
 \begin{lstlisting}
 // Worked example: a Curve driving a camera's height over a 4-second

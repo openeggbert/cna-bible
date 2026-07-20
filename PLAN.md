@@ -134,7 +134,7 @@ question silently.
 | 4 | Building CNA | 173 | 35 | Full CMake option reference, per-platform build walkthroughs | Not started |
 | 5 | First Game | 131 | 40 | Multiple complete worked example programs, step-by-step | Not started |
 | 6 | Game Loop | 216 | 40 | Full `Game`/`GameTime`/`GameWindow` method-by-method docs + examples | Not started |
-| 7 | Math and Core Types | 974 (was 270) | 110 | All 11 type-families have full reference + worked examples; Quaternion, Color, and Curve each have a second worked example; Vector3 (Cross product, previously undocumented), Plane (DotCoordinate half-space test), Rectangle (Intersect/Union), MathHelper (WrapAngle), and Bounding volumes (BoundingSphere::CreateFromPoints) now each have a second worked example too | **In progress (~28 of ~110 pages)** |
+| 7 | Math and Core Types | 1240 (was 270) | 110 | All 11 type-families have full reference + worked examples, several with a second; new chapter-wide "shared surface" section covering Equals/GetHashCode/ToString and a precise map of which types actually have CheckForNaNs/getDebugDisplayStringProperty (2 real findings: neither helper is ever called from anywhere in the codebase; CheckForNaNs is release-mode-gated on Matrix/Quaternion but unconditional on the three vector types); Vector Length/LengthSquared now documented (previously used in the chapter's own worked example without ever being named); Matrix arithmetic statics + Decompose worked example (2 more findings: a locally-duplicated WithinEpsilon, a documented negative-zero sign edge case); Quaternion Concatenate-vs-Multiply/operator* ordering finding, numerically verified; Point and CurveKeyCollection now have full references; Rectangle's IsEmpty documented precisely (checks all 4 fields, not just area); Ray has a second worked example (nearest-of-several picking) | **In progress (~24-25 of ~110 pages) --- session focused entirely on this chapter; still well short of target, see PLAN.md session log for full list of what's still missing** |
 | 8 | Content and Assets | 125 | 55 | Full `ContentManager` API + CNJ/XNB worked walkthroughs | Not started |
 | 9 | GraphicsDevice | 872 (was 171) | 90 | Full method-by-method docs for the 887-line header; two real, verified backend-specific gaps found and documented (SpriteBatch can't sample a RenderTarget2D; SupportsCapability(MultipleRenderTargets) always returns true even where MRT silently fails); full private-implementation lifecycle section (window/backend/virtual-resolution) traced from GraphicsDevice.cpp, ties directly to Ch.6's PresentationMode; new GraphicsAdapter multi-monitor enumeration + a third real gap (IsProfileSupported/QueryRenderTargetFormat/QueryBackBufferFormat are only genuinely hardware-checked on D3D9, honestly documented as `true`/simplified stubs on the other nine backends) | **In progress (~23 of ~90 pages)** |
 | 10 | SpriteBatch | 130 | 55 | Every `Begin`/`Draw`/`DrawString` overload documented + examples | Not started |
@@ -360,3 +360,58 @@ Ch.13 that is now frozen at ~2 pages per the author's confirmation above).
   earlier in this chapter. Chapter grows from 790 to 872 lines (~21 to ~23 of a ~90-page
   target). Volume I recompiled clean (139 pages total, 654 index entries, 0 undefined
   references).
+- **2026-07-20 (same session, "pracuj pouze na kapitole 7, zjisti co tam vše chybí a vše
+  dokonči"):** Author asked to work exclusively on Chapter 7 and find/finish everything
+  missing. Systematically grepped every type's real header against this chapter's existing
+  prose to find genuine gaps rather than guessing what to add next, and found a chapter-wide
+  one worth fixing first: `Equals`/`GetHashCode`/`ToString` are implemented by literally every
+  type in this chapter (confirmed by grepping all eleven headers) but had never been mentioned
+  anywhere in the chapter's text. Added a new `\section` right after the chapter intro
+  documenting this shared triad once (rather than eleven times), which also let this pass make
+  good on the intro's own claim about `CheckForNaNs()`/`getDebugDisplayStringProperty()` ---
+  reading every header precisely rather than trusting the intro's generalization turned up two
+  real findings: (1) neither helper is ever called from anywhere outside its own defining
+  `.cpp` file anywhere in the codebase — no test, no example, no other framework class; no
+  `.natvis` or LLDB summary-provider file exists either, so both are currently unreachable
+  through any public code path; (2) the three vector types' `CheckForNaNs()` run
+  unconditionally in every build, while `Matrix`'s and `Quaternion`'s are wrapped in
+  `#if !defined(NDEBUG)` and compile to nothing in a release build — a real, harmless-for-now
+  inconsistency. Also found and fixed a genuine accuracy gap in the vector "full method
+  reference": it never mentioned `Length()`/`LengthSquared()`, despite the chapter's own very
+  first worked example already calling `toTarget.Length()` without ever having named the
+  method. Added: a full reference + worked example for `Point` (previously only described in
+  passing inside the Rectangle section); a full reference for `CurveKeyCollection`'s
+  `Count`/`IsReadOnly`/`Item`/`Clear`/`Clone`/`Contains`/`CopyTo`/`IndexOf`/`RemoveAt` (all
+  read from and verified against the real `.cpp`, including `IndexOf`'s `-1` sentinel and
+  `RemoveAt`'s `std::out_of_range` bounds check); a `Matrix` arithmetic-statics reference plus
+  a `Decompose` worked example, which turned up two more findings while reading `Matrix.cpp`
+  directly — `Decompose` only fails (returning `false`, with rotation reset to
+  `Quaternion::Identity`) when an axis scale is within epsilon of zero, and that epsilon check
+  is a locally-duplicated `WithinEpsilon` in `Matrix.cpp`'s own anonymous namespace (hardcoding
+  `FLT_EPSILON` rather than calling `MathHelper::WithinEpsilon`, specifically to avoid a
+  circular dependency, per the source's own comment), plus a documented, practically-harmless
+  FNA-vs-CNA divergence in negative-zero sign handling; a Quaternion `Concatenate`-vs-`Multiply`
+  finding — derived by hand from both methods' component formulas, then verified numerically
+  with a standalone Python script across five random quaternion pairs — that
+  `Concatenate(value1, value2)` computes exactly `Multiply(value2, value1)` (equivalently
+  `value2 * value1` via the operator), meaning the ``value1 applied first'' reading
+  `Concatenate` promises is actually the right-to-left reading of `operator*`/`Multiply`, not
+  the left-to-right one the method's own argument order suggests; a second `Ray` worked
+  example (picking the nearest of several candidates, since `Intersects` calls don't return
+  hits in any particular order); and a precise correction to `Rectangle::IsEmpty` (checks all
+  four fields equal zero, not just zero area, so a rectangle with zero size but a nonzero
+  position is not "empty" by this property). Chapter grows from 974 to 1240 lines (~24-25 of
+  a ~110-page target by direct PDF page inspection — pdftotext-searched for the chapter's own
+  opening sentence and Chapter 8's heading to bound its actual page range, rather than
+  estimating from line count alone). Volume I recompiled clean (145 pages total, 716 index
+  entries, 0 undefined references). **Honest scope note**: this was a thorough pass that fixed
+  several real, previously-unnoticed gaps (the missing Equals/GetHashCode/ToString mention
+  chief among them), but the chapter remains well short of its ~110-page target even after a
+  session focused on it exclusively — reaching that target for real, source-grounded content
+  (not padding) will take several more sessions of the same kind of direct-source-reading work.
+  Remaining known gaps as of this entry: Vector2/Vector4-specific worked examples (both are
+  currently only exercised via the shared Vector2 example and Matrix/Quaternion Transform
+  overloads, never with anything Vector4-specific); a Plane `Transform` worked example; a
+  `BoundingBox`/`BoundingFrustum`-specific (as opposed to shared-bounding-volume) worked
+  example; and deeper coverage of `Matrix`'s billboard/shadow/reflection factory methods, none
+  of which have a worked example at all yet.
