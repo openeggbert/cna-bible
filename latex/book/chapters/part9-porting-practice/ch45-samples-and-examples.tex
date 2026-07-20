@@ -17,12 +17,62 @@ must sit alongside it on disk.
 
 Its real value to a reader of this book is as a precise, checkable measurement of the
 \texttt{.fx} bytecode gap from Chapter~\ref{ch:shader-fx-gap}: 23 of the 86 samples fail to
-run today, and every one of those 23 failures traces to the same root cause --- a compiled
-custom effect the content pipeline cannot load. If you are trying to judge, before starting a
-port, whether an existing XNA game is likely to run on CNA without hitting this gap,
-\texttt{cna-samples} is the closest thing to a real, checkable answer available: a sample
-that runs is evidence the gap does not block content shaped like it; a sample that fails is
-further, specific confirmation of exactly which content shapes still do.
+run today. Most, but not quite all, of those 23 failures trace to that same root cause --- a
+compiled custom effect the content pipeline cannot load; the exact breakdown is worth stating
+precisely rather than rounding up to ``all of them,'' and the next section does exactly that.
+If you are trying to judge, before starting a port, whether an existing XNA game is likely to
+run on CNA without hitting this gap, \texttt{cna-samples} is the closest thing to a real,
+checkable answer available: a sample that runs is evidence the gap does not block content
+shaped like it; a sample that fails is further, specific confirmation of exactly which content
+shapes still do.
+
+\section{The 23 failures, by actual root cause}
+
+Checking every one of the 23 blocked samples' own \texttt{missing.md} write-ups directly,
+rather than assuming they all share one cause, finds three distinct gaps, not one. Sixteen ---
+\texttt{DistortionSample}, \texttt{NonPhotoRealistic}, \texttt{NormalMapping},
+\texttt{PerPixelLighting}, \texttt{VertexLighting}, \texttt{ShadowMapping},
+\texttt{BillboardSample}, \texttt{InstancedModel}, \texttt{ShatterEffect},
+\texttt{Particles3D}, \texttt{XmlParticles}, \texttt{NetRumble}, \texttt{ShipGame},
+\texttt{ColorReplacement}, \texttt{BloomSample}, and \texttt{CustomModelEffect} --- do trace to
+the \texttt{.fx} bytecode gap this book has already named. \texttt{Spacewar} is blocked on a
+compound of gaps that includes a custom shader among others (a custom \cnaclass{Model},
+\cnaclass{RenderTarget2D} content, and XACT audio, per its own write-up), which this book counts
+in the same bucket since the shader gap alone would already block it. That leaves seven
+failures with a genuinely different cause. Four --- \texttt{CustomModelAnimation},
+\texttt{SkinningSample}, \texttt{SkinnedModelExtensions}, and \texttt{CPUSkinning} --- are
+blocked on skeletal animation playback: CNA can render a static or rigidly-jointed
+\cnaclass{Model} (Chapter~\ref{ch:models-meshes}), but has no equivalent of XNA's own
+\texttt{AnimationClip} / \texttt{Keyframe} / \texttt{AnimationPlayer} pipeline, and no per-vertex
+bone-weight field in the \texttt{.model.json} format at all --- a real, unimplemented CNA
+capability, not merely an unconverted asset. Two more --- \texttt{SplitScreen} and
+\texttt{TankOnHeightmap} --- are blocked on a narrower, related gap: CNA's \texttt{.model.json}
+reader builds only a single flat root bone per model today, so a rigid multi-part mesh whose
+parts must move independently (a tank's turret and wheels, in both samples' case) has nowhere
+to attach a per-mesh transform, even though no animation playback is involved at all. Both of
+these are smaller, more tractable gaps than the shader problem --- narrow, specific, engine-level
+features with a known shape --- but they are not the same gap, and a reader judging a real
+game's own portability by this project's 23-of-86 figure should check which of the three
+buckets their own content actually needs before assuming the \texttt{.fx} story is the whole
+picture.
+
+\section{A sample marked ``Done'' can still hide a real bug}
+
+The 63-of-86 samples that do build and run are not, individually, a guarantee of pixel-perfect
+correctness --- and this project's own history has one concrete, instructive case of finding
+that out the hard way. \texttt{SimpleAnimation} (the tank-with-independently-animated-parts
+sample behind the multi-bone gap the previous section just described) was marked ``Done'' once
+the underlying \cnaclass{ModelBone} hierarchy fix landed. A later session, actually building and
+running it rather than trusting the status line, found two real, previously-unnoticed CNA
+bugs: a systematic tank-mesh winding reversal, and a \cnaclass{GraphicsDevice} default-state
+depth-occlusion defect --- both fixed, and both invisible to every earlier check that stopped at
+``does it compile and does the multi-bone hierarchy resolve.'' This is the same lesson
+Chapter~\ref{ch:migration-guide} draws from a different angle and worth restating precisely
+here: a status label of ``Done'' answers ``does this build and run,'' not ``is this pixel-correct
+against the real original,'' and this discovery was serious enough that \texttt{cna-samples}'
+own maintainers responded by opening a dedicated, one-task-per-sample re-audit covering all 153
+samples this project has ever catalogued --- including the 67 never even attempted --- rather
+than trusting any existing ``Done'' status line at face value going forward.
 
 \section{cna-examples: a coherent, in-app tour, and a project still early}
 

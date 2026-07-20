@@ -77,7 +77,24 @@ either way. The only real verification is `pdftoppm -png -f N -l N -r 100 main.p
 /tmp/.../pageN` (find N by content search: `pdftotext -f N -l N main.pdf - | grep <text>`,
 never by printed folio number) then reading the PNG back with the Read tool.
 
-## Chapter 44 (xna4-spec Auditing) is now done too — third chapter of Part IX
+## Chapter 45 (cna-samples and cna-examples) is now done too — fourth chapter of Part IX
+
+Grew 54 → 104 lines, the biggest relative jump of Part IX so far — cloning `/workspace/cna-samples`
+fresh and reading its own `PLAN.md`/`DEFERRED.md`/`missing.md` files turned up a genuine,
+documentation-drift-style correction: the chapter's own existing claim that "every one of the
+23 [blocked] failures traces to the same root cause" is imprecise. Checked all 23 blocked
+samples' own `missing.md` write-ups directly — real breakdown is **three** root causes: 16 (+
+`Spacewar`) really are the `.fx` shader gap as claimed, but 4 are blocked on missing
+skeletal-animation-playback support (a real unimplemented CNA capability) and 2 more on a
+narrower "only a single flat root bone" `.model.json`-reader gap. Corrected the sentence and
+added a full new section naming all 23 by real bucket. Also added a second new section on a
+genuinely instructive finding: `SimpleAnimation` was marked "Done," but a later session that
+actually ran it (not just trusted the status line) found two real CNA bugs, serious enough that
+the project opened a dedicated re-audit of all 153 catalogued samples. Full detail in PLAN.md's
+session log. Volume compiles clean at 293 pages, 0 undefined refs; all four of the chapter's own
+pages (255-258) PNG-rendered and confirmed defect-free.
+
+## Chapter 44 (xna4-spec Auditing) is done too — third chapter of Part IX
 
 Grew 74 → 117 lines. This chapter described its own three-step audit methodology only in the
 abstract, so the gap was "actually run it once." Picked `Ray` (small, complete type, already
@@ -123,8 +140,8 @@ unrelated overfull-hbox warning surfaced for pre-existing Chapter 36 content
 
 ## What to do next
 
-1. **Continue Part IX**: Chapter 45 (cna-samples and cna-examples) is next, then 46-48. Same
-   approach: read the real source before assuming whether each chapter is API-reference-shaped,
+1. **Continue Part IX**: Chapter 46 (Project Practice) is next, then 47-48. Same approach: read
+   the real source before assuming whether each chapter is API-reference-shaped,
    tooling/narrative-shaped, or synthesis-shaped like Chapter 41 turned out to be. When a
    chapter doesn't fit the "add worked examples" mold, look instead for a genuine content gap or
    a stale cross-reference (Chapter 41's own pass found both: a missing macOS row and a
@@ -136,7 +153,12 @@ unrelated overfull-hbox warning surfaced for pre-existing Chapter 36 content
    small real type and actually running the described process against it end to end, rather
    than leaving the process abstract — `/workspace/xna4-spec` (already cloned) has 544 types
    across 19 namespaces, so this pattern (pick another small type, audit it fully) is repeatable
-   if Chapter 44 ever needs a second pass.
+   if Chapter 44 ever needs a second pass. For Chapter 45, the move was cloning the actual
+   sibling repo the chapter describes (`/workspace/cna-samples`, not previously cloned this
+   session — do it fresh for any chapter about a repo not yet checked out) and checking a
+   summary claim against every individual source file it was rounding up from, which is worth
+   trying again on Chapter 46 (Project Practice) since it likely describes `cna`'s own
+   `PLAN.md`/`AUDIT.md` conventions the same way.
 2. **New lesson this session, worth checking on every future chapter's opening/early
    paragraphs specifically**: a long, unbroken `\texttt{}`-wrapped URL or path can overflow far
    more severely (Chapter 44's was ~99pt overfull) than the identifier-length defects seen

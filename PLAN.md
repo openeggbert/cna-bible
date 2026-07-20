@@ -188,7 +188,7 @@ ever needed).
 | 42 | Migration Guide | 165 (was 102) | 55 | Worked examples for the C#-to-CNA Update()/Draw() mechanical translation (signatures verified against Game.hpp) and hand-computing a custom vertex format's byte stride against the five recognized strides | **In progress (~4 of ~55 pages)** |
 | 43 | Blupi Case Study | 172 (was 116) | 55 | Added a new performance-audit section (measured BltFast/memcpy benchmarks, the CMAKE_BUILD_TYPE default-build finding, exact call-site line numbers in both games, and a confirmed-dead-code call site), grounded in `free-direct/docs/audit_ddraw.md` | **In progress (~5 of ~55 pages)** |
 | 44 | xna4-spec Auditing | 117 (was 74) | 40 | Added a full worked member-by-member audit of \cnaclass{Ray} against `xna4-spec`'s own XML, grounded in the real header; fixed a pre-existing long-URL overfull-hbox defect found while verifying | **In progress (~4 of ~40 pages)** |
-| 45 | Samples and Examples | 54 | 45 | Per-sample summaries, more of the 86 samples covered | Not started |
+| 45 | Samples and Examples | 104 (was 54) | 45 | Corrected an imprecise claim ("every one of the 23 failures traces to the same root cause") with a real, checked-per-sample breakdown into three distinct root causes; added the SimpleAnimation "Done can still hide a bug" finding, grounded in `cna-samples`' own `PLAN.md`/`DEFERRED.md`/`missing.md` files | **In progress (~4 of ~45 pages)** |
 | 46 | Project Practice | 100 | 40 | Deeper task-tracking-methodology detail | Not started |
 | 47 | Testing Philosophy | 103 | 45 | More worked test examples | Not started |
 | 48 | Roadmap | 82 | 30 | Deeper detail | Not started |
@@ -1077,3 +1077,31 @@ stays frozen by explicit author decision, not left incomplete.
   Volume recompiled clean (291 pages total, 0 undefined references, 0 duplicate-label warnings);
   all four of the chapter's own pages (251-254, the last one a normal blank right-hand-start
   padding page) verified by rendering to PNG and reading them back.
+- **2026-07-20 (same session, "pokkracuj"):** Chapter 45 (cna-samples and cna-examples) —
+  first expansion pass. PLAN.md's gap description asked for "per-sample summaries, more of the
+  86 samples covered," and cloning `/workspace/cna-samples` fresh (not previously cloned this
+  session) turned up something more valuable than a plain summary: the chapter's own existing
+  claim — "every one of those 23 failures traces to the same root cause [the .fx bytecode
+  gap]" — is measurably imprecise. Read `cna-samples/PLAN.md`'s full 153-sample task list,
+  `DEFERRED.md`'s numbered gap items, and the individual `missing.md` write-up for every one of
+  the 23 currently-blocked samples directly (not assumed from the summary table) and found the
+  real breakdown is three distinct root causes, not one: 16 samples (plus `Spacewar`, blocked on
+  a compound of gaps including a shader) trace to the `.fx` gap as claimed, but 4
+  (`CustomModelAnimation`, `SkinningSample`, `SkinnedModelExtensions`, `CPUSkinning`) are blocked
+  on missing skeletal-animation-playback support (no `AnimationClip`/`Keyframe`/
+  `AnimationPlayer` equivalent, a real unimplemented CNA capability) and 2 more (`SplitScreen`,
+  `TankOnHeightmap`) are blocked on a narrower, related gap — CNA's `.model.json` reader only
+  ever builds a single flat root bone, so a rigid multi-part mesh needing independent per-part
+  transforms has nowhere to attach one, even with no animation involved at all. Corrected the
+  chapter's existing sentence and added a full new section, "The 23 failures, by actual root
+  cause," naming all 23 samples by their real bucket. Also added a second new section covering a
+  genuinely instructive finding from the same source material: `SimpleAnimation` was marked
+  "Done" once its underlying multi-bone fix landed, but a later session that actually built and
+  ran it (rather than trusting the status line) found two real, previously-unnoticed CNA bugs (a
+  tank-mesh winding reversal, a `GraphicsDevice` default-state depth-occlusion defect) — serious
+  enough that the project opened a dedicated one-task-per-sample re-audit of all 153 catalogued
+  samples rather than trusting any existing "Done" status line at face value. Chapter grows from
+  54 to 104 lines (~2 to ~4 of a ~45-page target). Volume recompiled clean (293 pages total, 0
+  undefined references, 0 duplicate-label warnings); all four of the chapter's own pages
+  (255-258, the last one a normal blank right-hand-start padding page) verified by rendering to
+  PNG and reading them back.
