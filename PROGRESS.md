@@ -2,18 +2,18 @@
 
 **Status: both volumes complete, including a content-completeness pass covering
 CNJ/XNB/Storage/NOXNA/RAM/cna-template/cna-extended/libcna.com, a repo-map expansion
-(meta-gl/easy-3d/cna-craft/mesh-craft/mesh-world/galaxy-eggbert), and a new Volume~I API
-quick-reference appendix (2026-07-20).**
+(meta-gl/easy-3d/cna-craft/mesh-craft/mesh-world/galaxy-eggbert), and new API quick-reference
+appendices in both volumes (2026-07-20).**
 Two-volume LaTeX technical book about the `openeggbert/cna` ecosystem. Source lives under
 `latex/volume1/` and `latex/volume2/`. Build with:
 
 ```bash
 cd latex && make volume1   # -> volume1/main.pdf  (112 pages)
-cd latex && make volume2   # -> volume2/main.pdf  (112 pages)
+cd latex && make volume2   # -> volume2/main.pdf  (116 pages)
 ```
 
 Both volumes compile cleanly with pdflatex/latexmk, no undefined references, no unicode
-errors. Combined: 224 pages, 48 chapters + 2 prefaces + 5 appendices.
+errors. Combined: 228 pages, 48 chapters + 2 prefaces + 6 appendices.
 
 ## Scope note
 
@@ -93,7 +93,7 @@ libcna.com were all missing or under-covered. Fixed:
   directly from the corresponding `cna` header at time of writing; a lookup companion to the
   narrative chapters, not a replacement for them.
 
-## Volume II — The Ecosystem, the Platforms, and the Practice — COMPLETE (112 pages, 24 chapters + 4 appendices)
+## Volume II — The Ecosystem, the Platforms, and the Practice — COMPLETE (116 pages, 24 chapters + 5 appendices)
 
 - Part I (Ch.1-8): Input, Audio, Media (corrects a stale README claim), Devices/Sensors,
   GamerServices, Networking, Avatar, **Storage (new)**
@@ -106,7 +106,11 @@ libcna.com were all missing or under-covered. Fixed:
   cna-examples, project practice & task tracking, testing philosophy, roadmap
 - Appendices: A (backend feature matrix), B (glossary, now includes CNJ/XNB/Storage entries),
   C (repository map, now includes cna-template/cna-extended/libcna.com/RAM.md, plus meta-gl/
-  easy-3d/cna-craft/mesh-craft/mesh-world/galaxy-eggbert), D (NOXNA extension catalog)
+  easy-3d/cna-craft/mesh-craft/mesh-world/galaxy-eggbert), D (NOXNA extension catalog),
+  E (new, 2026-07-20: API quick reference — Input (Keyboard/Mouse/GamePad/TouchPanel), Audio
+  and Media (SoundEffect/SoundEffectInstance/DynamicSoundEffectInstance/Song/MediaPlayer),
+  Networking and GamerServices (NetworkSession/NetworkGamer/LeaderboardReader/Achievement), and
+  three core sharp-runtime types every other chapter leans on (TimeSpan/EventHandler<T>/Stream))
 
 ## Methodology notes
 
