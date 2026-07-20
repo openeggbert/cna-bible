@@ -13,8 +13,8 @@ of 12{,}476 tests, all passing at the time of writing, grown from a starting bas
 project's own porting rules treat as a floor that must never be lowered. This is a
 considerably larger surface than ``just enough .NET to make XNA's API vocabulary work in
 C\texttt{++}'' might suggest --- coverage genuinely extends to \texttt{System.Text.Json},
-\texttt{System.Xml.Linq}/\texttt{XPath}, \texttt{System.Buffers.Text}/\texttt{Binary},
-\texttt{System.Threading.Channels}, and \texttt{System.Net.WebSockets}/\texttt{Http}/%
+\texttt{System.Xml.Linq} / \texttt{XPath}, \texttt{System.Buffers.Text} / \texttt{Binary},
+\texttt{System.Threading.Channels}, and \texttt{System.Net.WebSockets} / \texttt{Http} /
 \texttt{Security}, well beyond a minimal XNA-support subset.
 
 \section{Namespace structure}
@@ -44,7 +44,7 @@ design is honest about the substitution's limits: it is abstract here (a pure-vi
 it to the way every .NET type implicitly inherits \texttt{object}. \texttt{GetHashCode()},
 \texttt{Equals}, \texttt{ToString()}, and a non-virtual \texttt{GetType()} (backed by
 \texttt{typeid(*this)}) round out the surface; two macros,
-\texttt{GetTypeNameHPP()}/\texttt{GetTypeNameCPP()}, exist purely to reduce the boilerplate of
+\texttt{GetTypeNameHPP()} / \texttt{GetTypeNameCPP()}, exist purely to reduce the boilerplate of
 implementing the required override on every concrete class --- the same
 \texttt{GetTypeName()} override Chapter~\ref{ch:design-philosophy} already showed CNA's own
 porting checklist requires on every class inheriting \texttt{System::Object}.
@@ -61,7 +61,7 @@ only a delegate \emph{type} --- the actual multicast subscriber list and invocat
 are supplied separately, by the compiler-generated code behind the \texttt{event} keyword.
 C\texttt{++} has no \texttt{event} keyword, so \texttt{sharp-runtime}'s own
 \cnaclass{EventHandler<T>} has to be both the type \emph{and} the subscriber-list
-infrastructure at once: \texttt{operator+=}, a token-based \texttt{Add}/\texttt{Remove} pair,
+infrastructure at once: \texttt{operator+=}, a token-based \texttt{Add} / \texttt{Remove} pair,
 \texttt{Clear()}, and \texttt{Raise(sender, e)}. \texttt{Raise} specifically invokes over a
 \emph{snapshot} of the current handler list, not the live list --- a direct, deliberate guard
 against a handler that removes itself (or another handler) from within its own invocation,
@@ -79,7 +79,25 @@ target-plus-method equality, ordinary value comparison cannot implement C\#'s
 \texttt{-=}-style single-subscriber removal, so this type uses the same
 token-based-removal-plus-snapshot-invocation discipline as \cnaclass{EventHandler<T>} to solve
 the identical problem for plain multicast callback fields that are not shaped like a
-C\#-style public event.
+C\#-style public event. The motivating real-world case, named directly in this type's own
+header comment, is re-parenting a scene-graph hierarchy: a node that resubscribes to a
+different set of ancestor callbacks needs to drop its \emph{specific} old subscription without
+clearing every other subscriber sharing the same field, which plain value comparison over
+\texttt{std::function} objects cannot distinguish.
+
+\begin{lstlisting}
+// Worked example: token-based removal, the scenario this type exists for
+// -- unsubscribing one specific handler without disturbing any other
+// subscriber on the same field.
+System::MulticastAction<float> onParentTransformChanged;
+auto token = onParentTransformChanged.Add(
+    [this](float deltaScale) { ApplyParentScale(deltaScale); });
+
+// ... later, when this node is re-parented onto a different ancestor ...
+onParentTransformChanged.Remove(token);          // only this subscription is dropped
+token = newParent->onTransformChanged.Add(       // resubscribe to the new ancestor
+    [this](float deltaScale) { ApplyParentScale(deltaScale); });
+\end{lstlisting}
 
 \section{Value types worth knowing before reading later chapters}
 
@@ -107,10 +125,43 @@ C\texttt{++} standard library type, not an oversight.
 
 \cnaclass{Threading::Tasks::Task} implements a real, if scoped, async-task model:
 \texttt{Wait()} rethrows a faulted task's exception (matching .NET's own
-\texttt{Wait()}/\texttt{ThrowIfExceptional} contract), and \texttt{ContinueWith} uses
+\texttt{Wait()} / \texttt{ThrowIfExceptional} contract), and \texttt{ContinueWith} uses
 weak-pointer-based cycle avoidance specifically to avoid leaking a continuation chain rather
-than spawning an extra OS thread per continuation. \cnaclass{Threading::Thread} is a thin
-wrapper over \texttt{std::thread} that deliberately does not start at construction --- a
-second call to \texttt{Start()} throws \texttt{ThreadStateException}, matching real .NET's own
-one-shot-start contract exactly, rather than silently allowing a thread object to be
-restarted the way a naive wrapper might.
+than spawning an extra OS thread per continuation. A detail worth stating plainly, since it
+governs how a caller should reason about ordering: this port has no thread pool or scheduler
+at all, so a continuation always runs synchronously and inline, either on whichever thread
+completes the antecedent task or, if the antecedent is already complete by the time
+\texttt{ContinueWith} is called, immediately on the calling thread --- effectively as if
+\texttt{TaskContinuationOptions::ExecuteSynchronously} were always set, regardless of whether a
+caller actually passes it. Most of the accepted \texttt{TaskContinuationOptions} filter bits
+(\texttt{NotOnFaulted} / \texttt{NotOnCanceled} / \texttt{NotOnRanToCompletion} and their
+\texttt{OnlyOnX} compositions) are genuinely honored; the rest
+(\texttt{PreferFairness} / \texttt{LongRunning} / \texttt{AttachedToParent} /
+\texttt{DenyChildAttach} / \texttt{HideScheduler} / \texttt{LazyCancellation}) are accepted only
+for API-surface parity, since there is no scheduler or parent-task tracking for them to affect
+in the first place.
+
+\begin{lstlisting}
+// Worked example: ContinueWith's continuation does NOT rethrow the
+// antecedent's exception automatically the way Wait() does -- it must
+// inspect the antecedent explicitly, and it runs synchronously, inline,
+// with no extra thread spawned for it.
+System::Threading::Tasks::Task loadTask = System::Threading::Tasks::Task::Run(
+    [] { LoadLevelFromDisk(); });
+
+System::Threading::Tasks::Task continuation = loadTask.ContinueWith(
+    [](System::Threading::Tasks::Task antecedent)
+    {
+        if (antecedent.getIsFaultedProperty())
+        {
+            LogLevelLoadFailure();
+            return;  // the antecedent's exception is NOT rethrown here automatically
+        }
+        FinishLevelSetup();
+    });
+\end{lstlisting}
+
+\cnaclass{Threading::Thread} is a thin wrapper over \texttt{std::thread} that deliberately does
+not start at construction --- a second call to \texttt{Start()} throws
+\texttt{ThreadStateException}, matching real .NET's own one-shot-start contract exactly,
+rather than silently allowing a thread object to be restarted the way a naive wrapper might.

@@ -176,7 +176,7 @@ ever needed).
 | 30 | Networking | 170 (was 125) | 70 | Worked examples for NetworkSession creation/GamerJoined lifecycle and PacketWriter/PacketReader send-receive with the Color asymmetry gotcha, grounded in real headers | **In progress (~5 of ~70 pages)** |
 | 31 | Avatar | 179 (was 131) | 55 | Worked examples for the faithful-vs-real-rendering bridge (EnableRealRenderingEXT/DrawRealEXT) and wardrobe hot-swapping (AttachPartEXT/RemovePartEXT), grounded in real headers | **In progress (~4 of ~55 pages)** |
 | 32 | Storage | 124 (was 78) | 30 | Worked examples for the full device-selection-to-open-container lifecycle and file read/write, plus the unique_ptr-ownership finding, grounded in real headers | **In progress (~3 of ~30 pages)** |
-| 33 | Sharp Runtime Overview | 116 | 40 | Deeper architectural detail | Not started |
+| 33 | Sharp Runtime Overview | 167 (was 116) | 40 | Worked examples for MulticastAction token-based removal and Task::ContinueWith's synchronous-execution contract, grounded in real headers | **In progress (~5 of ~40 pages)** |
 | 34 | Sharp Runtime Namespaces | 90 | 70 | Full docs for TimeSpan/EventHandler/Stream/collections + examples | Not started |
 | 35 | Parity Philosophy | 111 | 35 | More worked deviation examples | Not started |
 | 36 | EasyGL Deep Dive | 112 | 55 | Deeper coverage | Not started |
@@ -842,3 +842,25 @@ current real total of 266 pages.
   references, 0 duplicate-label warnings); the chapter's three real content pages verified by
   rendering to PNG and reading them back (a fourth, blank padding page before the Part~VI
   title page is expected book layout, not a defect).
+- **2026-07-20 (same session, "pokracuj"):** Chapter 33 (Sharp Runtime Overview) — first
+  expansion pass, and the first Part VI chapter touched this session (following NEXT.md's
+  recommendation to move on from Part V once every chapter there had a first pass). Same gap
+  shape as the Part V chapters: dense, accurate prose already existed (the `Object`/
+  `IDisposable` root-type substitution, `EventHandler`/`MulticastAction`'s reason for existing,
+  the `TimeSpan` copy/move-counter race, `Dictionary::Remove`'s version-counter deviation) but
+  zero worked examples. Read `Object.hpp`, `MulticastAction.hpp`, `TimeSpan.hpp`, and
+  `Threading/Tasks/Task.hpp` directly. Added one real detail not previously in the text:
+  `Task::ContinueWith` always runs its continuation synchronously and inline — this port has no
+  thread pool or scheduler at all, so a continuation runs on whichever thread completes the
+  antecedent, or immediately on the calling thread if the antecedent was already complete,
+  effectively as if `TaskContinuationOptions::ExecuteSynchronously` were always set regardless
+  of whether a caller passes it; most predicate-filter options are genuinely honored, while the
+  scheduler/parent-task-related ones are accepted only for API-surface parity. Added two worked
+  examples: `MulticastAction`'s token-based `Add`/`Remove`, demonstrating the exact
+  re-parenting scenario named in its own header comment; and a `Task::Run`/`ContinueWith`
+  round-trip showing that a continuation must inspect the antecedent's fault state explicitly,
+  since it is not rethrown automatically the way `Wait()` does. Fixed two pre-existing/newly
+  introduced instances of the `/`-spacing overfull-hbox defect class. Chapter grows from 116 to
+  167 lines (~4 to ~5 of a ~40-page target). Volume recompiled clean (283 pages total, 0
+  undefined references, 0 duplicate-label warnings); all five of the chapter's own pages
+  verified by rendering to PNG and reading them back.

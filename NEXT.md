@@ -3,8 +3,9 @@
 **Read this file first, then `PLAN.md` for the full task list.** This file is a snapshot of
 exactly where things stand as of the end of the last session — it gets overwritten each
 session, not appended to (unlike `PLAN.md`'s own internal session log, which is a permanent
-history). If you're reading this mid-session rather than at the start of one, it may already
-be stale relative to what's happened since — trust the conversation over this file in that case.
+history, and which has the full per-chapter detail this file only summarizes). If you're
+reading this mid-session rather than at the start of one, it may already be stale relative to
+what's happened since — trust the conversation over this file in that case.
 
 ## Where things stand right now (end of session, 2026-07-20)
 
@@ -14,128 +15,77 @@ be stale relative to what's happened since — trust the conversation over this 
 numbering). Chapters 25–48 = former Volume II (Parts V–IX, renumbered +24). Appendices A–F.
 Full renumbering table is in `PLAN.md`'s merge session-log entry.
 
-**All eight Part V chapters (25-32) now have a first real expansion pass** — this session
-completed the sweep. All follow the
-same pattern (full method references + worked examples for every named class, each grounded in
-a direct header/source read, with real verified findings called out explicitly, not just API
-summaries):
+**All eight Part V chapters (25-32) have a first real expansion pass**, and **Chapter 33
+(Part VI's first chapter) now does too.** Full per-chapter detail (exact line counts, which
+headers were read, every verified finding and worked example added) lives in `PLAN.md`'s
+session log — this file only summarizes. The pattern every one of these nine chapters
+followed: read the real headers/`.cpp` files for classes already named in the chapter's prose,
+add full method references + worked examples grounded in real signatures, and surface at least
+one genuinely new verified finding per chapter (not just restate what the prose already said).
+Chapters 25-27 needed real content-gap-filling; chapters 28-33 turned out to already have
+dense, accurate prose and needed "add worked examples" instead — check this shape for any new
+chapter before assuming which kind of gap it has.
 
-- **Chapter 25 (Input System)**: 170 → 534 lines, ~4 → ~10 of a ~70-page target.
-- **Chapter 26 (Audio System)**: 118 → 378 lines (two passes — an initial pass, then a
-  gap-filling pass directly answering the author's "is this bible-level comprehensive"
-  question), ~4 → ~8 of a ~60-page target.
-- **Chapter 27 (Media)**: 103 → 300 lines, ~4 → ~6 of a ~45-page target. Read `Song`,
-  `MediaQueue`, `MediaPlayer`, `MediaLibrary`, `AudioTagParser`, `MediaLibraryPaths`,
-  `PlaylistParser`, `Video`/`VideoPlayer`, `VisualizationData`, `VisualizationCapture`, and
-  `VisualizationFFT` directly. Added: `Song`'s content-based `GetHashCode` (a documented
-  deviation from FNA's own contract-violating identity-based version); the real multi-format
-  tag-reading pipeline; `MediaQueue`'s ownership model (`MediaPlayer::LoadSong()` defensively
-  clones every song before handing it to the owning queue, since `SongCollection` itself is
-  non-owning); `MediaPlayer::Stop()`'s queue-wide `PlayCount` reset; three real `VideoPlayer`
-  multi-track-switching bugs found by external code review and fixed; and
-  `GetVisualizationData`'s from-scratch lock-free-ring-buffer + radix-2-FFT pipeline.
-- **Chapter 28 (Devices and Sensors)**, this session: 115 → 208 lines, ~4 → ~6 of a ~45-page
-  target. Unlike 25–27, this chapter's PROSE was already dense and well-grounded (the
-  `SensorBase` disposal-protocol and integer-overflow narrative was already accurate) — its gap
-  was zero worked code examples anywhere. Read `SensorBase.hpp`, `Accelerometer.hpp`,
-  `AccelerometerReading.hpp`, `SensorReadingEventArgs.hpp`, `EventHandler.hpp`,
-  `VibrateController.hpp`, `Camera.hpp`, `CameraState.hpp` directly. Added two new verified
-  findings not previously in the text: `SetCurrentValueAndMarkDataValid` closes a real
-  observable-inconsistency window between two individually race-free locked calls; and
-  `VibrateController::Start(duration, 0.0f)` deliberately does NOT act as an implicit `Stop()`
-  (still plays a real, if inert, zero-strength effect). Added three worked examples
-  (`Accelerometer::CurrentValueChanged` subscription, `VibrateController::StartLeftRight`,
-  `Camera::TryAcquireFrame`'s poll-every-frame contract).
-- **Chapter 29 (GamerServices)**, this session: 117 → 169 lines, ~4 → ~5 of a ~55-page target.
-  Same gap shape as Chapter 28 — dense, accurate prose but zero worked examples. Read
-  `SignedInGamer.hpp`, `GamerPresence.hpp`, `LeaderboardWriter.hpp`, `LeaderboardEntry.hpp`,
-  `LeaderboardIdentity.hpp`, and `Guide.hpp` directly. Added one new real detail: the NOXNA
-  non-`const` `getPresenceProperty()` overload exists specifically to preserve real XNA's
-  get-only-property-returning-a-mutable-reference-type idiom. Added three worked examples:
-  `SignedInGamer::AwardAchievement`/presence mutation; `LeaderboardWriter::GetLeaderboard` +
-  `setRatingProperty` (showing "assigning Rating is the whole commit step" in code, not just
-  prose); and a full `Guide::BeginShowMessageBox`/`RenderPendingMessageBoxEXT`/
-  `EndShowMessageBox` round-trip.
-- **Chapter 30 (Networking)**, this session: 125 → 170 lines, ~4 → ~5 of a ~70-page target.
-  Same gap shape again — dense, accurate prose, zero worked examples. Read `NetworkSession.hpp`,
-  `GamerJoinedEventArgs.hpp`, `LocalNetworkGamer.hpp`, `PacketWriter.hpp`, `PacketReader.hpp`
-  directly. Added two worked examples: the documented `GamerJoined`-replay-on-subscribe gap and
-  its "call `Update()` once right after subscribing" workaround, now shown in code; and the
-  `PacketReader`/`PacketWriter` `Color` read/write asymmetry (4 bytes write, 4 floats read) as
-  an actual send/receive round-trip.
-- **Chapter 31 (Avatar)**, this session: 131 → 179 lines, ~4 → ~4 of a ~55-page target (line
-  growth this pass came from prose/example depth, not page count — worked-example code blocks
-  compress efficiently). Same gap shape once more. Read `SkinnedModelEXT.hpp`,
-  `AvatarRenderer.hpp`, `AvatarAppearanceEXT.hpp` directly. Added one new real detail:
-  `AttachPartEXT`/`RemovePartEXT` had two real found-and-fixed bugs — a GPU-resource leak (the
-  old erase-from-Parts-vector approach only discarded a non-owning descriptor) and a real
-  ordering bug (re-attaching a same-named part used to render both old and new simultaneously
-  until replace-by-name was added). Added two worked examples: the full faithful-vs-real
-  rendering bridge (`EnableRealRenderingEXT`/`SetAppearanceEXT`/`DrawRealEXT`), and a wardrobe
-  hot-swap via `AttachPartEXT`.
-- **Chapter 32 (Storage)**, this session: 78 → 124 lines, ~3 → ~3 of a ~30-page target — the
-  last untouched Part V chapter, now closed out. Same gap shape once more. Read
-  `StorageDevice.hpp`/`StorageContainer.hpp` directly. Added one new real detail: unlike
-  `NetworkSession`/`Guide`'s raw-pointer `Begin`/`End` results requiring manual `delete`, this
-  namespace's `Begin`/`End` results are real `std::unique_ptr`s throughout — a cleaner
-  ownership story than most of this book's ported XNA surface. Added two worked examples: the
-  full device-selection-to-open-container lifecycle, and a save-file write/read-back
-  round-trip.
-
-**Milestone: every Part V (Ch.25-32) chapter now has a first expansion pass.** None have hit
-their final page targets yet (all are still at roughly 3-10 of a 30-70-page target) — this was
-a breadth pass (worked examples + real findings added everywhere), not a depth pass. Returning
-to any of them for real page-count progress is still open work.
+**Milestone: every Part V chapter (25-32) has a first pass**, none at their final page targets
+yet (roughly 3-10 of a 30-70-page target each — this was a breadth pass, not a depth pass).
+**Chapter 33 (Sharp Runtime Overview)** also got a first pass this session: 116 → 167 lines,
+~4 → ~5 of a ~40-page target — worked examples for `MulticastAction`'s token-based
+`Add`/`Remove` (the re-parenting use case named in its own header) and `Task::ContinueWith`,
+plus the real finding that `ContinueWith` always runs its continuation synchronously and
+inline (no thread pool/scheduler exists in this port at all).
 
 Volume currently compiles to **283 pages, 0 undefined references, 0 duplicate-label
 warnings** (index count not re-checked this session — verify before quoting it).
 
 ### The `/`-spacing overfull-hbox defect class — three known variants, all with proven fixes
 
-Every chapter touched so far (25 through 32, all of Part V) has needed at least one of these. Treat this as a
-**routine check on every batch**, not a one-off — run the Python regex pass
+Every chapter touched this session (25 through 33) has needed at least one of these. Treat
+this as a **routine check on every batch**, not a one-off — run the Python regex pass
 (`re.sub(r'\}/(\\texttt\{|\\cnaclass\{)', r'} / \1', text)`) over any file you touch before the
-first build of a batch:
+first build of a batch, then manually grep for `}/%` afterward (the regex doesn't catch it):
 
 1. **Chain variant**: `\texttt{A}/\texttt{B}` (or `\cnaclass{}`) with no space around the slash
-   is one unbreakable LaTeX token; long enough, it overflows the line. The regex pass above
-   fixes this automatically.
+   is one unbreakable LaTeX token; long enough, it overflows the line. The regex pass fixes
+   this automatically.
 2. **Newline-continuation variant**: `\texttt{A}/%` followed by a newline-continued
    `\texttt{B}` — the `%` suppresses the newline's implicit space, and this does NOT match the
-   grep/regex above. Only caught by reading the actual source around any overfull warning's
-   line range.
+   regex above. Only caught by reading the actual source around any overfull warning's line
+   range, or by grepping for the literal `}/%` pattern directly.
 3. **Single-long-identifier variant**: even ONE very long `\texttt{}`/`\cnaclass{}`-wrapped
    identifier can cause severe, visibly-confirmed cutoff if it lands with too little remaining
    space on its line — REGARDLESS of spacing fixes around it. **The fix that works**:
    restructure so the sentence/clause containing the long identifier starts fresh (its own
    sentence, paragraph, or list-item continuation), maximizing its available line width from
-   its very first character. Hit and fixed again in ch27 this session (two long `Reconfigure*`
-   identifiers packed onto one itemized-list line — split into two sentences fixed it).
+   its very first character.
 
 **Verification bar, unchanged**: `grep -i overfull main.log` alone is not reliable evidence
 either way. The only real verification is `pdftoppm -png -f N -l N -r 100 main.pdf
 /tmp/.../pageN` (find N by content search: `pdftotext -f N -l N main.pdf - | grep <text>`,
-never by printed folio number) then reading the PNG back with the Read tool. Chapter 28 this
-session rendered clean on the first try — the proactive regex pass alone was sufficient, no
-second round needed, which is a good sign the routine is actually working now.
+never by printed folio number) then reading the PNG back with the Read tool. Most chapters
+this session rendered clean on the first try once the proactive regex pass ran before the
+first build — the routine is working.
 
 ## What to do next
 
-1. **Move to Parts VI-IX** (Chapters 33-48): the Sharp Runtime chapters (33-37), Cross-platform
-   engineering (38-41), and Porting/practice/roadmap (42-48) haven't been touched by this
-   session's expansion work at all. Check each chapter's existing prose density first — most
-   Part V chapters turned out to need "add worked examples" rather than "add missing API
-   coverage" once already-dense prose existed, but that pattern may not hold for chapters that
-   haven't had any attention yet; read before assuming the shape of the gap.
-2. **Alternatively, return to Part V for real depth**: every Ch.25-32 chapter has a first pass
-   now, but all are still well short of their page targets (roughly 3-10 of a 30-70-page
-   target each). Don't re-run the "which classes exist" grep again (already done at least once
-   per chapter) — look for narrower gaps instead: worked-example depth per topic,
-   cross-checking against `docs/*.md`/`CHECKLIST.md`/`plan_*.md` files in the real repo for
-   anything a header-only pass would miss.
-3. **Deepen Chapter 9 (GraphicsDevice)** further, or start Chapter 13 (Stock Effects) — both
+1. **Continue through Part VI** (Chapters 34-37: Sharp Runtime Namespaces, Parity Philosophy,
+   EasyGL Deep Dive, free-direct Deep Dive) using the same approach: read the real headers for
+   classes already named in the prose, check whether the gap is "add worked examples" (as it
+   has been for the last six chapters) or something else, and add 1-3 worked examples plus at
+   least one new verified finding. **Chapter 34 (Sharp Runtime Namespaces) has by far the
+   largest gap in this part — 90 lines against a 70-page target** (TimeSpan/EventHandler/
+   Stream/collections), worth prioritizing. **Chapter 37 (free-direct Deep Dive) is explicitly
+   frozen per author confirmation on 2026-07-20 — "stays marginal," do NOT expand it**; skip it
+   entirely regardless of how thin it looks.
+2. **After Part VI, continue to Parts VII-IX** (Chapters 38-48): Cross-platform engineering,
+   Porting/practice/roadmap — none touched yet this session.
+3. **Alternatively, return to Part V for real depth**: every Ch.25-32 chapter has a first pass
+   now, but all are still well short of their page targets. Don't re-run the "which classes
+   exist" grep again (already done at least once per chapter) — look for narrower gaps instead:
+   worked-example depth per topic, cross-checking against `docs/*.md`/`CHECKLIST.md`/
+   `plan_*.md` files in the real repo for anything a header-only pass would miss.
+4. **Deepen Chapter 9 (GraphicsDevice)** further, or start Chapter 13 (Stock Effects) — both
    still open Part I–IV targets, untouched for several sessions now.
-4. Chapter 7 (Math and Core Types) is at ~33 of a ~110-page target after three sessions — a
+5. Chapter 7 (Math and Core Types) is at ~33 of a ~110-page target after three sessions — a
    legitimate target but needs fresh gap-discovery, not a ready-made list.
 
 **Verify the numbers above against `git log` and actual file line counts before trusting them
@@ -147,29 +97,26 @@ at face value.**
 - Build: `cd latex && make book` → `latex/book/main.pdf`. Check the log for `undefined`,
   `multiply defined`/`multiply-defined`, AND `overfull` every time (see above).
 - Small commits, pushed often — see `CLAUDE.md` for the full methodology list.
-- `/workspace/cna` (or wherever `cna` gets cloned) does not persist across sessions — if a
-  screenshot or source re-read needs a working clone, redo it per
-  `tools/cna-screenshot-infra/README.md`. This session found a clone already present at
-  `/workspace/cna` from earlier in the same session — check there first before re-cloning.
+- `/workspace/cna` (and `/workspace/sharp-runtime`, `/workspace/easy-gl`, etc.) do not persist
+  across sessions — check whether a clone already exists in the current session before
+  re-cloning (this session found `/workspace/cna` and `/workspace/sharp-runtime` already
+  present from earlier work). If nothing exists and a screenshot needs a working clone, redo it
+  per `tools/cna-screenshot-infra/README.md`.
 - After embedding any new screenshot OR any dense full-method-reference section, verify it
   actually rendered correctly by converting the relevant compiled PDF page to an image and
   reading it back (`pdftoppm` + the `Read` tool).
 - Printed page numbers and physical PDF page numbers differ (front matter uses roman
   numerals) — search by content (`pdftotext -f N -l N`) rather than assuming printed page N
-  is physical page N.
+  is physical page N. A blank padding page immediately before a new Part's title page is
+  normal book layout, not a rendering defect — don't mistake it for one.
 - Prefer real `\ref{ch:label}` over a plain-text `Chapter~N` citation when a label already
   exists and you're touching that paragraph anyway.
 - Verify hand-derived numeric/algebraic claims with an actual computation before writing them
-  into the book. Also double-check constructor/method signatures against the real header
-  before writing a worked example that calls them — reading the actual `.cpp` implementation
-  (not just the header) is often where the best verified findings come from (Chapter 27's
-  `MediaQueue`/`LoadSong` ownership finding and its three `VideoPlayer` bug-fix findings all
-  came from `.cpp` reads, not header reads). Also verify event-handler callback signatures
-  (e.g. `const T&` vs `T&`) against the actual `EventHandler.hpp` template before writing a
-  lambda in a worked example — Chapter 28 caught exactly this kind of mismatch this session.
-- Not every chapter's gap is "missing API surface" — Chapter 28's prose was already dense and
-  accurate, but had zero worked code examples. Check for that gap shape too, not just missing
-  classes/methods.
+  into the book. Also double-check constructor/method/callback signatures against the real
+  header before writing a worked example that calls them — reading the actual `.cpp`
+  implementation (not just the header) is often where the best verified findings come from.
+- Not every chapter's gap is "missing API surface" — several Part V/VI chapters had dense,
+  accurate prose already but zero worked code examples. Check for that gap shape too.
 - To find genuine gaps in an already-"complete-looking" chapter, systematically grep the real
   header for every type/class it covers and diff against what the chapter's prose actually
   mentions — but once that pass is done once, a second pass on the same chapter needs a
