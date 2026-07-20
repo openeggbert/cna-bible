@@ -9,7 +9,7 @@ directly rather than paraphrase it.
 
 \section{Reflection: correctly a stub, not a gap}
 
-\cnaclass{System.Type}, \cnaclass{Activator}, and enum reflection (\texttt{Enum.GetNames}/%
+\cnaclass{System.Type}, \cnaclass{Activator}, and enum reflection (\texttt{Enum.GetNames} /
 \texttt{GetValues}) are, in the project's own words, ``completely out of scope. Stubs are the
 correct end state.'' This is a stronger claim than ``not yet implemented'' --- it states that
 a stub \emph{is} the intended final behavior, not a placeholder awaiting more engineering.
@@ -33,7 +33,7 @@ self-correction: an earlier description of the delegate model was found inaccura
 audit and rewritten. The corrected, current model has three distinct tiers, each solving a
 different shape of problem. Most delegate-shaped C\# types --- \texttt{Action},
 \texttt{Func}, most \texttt{*Callback} aliases --- are bare \texttt{using} aliases over
-\texttt{std::function}: single-target, no multicast, no \texttt{BeginInvoke}/%
+\texttt{std::function}: single-target, no multicast, no \texttt{BeginInvoke} /
 \texttt{EndInvoke}, sufficient for the overwhelming majority of call sites that only ever
 needed one callback anyway. \cnaclass{System::Delegate} is a real multicast base
 (\texttt{Combine}, \texttt{Remove}, \texttt{GetInvocationList}) for the smaller set of call
@@ -45,6 +45,29 @@ compare by the way C\# delegates do. All three tiers agree on one further point:
 \texttt{DynamicInvoke} always throws \texttt{NotImplementedException}, since invoking a
 delegate by a runtime-resolved argument array is itself a reflection-adjacent capability
 already ruled out above.
+
+\begin{lstlisting}
+// Worked example: all three tiers side by side, each solving the shape of
+// problem it exists for.
+
+// Tier 1 -- Action/Func alias: single-target, the overwhelming common case.
+System::ActionT<int> onScoreChanged = [](int newScore) { UpdateHudScore(newScore); };
+onScoreChanged(100);
+
+// Tier 2 -- System::Delegate: real multicast combining semantics, when a
+// caller genuinely needs to build up and later shrink an invocation list.
+auto d1 = std::make_shared<System::Delegate>(System::Delegate::ErasedInvoke([] { PlayFanfare(); }));
+auto d2 = std::make_shared<System::Delegate>(System::Delegate::ErasedInvoke([] { UnlockNextLevel(); }));
+std::shared_ptr<System::Delegate> onLevelComplete = System::Delegate::Combine(d1, d2);
+onLevelComplete->Invoke();                                    // runs both
+onLevelComplete = System::Delegate::Remove(onLevelComplete, d1);  // now only d2 remains
+
+// Tier 3 -- MulticastAction: the right choice for an event FIELD, since
+// std::function values have no target-plus-method equality to remove by.
+System::MulticastAction<> onGameOver;
+auto token = onGameOver.Add([] { ShowGameOverScreen(); });
+onGameOver.Remove(token);
+\end{lstlisting}
 
 \section{Serialization, P/Invoke, and cryptography: three different reasons for the same conclusion}
 
@@ -74,7 +97,7 @@ would.
 
 Two smaller, explicitly accepted limitations round out this chapter. A fixed list of
 POSIX-only subsystems (\cnaclass{Net::Sockets}, \cnaclass{IO::RandomAccess},
-\texttt{AppDomain}/\texttt{AppContext}, \texttt{TimeZoneInfo}, \texttt{Diagnostics::Process},
+\texttt{AppDomain} / \texttt{AppContext}, \texttt{TimeZoneInfo}, \texttt{Diagnostics::Process},
 POSIX signal handling, \texttt{NetworkInterface}, \texttt{FileSystemWatcher}) is accepted as
 Linux/POSIX-only rather than cross-platform, for now. And \texttt{Decimal}, \texttt{Int128},
 and \texttt{UInt128} are unsupported specifically on MSVC, since real 128-bit integer support

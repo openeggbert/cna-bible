@@ -178,7 +178,7 @@ ever needed).
 | 32 | Storage | 124 (was 78) | 30 | Worked examples for the full device-selection-to-open-container lifecycle and file read/write, plus the unique_ptr-ownership finding, grounded in real headers | **In progress (~3 of ~30 pages)** |
 | 33 | Sharp Runtime Overview | 167 (was 116) | 40 | Worked examples for MulticastAction token-based removal and Task::ContinueWith's synchronous-execution contract, grounded in real headers | **In progress (~5 of ~40 pages)** |
 | 34 | Sharp Runtime Namespaces | 162 (was 90) | 70 | **Table description is stale** — the chapter's real title/scope is "Strings, Streams, and a Real Audit History" (String/StringBuilder, Stream, and the two post-stabilization audit narratives); TimeSpan/EventHandler are already covered in Chapter 33, not here. Added worked examples for String/StringBuilder, a minimal Stream subclass, and the Convert::ToInt32 rounding-bug repro | **In progress (~5 of ~70 pages)** |
-| 35 | Parity Philosophy | 111 | 35 | More worked deviation examples | Not started |
+| 35 | Parity Philosophy | 134 (was 111) | 35 | Worked example contrasting the three delegate tiers (Action/Func alias, System::Delegate::Combine/Remove, MulticastAction), grounded in real headers | **In progress (~6 of ~35 pages)** |
 | 36 | EasyGL Deep Dive | 112 | 55 | Deeper coverage | Not started |
 | 37 | free-direct Deep Dive | 65 | ~2 (no change) | **Stays marginal per author confirmation 2026-07-20 — do not expand** | N/A — intentionally frozen |
 | 38 | Windows/Wine | 103 | 45 | Deeper verification detail | Not started |
@@ -886,3 +886,20 @@ current real total of 266 pages.
   target itself may need revisiting given the corrected, narrower actual scope). Volume
   recompiled clean (285 pages total, 0 undefined references, 0 duplicate-label warnings); all
   four of the chapter's own pages verified by rendering to PNG and reading them back.
+- **2026-07-20 (same session, "pokracuj"):** Chapter 35 (Parity Philosophy) — first expansion
+  pass. This chapter is more policy-narrative than API-reference in character (reflection/GC/
+  serialization/crypto scope decisions, quoted directly from the project's own reasoning), so
+  the natural worked-example opportunity was narrower than in API-heavy chapters, but one
+  section — the three-tier delegate model — is concrete and code-shaped enough for a real
+  worked example. Read `Delegate.hpp`, `Action.hpp`, and `MulticastAction.hpp` directly. Added
+  one worked example showing all three tiers side by side against the same kind of problem
+  each is meant to solve: a plain `System::ActionT<int>` alias for the single-target common
+  case; `System::Delegate::Combine`/`Remove` building and later shrinking a real multicast
+  invocation list; and `System::MulticastAction`'s token-based `Add`/`Remove` for an event
+  field, contrasting directly with why `Delegate`'s own equality-based `Remove` doesn't work
+  for `std::function`-backed fields. No new verified finding surfaced this pass beyond what the
+  prose already stated precisely (the chapter's existing prose was unusually exact already,
+  quoting the project's own reasoning directly rather than paraphrasing). Chapter grows from
+  111 to 134 lines (~4 to ~6 of a ~35-page target). Volume recompiled clean (285 pages total, 0
+  undefined references, 0 duplicate-label warnings); all six of the chapter's own pages
+  verified by rendering to PNG and reading them back.
