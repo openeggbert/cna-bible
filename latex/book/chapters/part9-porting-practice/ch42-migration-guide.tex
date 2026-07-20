@@ -14,11 +14,54 @@ C\texttt{++} against the equivalent CNA classes, following the same conventions
 Chapter~\ref{ch:design-philosophy} described for CNA's own internal porting work:
 matching class and method names exactly, using \texttt{sharp-runtime}'s type aliases rather
 than raw C\texttt{++} primitives, and translating C\# properties into the
-\texttt{getXProperty()}/\texttt{setXProperty()} convention. This is mechanical translation
+\texttt{getXProperty()} / \texttt{setXProperty()} convention. This is mechanical translation
 work for code that only ever touched the public XNA surface, and genuinely difficult work for
 code that reached into .NET-specific behavior (reflection, real garbage collection timing,
 LINQ) that \texttt{sharp-runtime} (Chapter~\ref{ch:sharp-runtime-overview}) deliberately does
 not reproduce.
+
+\begin{lstlisting}
+// Worked example: a small, typical XNA Update()/Draw() pair, and its
+// mechanical CNA translation -- the shape every line maps to directly.
+
+// --- Original C# (XNA/FNA) ---
+// protected override void Update(GameTime gameTime)
+// {
+//     float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
+//     position += velocity * dt;
+//     if (Keyboard.GetState().IsKeyDown(Keys.Space))
+//         velocity.Y = -jumpSpeed;
+//     base.Update(gameTime);
+// }
+//
+// protected override void Draw(GameTime gameTime)
+// {
+//     GraphicsDevice.Clear(Color.CornflowerBlue);
+//     spriteBatch.Begin();
+//     spriteBatch.Draw(texture, position, Color.White);
+//     spriteBatch.End();
+//     base.Draw(gameTime);
+// }
+
+// --- Mechanical CNA C++23 translation ---
+void MyGame::Update(GameTime& gameTime)
+{
+    float dt = static_cast<float>(gameTime.getElapsedGameTimeProperty().getTotalSecondsProperty());
+    position_ += velocity_ * dt;
+    if (Keyboard::GetState().IsKeyDown(Keys::Space))
+        velocity_.Y = -jumpSpeed_;
+    Game::Update(gameTime);
+}
+
+void MyGame::Draw(const GameTime& gameTime)
+{
+    getGraphicsDeviceProperty().Clear(Color::CornflowerBlue);
+    spriteBatch_->Begin();
+    spriteBatch_->Draw(texture_, position_, Color::White);
+    spriteBatch_->End();
+    Game::Draw(gameTime);
+}
+\end{lstlisting}
 
 \section{Step two: audit content against the two biggest named gaps}
 
@@ -47,12 +90,32 @@ If the game does any custom 3D rendering, Chapter~\ref{ch:textures-rendertargets
 layout finding is worth checking directly: every hardware backend selects its GPU
 vertex-attribute layout by raw byte stride, not by the \cnaclass{VertexDeclaration} you
 actually wrote, and only five specific strides (16, 20, 24, 32, and 52 bytes, corresponding to
-the standard \cnaclass{VertexPositionColor}/\texttt{Texture}/\texttt{ColorTexture}/%
+the standard \cnaclass{VertexPositionColor} / \texttt{Texture} / \texttt{ColorTexture} /
 \texttt{NormalTexture} structs and one skinned layout) are guaranteed to render correctly
 everywhere. A custom vertex format outside that set will degrade differently on each backend
 --- Chapter~\ref{ch:textures-rendertargets} gives the specific per-backend fallback behavior
 --- so this is worth checking before porting any custom mesh format, not after seeing
 incorrect rendering on one specific backend.
+
+\begin{lstlisting}
+// Worked example: computing a custom vertex format's stride by hand
+// before porting it, the check this step actually means in practice.
+struct MyCustomVertex
+{
+    Vector3 Position;  // 12 bytes
+    Vector3 Normal;    // 12 bytes
+    Vector2 TexCoord;  // 8 bytes
+    Vector4 Tangent;   // 16 bytes
+};
+// sizeof(MyCustomVertex) == 48 bytes -- NOT one of the five recognized
+// strides (16/20/24/32/52), so this format is not guaranteed to render
+// identically across every backend. Decide up front: drop the Tangent
+// field to reach the 32-byte NormalTexture stride, or accept and test
+// the per-backend fallback behavior Chapter 17 documents for an
+// unrecognized stride, rather than discovering the mismatch as a visual
+// bug later.
+static_assert(sizeof(MyCustomVertex) == 48);
+\end{lstlisting}
 
 \section{Step four: check what your game actually needs from networking and gamer services}
 

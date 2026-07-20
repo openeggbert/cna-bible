@@ -7,7 +7,7 @@ history, and which has the full per-chapter detail this file only summarizes). I
 reading this mid-session rather than at the start of one, it may already be stale relative to
 what's happened since — trust the conversation over this file in that case.
 
-## Where things stand right now (end of session, 2026-07-20)
+## Where things stand right now (mid-session, 2026-07-20, updated after Chapter 42)
 
 **The book is a single, unified book** (merged from two volumes earlier this same session).
 `latex/volume1`/`latex/volume2` no longer exist; everything is under `latex/book/`, built via
@@ -77,14 +77,30 @@ either way. The only real verification is `pdftoppm -png -f N -l N -r 100 main.p
 /tmp/.../pageN` (find N by content search: `pdftotext -f N -l N main.pdf - | grep <text>`,
 never by printed folio number) then reading the PNG back with the Read tool.
 
+## Chapter 42 (Migration Guide) is now done — first chapter of Part IX
+
+Grew 102 → 165 lines. It's a checklist/synthesis chapter (six numbered "Step" sections), so the
+gap shape was "add worked examples to the two steps that most invite one," not a header grep:
+(1) a full XNA/FNA `Update()`/`Draw()` C# pair plus its mechanical CNA C++23 translation, every
+signature checked against `Game.hpp` directly (caught and fixed a reference-vs-pointer mistake
+on `getGraphicsDeviceProperty()` and a by-value-vs-by-reference mistake on the `Update`/`Draw`
+override signatures before finalizing); (2) a hand-computed custom-vertex-stride worked example
+showing a 48-byte struct is NOT one of the five recognized strides. Also fixed a
+newline-continuation `/`-spacing defect the regex pass doesn't catch (`}/%` followed by a
+continued `\texttt{}` on the next line — grep for `}/%` by hand every time, it's real and easy
+to miss). Full detail in PLAN.md's session log. Volume compiles clean at 289 pages, 0 undefined
+refs; all four of Chapter 42's own pages (243-246) PNG-rendered and confirmed defect-free. One
+unrelated overfull-hbox warning surfaced for pre-existing Chapter 36 content
+(`detect_common_features()`) — rendered that page too, confirmed false positive, no fix needed.
+
 ## What to do next
 
-1. **Move to Part IX** (Chapters 42-48): Porting/practice/roadmap — none touched yet this
-   session. Same approach: read the real source before assuming whether each chapter is
-   API-reference-shaped, tooling/narrative-shaped, or synthesis-shaped like Chapter 41 turned
-   out to be. When a chapter doesn't fit the "add worked examples" mold, look instead for a
-   genuine content gap or a stale cross-reference (Chapter 41's own pass found both: a missing
-   macOS row and a leftover "Part~IV" reference from the merge).
+1. **Continue Part IX**: Chapter 43 (Blupi Case Study) is next, then 44-48. Same approach: read
+   the real source before assuming whether each chapter is API-reference-shaped,
+   tooling/narrative-shaped, or synthesis-shaped like Chapter 41 turned out to be. When a
+   chapter doesn't fit the "add worked examples" mold, look instead for a genuine content gap or
+   a stale cross-reference (Chapter 41's own pass found both: a missing macOS row and a
+   leftover "Part~IV" reference from the merge).
 2. **Alternatively, return to Part V, VI, or VIII for real depth**: every chapter in those
    three parts has a first pass now, but all are still well short of their page targets. Don't
    re-run the "which classes/tools exist" grep again (already done at least once per chapter)

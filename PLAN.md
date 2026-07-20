@@ -185,7 +185,7 @@ ever needed).
 | 39 | Web/Emscripten | 121 (was 88) | 40 | Real shell-invocation worked examples for the Emscripten-specific compile/link flags and the confirmed CANVAS build success story, grounded in the actual CMakeLists.txt/cmake/UnitTests.cmake | **In progress (~3 of ~40 pages)** |
 | 40 | Android/NDK | 123 (was 82) | 40 | Real shell-invocation worked examples for the NDK cross-compile/llvm-nm verification and the emulator boot/install/sensor-injection sequence, grounded in the project's own build notes | **In progress (~4 of ~40 pages)** |
 | 41 | Verification Methodology | 83 (was 68) | 35 | Added a macOS row to the comparative table (a genuine, honestly-named documentation gap: no dedicated chapter exists for it), plus fixed a stale "Part~IV" cross-reference left over from the volume merge | **In progress (~3 of ~35 pages)** |
-| 42 | Migration Guide | 102 | 55 | Full worked porting walkthroughs | Not started |
+| 42 | Migration Guide | 165 (was 102) | 55 | Worked examples for the C#-to-CNA Update()/Draw() mechanical translation (signatures verified against Game.hpp) and hand-computing a custom vertex format's byte stride against the five recognized strides | **In progress (~4 of ~55 pages)** |
 | 43 | Blupi Case Study | 116 | 55 | Deeper call-site audit detail | Not started |
 | 44 | xna4-spec Auditing | 74 | 40 | More worked audit examples | Not started |
 | 45 | Samples and Examples | 54 | 45 | Per-sample summaries, more of the 86 samples covered | Not started |
@@ -1002,3 +1002,29 @@ stays frozen by explicit author decision, not left incomplete.
   chapter's own pages verified by rendering to PNG and reading them back.
 
 **Part VIII (Chapters 38-41) is now fully swept**: every chapter has a first expansion pass.
+
+- **2026-07-20 (same session, "pokkracuj"):** Chapter 42 (Migrating an XNA or FNA Game to CNA)
+  — first expansion pass, and the first chapter of Part IX. This is a checklist-style synthesis
+  chapter (six numbered "Step" sections plus a closing "realistic expectation" section) that
+  references many earlier chapters rather than introducing new API surface itself, so its gap
+  shape was "add concrete worked examples to the two steps that most invite one" rather than
+  "grep real headers for missing coverage." Added two worked examples: (1) after Step one's
+  intro paragraph, a full XNA/FNA `Update()`/`Draw()` C# pair (as commented-out reference code)
+  followed by its mechanical CNA C++23 translation — every signature verified directly against
+  `Game.hpp` before finalizing, catching and fixing two real mistakes in the first draft:
+  `getGraphicsDeviceProperty()` returns `Graphics::GraphicsDevice&` (a reference, not a
+  pointer, so `.Clear(...)` not `->Clear(...)`), and the real virtual override signatures are
+  `Update(GameTime& gameTime)` and `Draw(const GameTime& gameTime)`, not by-value `GameTime
+  gameTime` as first drafted; (2) at the end of Step three, a worked example hand-computing a
+  custom 48-byte vertex struct's stride (`Vector3 Position + Vector3 Normal + Vector2 TexCoord +
+  Vector4 Tangent`) and showing explicitly that 48 is not one of the five recognized strides
+  (16/20/24/32/52), with a `static_assert` confirming the arithmetic. Also fixed the
+  newline-continuation variant of the `/`-spacing overfull-hbox defect (`\texttt{ColorTexture}/%`
+  followed by a continued `\texttt{NormalTexture}` on the next line) by hand, since the regex
+  pass doesn't catch it. Chapter grows from 102 to 165 lines (~4 of a ~55-page target). Volume
+  recompiled clean (289 pages total, 0 undefined references, 0 duplicate-label warnings); all
+  four of the chapter's own pages (243-246) verified by rendering to PNG and reading them back.
+  One unrelated overfull-hbox warning surfaced in the build log for pre-existing Chapter 36
+  content (`easygl::Capabilities::detect_common_features()`) — rendered that page too and
+  confirmed it is a false positive with no visible clipping, consistent with this project's
+  standing rule that the numeric warning alone is never sufficient evidence either way.
