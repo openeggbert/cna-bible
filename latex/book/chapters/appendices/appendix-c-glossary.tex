@@ -8,6 +8,10 @@
   Chapter~23.
 \item[CNA] The project this book is about: a C\texttt{++}23 reimplementation of the XNA~4.0
   programming model, built on SDL3 with a pluggable graphics-backend layer.
+\item[ContentManager] The central XNA class resolving an asset name to real loaded content,
+  through a three-way resolution order this book returns to repeatedly: a real, compiled
+  \texttt{.xnb} file first, then a \texttt{.cnj} sidecar, then a direct native-format load. See
+  Chapter~8.
 \item[DX3] CNA's graphics backend fronting the sibling \texttt{free-direct} project; a 2D-only
   backend, in the same spirit as \texttt{SDL\_RENDERER}. See Chapter~24.
 \item[EASYGL] CNA's OpenGL/OpenGLES graphics backend, built on the sibling \texttt{easy-gl}
@@ -15,6 +19,9 @@
 \item[Effect] The XNA base class for a shader program bound to a \cnaclass{GraphicsDevice}.
   CNA ships five stock effects and, on three backends, a runtime-compiled custom
   \texttt{ShaderEffect} path --- see the shader/.fx gap chapter, Chapter~15.
+\item[ENet] The third-party, vendored UDP networking library backing CNA's real Networking
+  namespace implementation, wrapped by an internal \texttt{ENetBackend}. The same library
+  \texttt{free-direct}'s own optional DirectPlay transport is built on. See Chapter~30.
 \item[FNA] An open-source, C\#, SDL2-based reimplementation of the XNA~4.0 API, maintained
   independently of CNA. FNA is CNA's primary behavioral reference and the subject of CNA's
   own differential-testing infrastructure --- not the same thing as the real Microsoft
@@ -23,6 +30,11 @@
 \item[GamerServices] The XNA namespace covering Xbox-Live-era player profile, achievement,
   leaderboard, and system-UI concepts. CNA implements it with real local persistence where
   FNA does not implement it at all. See Chapter~29.
+\item[GraphicsCapability] The small enum \cnaclass{GraphicsDevice::SupportsCapability} takes,
+  letting game code ask whether the active backend supports a feature (3D rendering,
+  occlusion queries, and so on) before attempting it, rather than attempting it and catching
+  the resulting exception. Not every value is yet wired to answer honestly on every backend
+  --- see Chapter~16's own \cnaclass{MultipleRenderTargets} finding.
 \item[GraphicsDevice] The central class every rendering operation in CNA passes through;
   covered in Chapter~9.
 \item[.cnj] CNA's own permanent, JSON-based content sidecar format --- ``CNA content JSON,''
@@ -43,6 +55,9 @@
 \item[Oracle (D3D9)] The pixel-for-pixel verification methodology comparing CNA's D3D9
   backend against a genuinely running XNA~4.0 runtime under Wine, at zero tolerance. See
   Chapter~22, and this book's Windows/Wine chapter, Chapter~38.
+\item[PbrEffect] A \texttt{NOXNA} glTF~2.0-style metallic-roughness PBR material effect ---
+  unlike the five stock effects, it has no real-XNA counterpart at all, since real XNA~4.0
+  predates the glTF PBR model. Available on the WebGPU backend. See Chapter~21.
 \item[SDL3] The cross-platform windowing/input/audio library CNA is built on. Not itself a
   graphics backend --- \texttt{SDL\_RENDERER} (one of CNA's eleven backends) is built on
   SDL3's own 2D renderer specifically.
@@ -57,6 +72,10 @@
 \item[Stock effects] The five built-in XNA shader effects --- \cnaclass{BasicEffect},
   \cnaclass{AlphaTestEffect}, \cnaclass{DualTextureEffect}, \cnaclass{EnvironmentMapEffect},
   \cnaclass{SkinnedEffect}. See Chapter~13.
+\item[Storage] The \cnans{Microsoft::Xna::Framework::Storage} namespace --- a real, if
+  small, XNA namespace for user-data persistence (\cnaclass{StorageDevice},
+  \cnaclass{StorageContainer}), backed by a straightforward local-filesystem implementation
+  underneath a faithfully-preserved fake-async API shape. See Chapter~32.
 \item[VULKAN] One of CNA's eleven graphics backends, targeting the Vulkan API directly. See
   Chapter~19.
 \item[WEBGPU] CNA's experimental fifth graphics backend, targeting native \texttt{wgpu-native}.
@@ -67,8 +86,4 @@
 \item[xna4-spec] The sibling repository providing a complete, machine-readable XML
   transcription of the real XNA~4.0 API documentation, used to audit CNA's coverage against a
   ground truth rather than against FNA's own source. See Chapter~44.
-\item[Storage] The \cnans{Microsoft::Xna::Framework::Storage} namespace --- a real, if
-  small, XNA namespace for user-data persistence (\cnaclass{StorageDevice},
-  \cnaclass{StorageContainer}), backed by a straightforward local-filesystem implementation
-  underneath a faithfully-preserved fake-async API shape. See Chapter~32.
 \end{description}
