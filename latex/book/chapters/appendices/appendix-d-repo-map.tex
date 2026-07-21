@@ -126,6 +126,58 @@ sites (for instance \texttt{cna.openeggbert.com}, \texttt{easygl.openeggbert.com
 \texttt{sharpruntime.openeggbert.com}) --- which this book does not cover at all, for the
 same reason.
 
+\section{Two further real repositories: tooling and a stack departure}
+
+Two more repositories are worth naming precisely, verified directly against their own real
+source rather than assumed from their names, since neither fits neatly into any category
+above.
+
+\texttt{sprite-utils} is a standalone C\texttt{++}23 command-line tool, unrelated to CNA as a
+dependency in either direction --- it links OpenCV (\texttt{core}, \texttt{imgproc},
+\texttt{imgcodecs} components only, deliberately scoped narrowly rather than the whole OpenCV
+surface) and exists purely to reverse-engineer the Blupi franchise's own legacy sprite-sheet
+binary formats (\texttt{.blp} files such as \texttt{blupi000.blp}, \texttt{object.blp},
+\texttt{element.blp}) into labeled, packable/restorable spritesheets, plus an animated-GIF
+export path. Its own \texttt{plan.md} tracks real, measured progress on this extraction work
+against both Blupi games' actual data files --- as of its last recorded milestone, 1,870 of
+3,003 total rows (62\%) across both games' combined CSVs carried a confirmed \texttt{Group}
+label, up from 330 of 2,478 (13\%) at that phase's start, with the remainder either a
+deliberate ``no source table exists'' case or genuinely absent from the first game's smaller
+tables. It supports \texttt{free-eggbert} / \texttt{planetblupi} asset work (Chapter~44) as a
+tool, not as a library either project links against.
+
+\texttt{mobile-eggbert-libgdx} is the most striking real departure from the CNA stack anywhere
+in this organization: a from-scratch Java/LibGDX port of \texttt{mobile-eggbert} that
+deliberately does \emph{not} build on CNA, \texttt{sharp-runtime}, or any C\texttt{++} code at
+all. Its own README documents the full port lineage precisely: the original 2013 Windows Phone
+XNA~4.0 C\# game, decompiled with ILSpy into a MonoGame C\# port, then ported to C\texttt{++}
+on CNA as \texttt{mobile-eggbert} (Chapter~21's WebGPU coverage), and only then --- as a fourth
+generation, sibling to the CNA port rather than downstream of it --- re-implemented a second
+time in Java against LibGDX. Its own source tree carries a genuine, independent echo of this
+book's own subject matter: a hand-written \texttt{microsoft.xna.framework} bridge package
+(\texttt{Game}, \texttt{GameTime}, and the rest, each mapped onto a LibGDX
+\texttt{ApplicationListener}-shaped equivalent) sitting beside its own small, LibGDX-specific
+\texttt{system.*} emulation layer for the handful of \texttt{System.*} BCL types
+(\texttt{Math}, \texttt{Random}, \texttt{TimeSpan}, \texttt{EventArgs}) it actually needs ---
+the same XNA-bridge-plus-BCL-subset shape this book's own \texttt{cna} / \texttt{sharp-runtime}
+split takes, arrived at independently, in a different language, with no code shared between
+the two efforts. Worth knowing about specifically as evidence that the XNA~4.0 API shape this
+book documents in such depth was portable enough to survive a second, unrelated
+reimplementation outside the organization's own primary C\texttt{++} stack.
+
+A final scope clarification, not a repository listing: several sibling directories on disk
+next to these repositories (for instance ones named \texttt{cnaaudio}, \texttt{cnagraphics},
+\texttt{cnainput}, and similar per-subsystem names) are \emph{not} separate repositories at
+all --- each one's own \texttt{.git} is a plain text file (\texttt{gitdir: .../cna/.git/\allowbreak
+worktrees/\allowbreak<name>}), not a repository of its own, because each is a real
+\texttt{git worktree} of \texttt{cna} itself, checked out on its own per-subsystem feature
+branch (\texttt{cnaaudio} on \texttt{feature/audio}, and so on) as a parallel workspace for a
+focused audit or feature session without disturbing the primary \texttt{cna} checkout. A
+reader browsing the organization's real repository list from GitHub directly will not
+encounter them, since a worktree is purely a local filesystem construct with nothing of its
+own ever pushed anywhere --- noted here only so this appendix's own careful naming isn't
+mistaken as having missed them by accident.
+
 \section{A note on repositories unrelated to CNA}
 
 Several repositories in the same organization --- \texttt{speedyblupi.com},
