@@ -210,6 +210,28 @@ mismatch. \cnaclass{VideoSoundtrackType} (\texttt{Music} / \texttt{Dialog}/%
 \texttt{MusicAndDialog}) is confirmed metadata-only in both FNA and CNA alike; neither
 implements any actual audio-ducking or muting behavior tied to this value.
 
+\subsection{A real disposed-state gap, closed with one deliberate, C\texttt{++}-specific exception}
+
+\cnaclass{VideoPlayer} once had \texttt{getIsDisposedProperty()} but nothing that actually
+consulted it: every public method touched the player's own state unconditionally after
+\texttt{Dispose()}, whether or not anything was still safe to touch. The fix reproduces real
+FNA's own \texttt{checkDisposed()} guard --- called at the top of eight public methods --- down
+to its exact, faithfully-reproduced message: \texttt{throw
+System::ObjectDisposedException("VideoPlayer")}, a hardcoded literal type-name string matching
+FNA's own choice rather than anything reflection-derived, for message fidelity rather than mere
+behavioral parity. One call site is a deliberate, reasoned exception rather than an oversight:
+\texttt{Dispose()} itself does \emph{not} call this guard, even though real FNA's own
+\texttt{Dispose()} does (throwing on a second call). The reason is specific to C\texttt{++}, not
+a parity shortfall --- \texttt{\textasciitilde VideoPlayer()} unconditionally calls
+\texttt{Dispose()}, and a destructor is implicitly \texttt{noexcept} in C\texttt{++}, so a second
+explicit \texttt{Dispose()} call followed by ordinary destruction would throw from inside a
+destructor and terminate the program outright, rather than merely surprising a caller the way
+the equivalent double-\texttt{Dispose()} does in C\#. \texttt{Dispose()} is kept safely
+idempotent instead, and every other public method keeps the real, faithful throw --- a small,
+precise illustration of this book's own recurring theme: a documented, reasoned divergence from
+FNA, not a silent one, and specifically motivated by a real language-level constraint C\# does
+not share.
+
 \subsection{Multi-track selection, and three real bugs an external review found}
 
 Both \cnaclass{Video} and \cnaclass{VideoPlayer} expose \texttt{SetAudioTrackEXT(track)} /
