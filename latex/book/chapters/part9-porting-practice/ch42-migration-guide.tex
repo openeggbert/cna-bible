@@ -117,7 +117,7 @@ struct MyCustomVertex
 static_assert(sizeof(MyCustomVertex) == 48);
 \end{lstlisting}
 
-\section{Step four: check what your game actually needs from networking and gamer services}
+\section[Step four: networking and gamer services needs]{Step four: check what your game actually needs from networking and gamer services}
 
 If the original game used Xbox Live features, Chapter~\ref{ch:networking} and
 Chapter~\ref{ch:gamerservices} give you the exact real-versus-stub breakdown: system-link
@@ -139,6 +139,18 @@ achievement-earned toast reads directly from the returned \cnaclass{Achievement}
 blank name and \texttt{+0G} for every single achievement --- the fix is maintaining your own
 small achievement-metadata table keyed by \texttt{Key}, not something this namespace can supply
 for you.
+
+A second, equally easy-to-miss gotcha in the same namespace, worth checking before porting any
+code that relies on a specific session capacity: every \cnaclass{NetworkSession::Create}/%
+\texttt{BeginCreate} overload's own \texttt{maxGamers} argument is silently never honored ---
+the constructed session's real \texttt{MaxGamers} is always a hardcoded \texttt{69}, matching
+genuine historical Xbox~360/Windows XNA~4.0 behavior for this exact call shape, not a CNA bug
+(Chapter~\ref{ch:networking}'s own worked example covers the precise mechanism). A game that
+calls \texttt{Create(SystemLink, maxLocalGamers, 8)} expecting an eight-player cap and enforces
+nothing further at the application level will accept a ninth, tenth, or sixty-ninth join before
+the framework itself ever refuses one --- if the original game's own design assumed the
+requested cap was load-bearing, that enforcement needs to move into the game's own code
+explicitly, not stay implicit in the constructor call.
 
 \section{Step five: pick and verify your graphics backend}
 
