@@ -811,17 +811,32 @@ an API surface that reads as a genuine hardware query but is only actually backe
 eleven backends --- worth knowing before writing portable code that branches on either method's
 return value.
 
-\section{ClearOptions: two confirmed cross-backend gaps}
+\section{ClearOptions: one closed gap, one still genuinely open}
 \label{sec:clearoptions}
 
 \cnaclass{ClearOptions} is a three-value flags enum (\texttt{Target=1}, \texttt{DepthBuffer=2},
 \texttt{Stencil=4}) with the full bitwise operator set hand-implemented, the same pattern seen
-on \cnaclass{DisplayOrientation} in Chapter~\ref{ch:game-loop}. One flag is a confirmed,
-still-open gap at the time of writing: \texttt{ClearOptions::Stencil} is a no-op on EasyGL and
-Vulkan (Task~871), with Bgfx unverified --- clearing the stencil buffer this way currently does
-nothing on the two backends where it has actually been checked. This is a small, concrete
-example of the kind of specific, checkable claim Chapter~\ref{ch:what-is-cna} promised this
-book would preserve rather than round off to ``clearing works.''
+on \cnaclass{DisplayOrientation} in Chapter~\ref{ch:game-loop}. \texttt{ClearOptions::Stencil}
+was, for a real stretch of this project's history, a confirmed no-op on EasyGL and Vulkan (Task~%
+871) --- \texttt{GraphicsDevice::Clear()} never even checked the flag, and neither backend's own
+stencil-clear path was reachable through the public API at all. It is fixed now, on every
+backend that has a real stencil buffer to clear: \texttt{Clear()} was extended with four new
+per-backend dispatch methods (\texttt{ClearStencil}, \texttt{ClearDepthAndStencil},
+\texttt{ClearColorAndStencil}, \texttt{ClearColorDepthAndStencil}), and the fix surfaced a real,
+independent bug on Vulkan specifically while closing it --- every one of this backend's
+render-pass-creation sites had \texttt{stencilLoadOp} hardcoded to
+\texttt{VK\_ATTACHMENT\_LOAD\_OP\_DONT\_CARE}, discarding whatever stencil clear value a caller
+requested regardless of what \texttt{Clear()} itself now correctly dispatched. A real
+methodology finding came out of testing this fix, worth knowing on its own: an initial
+same-frame test (stamp a stencil value, clear it, compare, all within one \texttt{Draw()} call)
+failed on Vulkan and BGFX even with the fix correctly applied, because both backends defer an
+entire frame's draws into one command buffer/view whose own clear always applies once, before
+that frame's draws, regardless of the order \texttt{Clear()} / \texttt{DrawXxx()} were actually
+called in game code --- an artifact of this project's per-frame-batched rendering architecture,
+not a discriminating test. Splitting the stamp and the clear-plus-compare across two separate
+real frames fixed the test on all three hardware backends. This is a small, concrete example of
+the kind of specific, checkable claim Chapter~\ref{ch:what-is-cna} promised this book would
+preserve rather than round off to ``clearing works.''
 
 \subsection{A silent no-op, not a thrown exception, for an impossible depth/stencil clear}
 

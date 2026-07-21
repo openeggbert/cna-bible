@@ -168,9 +168,13 @@ out-of-bounds behavior, not because any real sampler-state value is being honore
 \texttt{MultiSampleCount} is accepted and ignored, always reporting zero. Fullscreen
 toggling round-trips correctly at the API level, but the audit is explicit that genuine
 OS-level fullscreen state cannot actually be verified inside this project's own headless
-\texttt{Xvfb} test environment. \texttt{Clear} honoring \texttt{ClearOptions::Stencil} is a
-cross-backend no-op here too (Task~871, still open, matching Chapter~\ref{ch:state-objects}'s
-finding for the hardware backends). Five real, multi-frame compatibility samples --- a 2D
+\texttt{Xvfb} test environment. \texttt{Clear} honoring \texttt{ClearOptions::Stencil} correctly
+throws on this backend specifically (\texttt{ThrowNo3D}, the same 2D-only pattern every other
+3D-facing entry point in this chapter already follows) --- Task~871, once a real, genuine
+cross-backend no-op on every hardware backend, is now closed everywhere else too
+(Chapter~\ref{ch:graphicsdevice}/\ref{ch:state-objects} both cover the real fix in full); this
+backend was never part of that gap to begin with, since it has no stencil buffer concept for
+\texttt{Clear} to honor or fail to honor. Five real, multi-frame compatibility samples --- a 2D
 demo, a bouncing-sprite physics scene, a keyboard-driven sprite, a two-glyph
 \cnaclass{SpriteFont} test, and an animated spritesheet --- are registered as genuine
 \texttt{ctest} entries rather than left as manual verification, giving this backend
