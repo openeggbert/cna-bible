@@ -263,6 +263,50 @@ covers \texttt{CullMode} / \texttt{FillMode} / \texttt{DepthBias} / \texttt{Slop
 \texttt{Filter} / \texttt{MaxAnisotropy} / \texttt{MaxMipLevel} / \texttt{MipMapLevelOfDetailBias}
 (six presets spanning point/linear/anisotropic filtering crossed with clamp/wrap addressing).
 
+\section{Buffers, the Effect Base Class, and OcclusionQuery}
+\label{sec:api-buffers-effect-base}
+
+Three classes underpin almost everything above without having their own entry yet.
+\cnaclass{VertexBuffer} and \cnaclass{IndexBuffer} (Chapter~\ref{ch:textures-rendertargets})
+both share the same doubled \texttt{SetData} / \texttt{GetData} shape as the math types above,
+but doubled along a different axis: not value-versus-output-parameter, but a full-array
+overload versus a \texttt{startIndex}-plus-\texttt{elementCount} slice overload, repeated once
+per concrete vertex struct \cnaclass{VertexBuffer} supports: \cnaclass{VertexPositionColor},
+\cnaclass{VertexPositionColorTexture}, \cnaclass{VertexPositionNormalTexture}, and
+\cnaclass{VertexPositionTexture} from real XNA, plus one \texttt{NOXNA} skinned variant
+(position, normal, texture, and skinning weights combined in a single struct) --- ten
+\texttt{SetData} / \texttt{GetData} pairs in total, plus a \texttt{NOXNA
+SetDataRaw(data, count, stride)} escape hatch for a layout with no dedicated struct. \cnaclass{IndexBuffer} is narrower: the same
+doubled shape, but split only by index width, \texttt{std::uint16\_t} or
+\texttt{std::uint32\_t}. Both expose \texttt{BufferUsage} / \texttt{VertexDeclaration}
+(vertex only) / \texttt{VertexCount} or \texttt{IndexCount} as read-only properties.
+\cnaclass{DynamicVertexBuffer} and \cnaclass{DynamicIndexBuffer} add only
+\texttt{IsContentLost} (always \texttt{false} in CNA) and a \texttt{SetDataOptions}-taking
+overload of every \texttt{SetData} above --- accepted for API conformance but currently
+ignored by every backend, per Chapter~\ref{ch:textures-rendertargets}'s own finding.
+
+\cnaclass{Effect} itself (Chapter~\ref{ch:stock-effects}) is deliberately thin: a
+\texttt{CurrentTechnique} property, \texttt{Parameters} / \texttt{Techniques} collections, a
+pure-virtual \texttt{Clone()} (returning an owning raw pointer rather than FNA's
+garbage-collected reference, since C\texttt{++} has no GC to hand a shared reference back to),
+and a \texttt{NOXNA Apply()} that exists only because real FNA has no public
+\texttt{Effect.Apply()} at all --- only \texttt{EffectPass.Apply()}, which CNA's own
+\texttt{Apply()} forwards to via the current technique's current pass. Every concrete stock
+effect works through \cnaclass{EffectParameter}, whose \texttt{GetValueXxx} /
+\texttt{SetValueXxx} family (Chapter~\ref{ch:stock-effects} covers the mechanism; this is the
+full surface) covers every scalar and array combination XNA effects support ---
+\texttt{Boolean}, \texttt{Int32}, \texttt{Single}, \texttt{String}, \texttt{Matrix} (plus a
+transposed variant), \texttt{Quaternion}, \texttt{Vector2/3/4} --- each with a matching array
+overload taking an explicit count, alongside \texttt{Name} / \texttt{Semantic} /
+\texttt{RowCount} / \texttt{ColumnCount} / \texttt{ParameterClass} / \texttt{ParameterType}
+metadata and nested \texttt{Elements} / \texttt{StructureMembers} / \texttt{Annotations}
+collections for compound parameter types.
+
+\cnaclass{OcclusionQuery} (used throughout Part~IV's backend chapters) is the smallest class
+in this entire appendix: \texttt{Begin()} / \texttt{End()} bracket the draw calls to be
+counted, and \texttt{IsComplete} / \texttt{PixelCount} read the result back once the GPU has
+actually finished --- the complete public surface, four members in total.
+
 \section{Reading this appendix safely}
 
 The same caution this book's backend feature matrix states applies here: this is a snapshot of
