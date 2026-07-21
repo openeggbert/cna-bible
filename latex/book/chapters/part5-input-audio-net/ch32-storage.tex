@@ -104,6 +104,34 @@ if (container->FileExists("savegame.dat"))
 container->Dispose();
 \end{lstlisting}
 
+\subsection{A real, currently unguarded gap: relative-path resolution does not sandbox \texttt{..}}
+
+Every method in the worked example above --- \texttt{CreateFile}, \texttt{FileExists},
+\texttt{DeleteFile}, \texttt{CreateDirectory}, and the rest --- routes its \texttt{relative}
+parameter through one shared private helper, \texttt{ResolvePath(relative)}, whose entire real
+implementation is a single line: \texttt{(fs::path(storagePath\_) / relative).string()}. Reading
+it directly confirms there is no check anywhere in this namespace, in that helper or any of its
+callers, rejecting a relative path that climbs back out of the container's own root via
+\texttt{..} segments --- only an empty-string check exists, guarding against a blank filename,
+not a traversal attempt. \texttt{container->CreateFile("../../outside.txt")} resolves and
+creates a file two directories above the container's own storage root exactly as
+\texttt{std::filesystem} would normally compose that path, with no exception, no truncation, and
+no sandboxing of any kind.
+
+This matters in exactly the situation this namespace's own \texttt{OpenFile} family exists for:
+a game trusting a filename that ultimately came from outside its own hardcoded save-slot
+naming (a player-chosen save name, a value read from network or downloadable content, or any
+other externally-influenced string handed to \texttt{CreateFile} / \texttt{OpenFile} without
+first validating it) has no protection from this namespace against that filename escaping the
+sandboxed storage root the whole \cnaclass{StorageContainer} abstraction is meant to represent.
+A game whose own save-name input is always a fixed, hardcoded string (as the worked example
+above uses) or is validated by the caller before ever reaching this API is unaffected in
+practice; a game that passes an unvalidated, externally-influenced string directly through is
+not. Neither the class's own header documentation nor its test suite currently mentions this
+as a deliberate, scoped decision the way this book's other real gaps are --- it is a genuine,
+unaddressed gap as of this writing, worth validating any externally-influenced filename against
+before calling into this namespace, rather than relying on the namespace to do it for you.
+
 \section{StorageDeviceNotConnectedException}
 
 \cnaclass{StorageDeviceNotConnectedException} is the one exception type this namespace adds,
