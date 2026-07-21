@@ -121,6 +121,40 @@ not a real, observed gap the way the \cnaclass{SpriteBatch} transform-matrix one
 the interface's own permissiveness here is worth knowing before assuming a new or
 partially-ported backend's uniform setters are wired up just because its shader compiles.
 
+\subsection{IIndexBufferBackend::SetData32: a defensive throw traced out to dead code}
+
+Not every default in this file is a silent no-op. \cnaclass{IIndexBufferBackend}'s
+\texttt{SetData32} defaults to throwing a plain \texttt{std::runtime\_error}
+(\texttt{"SetData32 not supported by this backend"}) rather than quietly doing nothing --- the
+opposite failure mode from every default this chapter has covered so far. Grepping every
+backend's own implementation directory shows exactly four backends never override it:
+\texttt{SDL\_RENDERER}, \texttt{ASCII}, \texttt{CANVAS}, and \texttt{DX3}; the other ten
+(\texttt{EasyGL}, \texttt{Vulkan}, \texttt{BGFX}, \texttt{D3D9}, \texttt{D3D11}, \texttt{D3D12},
+\texttt{WebGPU}, \texttt{SdlGpu}, \texttt{Software}, and the internal \texttt{Headless} test
+backend) all supply a real one.
+
+Tracing where that default would actually fire tells a reassuring story rather than an
+alarming one, though only once actually traced rather than assumed: all four non-overriding
+backends are the project's 2D-only backends, and every one of them already refuses to
+construct \emph{any} index buffer at all, 16-bit or 32-bit, at its own
+\texttt{CreateIndexBuffer16} / \texttt{CreateVertexBuffer} factory call --- confirmed directly
+in \texttt{Dx3GraphicsBackend.cpp} and \texttt{CanvasGraphicsBackend.cpp} (\texttt{"does not
+support 3D"} thrown by name for both calls) and in a real, dedicated regression test for
+\texttt{SDL\_RENDERER} (\texttt{sdlrenderer\_buffer\_construction\_throws\_test.cpp}, Task~723)
+that pins the exact thrown message for a \texttt{ThirtyTwoBits} \cnaclass{IndexBuffer}
+construction --- and that message is \texttt{CreateIndexBuffer16}'s own, not a distinct
+32-bit-specific one, since \texttt{CreateIndexBuffer32} is never separately overridden on this
+backend either and simply delegates to the 16-bit path's throw. \texttt{ASCII} inherits the
+identical no-3D-support story from \texttt{SDL\_RENDERER} underneath it
+(Chapter~\ref{ch:what-is-cna}'s own verification-scale table already notes this inheritance).
+The practical consequence: \cnaclass{IIndexBufferBackend}'s own \texttt{SetData32} default can
+never actually fire in this project today --- every backend that would reach it fails earlier,
+at construction, for an unrelated and already-well-tested reason, and every backend that
+survives construction already supplies its own real override. It is defensive code with no
+live call path behind it right now, not a currently-reachable gap --- worth recording precisely
+as that, rather than either dismissing it as obviously dead without checking or citing it as an
+active risk without tracing where it actually leads.
+
 \section{GpuDrawParams: already covered, worth remembering here}
 
 Chapter~\ref{ch:stock-effects} already introduced \cnaclass{GpuDrawParams} in full --- the
