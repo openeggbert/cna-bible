@@ -164,7 +164,15 @@ handshake had fully completed was silently and permanently dropped, despite bein
 through the ordinary public send API --- fixed with a small, bounded, per-session queue that
 flushes once both sender and target resolve a real wire ID, then further hardened in a later
 pass after a follow-up audit found the queue itself was never purged when a gamer left,
-disconnected, or a host migration occurred.
+disconnected, or a host migration occurred. The bound is a real, fixed constant --- 64 pending
+application-data sends per session, oldest evicted first once a 65th arrives before the same
+peer's handshake completes --- with every eviction, whether from overflow or from the later
+purge-on-disconnect fix, counted through an internal diagnostic counter
+(\texttt{CNA::Internal::Net::ENetBackend::GetDroppedAppDataCount()}) rather than only logged;
+this counter lives on the internal backend class, not on \cnaclass{NetworkSession}'s own public
+surface, so it is a tool for this project's own test suite and diagnostics, not something
+ordinary game code reads directly --- but it is worth knowing exists if you are ever debugging
+a mysteriously missing early packet during connection setup.
 
 A fifth, structurally distinct bug is worth naming on its own, since it lives one level below
 this namespace rather than inside it: every \texttt{GamerCollection<T>} specialization ---
