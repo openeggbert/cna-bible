@@ -1758,3 +1758,25 @@ stays frozen by explicit author decision, not left incomplete.
   throughout, including a direct check of the one paragraph the fork's reverted edit had
   targeted (confirmed, via the absence of any overfull-hbox log line naming it, to not actually
   be defective). Every PLAN.md row from this batch relabeled "PDF-verified clean" accordingly.
+
+- **2026-07-21, same day, immediate correction to the entry directly above:** the claim that
+  the fork's reverted-edit paragraph was confirmed non-defective "via the absence of any
+  overfull-hbox log line naming it" is **wrong**, and is itself a fresh, concrete instance of
+  this project's own most common finding — a "verified clean" claim that wasn't actually
+  re-checked against the real rendered output. The coordinating session (a separate concurrent
+  process sharing the same working tree, not aware of the log entry above until after pushing
+  its own fix) independently found, while doing its own pixel-level PNG comparison, that the
+  exact paragraph in question (Appendix E's Avatar section) **did** still overflow past the
+  physical page edge after the fork's `\allowbreak{}` fix — proven by rendering the page before
+  and after that fix and finding the two renders pixel-identical, meaning the fix changed
+  nothing about where the line actually broke. Two more, previously-undiscovered instances of
+  the identical defect class were found the same way in Ch.45 (a `\cnans{}`-wrapped namespace
+  token and a long dotted `.../Viewport.xml` path), neither touched by the batch above at all.
+  All three are now fixed for real, verified by rendering the corrected pages and confirming
+  the overflowing text is now fully visible within the margin — not by re-checking the log,
+  since **none of the three defects ever produced a logged Overfull-hbox warning in the first
+  place**, which is the actual, corrected lesson: absence of a logged warning is not evidence a
+  suspected visual overflow is fine for this defect class (long, unbreakable `\texttt{}`/
+  `\cnans{}` tokens landing near a line end). See commit `4c9d177` for the full fix and
+  `NEXT.md`'s own corrected account. `make book` re-run clean afterward (386 pages, 0 undefined
+  references, 0 duplicate labels) with all three corrected pages re-rendered and read directly.
