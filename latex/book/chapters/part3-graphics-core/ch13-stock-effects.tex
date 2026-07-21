@@ -50,10 +50,11 @@ skinning palette with a weights-per-vertex count, fog parameters, a set of mode 
 \texttt{dualTexture}, \texttt{envMapping}, \texttt{skinned}, \texttt{pbr}), instancing fields,
 a pointer for a custom \texttt{ShaderEffect}-compiled program, and six PBR-specific
 metallic-roughness fields. Two flags are worth flagging directly: \texttt{preferPerPixelLighting}
-and \texttt{specularEnabled} are both documented in the struct itself as ``ignored by every
-backend except D3D9'' --- an explicitly acknowledged, tracked divergence from XNA's own
-default lighting behavior on every backend except the one built to be pixel-authentic
-(Chapter~\ref{ch:direct3d-backends}).
+and \texttt{specularEnabled}. Both were, for a real stretch of this project's own history,
+documented in the struct itself as ``ignored by every backend except D3D9'' --- but that is no
+longer the current state of the source, and the story of closing that gap is a worked example
+in its own right, covered in full after \cnaclass{SkinnedEffect} below, since it is the single
+richest cross-backend fix this chapter has to show.
 
 \section{BasicEffect}
 
@@ -342,6 +343,88 @@ have rendered using all four anyway. Fixed, the property now genuinely gates the
 which also means a rig relying on the old all-four-weights behavior while requesting
 \texttt{WeightsPerVertex(2)} would see a real, visible skinning change after upgrading past the
 fix --- worth flagging explicitly to anyone porting a project that predates it.
+
+\section{A worked example: closing the \texttt{preferPerPixelLighting} divergence for real}
+
+This gap was found the way several of this book's own best findings have been: not by a
+dedicated audit of \texttt{GpuDrawParams} itself, but as a side effect of building
+Chapter~\ref{ch:direct3d-backends}'s pixel-authentic \texttt{D3D9} backend. \texttt{D3D9}'s own
+plan document, auditing CNA's divergences from real XNA~4.0, found that \cnaclass{BasicEffect}/%
+\cnaclass{SkinnedEffect} both declare and store a real \texttt{PreferPerPixelLighting} property
+(default \texttt{false}, matching XNA), but \texttt{FillGpuDrawParams()} never forwarded it to
+any backend at all --- and every backend's only lit shader computed lighting in the fragment
+stage unconditionally. The consequence, stated plainly: \textbf{CNA rendered per-pixel lighting
+always, on all nine backends, the exact opposite of XNA's own default} (per-vertex, Gouraud-%
+interpolated lighting), and no per-vertex-lit shader existed anywhere in the codebase to fall
+back to. A second, narrower gap of the identical shape sat alongside it:
+\cnaclass{EnvironmentMapEffect}'s \texttt{specularEnabled} was tracked internally but never
+forwarded either.
+
+A change touching a shared struct every backend reads, and requiring a genuinely new shader
+variant on most of them, is exactly the kind of decision \texttt{D3D9}'s own plan explicitly
+reserved for the project owner rather than improvising --- the same boundary discipline
+Chapter~\ref{ch:project-practice} covers as a general project convention. Presented with three
+options (a small, additive-only struct change that would unblock \texttt{D3D9} alone; the full
+fix across every backend; or leaving the divergence as a permanent, documented limitation), the
+project owner chose the full fix, sequenced one backend at a time rather than attempted all at
+once. \texttt{D3D9} itself needed no new shader at all --- Microsoft's own vendored \texttt{.fx}
+sources already contain both the per-vertex and per-pixel-lit shader families for every affected
+effect, so this backend's own work was purely dispatch: stop hardcoding the flags to
+\texttt{false}. Seven of the other eight backends needed a genuinely new per-vertex-lit shader
+variant apiece, each ported from FNA's own \texttt{Lighting.fxh} formula moved from the fragment
+stage into the vertex stage with Gouraud interpolation across the triangle --- the same
+Blinn-Phong math throughout, relocated, not reinvented. \texttt{SdlRenderer} was correctly
+excluded as 2D-only, never reaching this code path at all, and \texttt{Headless} as rendering no
+real pixels to begin with.
+
+Building seven new shader variants surfaced several further real, independent bugs along the
+way, each worth naming for what it shows about a codebase this large. On \texttt{D3D9} itself,
+fixing the dispatch uncovered that \texttt{ComputeLights()} runs in the pixel shader for the
+pixel-lit bucket only, but the constant-upload code had only ever targeted the vertex shader
+stage --- silently leaving the pixel shader's own lighting registers at zero the entire time,
+invisible until a scene was built specifically to discriminate the two paths. On \texttt{Vulkan},
+the first real test run of the new dispatch produced a genuine validation-layer error, not a
+hypothetical one --- the two new per-vertex-lit pipeline cache maps were never added to the
+existing teardown path, a real \texttt{VkPipeline} leak caught by
+\texttt{vkDestroyDevice()}'s own diagnostic the moment it was exercised. On the experimental
+\texttt{WebGPU} backend, the new test's measured center pixel values (187/203) did not match the
+other backends' own linear values (127/152) at all until the swapchain's own known
+sRGB-preferred format was accounted for --- confirmed, not assumed, by hand-computing the sRGB
+encoding of $127/255$ and $152/255$ and finding an exact match, proving a display characteristic
+rather than a math error. And on \texttt{D3D12}, fixing the dispatch broke a \emph{pre-existing}
+specular-exactness test whose own geometric setup only proves an exact half-vector coincidence
+under a fresh per-fragment evaluation --- fixed by explicitly pinning that one test's own
+\texttt{PreferPerPixelLighting} to \texttt{true}, preserving its actual intent, rather than
+updating its expected value the way every other affected specular test correctly was.
+
+That last distinction matters on its own: once a backend's dispatch honors the real default,
+every existing lit-scene pixel test on that backend was expected, up front, to very likely start
+producing different --- and correct --- pixels: flatter, more faceted on low-poly geometry, a
+softer specular highlight lost to Gouraud interpolation between vertices rather than evaluated
+freshly at every fragment. Those baselines needed regenerating forward to the new, real values,
+not treated as regressions to revert; \texttt{D3D12}'s Check~FF1 above is the deliberate
+exception, since its whole purpose was proving a per-pixel coincidence that the new default
+correctly no longer produces by default. \cnaclass{AlphaTestEffect} / \cnaclass{DualTextureEffect}
+have no lighting concept at all and were correctly untouched by any of this.
+
+One backend was deliberately, honestly left out rather than silently deferred:
+\texttt{Software}'s own rasterizer has no lighting engine of any kind, per-vertex or per-pixel
+--- a documented, pre-existing ``no lighting engine in v1'' design decision, confirmed by reading
+the rasterizer's own doc comments before any implementation work was attempted, not assumed by
+analogy to the other eight. Doing this for real on \texttt{Software} would mean building a CPU
+lighting engine from scratch, a materially larger and differently-shaped task than relocating an
+existing GPU shader stage the way every other backend's own fix was --- the project owner chose
+to log this as a real, open, un-implemented gap rather than force it into this phase's own scope.
+As of this writing, then: \texttt{preferPerPixelLighting} is genuinely real on seven of CNA's
+nine rendering backends (\texttt{D3D9}, \texttt{EasyGL}, \texttt{Vulkan}, \texttt{BGFX},
+\texttt{D3D11}, \texttt{D3D12}, and \texttt{WebGPU} for \cnaclass{BasicEffect} specifically ---
+\cnaclass{SkinnedEffect} / \cnaclass{EnvironmentMapEffect} are not implemented on \texttt{WebGPU}
+at all yet, making the flag moot there rather than unfixed), correctly inapplicable to two
+(\texttt{SdlRenderer}, \texttt{Headless}), and a real, named, tracked gap on the one remaining
+backend (\texttt{Software}) --- not the blanket ``ignored by every backend except D3D9'' this
+book's own earlier pass once accurately reported, and a concrete demonstration of the ``flag
+accepted by the public API but never wired to any actual GPU state'' bug shape the next section
+names as one of this chapter's three recurring patterns.
 
 \section{The pattern behind these bugs}
 
