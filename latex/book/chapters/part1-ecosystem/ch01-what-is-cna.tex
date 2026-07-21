@@ -82,6 +82,59 @@ major classes at about 90\% test-execution-verified, not merely estimated. This 
 both numbers as what they are: two different, non-contradictory measurements of the same
 project, not marketing rounding.
 
+\section{Design goals, in the project's own words}
+
+CNA's own README states six goals directly, worth quoting in full since every one of them
+recurs as a concrete design decision somewhere later in this book, not just as an aspiration:
+``recreate the XNA developer experience in native C\texttt{++}''; ``provide a native
+C\texttt{++} path for teams that like the XNA/MonoGame model but need non-managed
+runtime/toolchain control''; ``mirror core XNA namespaces and API patterns while implementing
+them incrementally''; ``decouple gameplay-facing API from rendering backend implementation
+details''; ``enable one high-level API surface across different rendering technologies''; and
+``keep SDL/OpenGL/Vulkan-level concerns behind framework abstractions.'' The middle four of
+these six are really one idea stated four ways --- the backend-abstraction goal --- and
+Chapter~\ref{ch:backend-architecture} is where that idea becomes a concrete
+\cnaclass{IGraphicsBackend} contract rather than a design principle; the first two are the
+``why native C\texttt{++}, why not just use FNA'' argument already made above.
+
+\section{The scale of verification, in one table}
+
+The individual per-backend chapters in Part~IV each state their own current test count, but
+seeing them side by side is itself informative --- both about where the project's
+verification effort is heaviest, and about how unevenly ``done'' is distributed across
+backends that all present the same public API:
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+\textbf{Backend} & \textbf{Backend-specific tests} & \textbf{Verification method} \\
+\midrule
+EasyGL & full suite exceeds 4{,}500 & real GPU readback (Mesa/llvmpipe) \\
+Vulkan & 126 of 127 (4{,}371 of 4{,}373 overall) & real GPU readback \\
+BGFX & 103 of 105 (4{,}375 of 4{,}377 overall) & real GPU readback \\
+D3D9 & 14 CTest binaries, 31-scene oracle & real GPU via Wine + DXVK \\
+D3D11 & 6 CTest binaries, 96+ checks & real GPU via Wine + DXVK \\
+D3D12 & 1 CTest binary, 80/80 checks & real GPU via Wine + vkd3d-proton, off-screen only \\
+SDL\_RENDERER & 67 of 67 integration tests & real GPU readback \\
+ASCII & fully automated, no BLOCKED items & real GPU readback (inherits SDL\_RENDERER) \\
+CANVAS & structural/compile-verified only & no real browser in this project's own dev loop \\
+WebGPU & native CTest, gracefully skips headless & real GPU readback where a display exists \\
+DX3 & no BLOCKED decisions remain open & CPU compositor, no GPU involved at all \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Two things worth noticing in that table rather than skimming past it. First, the total test
+count climbs steadily release over release, but it is not one number: EasyGL's own count grew
+large enough, early enough, that it stopped being tracked as a precise fraction the way the
+newer backends still are --- ``exceeds 4{,}500'' is itself evidence of how much of this
+project's total verification effort sits on the single most mature backend. Second, the
+verification \emph{method} column is not uniform either: a real GPU readback comparison
+(pixel-exact or oracle-based) is a categorically stronger claim than ``compiles and structural
+review only,'' which is exactly why Chapter~\ref{ch:canvas-ascii-backends} is explicit that
+\texttt{CANVAS}'s own checkmarks mean something narrower than every other row in this table.
+
 \section{What CNA is not}
 
 It is worth being precise about the negative space, because CNA's own documentation is:
