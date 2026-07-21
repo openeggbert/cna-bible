@@ -1432,3 +1432,81 @@ stays frozen by explicit author decision, not left incomplete.
   starting points, and adds a note that a third mining pass is more likely to come up empty
   than the first two, with a fallback technique (worked-example coverage gaps, reference-table
   gaps vs. a header method count) for when a chapter's newest plan doc is already fully mined.
+
+- **2026-07-21 — Third depth pass, tasks #47-57, same continuous autonomous session as the
+  Appendices B-F work above.** Picked the twelve chapters furthest below their page targets in
+  absolute terms (per this file's own table) and depth-passed each in turn: Ch.22, 13, 30, 9,
+  25, 19, 18, 11+20 (paired — see below), 12, 26, 14. Every edit rebuilt, checked for
+  undefined/duplicate-label errors (using a corrected grep pattern, see `NEXT.md`), PNG-verified,
+  committed, and pushed individually — 12 commits.
+
+  **The single most valuable discovery this batch: re-verifying an already-cited tracked-doc
+  claim against live source was a far higher-yield mining technique than hunting for brand-new
+  plan-doc material.** Ten of the twelve chapters' own additions this batch were exactly this
+  shape — the chapter already correctly cited a task number describing something as broken, and
+  reading the actual current `.cpp`/`.hpp` directly (not the doc a second time) found it had
+  since been fixed, superseded by a later task the tracking doc was never updated to reflect.
+  This is the same "stale status" pattern this book has now hit independently well over a dozen
+  times, and this session's own instances are individually significant:
+
+  Ch.22 (Direct3D) added `RenderTargetCube` MSAA and a real D3D11-vs-D3D12 mip-chain-generation
+  architecture divergence (`plan_dx.md` DX16, 2026-07-15). Ch.13 (Stock Effects) corrected its
+  own claim that `preferPerPixelLighting`/`specularEnabled` were ignored by every backend except
+  D3D9 — 7 of 9 backends now honor the real per-vertex-lit default (`plan_graphics.md` Phase 80),
+  with 4 independent real bugs found while building that fix (a D3D9 pixel-shader lighting
+  register left at zero, a real Vulkan `VkPipeline` leak, WebGPU sRGB readback gamma-encoding,
+  a D3D12 pre-existing test's intent preserved rather than blindly updated). Ch.30 (Networking)
+  found its *own opening worked example* was misleading: `NetworkSession::Create(...,
+  maxGamers=8)`'s `maxGamers` argument is silently never honored on any overload, always
+  resolving to a hardcoded, FNA-faithful `69` (`plan_net.md` Task 1.3). Ch.9 (GraphicsDevice)
+  found `Clear(ClearOptions::DepthBuffer, ...)` silently no-ops instead of throwing on a
+  depth-bufferless backend, and that `GraphicsCapability::DepthStencilBuffer` is a third
+  "declared but never wired" capability, the same shape as the chapter's own already-documented
+  `MultipleRenderTargets` gap (`plan_graphics.md` Phase 83). Ch.25 (Input System) found
+  `Game::IsActive` never toggled on a desktop Alt-Tab focus change for a real stretch of this
+  project's history, only the mobile background/foreground pair was handled — now fixed
+  (`plan_input.md` Phase 13/P13-003), paired with the input-state-retention policy question the
+  fix resolved.
+
+  Ch.19 (Vulkan) and Ch.18 (EasyGL) independently audited the same `docs/rendertarget-support.md`
+  and each found it stale about their own backend: render-target mip generation, MSAA, and
+  `Viewport` GPU wiring (Tasks 878/879/880) are all fixed on Vulkan; `Viewport` wiring is also
+  fixed on EasyGL, with a real architectural contrast drawn between the two (EasyGL's immediate
+  GL calls apply the fix everywhere; Vulkan's deferred per-frame recording limits its own version
+  to the backbuffer pass only). This became the seed for the batch's biggest correction: Ch.11
+  (Textures/Render Targets), whose own "sharpest per-backend divergence in the whole Graphics
+  namespace" section had reproduced *all five* of that same document's original divergences
+  (Tasks 877-881) as open — four of five are confirmed fixed by reading every backend's own
+  `.cpp` directly (only Vulkan's Task 875/876 black-render bugs remain genuinely open), and
+  cross-checking BGFX's own cube-sampling bug (also cited from Ch.11) found Chapter 20 had an
+  entire dedicated section still saying "Not yet fixed" for a bug closed by Task 907 — fixed
+  there too, noting that chapter's own later closing summary had already silently reflected the
+  fix by simply not naming it, an internal inconsistency now resolved. Ch.14 (State Objects)
+  independently found the identical pattern for `ReferenceStencil`: BGFX now has a real
+  `SetReferenceStencil` override (Task 764), where the chapter said both EasyGL and BGFX lacked
+  one entirely.
+
+  Two chapters' findings were not stale-doc corrections but fresh material mined from a plan
+  doc's newest phase, the original tasks #24-46 technique: Ch.12 (Models and Meshes) found its
+  own headline "two loaders" claim needed the same kind of correction anyway — the `.model.json`
+  loader no longer welds every mesh onto one synthetic root bone (`plan_graphics.md` Phase 76/77,
+  Task 937: each mesh now gets its own real `ModelBone` via `AddChild()`), `Model.Tag` now
+  carries real skeleton/animation data via a direct `.model.json` path, and "zero test coverage"
+  is no longer true — rewrote both the worked example's own prose and the full "Two loaders"
+  section. Ch.26 (Audio System) mined `plan_audio20260717.md`'s Phase 12 for a third real numeric
+  audio bug: `Pitch`'s conversion to a playback-rate ratio was linear, not FNA's real exponential
+  `2^pitch` curve, agreeing with the correct formula only at pitch ∈ {-1,0,1} — exactly why no
+  existing test caught it — and reaching all XACT pitched playback via `Cue`'s own internal
+  routing through the same buggy setter.
+
+  Two real mechanical lessons surfaced along the way, both now recorded in `NEXT.md`: a plain
+  `grep -i undefined main.log` false-positived on ordinary prose containing the word
+  "undefined" (fixed with a pattern matching LaTeX's own real warning phrasing), and
+  `\texttt{...\times...}` is a fatal compile error (`\times` is math-mode-only) — caught and
+  fixed immediately in Ch.26's own new content before it could reach a commit.
+
+  Volume recompiled clean throughout, ending the session at **355 pages (up from 349), 0
+  undefined references, 0 duplicate-label warnings**. `NEXT.md` rewritten again with the
+  "re-verify a tracked claim against live source" technique as its own leading recommendation
+  for whoever continues the third pass next, plus the corrected `undefined`-grep pattern and the
+  `\times`-in-`\texttt{}` trap.
