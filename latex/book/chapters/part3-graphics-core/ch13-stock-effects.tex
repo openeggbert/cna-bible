@@ -139,6 +139,38 @@ BGFX-only bug --- seven texture-binding call sites with no fallback-to-white-tex
 else-branch --- was found and fixed at the same time, affecting every effect that binds a
 possibly-null texture, not just this one.
 
+\subsection{A worked example: a cutout-alpha chain-link fence}
+
+The classic real use of \cnaclass{AlphaTestEffect} is a cutout texture --- foliage, a
+chain-link fence, a wire mesh --- where a pixel is either fully opaque or fully discarded, with
+no blended edge at all (unlike ordinary alpha \emph{blending}, which this effect deliberately
+does not do). \texttt{AlphaFunction} and \texttt{ReferenceAlpha} together express the test as a
+comparison against the texture's own alpha channel:
+
+\begin{lstlisting}
+AlphaTestEffect effect(getGraphicsDeviceProperty());
+effect.setWorldProperty(fenceWorld);
+effect.setViewProperty(camera.View());
+effect.setProjectionProperty(camera.Projection());
+
+effect.setTextureProperty(&fenceTexture);         // alpha channel: 255 = wire, 0 = gap
+effect.setAlphaFunctionProperty(CompareFunction::Greater);
+effect.setReferenceAlphaProperty(128);            // keep only pixels with alpha > 128
+
+for (EffectPass& pass : effect.getCurrentTechniqueProperty()->getPassesProperty()) {
+    pass.Apply();
+    getGraphicsDeviceProperty().DrawIndexedPrimitives(/* ... */);
+}
+\end{lstlisting}
+
+This effect's real, still-open gap from the audit above bites exactly this kind of asset if it
+also carries per-vertex color (a common way to fade fence-post tint by ambient occlusion baked
+into the mesh): setting \texttt{setVertexColorEnabledProperty(true)} here has zero visible
+effect on Vulkan or BGFX specifically --- not a subtle blend-formula difference, but a complete
+no-op, because neither backend's alpha-test shader declares a color vertex attribute at all. A
+game targeting all three hardware backends should not rely on \cnaclass{AlphaTestEffect}'s
+vertex color for anything visually load-bearing until that gap closes.
+
 \section{DualTextureEffect}
 
 Two independent texture slots (\texttt{Texture}, \texttt{Texture2}), plus
@@ -156,6 +188,38 @@ shared shader path; Vulkan and BGFX were already covered by the project-wide fog
 \texttt{VertexColorEnabled} shares \cnaclass{AlphaTestEffect}'s open gap exactly: a total
 no-op on both Vulkan and BGFX, for the identical reason (no color vertex attribute declared
 in either backend's dual-texture shader).
+
+\subsection{A worked example: a lightmapped floor}
+
+\cnaclass{DualTextureEffect}'s two independent texture slots are the classic pre-baked-lighting
+pattern from the original Xbox 360/Windows XNA era: a base color texture plus a second,
+low-resolution lightmap multiplied over it, with no runtime lighting computation needed at all:
+
+\begin{lstlisting}
+DualTextureEffect effect(getGraphicsDeviceProperty());
+effect.setWorldProperty(floorWorld);
+effect.setViewProperty(camera.View());
+effect.setProjectionProperty(camera.Projection());
+
+effect.setTextureProperty(&floorDiffuse);   // base color, tiled across the floor mesh's own UVs
+effect.setTexture2Property(&floorLightmap); // low-res baked lighting, its own second UV channel
+
+for (EffectPass& pass : effect.getCurrentTechniqueProperty()->getPassesProperty()) {
+    pass.Apply();
+    getGraphicsDeviceProperty().DrawIndexedPrimitives(/* ... */);
+}
+\end{lstlisting}
+
+The audit's headline finding directly changes what result this produces: real FNA's shader
+doubles \texttt{Texture}'s RGB value before multiplying it against \texttt{Texture2} ---
+\texttt{color.rgb *= 2} --- specifically so a lightmap value of 0.5 (mid-gray, the ``neutral,
+unlit'' value most lightmap bakers emit) reproduces the base texture's own color exactly, rather
+than darkening it to half brightness. A lightmap authored against real XNA/FNA's doubling
+behavior will render visibly too dark on any CNA build predating the fix that added this factor
+to all three backend shaders at once. \texttt{VertexColorEnabled} carries the identical
+Vulkan/BGFX no-op gap \cnaclass{AlphaTestEffect} has, for the same underlying reason (no color
+vertex attribute in either backend's dual-texture shader) --- a lightmapped floor mesh that also
+tries to carry per-vertex tint runs into the same wall on those two backends.
 
 \section{EnvironmentMapEffect}
 
@@ -190,6 +254,42 @@ was already correct. Both were fixed via the standard cofactor/determinant short
 transpose-inverse. All findings compose correctly in a capstone test producing byte-identical
 output across all three backends.
 
+\subsection{A worked example: a chrome car body}
+
+A reflective, Fresnel-edge-brightened surface --- the archetypal use for this effect --- needs
+both the diffuse texture and the \cnaclass{TextureCube} environment map bound, plus lighting
+enabled so the Fresnel and specular terms below have a light direction to work from:
+
+\begin{lstlisting}
+EnvironmentMapEffect effect(getGraphicsDeviceProperty());
+effect.setWorldProperty(carBodyWorld);
+effect.setViewProperty(camera.View());
+effect.setProjectionProperty(camera.Projection());
+
+effect.setTextureProperty(&carBodyPaint);
+effect.setEnvironmentMapProperty(&skybox);        // Chapter 11's TextureCube worked example
+effect.setEnvironmentMapAmountProperty(0.85f);    // mostly reflective, not a full mirror
+effect.setFresnelFactorProperty(1.0f);
+effect.setLightingEnabledProperty(true);          // required -- setter throws if set false
+
+for (EffectPass& pass : effect.getCurrentTechniqueProperty()->getPassesProperty()) {
+    pass.Apply();
+    getGraphicsDeviceProperty().DrawIndexedPrimitives(/* ... */);
+}
+\end{lstlisting}
+
+Every one of this effect's richest audit findings changes what the same code above actually
+renders, not merely how it renders. Before the audit's Fresnel fix, \texttt{FresnelFactor} above
+had no visible effect at all --- reflectivity was flat and angle-independent regardless of its
+value, rather than brightening at grazing angles the way a real Fresnel term (and real chrome)
+does. Before the cube-map-blend fix, \texttt{EnvironmentMapAmount} composited additively rather
+than via FNA's real \texttt{lerp}, meaning values approaching 1.0 could blow out to
+over-bright rather than smoothly approaching a pure reflection. And on a non-uniformly-scaled
+car body mesh specifically (common for a squashed/stretched proportions pass), the pre-fix
+world-space normal transform on EasyGL and BGFX would have visibly warped the reflection's
+apparent shape, because both backends transformed normals with the raw world matrix instead of
+its transpose-inverse.
+
 \section{SkinnedEffect}
 
 \cnaclass{SkinnedEffect} caps its bone palette at \texttt{MaxBones = 72} (a static constant
@@ -209,6 +309,39 @@ had no GPU implementation on any backend at all (fixed with a real Blinn-Phong h
 specular term); and \texttt{WeightsPerVertex} was a complete GPU no-op --- the skinning
 shader always summed all four bone weights regardless of what the property said, now fixed
 with real GPU-side gating for the 2-and-4-weight cases.
+
+\subsection{A worked example: driving SkinnedEffect from AnimationPlayer}
+
+Chapter~\ref{ch:models-meshes}'s own worked \cnaclass{AnimationPlayer} example ended with
+exactly the call this effect exists to receive --- \texttt{SetBoneTransforms} takes
+\texttt{GetSkinTransforms()}'s output directly, already pre-multiplied by each bone's inverse
+bind pose, which is specifically the form the GPU skinning shader expects:
+
+\begin{lstlisting}
+SkinnedEffect effect(getGraphicsDeviceProperty());
+effect.setViewProperty(camera.View());
+effect.setProjectionProperty(camera.Projection());
+effect.setWeightsPerVertexProperty(2);    // must be 1, 2, or 4 -- throws otherwise
+effect.setSpecularColorProperty(Vector3(0.3f, 0.3f, 0.3f));
+effect.setSpecularPowerProperty(16.0f);
+effect.EnableDefaultLighting();
+
+// Every frame, after player.Update(...):
+effect.SetBoneTransforms(player.GetSkinTransforms());
+\end{lstlisting}
+
+\texttt{MaxBones = 72} is a hard cap worth checking against your own rig before relying on this
+path: a character rig with more than 72 real skinning joints (uncommon for a game character, not
+unheard of for a complex creature or a converted film-asset rig) cannot be driven through this
+effect at all without re-partitioning the mesh into multiple draws, each addressing a disjoint
+72-bone subset. \texttt{WeightsPerVertex} is worth setting deliberately rather than leaving at
+its default: before the audit's fix, this property was a complete GPU no-op --- the skinning
+shader always summed all four bone weights regardless of what the property said, so a
+two-weight-per-vertex rig authored assuming the third and fourth weights were ignored would
+have rendered using all four anyway. Fixed, the property now genuinely gates the GPU-side sum,
+which also means a rig relying on the old all-four-weights behavior while requesting
+\texttt{WeightsPerVertex(2)} would see a real, visible skinning change after upgrading past the
+fix --- worth flagging explicitly to anyone porting a project that predates it.
 
 \section{The pattern behind these bugs}
 
