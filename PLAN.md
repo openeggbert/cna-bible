@@ -1854,12 +1854,10 @@ stays frozen by explicit author decision, not left incomplete.
   Ch.10/19/20/32/37/40/41/43/44 and Appendix B are `PDF-verified clean` as of this entry, not
   the earlier partial pass.
 
-- **2026-07-22, same session, a near-miss worth recording: a draft correction to the entry
-  above was caught and discarded before being committed.** A background pass drafted (but, per
-  this project's own review before commit, never actually landed) a claim that the Ch.40
-  `InstallEmscripten` fix cited above "never happened" and that the real overflow count was five,
-  not six. That draft claim was itself wrong, caught by direct re-verification rather than
-  trusted: `git log d8b8c24..HEAD -- .../ch40-web-emscripten.tex` shows commit `1fc107a` does
+- **2026-07-22, same session, correct a false correction.** Commit `481ceff` landed a claim,
+  in both this file and `NEXT.md`, that the Ch.40 `InstallEmscripten` fix cited above "never
+  happened" and that the real overflow count was five, not six. That claim was itself wrong,
+  caught by direct re-verification rather than trusted: `git log d8b8c24..HEAD -- .../ch40-web-emscripten.tex` shows commit `1fc107a` does
   touch that file (its commit message is about Appendix B, which is exactly why a check that
   only matches commit messages containing "Ch.40" would miss it — the same
   message-doesn't-match-diff pattern this session's own coordination-hazard notes already

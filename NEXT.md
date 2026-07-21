@@ -7,14 +7,16 @@ the session that just finished — it gets overwritten each session, not appende
 
 ## Verification status: genuinely complete now — read this before trusting any earlier claim in this file's own git history
 
-This session went through **four successive rounds of "verified clean"** before actually being
-complete, each superseded by the next after a further check found something the prior round
-got wrong — including, on the fourth round, an agent's claimed fix that turned out to have
-never actually happened (see the paragraph below). If you're reading an old cached copy of this
-file or a mid-session commit message, distrust any "PDF-verified clean" or "fixed" claim from
-this session that isn't the one below, **and independently re-check it yourself** (re-locate
-the exact page, re-render it, confirm a real commit exists) rather than trusting this file's own
-narrative at face value — this session is the concrete reason that caution now exists.
+This session went through **five successive rounds of "verified clean"** before actually being
+complete, each superseded by the next — including, remarkably, a "correction" that was itself
+wrong (a draft claim that the Ch.40 fix below "never happened," which a further, careful
+re-check found to be false: the fix is real, in commit `1fc107a`, and the page renders cleanly).
+If you're reading an old cached copy of this file or a mid-session commit message, distrust any
+"PDF-verified clean," "fixed," or "correction" claim from this session that isn't the one below,
+**and independently re-check it yourself** (re-locate the exact page, re-render it, confirm a
+real commit exists against the actual file path, not just a commit-message keyword match)
+rather than trusting this file's own narrative at face value — this session is the concrete
+reason that caution now exists, twice over.
 
 **Final, actually-complete state (confirmed by a full page-by-page render-and-read of every
 single page touched this entire session, redone after every edit including the last one):**
@@ -24,21 +26,19 @@ duplicate labels, and every one of the ~24 chapters/appendices touched this sess
 `tools/cna-screenshot-infra/` update) has been individually rendered to PNG and read directly at
 least once after its own last edit. All corresponding `PLAN.md` rows say `PDF-verified clean`.
 
-**Five real, log-invisible page-edge text overflows were found and fixed this session** —
-treat this as a structural property of this defect class now, not a string of coincidences:
-Appendix E (`SkinnedModelEXT` paragraph), Ch.45 (a `\cnans{}`-wrapped namespace token, a long
+**Six real, log-invisible page-edge text overflows were found and fixed this session** — treat
+this as a structural property of this defect class now, not a string of coincidences: Appendix E
+(`SkinnedModelEXT` paragraph), Ch.45 (a `\cnans{}`-wrapped namespace token, a long
 `.../Viewport.xml` path), Appendix B (a `TextureAddressMode::Wrap`/`Mirror` table-cell overlap),
-and Ch.37 (`easygl::detail::GenerationTracked`, two `test_resource_registry_*` test names). Not
-one of the five produced a logged `Overfull \hbox` warning. See "Reusable findings" below for
-the standing rule this proves. **A sixth, claimed Ch.40 fix
-(`InstallEmscriptenContextLossCallbacks()`) turned out to be false** — no commit touching that
-file exists after its own original depth pass, and the exact page it named renders perfectly
-cleanly at 200dpi with no fix applied at all. Corrected in `PLAN.md`'s own session log (search
-for "the claimed Ch.40 fix never happened") rather than silently dropped, per this project's
-own never-hide-a-mistake convention. Treat this as a second, compounding instance of the
-session's own standing lesson: verifying a fix yourself, by re-locating the real page and
-re-rendering it, is not optional even when another agent's own commit message or session-log
-entry says it already did that.
+Ch.37 (`easygl::detail::GenerationTracked`, two `test_resource_registry_*` test names), and
+Ch.40 (`InstallEmscriptenContextLossCallbacks()`, commit `1fc107a`). Not one of the six produced
+a logged `Overfull \hbox` warning. See "Reusable findings" below for the standing rule this
+proves. **A meta-lesson layered on top of that one:** a draft session-log entry briefly claimed
+the Ch.40 fix was fabricated — itself false, caught only by checking `git log <base>..HEAD --
+<the real file path>` (not a commit-message keyword search, which misses `1fc107a` since its
+message is about Appendix B) and independently re-rendering the page. A "correction" is a claim
+too, and needs the same re-verification rigor as whatever it's correcting — see `PLAN.md`'s own
+session log (search "correct a false correction") for the full account.
 
 ## A real, extensive coordination pattern this project's use of parallel forks now needs standing awareness of
 
