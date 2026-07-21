@@ -85,6 +85,42 @@ accelerometer.Stop();
 accelerometer.Dispose();
 \end{lstlisting}
 
+\subsection{A fourth finding: a closed race that TSan alone caught, in the fix for a different race}
+
+The most instructive concurrency finding in this whole namespace's history is not a fresh bug
+in old code, but a genuine, later-discovered race \emph{inside a fix that had already shipped
+and been marked closed}. \cnaclass{Compass} and \cnaclass{Motion}'s \texttt{Start()} /
+\texttt{Stop()} were rewritten as a two-phase protocol specifically to stop a lock from being
+held across a backend call that might block, spawn a thread, or invoke a callback: reserve the
+lifecycle transition under the owner mutex, release the lock, call the backend, then commit or
+roll back under lock again. Part of that design already handled a real edge case correctly ---
+a \texttt{Start()} attempt superseded by a concurrent \texttt{Stop()} while its own backend
+call was still in flight (an ``orphaned start'') calls \texttt{Stop()} on its own captured
+backend pointer afterward, so nothing it started is left running unmanaged.
+
+What the design missed, found only once an actual \texttt{devices-tsan} run was performed
+against real concurrent \texttt{Start()} / \texttt{Stop()} traffic (an 8-thread stress test, not
+a hand-reasoned review), is that the superseding \texttt{Stop()} cleared its own
+transition-in-progress flag back to \texttt{false} the moment \emph{its own} backend call
+returned --- without waiting for the orphaned start's own cleanup \texttt{Stop()} call,
+running concurrently on a different thread, to actually finish. A fresh \texttt{Start()}
+attempt could therefore begin calling into the backend again while that orphaned cleanup call
+was still physically in flight, a genuine data race confirmed by a real ThreadSanitizer report
+--- and one that cascaded into actual heap corruption (a use-after-free) in the test fixture's
+own callback bookkeeping under load, not merely a theoretical ordering concern. The fix adds a
+condition variable tracking how many backend calls are currently in flight, and makes only
+\texttt{Start()}'s reserve phase wait for that count to reach zero before proceeding ---
+deliberately \emph{not} applied to \texttt{Stop()}, which has to stay non-blocking with respect
+to an in-flight \texttt{Start()} to preserve the earlier guarantee that a \texttt{Stop()} call
+arriving during another thread's \texttt{Start()} can never deadlock.
+
+The lesson worth carrying forward from this specific history, distinct from the ``two correct
+locks can still compose into a bug'' finding above: a fix that passes careful manual review and
+even a full non-sanitizer test suite can still hide a genuine, low-probability data race that
+only a real TSan run under real concurrent load will surface --- which is exactly why this
+project's own verification standard treats an older \texttt{CLOSED} label as a claim to
+re-verify under a sanitizer, not as evidence a fix is actually complete.
+
 \subsection{Per-sensor reality: what is genuinely backed by hardware}
 
 \cnaclass{Accelerometer} is the most complete of the four: genuinely SDL3-backed
