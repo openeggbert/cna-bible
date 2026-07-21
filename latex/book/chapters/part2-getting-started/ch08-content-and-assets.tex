@@ -103,27 +103,69 @@ self-describing file exactly as authored, with no way to attach CNA-specific imp
 (color-key transparency, a premultiplied-alpha override) without baking it into the pixel data
 itself or inventing an entirely separate file format just to carry one flag.
 
-\section{The gap, reopened: a real, growing .xnb binary reader}
+\section{The gap, reopened: a real, now largely complete .xnb binary reader}
 \label{sec:xnb-and-cnj-model}
 
 Here is the correction this chapter most needs to make plainly: CNA's owner later decided
 \texttt{.xnb} should \emph{also} become a real runtime format, alongside --- not instead of
---- \texttt{.cnj}. This is now a genuinely growing, real binary reader, not a planning
-document: container parsing, binary primitives, and a first real \cnaclass{Texture2D} reader
-are complete; real LZX decompression is implemented and verified against real compressed
-fixtures, including a differential-testing pass against FNA's own reference decompressor
-(run under Mono, the same technique Chapter~\ref{ch:what-is-cna} describes for
-\texttt{tools/fna-reference/}) that found and fixed a real heap-buffer-overflow in the
-process; and \cnaclass{SpriteFont}, all five stock effects, \cnaclass{SoundEffect} (at least
-one real wave-format variant), \cnaclass{Song}, and the general
+--- \texttt{.cnj}. What began as a growing effort has, since this chapter's own last pass,
+reached its own planned completion point: container parsing, binary primitives, real LZX
+decompression (verified against real compressed fixtures, including a differential-testing
+pass against FNA's own reference decompressor run under Mono, the same technique
+Chapter~\ref{ch:what-is-cna} describes for \texttt{tools/fna-reference/}, that found and fixed
+a real heap-buffer-overflow in the process), and \cnaclass{SpriteFont}, all five stock
+effects, \cnaclass{SoundEffect}, \cnaclass{Song}, and the general
 \texttt{ReadExternalReference<T>()} mechanism are all real, working \texttt{.xnb} readers
 today. \cnaclass{Model}'s own \texttt{.xnb} reader --- described in
-Chapter~\ref{ch:models-meshes} as already real and wire-compatible --- is exactly this
-effort's own most complete result.
+Chapter~\ref{ch:models-meshes} as already real and wire-compatible --- was this effort's own
+most complete result throughout its development, and remains so.
 
 Writing or producing \texttt{.xnb} files remains permanently out of scope on both sides of
 this story: CNA only ever needs to \emph{consume} \texttt{.xnb} files produced by real
 XNA/MonoGame/FNA tooling, never to produce its own.
+
+\subsection{A real hardening pass: three more heap-buffer-overflows found by fuzzing, not review}
+
+The reader set's own closing phase --- deliberately sequenced last, specifically so hardening
+work would land against an already-complete, already-correct reader set rather than a moving
+target --- found three further genuine memory-safety bugs that ordinary code review had not
+caught, all through the same technique: deterministic fuzz-mutating a real, valid fixture's
+entire byte stream and running it through the actual \texttt{ContentManager::Load<T>()} path,
+not a synthetic unit test written to exercise one function in isolation. \cnaclass{Texture2D}/%
+\cnaclass{Texture3D} / \cnaclass{TextureCube}'s own readers never cross-checked their file's
+declared byte count against what the texture's own width, height, and depth actually implied
+--- fixed by throwing a real \texttt{ContentLoadException} the moment an uncompressed level's
+byte count disagrees with $\mathit{width} \times \mathit{height} \times 4$, rather than
+trusting the file and reading past the end of a too-small buffer. A closely related bug in
+\texttt{Texture3DReader}'s own compressed-volume path had never actually been exercised by any
+prior test at all: it decompressed an entire multi-slice 3D texture as though it were one
+single 2D image, a bug that had been sitting dormant, unreachable by any code path a
+non-adversarial fixture would take. Separately, \texttt{DxtUtil::DecompressDxt1} / \texttt{3}/%
+\texttt{5} each accepted a \texttt{dataSize} parameter specifically meant to bound how much
+compressed data they were allowed to read, but never actually checked against it --- a
+parameter that existed in the signature purely as documentation, not enforcement, until this
+pass. All three were confirmed fixed under a real AddressSanitizer/UndefinedBehaviorSanitizer
+build, the same standard this book's own earlier chapters hold every other sanitizer finding
+to.
+
+\subsection{Custom readers: a real extension point, verified against an independent third-party reader}
+
+The \texttt{RegisterTypeReader<T>} extension point this chapter already named is not merely
+declared to exist --- it was verified against a real custom reader this project did not write,
+specifically to confirm the mechanism generalizes past CNA's own built-in reader set.
+\texttt{prime31/Nez} (a real, independent, MIT-licensed C\# game framework) ships its own
+custom \texttt{BitmapFontReader} for a bitmap-font \texttt{.xnb} type no built-in CNA reader
+understands; loading one of its real, unmodified \texttt{.xnb} assets without registering an
+equivalent C\texttt{++} reader correctly fails with the pipeline's own consistent
+\texttt{ContentLoadException}, exactly the documented, honest failure mode for an unregistered
+custom type, rather than a crash or a silently wrong result. This is also where the project
+made an explicit, permanent scope decision worth knowing before porting any XNA content built
+against a generalized C\# reflection-driven \texttt{ReflectiveReader<T>}: CNA supports only
+manually registered, explicit C\texttt{++} \cnaclass{ContentTypeReader}s, with no equivalent to
+.NET's own reflection-based automatic reader generation --- a game whose original content was
+built with an implicit \texttt{ReflectiveReader<T>} needs its content rebuilt with an explicit
+\texttt{ContentTypeWriter}/reader pair first, then a matching C\texttt{++} reader registered
+through this same mechanism, not a workaround inside CNA itself.
 
 \section{The resolution order, precisely}
 
