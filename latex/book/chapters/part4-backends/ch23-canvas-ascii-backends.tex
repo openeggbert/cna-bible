@@ -67,6 +67,37 @@ the same real-browser verification caveat as everything else in this section. Mi
 combinations (wrap on one axis, mirror or clamp on another) throw by design, per the fix
 above.
 
+\subsection{A worked example: the un-premultiply pass, in real numbers}
+
+The \texttt{AlphaBlend} / \texttt{NonPremultiplied} fix above (bug~2) is worth the same
+hand-computed treatment the ASCII backend's own quantizer gets below, since the actual
+per-pixel formula --- read directly from \texttt{CanvasSpriteBatchBackend.cpp}'s own
+Canvas-2D-side pixel loop --- is small enough to verify by hand. A half-transparent, dark-red
+premultiplied source pixel, $\text{RGBA} = (64, 32, 16, 128)$ (alpha $\approx 50\%$), is the
+kind of value \texttt{SDL\_RENDERER}'s own test suite deliberately constructs, per the bug's
+own root-cause description above:
+
+\begin{lstlisting}
+const inv = 255 / aa;              // aa = 128 here -> inv = 1.9921875
+rr = Math.min(255, rr * inv);      // 64 * 1.9921875 = 127.5
+gg = Math.min(255, gg * inv);      // 32 * 1.9921875 = 63.75
+bb = Math.min(255, bb * inv);      // 16 * 1.9921875 = 31.875
+// alpha (aa = 128) is read and written back completely untouched;
+// data[] is a Uint8ClampedArray, so each float above is rounded/clamped to a byte on assignment
+\end{lstlisting}
+
+The un-premultiplied result, $\approx(128, 64, 32, 128)$, is close to double the original
+channel values --- the pixel's true, alpha-independent color, exactly what a
+\texttt{NonPremultiplied}-style source already stores directly, and exactly
+why treating the two blend modes as identical (the original, buggy assumption) silently
+darkened every partially-transparent \texttt{AlphaBlend} pixel by roughly the same factor as
+its own alpha: without the \texttt{inv} multiply, the raw premultiplied RGB $(64,32,16)$ would
+have been drawn as though it were the pixel's real, full-brightness color, when the true color
+is nearly twice as bright in each channel. \texttt{Math.min(255, \ldots{})} is not a decorative
+safety clamp either --- it is load-bearing for any source alpha below 128, where
+\texttt{inv} exceeds 2 and an already-bright channel value can genuinely overflow past 255
+before clamping.
+
 \subsection{What real browser verification would still require}
 
 The backend's own documentation includes a full thirteen-item manual browser verification
