@@ -304,6 +304,87 @@ if it had passed identity. The fix added a new rendering path using
 \texttt{SDL\_RenderTextureAffine}, used only when the transform actually differs from
 identity, so the common (and cheaper) untransformed path is unaffected.
 
+\section{How a batch actually reaches the GPU: flush timing, not real GPU batching}
+\label{sec:spritebatch-flush-timing}
+
+The class is named \cnaclass{SpriteBatch}, and \texttt{SpriteSortMode::Deferred} --- the
+default --- sounds like it defers submission to build one large GPU-side batch. Reading
+\texttt{SpriteBatch.cpp}'s own \texttt{pushSprite} / \texttt{flushSingle} / \texttt{flushBatch}
+directly shows a narrower reality worth being precise about, since it has real performance
+implications for a porting engineer used to a true GPU-batched 2D renderer:
+
+\begin{lstlisting}
+void SpriteBatch::pushSprite(...)
+{
+    // ...
+    if (sortMode_ == SpriteSortMode::Immediate)
+        flushSingle(info);              // dispatched to the backend right here, right now
+    else
+        spriteQueue_.push_back(info);   // deferred -- but only the SORT, not the draw call
+}
+
+void SpriteBatch::flushBatch()
+{
+    // ... optional std::stable_sort by layerDepth or texture pointer, per sort mode ...
+    for (const SpriteInfo& s : spriteQueue_)
+        flushSingle(s);                 // still one backend->Draw() call per sprite
+    spriteQueue_.clear();
+}
+\end{lstlisting}
+
+Two real, checkable facts fall out of reading this directly rather than assuming from the
+class name. First, \texttt{SpriteSortMode::Immediate} is not merely ``skip the sort'' ---
+\texttt{pushSprite} routes straight to \texttt{flushSingle} for every \texttt{Draw()} call,
+meaning each sprite reaches the backend the instant it is submitted, with no queue involved at
+all; this is the only sort mode where a game can safely change render state (a different
+\cnaclass{Texture2D}'s \cnaclass{SamplerState}, say, via a raw backend call) \emph{between}
+two \texttt{Draw()} calls in the same \texttt{Begin()} / \texttt{End()} pair and have it take
+effect exactly where expected, since nothing is reordered or delayed. Second, and more
+consequential for the other four sort modes: ``batch'' here describes when the \emph{sort}
+happens, not how the GPU submission happens. Every sprite, in every sort mode, still becomes
+its own individual \texttt{backend->Draw()} call inside the \texttt{flushBatch()} loop above
+--- there is no vertex-buffer-building step that merges many sprites into one draw call the
+way a true GPU-batched 2D renderer (or, within CNA's own codebase, a single
+\cnaclass{VertexBuffer} submitted once via \texttt{DrawIndexedPrimitives}) would. A porting
+engineer coming from an engine where ``sprite batching'' specifically means draw-call
+coalescing should recalibrate: CNA's \cnaclass{SpriteBatch} coalesces \emph{sort decisions},
+not draw calls, and a scene with a thousand sprites issues on the order of a thousand backend
+draw calls regardless of which non-\texttt{Immediate} sort mode is chosen.
+
+A second, smaller finding lives in \texttt{pushSprite} itself: a
+\texttt{System::ObjectDisposedException::ThrowIf} guard on the texture argument (Task~717).
+Real FNA's own \texttt{SpriteBatch.Draw} does not guard against a disposed texture at all ---
+its managed runtime simply throws whatever exception a stale reference happens to produce.
+C\texttt{++} has no equivalent safety net: reaching \texttt{flushSingle} with a fully-disposed
+\cnaclass{Texture2D} (its last owning \texttt{shared\_ptr} released, backend pointer now
+\texttt{nullptr}) would dereference a null \cnaclass{ITextureBackend} reference through
+\texttt{GetBackend()} --- a guaranteed crash, not a graceful failure. The explicit guard is
+real, deliberate hardening beyond parity, not a faithfully-reproduced FNA behavior.
+
+\section{A parallel to the BlendState leak: DepthStencilState's own Task~803 history}
+
+\S\ref{sec:spritebatch-blendstate-leak} above covers \texttt{BlendState} leaking \emph{out} of
+a \texttt{SpriteBatch} pass --- \texttt{Begin()} sets it, \texttt{End()} never restores it,
+matching real FNA exactly. \texttt{DepthStencilState} had the mirror-image bug, now fixed
+(Task~803): reading \texttt{Begin()}'s own implementation shows the
+\texttt{depthStencilState} parameter was, for a real stretch of this project's history,
+accepted but never actually applied to \texttt{graphicsDevice\_} at all --- a
+\texttt{SpriteBatch} pass silently inherited whatever \texttt{DepthStencilState} the game's
+most recent 3D rendering (or each backend's own construction-time default) had last left in
+place, rather than FNA's real, documented default of \texttt{DepthStencilState::None} when the
+caller passes \texttt{nullptr}. The two bugs are opposite shapes of the identical underlying
+discipline failure --- one state object leaking \emph{into} a pass that should have reset it,
+the other leaking \emph{out of} a pass that XNA specifies should not restore it --- and the fix
+for both ended up at the same place: \texttt{Begin()} now always (re-)applies the resolved
+\texttt{DepthStencilState} (\texttt{nullptr} $\to$ \texttt{DepthStencilState::None}, exactly
+mirroring the existing \texttt{samplerState} $\to$ \texttt{SamplerState::LinearClamp}
+resolution immediately below it in the same function), never leaving a previous
+\texttt{Begin()}'s value in effect. A porting engineer relying on either state object's value
+surviving across a \texttt{SpriteBatch} pass in either direction is relying on real,
+verified-current XNA/FNA-faithful behavior for \texttt{BlendState}, and real, now-fixed
+CNA-specific correctness for \texttt{DepthStencilState} --- not a coincidence of implementation
+detail in either case.
+
 \section{Where this leaves a porting engineer}
 
 \cnaclass{SpriteBatch} is, by a wide margin, the most exhaustively cross-backend-verified

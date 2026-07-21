@@ -207,6 +207,122 @@ the decision was to leave the existing silent behavior exactly as it is and docu
 same ``do not add surface no real caller exercises'' discipline applied a second time to a
 different subsystem.
 
+\section{Beyond \texttt{free-direct}: what a full, native CNA port would actually require}
+
+Everything this chapter has covered so far is about \texttt{free-direct} itself --- the
+DirectDraw/DirectSound/DirectPlay compatibility shell both games currently run through. A
+separate, later document in \emph{free-eggbert}'s own repository, \texttt{cna.md} (dated
+2026-07-16, a full feasibility analysis rather than an implementation), asks a different
+question entirely: what would it take to port \emph{Free Eggbert} directly onto CNA's own
+\cnaclass{Game} / \cnaclass{GraphicsDevice} / \cnaclass{SpriteBatch} surface, replacing
+\texttt{free-direct} (and \texttt{free-api} beneath it) rather than merely running through it?
+This is worth a dedicated look, since it reframes everything above as a migration
+\emph{bridge}, not a migration \emph{destination} --- a distinction the analysis itself states
+plainly: ``a CNA application using the \texttt{DX3} backend has adopted the XNA-facing API, but
+it still transitively depends on \texttt{free-direct}.''
+
+\subsection{Scope, grounded in a direct line count, not an estimate}
+
+The analysis's own executive conclusion corrects an assumption a reader might otherwise bring
+to a DirectDraw-era decompiled game: \emph{Free Eggbert} is already C++, not a language the
+port would need to translate out of. It measures roughly 31{,}800 lines of real C++ source and
+headers directly (a subsequent recount in the same document narrows this to 31{,}773 across
+\texttt{src/*.cpp} and \texttt{include/*.hpp}), with more than 21{,}000 of those lines --- the
+majority --- being simulation, world, object, and event logic rather than DirectX plumbing.
+That imbalance is the whole rationale for the analysis's central recommendation: rewrite the
+platform-services layer (graphics, input, audio, video, files, networking) and leave the
+existing simulation/data layer (\texttt{decblupi}, \texttt{decmove}, \texttt{decblock},
+\texttt{decdesign}, \texttt{decio}, the game's own tables) recognizably intact, since rewriting
+the part that already works correctly would only remove the ability to compare old and new
+behavior directly.
+
+\subsection{The one API-surface decision the whole plan hinges on}
+
+The analysis's most concrete recommendation is a narrow one: keep \cnaclass{CPixmap}'s own
+public shape exactly as it is --- the same 98 direct call sites this chapter's opening section
+already grounds in a real audit --- and replace only what sits behind it, with
+\cnaclass{Texture2D} / \cnaclass{RenderTarget2D} / \cnaclass{SpriteBatch} objects standing in for
+DirectDraw surfaces. This is a deliberate choice to isolate the migration's actual risk (does
+the new rendering path produce the same pixels?) from an unrelated one (does touching 98 call
+sites introduce new logic bugs?) by not touching those call sites' own signatures at all in the
+first pass. \texttt{SetTransparent2}'s existing color-key-\emph{range} semantics are singled
+out as the one piece of that surface CNA's own built-in \texttt{.cnb} metadata cannot express
+directly (it represents a single exact RGB value, not an inclusive range), so a
+\emph{Free Eggbert}-specific loader would need to read pixels and zero alpha across the
+requested range by hand via \texttt{GetData} / \texttt{SetData} --- described as
+``straightforward'' precisely because the asset sheets involved are small, not because the
+technique is trivial in general.
+
+\subsection{A worked example: the 50ms decision a default-configured port would silently get wrong}
+
+One finding is concrete enough to state as a number rather than a caveat. \emph{Free Eggbert}
+currently updates from a 50ms multimedia timer --- a fixed 20Hz simulation cadence --- while
+CNA's own \cnaclass{Game} defaults to roughly a 16.67ms (60Hz) fixed timestep. A port that
+constructs a \cnaclass{GraphicsDeviceManager} / \cnaclass{Game} pair without explicitly setting
+\texttt{TargetElapsedTime} would silently run the simulation three times too fast --- not a
+crash, not a visible error, just a game that plays faster than the original at every single
+difficulty level simultaneously, exactly the kind of quietly-wrong default this book has
+already catalogued more than once (Chapter~\ref{ch:game-loop}'s own \cnaclass{GameTime}
+coverage). The existing F5--F8 in-game speed controls compound this: the analysis recommends
+representing them as multiple fixed 50ms simulation steps per rendered frame (2/4/8 steps)
+rather than shortening \texttt{TargetElapsedTime} itself, since repeated fixed-size steps stay
+deterministic in a way a variable target elapsed time does not.
+
+\subsection{The MIDI gap, and why it is a real gap rather than a missing file format}
+
+The ten inspected music files are Standard MIDI data, and CNA's own \cnaclass{Song} loader does
+not register \texttt{.mid} --- but the deeper reason this cannot be a simple new
+\cnaclass{ContentTypeReader} is architectural, not superficial: CNA's own vendored
+\texttt{SDL\_mixer} configuration explicitly disables FluidSynth MIDI, so no MIDI synthesis
+path exists anywhere underneath \cnaclass{Song} to read from at all. The analysis lays out
+three real options rather than picking one prematurely: pre-render every track to OGG/FLAC
+against a chosen SoundFont ahead of time (lowest implementation risk, but a licensing/
+distribution question for the rendered assets and the SoundFont itself); add a real MIDI
+decoder/synthesizer path to CNA proper (the cleanest reusable outcome, but scope creep into the
+framework itself, beyond what a single game's port should decide unilaterally); or keep a
+\emph{Free Eggbert}-specific MIDI service bridging through \texttt{free-api}'s own existing
+TinySoundFont path while every other subsystem moves to CNA. The analysis's own recommendation
+is explicitly staged, not a single final answer: option three (the game-specific bridge) for an
+initial, behavior-preserving port, option one (pre-rendered assets) for a final low-maintenance
+release if asset policy permits it, and option two (a real CNA-level MIDI path) only if neither
+of the other two is acceptable --- a genuine three-way tradeoff stated as such rather than
+collapsed into a false single recommendation.
+
+\subsection{A real reconstruction-fidelity bug, found by reading the networking code, not by running it}
+
+The networking section of the analysis surfaces a finding worth stating precisely because of
+what it implies about trusting the current decompiled reconstruction as a behavioral
+specification at all: \texttt{CNetwork::Receive} reads incoming data into a local, 500-byte
+stack buffer but never actually copies that buffer into the caller-supplied destination
+--- a real, confirmed defect in the \emph{existing} reconstructed code, found by reading the
+function's own body, not by tracing a runtime failure. The analysis draws the correct,
+conservative conclusion from this rather than either ignoring it or silently ``fixing'' it as
+part of a compatibility port: ``the current reconstruction is not a reliable behavioral
+specification'' for networking specifically, so any future multiplayer work needs a versioned
+wire format and explicit two-process tests built against \emph{intended} behavior, not against
+whatever this specific decompiled function happens to currently do.
+
+\subsection{Backend progression, and a licensing fact this book has not otherwise stated}
+
+The analysis's own recommended backend sequence closes the loop back to this book's own Part IV
+coverage precisely: start on \texttt{SDL\_RENDERER} for the first portable 2D implementation
+(focused 2D validation, no unrelated 3D surface to reason about); build the identical port
+against \texttt{DX3} specifically \emph{because} it depends on \texttt{free-direct} and
+therefore gives a real differential bridge between the old and new public APIs during
+migration, exactly the role this whole chapter has already documented \texttt{free-direct}
+filling; then validate \texttt{EASYGL} independently before claiming true framework-level
+portability, rather than trusting a single backend's result. \texttt{DX3} is explicitly framed
+as a migration tool to be discarded, not a destination: a build still linking \texttt{DX3} has
+adopted CNA's API surface but has not actually removed the DirectDraw-era dependency this whole
+port exists to retire.
+
+One further fact belongs in this book precisely because no earlier chapter states it: \emph{Free
+Eggbert} declares GPL-3.0, while CNA itself declares Ms-PL. The analysis is explicit that
+combining and distributing the two in one linked program is a licensing question requiring
+review before any such port is treated as release-ready, and just as explicit that the document
+itself does not attempt to make that legal determination --- a boundary worth preserving here
+rather than glossing over, since this book is equally not the place to resolve it.
+
 \section{What this case study demonstrates about porting more generally}
 
 The lesson this chapter offers Chapter~\ref{ch:migration-guide}'s more general advice is
