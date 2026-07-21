@@ -99,6 +99,44 @@ Xbox Live on request and has no meaningful local substitute, so this is treated 
 this book's other chapters treat a genuinely unreachable capability: named and left throwing,
 not quietly worked around.
 
+\subsection{A worked example: what GetAchievements() actually gives back}
+
+The worked example at the top of this chapter calls \texttt{AwardAchievement} and then
+\texttt{GetAchievements}, and it is worth being precise about exactly which fields of the
+returned \cnaclass{Achievement} objects are genuinely real data versus which stay at a fixed
+default --- a distinction this namespace's own tracking documentation states plainly, and
+which is easy to assume away if you only read the method names. \texttt{Key},
+\texttt{IsEarned} (always \texttt{true} for anything \texttt{GetAchievements} returns at all,
+since the local store only ever records achievements that were actually earned), and
+\texttt{EarnedDateTime} are all real, locally persisted data, round-tripped correctly across
+process runs. \texttt{Name}, \texttt{Description}, \texttt{GamerScore}, and
+\texttt{DisplayBeforeEarned}, by contrast, stay at fixed construction-time defaults (empty
+string, \texttt{0}, and \texttt{true} respectively) on every single \cnaclass{Achievement}
+\texttt{GetAchievements} returns:
+
+\begin{lstlisting}
+gamer->AwardAchievement("ACH_FIRST_BOSS_DEFEATED");
+AchievementCollection achievements = gamer->GetAchievements();
+
+const Achievement& earned = achievements[0];
+// earned.Key == "ACH_FIRST_BOSS_DEFEATED", IsEarned == true, EarnedDateTime is real --
+// but earned.Name, earned.Description, and earned.GamerScore are all still empty/zero.
+// A HUD that tries to render "<Name> (+<GamerScore>G)" straight from this object will
+// render a blank name and "+0G" for every single achievement, regardless of which one.
+\end{lstlisting}
+
+This is not a bug or an oversight --- it is a documented, deliberate consequence of what real
+XNA's own \texttt{AwardAchievement(string achievementKey)} signature actually carries: a bare
+key string, nothing else. On the real Xbox~360, the display name, description, and point value
+a player sees came from Xbox LIVE's own achievement catalog, fetched out-of-band from the
+running game entirely; CNA's local, offline persistence store has no equivalent catalog to draw
+that metadata from, so it genuinely cannot populate those fields honestly. A game that wants to
+show a real achievement name and point value in its own toast/HUD needs to maintain that
+catalog itself --- exactly the pattern the project's own \texttt{demo\_achievement\_showcase}
+sample uses, keeping a small hardcoded table of achievement metadata entirely separate from
+\cnaclass{SignedInGamer}, and looking a returned \texttt{Key} up in its own table rather than
+expecting \cnaclass{Achievement} itself to already know its own display name.
+
 \section{Guide: mostly a stub, with two real, CNA-built exceptions}
 
 \cnaclass{Guide} is where this namespace's ``real versus stub'' distinction is sharpest. Most
