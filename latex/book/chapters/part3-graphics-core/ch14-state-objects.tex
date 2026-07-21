@@ -98,13 +98,20 @@ selection checked a stencil-\emph{less} format before it checked any stencil-cap
 EasyGL, meanwhile, had a subtler bug of its own: no window was ever created requesting an
 actual stencil buffer (\texttt{SDL\_GL\_STENCIL\_SIZE}) at all --- meaning every stencil test
 that appeared to pass was passing against a buffer with zero stencil bits actually allocated,
-a ``correct code, no resource to act on'' bug rather than a logic error. Two gaps remain
-open at the time of writing: independently overriding \texttt{ReferenceStencil} without
-reassigning the whole \cnaclass{DepthStencilState} is confirmed broken on both EasyGL and
-BGFX (there is simply no \texttt{SetReferenceStencil} entry point in the backend interface at
-all), and \texttt{GraphicsDevice.Clear(ClearOptions::Stencil, ...)} is confirmed to not
-actually clear the stencil buffer on EasyGL, Vulkan, or BGFX --- the same gap already flagged
-in Chapter~\ref{ch:graphicsdevice}.
+a ``correct code, no resource to act on'' bug rather than a logic error. One gap named in an
+earlier pass of this chapter as open on both EasyGL and BGFX is now only open on one of them:
+\texttt{IGraphicsBackend::SetReferenceStencil} does exist in the shared backend interface, with
+a no-op default any backend may override --- reading each backend's own header directly finds
+BGFX now has a real override (Task~764, mirroring Vulkan's own existing mechanism, Task~870/%
+319: every other stencil parameter is cached so a later standalone reference-value change can
+rebuild the backend's own front/back stencil state without a full state-object
+re-application), while EasyGL still has none, falling through to the interface's own no-op ---
+independently overriding \texttt{ReferenceStencil} without reassigning the whole
+\cnaclass{DepthStencilState} is confirmed broken on EasyGL specifically, not BGFX anymore. A
+second gap remains open on all three hardware backends alike:
+\texttt{GraphicsDevice.Clear(ClearOptions::Stencil, ...)} is confirmed to not actually clear
+the stencil buffer on EasyGL, Vulkan, or BGFX --- the same gap already flagged in
+Chapter~\ref{ch:graphicsdevice}.
 
 \subsection{A worked example: masking a reflection with the stencil buffer}
 
@@ -141,12 +148,13 @@ reflectedScene.Draw(); // a full scene draw, using a reflected view matrix
 Two of this chapter's own already-stated facts directly constrain whether this exact technique
 is safe to ship across all three hardware backends. \texttt{ReferenceStencil} above is set once,
 as part of constructing each \cnaclass{DepthStencilState} --- this worked example does not rely
-on changing it independently afterward, which is exactly the still-open gap flagged above (no
-\texttt{SetReferenceStencil} entry point exists on EasyGL or BGFX; a technique needing a
-per-draw-call reference value without rebuilding the whole state object would hit that gap
-directly). And because \texttt{GraphicsDevice.Clear(ClearOptions::Stencil, ...)} does not
-actually clear the stencil buffer on any of the three hardware backends today, a game using this
-exact two-pass technique across multiple frames must not rely on \texttt{Clear} to reset the
+on changing it independently afterward, which sidesteps the still-open gap flagged above (no
+real \texttt{SetReferenceStencil} override exists on EasyGL specifically, BGFX's own fix now
+notwithstanding; a technique needing a per-draw-call reference value without rebuilding the
+whole state object would hit that remaining gap directly on EasyGL). And because a
+stencil-only \texttt{Clear} call does not actually clear the stencil buffer on any of the three
+hardware backends today, a game using this exact two-pass technique across multiple frames must
+not rely on \texttt{Clear} to reset the
 mirror mask between frames --- the first pass's unconditional \texttt{CompareFunction::Always} /
 \texttt{StencilOperation::Replace} configuration is what actually keeps this specific technique
 correct despite that gap, since it overwrites the stencil value outright rather than depending on
