@@ -120,6 +120,30 @@ field-style convention:
 void setRProperty(bytecs value);
 \end{lstlisting}
 
+Not every property setter is a bare field write, and the convention does not ask one to
+pretend otherwise: a C\# property with real validation logic in its setter keeps that logic,
+translated directly, rather than being flattened into a public field for convenience.
+\cnaclass{SkinnedEffect::WeightsPerVertex} (Chapter~\ref{ch:stock-effects}) is a real instance
+of this, read directly from \texttt{SkinnedEffect.cpp}:
+
+\begin{lstlisting}
+void SkinnedEffect::setWeightsPerVertexProperty(int v)
+{
+    if (v != 1 && v != 2 && v != 4)
+        throw std::out_of_range("WeightsPerVertex must be 1, 2, or 4.");
+    weightsPerVertex_ = v;
+    dirtyFlags_ |= DirtyShaderIndex;
+}
+\end{lstlisting}
+
+Two things this one setter does at once, both faithfully carried over from what a validated
+C\# property would do: it rejects an invalid value outright (a real XNA/FNA
+\cnaclass{SkinnedEffect} genuinely only supports 1, 2, or 4 bone weights per vertex --- there is
+no silent clamping to the nearest valid value), and it marks a dirty-shader-selection flag as a
+side effect of the assignment, since a changed weight count means a different GPU shader
+variant must be selected on the next \texttt{Apply()}. Neither behavior would survive a
+mechanical ``just make it a public field'' translation.
+
 \section{SharpRuntime type aliases: never a raw C\texttt{++} primitive in the XNA surface}
 
 Wherever C\# source uses a .NET primitive type name, CNA code uses the corresponding
@@ -251,6 +275,28 @@ stub is added directly in CNA, in the correct final namespace, sufficient only t
 never a large unrelated system built just to satisfy one missing dependency. Every stub
 introduced this way is reported in the task or PR description, so it is never silently
 forgotten as ``real'' once the build goes green.
+
+\begin{sourcenote}
+\textbf{A worked example: a real missing-dependency gap, from stopgap to proper fix.} CNA's
+own checked-out history has a concrete instance of exactly the situation this rule exists for.
+At one point, CNA's checkout would not build at all because two content-type readers called
+\texttt{System::IO::BinaryReader::ReadChar()} and \texttt{ReadDecimal()} --- and neither method
+existed yet in \texttt{sharp-runtime}. Rather than inventing an ad-hoc replacement inline in
+CNA (the exact anti-pattern this section warns against), the documented fix at the time was a
+diagnostic-quality stopgap patch, explicitly labeled as temporary and preserved in this book's
+own \texttt{tools/cna-screenshot-infra/} materials. \texttt{sharp-runtime} has since implemented
+both methods for real, in its own \texttt{BinaryReader.cpp}, matching .NET's actual documented
+behavior precisely rather than approximately: \texttt{ReadChar()} decodes one UTF-8 code point
+from the underlying stream (not a raw byte), throwing \texttt{System::FormatException} for an
+invalid lead byte, an invalid continuation byte, \emph{or} a code point above \texttt{0xFFFF}
+that would require a UTF-16 surrogate pair --- the last case chosen deliberately to match real
+.NET's own \texttt{BinaryReader.ReadChar()}, whose internal \texttt{Decoder.GetChars} call
+targets a one-\texttt{char} buffer and throws for exactly the same reason, rather than silently
+truncating to one half of a surrogate pair. This is the missing-dependency rule's full
+lifecycle in one real example: a genuine gap, a documented interim workaround, and a proper
+fix landing in \texttt{sharp-runtime} once someone did the work --- not a stub that quietly
+became permanent.
+\end{sourcenote}
 
 \section{The per-file porting checklist, in miniature}
 
