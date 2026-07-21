@@ -19,9 +19,9 @@ to where each one is covered in full.
 \item[\cnaclass{Game}] \texttt{RunApplication}, \texttt{getTargetFPSProperty()}/%
   \texttt{getTargetMsFrameTimeProperty()}, static \texttt{fpsToMillisecondsPerFrame()} --- Ch.6.
 \item[\cnaclass{GameWindow}] \texttt{GetNativeSdlWindowEXT()}, \texttt{IsBorderlessEXTProperty},
-  \texttt{MinimizeEXT()}/\texttt{RestoreEXT()} --- Ch.6.
+  \texttt{MinimizeEXT()} / \texttt{RestoreEXT()} --- Ch.6.
 \item[\cnaclass{GraphicsDeviceManager}] the entire \texttt{PresentationMode} enum
-  (\texttt{Letterbox}/\texttt{Overscan}/\texttt{Stretch}/\texttt{NativeBackBuffer}/%
+  (\texttt{Letterbox} / \texttt{Overscan} / \texttt{Stretch} / \texttt{NativeBackBuffer}/%
   \texttt{FixedHeightDynamicWidth}) and its get/set accessors --- Ch.6.
 \item[\cnaclass{Matrix}] \texttt{ToColumnMajor(float[16])}, the one graphics-motivated bridge
   method on an otherwise pure math type --- Ch.7.
@@ -38,23 +38,36 @@ to where each one is covered in full.
   carrying a \texttt{COLOR\_0} attribute; no such property exists on real XNA's own
   \cnaclass{SkinnedEffect} --- Ch.13.
 \item[\cnaclass{IGraphicsBackend}] \texttt{SetStringMarkerEXT()},
-  \texttt{DebugSimulateContextLoss()}/\texttt{DebugRestoreContext()},
+  \texttt{DebugSimulateContextLoss()} / \texttt{DebugRestoreContext()},
   \texttt{UpdatePresentationFormatEXT()} --- Ch.16.
 \item[Custom shaders] The entire \texttt{ShaderEffect} runtime-HLSL-compilation path on the
   three Direct3D backends --- Ch.15, Ch.22.
+\item[\cnaclass{PbrEffect}] An entire NOXNA glTF~2.0-style metallic-roughness PBR material
+  effect with no real-XNA counterpart at all (\texttt{NormalMap}, \texttt{%
+  MetallicRoughnessMap}, \texttt{EmissiveMap}, \texttt{OcclusionMap},
+  \texttt{MetallicFactor} / \texttt{RoughnessFactor} / \texttt{EmissiveFactor}) --- Ch.21.
+\item[\cnaclass{AnimationPlayer}] The entire class, mirroring Microsoft's own unshipped XNA
+  ``Skinned Model Sample'' reference code rather than anything in the real framework assembly
+  --- \texttt{StartClip} / \texttt{Update} / \texttt{GetBoneTransforms}/\%
+  \texttt{GetWorldTransforms} / \texttt{GetSkinTransforms} --- Ch.12.
+\item[\cnaclass{MorphTargetEXT}] The entire glTF-style morph-target blending system ---
+  \texttt{MorphTargetDataEXT}, \texttt{BlendMorphTargetsEXT}, \texttt{SetMorphWeightsEXT},
+  \texttt{EvaluateMorphWeightsEXT} --- independent of \cnaclass{AnimationPlayer}'s own
+  bone-track timeline, attached via a loaded \cnaclass{ModelMeshPart}'s own \texttt{Tag} ---
+  Ch.12.
 \end{description}
 
 \section{Input (Chapter~25)}
 
-The largest concentration of \texttt{NOXNA}/\texttt{EXT} surface in the whole project. Whole
+The largest concentration of \texttt{NOXNA} / \texttt{EXT} surface in the whole project. Whole
 \texttt{NOXNA} subsystems: \cnaclass{CNA::Input::Clipboard}, \cnaclass{Joysticks},
 \cnaclass{Sensors}, \cnaclass{Power}, \cnaclass{Haptics}, \cnaclass{InputDevices}. Per-class
 \texttt{EXT} additions: \cnaclass{Keyboard}'s \texttt{GetKeyFromScancodeEXT}/%
-\texttt{GetModStateEXT}/\texttt{GetScancodeNameEXT}; \cnaclass{Mouse}'s
-\texttt{SetCursor}/\texttt{ClickedEXT}/\texttt{SetCaptureEXT}/\texttt{GetGlobalPositionEXT};
+\texttt{GetModStateEXT} / \texttt{GetScancodeNameEXT}; \cnaclass{Mouse}'s
+\texttt{SetCursor} / \texttt{ClickedEXT} / \texttt{SetCaptureEXT} / \texttt{GetGlobalPositionEXT};
 the entire \cnaclass{MouseCursor} class; \cnaclass{GamePad}'s \texttt{GetGUIDEXT}/%
-\texttt{SetLightBarEXT}/\texttt{SetTriggerVibrationEXT}/\texttt{GetGyroEXT}/%
-\texttt{GetAccelerometerEXT}/\texttt{GetPlayerIndexEXT}/\texttt{GetPowerInfoEXT}; and
+\texttt{SetLightBarEXT} / \texttt{SetTriggerVibrationEXT} / \texttt{GetGyroEXT}/%
+\texttt{GetAccelerometerEXT} / \texttt{GetPlayerIndexEXT} / \texttt{GetPowerInfoEXT}; and
 \texttt{TextInputEXT}'s IME-candidate and input-type-hint additions.
 
 \section{Devices and Sensors (Chapter~28)}
@@ -74,7 +87,7 @@ briefly and incorrectly marked as real XNA API before being fixed); \cnaclass{Co
 
 \section{Storage (Chapter~32)}
 
-\cnaclass{StorageDevice}'s \texttt{SetAppNameEXT()}/\texttt{GetStorageRootEXT()} --- the two
+\cnaclass{StorageDevice}'s \texttt{SetAppNameEXT()} / \texttt{GetStorageRootEXT()} --- the two
 methods the entire namespace's real, local-filesystem-backed behavior ultimately roots
 itself in.
 
@@ -82,10 +95,14 @@ itself in.
 
 The \texttt{.cnj} content format itself is a \texttt{NOXNA} system in its entirety, alongside
 the Avatar system's separately-kept \cnaclass{SkinnedModelEXT} content pipeline
-(\texttt{.skinnedmodel.json}/\texttt{.skeleton.bin}/\texttt{.clip.bin}) and its own
+(\texttt{.skinnedmodel.json} / \texttt{.skeleton.bin} / \texttt{.clip.bin}) and its own
 \texttt{NOXNA} vertex/track/clip types (\cnaclass{VertexPositionNormalTextureSkinned},
 \cnaclass{KeyframeEXT}, \cnaclass{BoneTrackEXT}, \cnaclass{AnimationClipEXT}) --- see
-Chapter~31.
+Chapter~31. \cnaclass{ContentManager} itself adds three further \texttt{NOXNA} methods purely
+for build-time content auditing --- \texttt{RefreshContentManifest}, \texttt{%
+GetContentManifest}, \texttt{GetXnbReaderUsageSummary} --- letting a game (or this book's own
+research) enumerate every asset under a content root and which real \texttt{.xnb} reader name
+actually loads it.
 
 \section{Avatar (Chapter~31)}
 
@@ -99,7 +116,7 @@ faithful base Avatar API it sits alongside.
 \section{GamerServices (Chapter~29)}
 
 \cnaclass{Guide}'s two real overlay-UI render hooks,
-\texttt{RenderPendingMessageBoxEXT()}/\texttt{RenderPendingKeyboardInputEXT()}, and their
+\texttt{RenderPendingMessageBoxEXT()} / \texttt{RenderPendingKeyboardInputEXT()}, and their
 matching headless test-simulation hooks.
 
 \section{How to read this appendix}
