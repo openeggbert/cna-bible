@@ -180,6 +180,59 @@ own bone-hierarchy reordering step needed a corresponding remap of inverse bind 
 per-vertex joint indices, which were still expressed in glTF's own original joint order rather
 than the tool's newly reordered one.
 
+\subsection{A real, currently open visual defect, and four disproven fixes worth knowing about}
+
+Not every investigation into this system's placeholder art has closed cleanly, and this book's
+own methodology (Chapter~\ref{ch:what-is-cna}) is explicit that an honestly-still-open finding
+belongs here just as much as a fixed one does. A generated avatar's \texttt{Wave} animation
+shows ragged blue (shirt) and skin-colored mesh fragments at the shoulder and chest --- and
+seven consecutive rounds of investigation, most of it disproving its own prior round's leading
+theory, narrowed this down to a precise, still-unresolved geometric root cause rather than
+either fixing it or abandoning the search.
+
+The most important reframing came in the seventh round: measuring garment-versus-body vertex
+crossing counts under the actual \texttt{Wave} pose found them \emph{identical} to a neutral
+standing pose (shirt 64 of 228 vertices crossing in both), with only the camera-visible
+attribution shifting onto the now-raised arm. This rules out the animation itself --- garment
+and body mesh deform correctly \emph{together} under \texttt{Wave} (an earlier round's own
+joint-blend fix made that true --- an earlier round found and fixed a real, separate bug where
+a joint's own automatic weight-blend selection tested only axial distance along the bone with
+no perpendicular limit, so a laterally-pointing arm bone's blend slab swept down through the
+torso, hips, and legs) --- and reframes the whole defect as a
+rest-pose problem rotated into view, not a skinning bug at all: \textbf{any real fix has to
+reduce the underlying garment/body mesh interpenetration itself, not the animation blending.}
+Measured precisely in the neutral pose, the shirt's own procedurally-generated capsule shell
+buries into the head sphere at the collar (19 vertices, $-0.131$m) and into the lower-arm
+capsule at the cuffs (24 vertices) --- and, worked through by hand, the collar overlap traces
+to one specific, calculable cause: the shirt's \texttt{Spine1} shell (radius $0.176$, spanning
+$z{=}1.40$ to $z{=}1.576$) geometrically extends into the head sphere (radius $0.15$, centered
+at $z{=}1.60$, so its own bottom sits at $z{=}1.45$) --- an overlap of approximately $0.126$m,
+matching the measured $-0.131$m almost exactly. A separate waist overlap (pants against the
+spine) is real but mutually hidden by both garments at once, so it never actually reaches the
+screen; the collar and cuffs are the \emph{only} crossings a player would ever actually see.
+
+Four distinct structural fixes were each tried, measured, and reverted --- worth naming
+precisely, both so a future attempt does not repeat them and because a book on real engineering
+practice should show disproof as readily as proof: narrowing the garment blend radius produced
+no clear improvement; trimming the garment capsule's own boundary caps made the pants overlap
+measurably worse (21 vertices buried became 39); switching to flat-capped cylinder shells with
+separate joint spheres --- an approach this same investigation had once recommended --- made
+every single measured metric worse at once (\texttt{Wave} speckle roughly doubled, groin
+crossings went from zero to 28, mesh brightness dropped); and raising tessellation from 12 to
+32 segments genuinely smoothed the visibly ragged edges without actually removing the
+underlying fragments, at a real, measured cost of 4.2$\times$ the vertex data. That last one
+was reverted as a deliberate project-owner scope decision, not because it failed technically ---
+it remains a one-line change to re-enable if a future session decides the geometry cost is
+worth paying for smoother (not fewer) artifacts. As of this writing, the defect remains
+formally open, with three live options on the table: target the collar and cuffs specifically
+(sizing each garment shell against the maximum body radius it must actually clear along its
+own span, not just against its own underlying bone), accept the residual overlap as an
+inherent, honestly-documented limitation of shelling a procedurally-generated placeholder body
+with convex per-bone primitives, or revisit the tessellation trade-off as an explicit
+owner-approved cost. This is exactly the kind of open, well-diagnosed-but-unresolved item this
+book's own closing chapters (Chapter~46, Chapter~48) point to as evidence that ``done'' and
+``verified correct'' are not the same claim, even inside a single actively-maintained system.
+
 \section{Backend support and real content proof}
 
 Real GPU skinning through this extension is proven end-to-end via pixel readback on EasyGL;
