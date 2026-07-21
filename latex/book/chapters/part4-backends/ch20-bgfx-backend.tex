@@ -110,6 +110,56 @@ specifically to force the correct view to be current first. Only the render-targ
 depth-format crash mentioned above has a different, still-unidentified root cause and was
 not resolved by this fix.
 
+\section{View IDs: a free-list-backed pool, not a hardcoded slot}
+\label{sec:bgfx-view-ids}
+
+The ``flush view'' fix in the previous section (Task~951) is one visible symptom of a broader
+architectural fact worth explaining directly: bgfx organizes all drawing into numbered
+\emph{views}, an ordering mechanism distinct from render-target binding itself --- every
+\texttt{bgfx::submit()} call targets a specific numeric view id, and bgfx processes views in
+ascending id order every frame regardless of the order draws were actually submitted in. This
+backend's own render-target support (\texttt{Detail::AllocateRtViewId()}) originally handed out
+a single hardcoded view id --- ``the old hardcoded 1'' its own fix comment calls it --- for
+every render target, 2D or cube, MRT or single-target alike. Task~910 replaced that with a real,
+free-list-backed pool:
+
+\begin{lstlisting}
+static bgfx::ViewId AllocateRtViewId()
+{
+    static constexpr bgfx::ViewId kMaxBgfxViews = kBackbufferFlushViewId;
+    auto& pool = RtViewIdFreeList();
+    if (!pool.empty()) {
+        const bgfx::ViewId id = pool.back();
+        pool.pop_back();
+        return id;
+    }
+    static bgfx::ViewId nextId = 1;   // 0 is permanently reserved for the backbuffer
+    if (nextId >= kMaxBgfxViews)
+        throw std::runtime_error("Bgfx: exhausted view ids (more concurrently-live "
+                                  "render targets than bgfx supports views)");
+    return nextId++;
+}
+\end{lstlisting}
+
+Three real numbers are reserved by construction, not by convention alone: view id \texttt{0} is
+permanently the backbuffer's own view and is never handed out by this allocator at all;
+\texttt{kBackbufferFlushViewId} --- the same reserved, highest-numbered view Task~951's own
+flush-view fix touches every frame, precisely \emph{because} it is guaranteed to sort last in
+bgfx's own ascending-id processing order --- sits at the top of the id space, one past the
+allocator's own exclusive upper bound; and every id strictly between those two bookends is a
+real, currently-live render target's own view. A newly-freed id returns to the pool
+(\texttt{RtViewIdFreeList()}) for reuse by the \emph{next} render target created, rather than
+the counter monotonically climbing forever --- the free-list is specifically what keeps a
+long-running game that creates and destroys render targets across many frames (a shadow-map
+pool being cycled, a portal-camera render target rebuilt on level load) from eventually
+exhausting bgfx's own hard \texttt{BGFX\_CONFIG\_MAX\_VIEWS} ceiling (256 by default) and
+throwing \texttt{std::runtime\_error} on a perfectly ordinary render target creation, purely
+because ids were never being recycled. A CNA game with a genuinely unbounded number of
+\emph{simultaneously live} render targets --- not created-and-destroyed-over-time, but all
+open at once --- can still exhaust the pool; the free-list solves churn, not an unbounded
+working set, and the thrown exception is the correct, honest response to that specific case
+rather than a bug to route around.
+
 \section{Sampling a render target: a wrong-handle-type cast, since fixed}
 \label{sec:bgfx-wrong-handle-cast}
 
