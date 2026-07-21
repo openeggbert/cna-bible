@@ -118,6 +118,65 @@ exists specifically to surface --- silently drawing with an invalid program is e
 kind of ``it compiles and something appears on screen'' failure Chapter~\ref{ch:spritebatch}
 already warned against.
 
+\subsection{A worked example: the identical technique in real D3D9 HLSL}
+
+\cnaclass{ShaderEffect}'s own constructor takes exactly one pair of source strings regardless
+of backend --- there is no separate HLSL-specific overload --- so the same call shape from the
+GLSL example above, aimed at a Direct3D backend instead, simply compiles a different source
+language through the same API. A minimal color-inversion effect (the identical idea as above,
+adapted from a real D3D9 test rather than EasyGL) makes the language difference concrete:
+D3D9's own SM2/SM3 HLSL dialect, verified against \texttt{Macros.fxh}'s real
+\texttt{DECLARE\_TEXTURE} / \texttt{SAMPLE\_TEXTURE} macro expansion, the same expansion the
+vendored stock \texttt{SpriteEffect.fx} itself already compiles with in this toolchain:
+
+\begin{lstlisting}
+const char* vertexSrc = R"(
+float2 vpSize;
+struct VSInput { float3 Position : POSITION0; float4 Color : COLOR0; float2 TexCoord : TEXCOORD0; };
+struct VSOutput { float4 Position : POSITION0; float4 Color : COLOR0; float2 TexCoord : TEXCOORD0; };
+VSOutput main(VSInput input) {
+    VSOutput output;
+    float2 ndc = (input.Position.xy / vpSize) * 2.0 - 1.0;
+    output.Position = float4(ndc.x, -ndc.y, 0.0, 1.0);
+    output.Color = input.Color;
+    output.TexCoord = input.TexCoord;
+    return output;
+}
+)";
+
+const char* pixelSrc = R"(
+texture2D Texture;
+sampler TextureSampler : register(s0) = sampler_state { Texture = (Texture); };
+float4 main(float4 color : COLOR0, float2 texCoord : TEXCOORD0) : COLOR0 {
+    float4 texColor = tex2D(TextureSampler, texCoord);
+    return float4(1.0 - texColor.rgb, 1.0); // the same inversion the GLSL example performs
+}
+)";
+
+ShaderEffect invertEffect(getGraphicsDeviceProperty(), vertexSrc, pixelSrc);
+// ... same IsEffectValid() check as the GLSL example ...
+
+SamplerState pointClamp = SamplerState::PointClamp;
+spriteBatch_->Begin(SpriteSortMode::Deferred, BlendState::Opaque,
+                     &pointClamp, nullptr, nullptr, &invertEffect);
+spriteBatch_->Draw(texture, destRect, Color::White);
+spriteBatch_->End();
+\end{lstlisting}
+
+\texttt{vpSize} is worth pausing on, because it is doing real work rather than being decorative:
+a custom vertex shader supplied this way has no other way to map \cnaclass{SpriteBatch}'s
+pixel-space \texttt{Position} input into normalized device coordinates, so this uniform (set
+automatically by the backend, not by game code) is what makes the sprite land at the correct
+screen location at all --- the same real test this example is adapted from separately verifies
+that sampling \emph{outside} the sprite's destination rectangle stays the clear color, proving
+this NDC math is genuinely correct rather than happening to paint something plausible-looking
+over the whole screen. One small, harmless documentation inaccuracy worth knowing if you go
+reading \cnaclass{ShaderEffect}'s own header next: its class-level doc comment describes it as
+a ``GLSL-source-based effect'' --- accurate for the EasyGL/Vulkan path, but this exact worked
+example is proof the same class and the same constructor compile real HLSL just as validly when
+the active backend is a Direct3D one; the comment describes the common case, not a hard
+constraint enforced anywhere in the code.
+
 \section{The honest summary}
 
 If your porting target relies only on \cnaclass{SpriteBatch} and the five stock effects from
