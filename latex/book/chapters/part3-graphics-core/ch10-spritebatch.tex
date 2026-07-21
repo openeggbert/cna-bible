@@ -89,6 +89,53 @@ which reads as the sprite ``orbiting'' \texttt{spritePosition} in a circle rathe
 in place; the visual symptom is easy to misdiagnose as a rotation-math bug when the actual
 cause is simply the wrong \texttt{origin}.
 
+\section{The D3D9 half-pixel offset: real, backend-local, and a genuine mutation-testing trap}
+
+Real XNA~4.0 ran exclusively on Direct3D~9, whose rasterizer places texel centers at integer
+pixel coordinates rather than pixel centers --- the well-known ``D3D9 half-pixel offset''
+problem, notorious enough that porting guides for other 2D APIs still warn about it decades
+later. \cnaclass{SpriteBatch}'s own shared, backend-agnostic \texttt{SpriteBatch.cpp} carries
+no trace of this compensation at all, which is exactly correct behavior for every backend built
+on a modern API (EasyGL, Vulkan, BGFX, D3D11, D3D12, WebGPU): none of them share Direct3D~9's
+own texel-center convention, so there is nothing to compensate for, and adding an offset
+unconditionally would introduce a real bug on every backend that does not need one. On this
+one backend where the convention genuinely applies, the compensation lives one level down,
+inside \texttt{D3D9SpriteBatchBackend::BuildMatrixTransformEXT} specifically --- baked directly
+into the projection matrix \cnaclass{SpriteBatch} constructs, the same technique the classic
+XNA~4.0 D3D9 fix itself used:
+
+\begin{lstlisting}
+// Worked example: the real D3D9-only half-pixel compensation, folded
+// into the orthographic projection SpriteBatch's own MatrixTransform
+// applies -- not a separate step, not visible anywhere in shared code.
+Matrix projection = Matrix::CreateOrthographicOffCenter(0, width, height, 0, 0, 1);
+projection.M41 += -0.5f * projection.M11;
+projection.M42 += -0.5f * projection.M22;
+// MatrixTransform = SpriteBatch's own transform, then this projection
+// (row-vector convention: transform applied first).
+\end{lstlisting}
+
+Verifying this against the real XNA~4.0 oracle (Chapter~\ref{ch:direct3d-backends}) surfaced a
+genuine mutation-testing trap worth knowing as a general lesson, not just a D3D9 specific:
+\textbf{two entirely different test designs independently turned out to be structurally
+incapable of detecting whether this offset was even present at all.} A $1\times1$ test texture
+cannot detect it, because the half-pixel offset shifts \emph{which texel a given screen pixel
+samples}, not where a sprite's geometric edges land on screen --- a texture with only one texel
+has nothing else to shift onto, so removing the offset entirely changes nothing a
+one-texel-texture test can observe. Separately, sampling only at a drawn rectangle's own
+quadrant-center points misses it too, for the same underlying reason: those points are exactly
+where a coarse boundary check happens to line up regardless of the sub-pixel shift. Both traps
+were only caught by deliberately mutation-testing the passing test itself --- commenting out
+the two \texttt{M41} / \texttt{M42} lines above and re-running the existing check suite, which
+stayed fully green even with the real fix entirely removed, exposing the false-positive
+``verified'' claim before it could ship. The fix was a dedicated check sampling a specific
+internal texel boundary a rotated/flipped sprite's own blended edge produces --- a pixel
+confirmed to shift from one exact, named RGB value to another under the same mutation, the
+first check in the whole suite that actually moved when the offset was removed. The general
+lesson generalizes well past D3D9 specifically: a test that passes both with and without the
+code change it is supposed to be protecting is not testing anything, and the only reliable way
+to find that out is to deliberately break the implementation and confirm the test notices.
+
 \section{SpriteSortMode and SpriteEffects}
 
 \cnaclass{SpriteSortMode} has five values: \texttt{Deferred}, \texttt{Immediate},
