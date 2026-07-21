@@ -5,53 +5,53 @@ the permanent session log.** This file is a snapshot of where things stand as of
 the session that just finished — it gets overwritten each session, not appended to (unlike
 `PLAN.md`'s own internal session log, a permanent history).
 
-## IMPORTANT operational discovery this session — READ THIS FIRST
+## FIRST THING TO DO: check whether a concurrent background pass finished
 
-**2026-07-21: dispatched `Agent(subagent_type: "fork")` calls ran as genuine, independent
-background agents that inherited this conversation's full context — including the top-level
-autonomous-work authorization — and kept working autonomously well beyond their narrowly
-dispatched task, including making their own commits and pushing to `origin/develop`
-concurrently with the dispatching session's own foreground work.**
+As this long autonomous session wound down (2026-07-21 into 2026-07-22), a second,
+independently-active background agent was mid-way through its own overflow-fixing pass on at
+least two files — `latex/book/chapters/appendices/appendix-b-feature-matrix.tex` and
+`latex/book/chapters/part7-easygl-freedirect/ch37-easygl-deep-dive.tex` — adding `\allowbreak{}`
+at `::`/camelCase boundaries inside long `\texttt{}` identifiers, the same defect class covered
+below. That work was **still uncommitted, in progress, in the shared working tree** when this
+session ended; it may have committed on its own since (check `git log` — look for commit
+messages mentioning overfull-hbox/allowbreak fixes to `appendix-b-feature-matrix.tex` or
+`ch37-easygl-deep-dive.tex` dated after `b199a92`), or it may still be sitting uncommitted in
+the working tree (check `git status` and `git diff` on those two files specifically before
+doing anything else). If it's still uncommitted: read the diff, decide whether it looks like a
+real, well-motivated fix (the pattern above is a good sign) or something to discard, and either
+commit it or `git checkout --` it before starting new work — don't let it sit in limbo.
 
-Concretely: this session dispatched 9 parallel `Agent(fork)` calls to draft depth-pass content
-for Ch.15/24/25/36/42/45 and Appendices C/D/F (Appendix E was done directly). The tool's own
-immediate response to 8 of the 9 calls was an error ("Fork is not available inside a forked
-worker") that looked like outright failure. It was not — all 9 forks completed their drafting
-work in the true background regardless. At least one of them (circumstantial evidence points to
-the Ch.25 fork, based on its own commit message crediting "the Appendix C fork") kept working
-autonomously after finishing its assigned chapter: it found and fixed a stale claim in a
-*different* chapter (Ch.16), did the previously-untested Ch.17/Ch.18 Xvfb screenshot capture
-work, ran its own `make book` + PNG-render "batch verification" pass, and committed + pushed
-all of it — while the dispatching (this) session was still independently mid-verification on
-several of the very same files. One of its own overfull-hbox fixes (an `\allowbreak{}` edit to
-Appendix E's Avatar section) was committed with a message claiming it fixed the defect and a
-later "batch verification... clean" commit repeated that claim — **but it did not actually fix
-anything**: rendering the page to PNG before and after that specific fork's edit shows the
-exact same pixel output, identifier still cut off at the page edge. Caught only because this
-session's own independent verification pass rendered the same page and found the text still
-missing. Corrected in commit `4c9d177` (see below for the real fix and why the naive
-`\allowbreak{}` attempt didn't move the render at all).
+## A real coordination pattern this project's use of parallel forks now needs standing awareness of
 
-**Nothing was lost or corrupted** — one shared working tree, normal linear git history, no
-merge conflicts, every intermediate state recoverable via `git reflog`. But: **a dispatched
-`Agent(fork)` in this environment is not a safely-scoped, narrow subagent — it can and will act
-on the full autonomous mandate inherited from the parent conversation, including committing,
-pushing, and continuing to unrelated files/tasks after its assigned directive is done.**
-Lessons for next time:
+This is the **second session in a row** where dispatched `Agent(subagent_type: "fork")` calls
+turned out to be genuine, independent background agents that inherit the full conversation
+context — including the top-level autonomous-work authorization — and can keep working well
+beyond their narrowly dispatched task: committing and pushing on their own, picking up
+unrelated adjacent work, and in this session's case, apparently still running a careful
+verification/fix pass on files from an earlier batch even after the dispatching session moved
+on to new work. Separately, this session also hit `Agent(fork)` calls failing outright with
+`"Fork is not available inside a forked worker"` immediately after a *first* fork call
+succeeded — **the errored calls still completed in the true background regardless of the
+error message shown**, confirmed by their commits landing later. Practical guidance, now
+confirmed twice:
 
-1. If you need a fork to *only* do its assigned task and stop, that instruction may not
-   reliably hold — budget for it continuing anyway, and don't be surprised by extra commits.
-2. **Always re-check `git log`/`git reflog` for surprise commits before trusting `git status`'s
-   clean/up-to-date report at face value** — especially right after any batch of parallel
-   `Agent()` dispatches, and especially before running what you intend to be *the* consolidated
-   verification pass for a batch.
-3. **Never trust a build/verification claim — yours or another agent's — without re-rendering
-   and looking yourself.** A commit message saying "fixed" or "clean, N pages, 0 warnings" is a
-   claim, not a fact, exactly like every other stale-claim risk this project's own methodology
-   already warns about. This session hit a concrete instance of an agent's own good-faith fix
-   attempt not actually working, confirmed only by direct pixel comparison.
-4. A fork reporting a finding about a file outside its own scope is useful (don't discard it)
-   but its own unsupervised fix to that file should be re-verified, not trusted outright.
+1. Expect forks to keep working past their assigned task and to commit/push on their own —
+   plan verification time accordingly rather than assuming a fork is done when its own final
+   report arrives.
+2. An immediate `"Fork is not available..."` error does not mean the dispatch failed — check
+   `git log` for the expected commit before concluding a fork genuinely didn't run.
+3. Before trusting any consolidated `make book` + PNG-render pass as final, re-check
+   `git status` is clean (nothing uncommitted, nothing you don't recognize) immediately before
+   and after — a mid-batch race from a still-active fork can otherwise make the pass
+   unrepresentative of what's actually committed, exactly as happened earlier this same
+   session (see the entry below and `PLAN.md`'s own session log for the full, resolved
+   account).
+4. `latexmk` has repeatedly reported `"Nothing to do for 'main.tex'"` this session even
+   immediately after a source file changed underneath it (likely because git operations from a
+   concurrent process don't always bump mtimes the way `latexmk` expects) — if you suspect a
+   stale PDF, force a rebuild with `latexmk -pdf -interaction=nonstopmode -halt-on-error
+   -file-line-error -g main.tex` (`-g` forces a full rebuild) rather than trusting the plain
+   `make book` target's own staleness check.
 
 ## The book now has 49 chapters, not 48 — READ THIS BEFORE CITING A CHAPTER NUMBER
 
@@ -69,178 +69,132 @@ per-chapter. Write across roughly 8-10 chapters/appendices — committing and pu
 individually as always — without running `make book` or rendering PNG pages in between. Once
 the batch is done, run one consolidated pass. Mark `PLAN.md` rows `pending batch verification`
 while a batch is in flight; only relabel `PDF-verified clean` once that pass has actually run
-**and been pixel-confirmed**, not just log-grepped clean (see the finding below on why).
+**and been pixel-confirmed**, not just log-grepped clean (a real instance of exactly this
+distinction mattering is documented below and in `PLAN.md`'s session log).
 
-## Where things stand (end of session, 2026-07-21)
+## Where things stand (end of session, 2026-07-21 into 2026-07-22)
 
-**386 pages, 49 chapters + 6 appendices, 0 undefined references, 0 duplicate-label warnings,
-and — as of this session's final commit `4c9d177` — every touched page actually re-rendered to
-PNG and read directly, including a second, corrective verification pass after the coordination
-hazard above was discovered.** Re-verify before trusting this in a future session; use
-`grep -i "Warning.*undefined\|undefined reference\|undefined control"`, not a plain `grep -i
-undefined`.
+This was an unusually long, eventful autonomous session (author unavailable for several hours,
+explicit authorization to work independently). Two full batches landed:
 
-This session ran a full batch-of-10 depth pass (Ch.15 Shader/.fx Gap, Ch.24 Canvas/ASCII,
-Ch.25 DX3/free-direct, Ch.36 Parity Philosophy, Ch.42 Verification Methodology, Ch.45
-xna4-spec Auditing, Appendices C/D/E/F), **plus** (via the fork behavior above) closed a real,
-previously-outstanding gap: **real screenshots for Ch.17 (SDL_Renderer) and Ch.18 (EasyGL),
-captured under Xvfb** — this book's own screenshot-feasibility notes had left "EasyGL/
-SDL_Renderer via Xvfb" as "plausible but not actually tried" since 2026-07-20; it's now
-confirmed and reproducible. See `tools/cna-screenshot-infra/README.md` for the method and the
-saved demo source (`xvfb_screenshot_demo.cpp` + `xvfb-demo-cmake-registration.patch`). Also
-fixed a stale claim in Ch.16 (SDL_GPU's build-time-selection section still said "not otherwise
-covered in this book" and cited a pre-Ch.22 boolean-option count, now 14).
+**Batch 1 (fully verified, PDF-confirmed clean): Ch.15/24/25/36/42/45, Appendices C/D/E/F, plus
+Ch.16/17/18.** Highlights: a real, historical `ShaderEffect` 3D-draw limitation and its fix
+(Ch.15); both Canvas/ASCII backends' 2D-only-by-design contract (Ch.24); DX3's shadow-backbuffer
+`RenderTarget2D` reuse (Ch.25); `IDisposable`/exception-hierarchy parity philosophy incl.
+`ReaderWriterLockSlim`'s own three-bug self-correction history (Ch.36); the D3D9 oracle corpus
+traced fully end to end (Ch.42); a second full xna4-spec audit finding a real, deliberate
+`Viewport::TitleSafeArea` divergence (Ch.45); 13 new glossary entries, two newly-catalogued real
+repos, new NOXNA/quick-reference sections (App C/D/E/F). **Plus a real, previously-untested
+capability confirmed: real screenshots for Ch.17 (SDL_Renderer) and Ch.18 (EasyGL), captured
+under `Xvfb`** — this book's own screenshot-feasibility notes had left this "plausible but not
+actually tried" since 2026-07-20; now confirmed and reproducible (see
+`tools/cna-screenshot-infra/README.md`, `xvfb_screenshot_demo.cpp`,
+`xvfb-demo-cmake-registration.patch`). `cna`'s own working tree has two reusable, ccache-enabled
+build directories now: `build-sdlrenderer/` and `build-easygl/`.
 
-Highlights:
+**A real coordination hazard hit mid-batch-1 and was fully resolved — read `PLAN.md`'s own
+session log for the complete account** (search for "batch-10 depth pass" and the "Correction"
+entry right after it): a background fork kept working past its assigned task, raced the
+coordinating session's own `make book` run, and one of its `\allowbreak{}`-only overflow fixes
+was later found (by a *different* concurrent agent, via careful before/after pixel comparison)
+to have changed nothing about the actual render — three real page-edge text overflows (Appendix
+E, Ch.45 ×2) were still live despite a "fixed" commit message and despite **no logged
+Overfull-hbox warning for any of the three**. Fixed for real in commit `4c9d177` by
+restructuring the sentences instead. **The standing lesson: PNG-rendering is the only reliable
+check for this defect class — absence of a logged warning is not evidence of correctness**, and
+a fix must be pixel-verified (before/after crop comparison), not assumed from a clean rebuild or
+another agent's commit message.
 
-- **Ch.15**: a real, historical SpriteBatch-only limitation on `ShaderEffect` (a raw 3D
-  `DrawIndexedPrimitives()` call silently ignored a bound custom effect) and its 3-part fix,
-  plus the follow-on custom-`VertexDeclaration` capability, both grounded in real EasyGL test
-  files.
-- **Ch.17/Ch.18**: real, unedited backbuffer PNGs captured under `xvfb-run` for both backends
-  (identical `SpriteBatch` rotate-around-origin scene from the real
-  `easygl_spritebatch_rotation_golden_test.cpp`, Task 465/417) — both outputs are
-  byte-for-byte identical, a small independent cross-backend confirmation.
-- **Ch.24**: both Canvas and ASCII are 2D-only by explicit design (`ThrowNo3D()`), not
-  omission — ASCII has a dedicated 17-check test; Canvas has the identical contract in its own
-  header comment but no test yet.
-- **Ch.25**: `RenderTarget2D` reuses the DX3 backend's shadow-backbuffer trick per bound
-  target, verified via `dx3_texture_rendertarget_test.cpp`'s two-distinct-clear-color
-  bind-redirect proof.
-- **Ch.36**: `IDisposable`/exception-hierarchy parity by pattern, not mechanism, incl.
-  `ReaderWriterLockSlim`'s own real, three-bug self-correction history (documented in its own
-  header's verification comment).
-- **Ch.42**: the D3D9 oracle corpus traced fully end to end (`.scene` format,
-  `CnaOracleRender.cpp`, `xna-diff.py`'s tolerance-0 comparison, the `D3D9_XNA_Diff` CTest gate)
-  plus the deliberately-not-a-gate EasyGL cross-backend measurement and its three-pattern
-  divergence breakdown.
-- **Ch.45**: a second full worked xna4-spec audit (`Viewport`), finding a real, deliberate
-  divergence — `TitleSafeArea`'s spec remarks describe a uniform inset, but the real
-  implementation returns `Bounds` unchanged, confirmed intentional via a dedicated regression
-  test.
-- **Appendices C/D/E/F**: 13 new glossary entries (all twelve backend names plus EXT/NOXNA/
-  golden-image/ReflectiveReader<T>); two newly-catalogued real repos (`sprite-utils`,
-  `mobile-eggbert-libgdx`, the latter a from-scratch Java/LibGDX fourth-generation port
-  bypassing the CNA/sharp-runtime stack entirely) plus a worktree-vs-repo scope clarification;
-  new Texture/SurfaceFormat/PresentationParameters/Audio/Media/Networking NOXNA entries
-  (incl. `NetworkGamer::SetHasLeftSession`, a real "restore a stubbed original member" finding —
-  FNA's own setter is `private` and never called, permanently `false` on unmodified semantics);
-  a new Devices-and-Sensors (Accelerometer/Compass) quick-reference section.
+**Batch 2 (content landed and build-verified clean at the log level; PNG-level pixel
+verification of the *new* content is incomplete as of session end — see the section above about
+a concurrent pass possibly still finishing this): Ch.10/19/20/23/32/37/40/41/43/44, Appendix B.**
+Highlights: SpriteBatch's sort-deferred (not draw-call-batched) flush timing (Ch.10); Vulkan's
+`CreateSwapchain()` UNORM-not-SRGB decision and `PresentInterval` fallback chain (Ch.19); BGFX's
+free-list-backed render-target view-id pool (Ch.20); D3D11's three-group (not two)
+resource-lifetime tracking (Ch.23); a worked `ComputeBoneTransformsEXT` example with three real
+bugs (Ch.32); easy-gl's two-tier context-loss recovery, one tier real and used, one designed but
+never adopted (Ch.37); a real WebGL context-loss code path plus a link-flag gap (Ch.40); a real,
+currently-live NDK cross-compile regression (`getrandom()` gated behind API 28, this project
+targets API 24) found by re-running the exact same command a prior pass had confirmed working
+(Ch.41); Migration Guide Step 7 build/runtime troubleshooting tables (Ch.43); a full CNA-port
+feasibility analysis for Blupi, grounded in `free-eggbert`'s own real `cna.md` line-count audit
+(Ch.44); two real longtable capability grids condensed from
+`docs/graphics-backend-feature-matrix.md`, including a caught-and-flagged stale row in that
+source doc itself (Appendix B).
 
-## A real, dangerous overfull-hbox false lead this session corrected — READ THIS BEFORE TRUSTING THE LOG
-
-**A prior draft of this file (written by the concurrent fork discussed above) concluded that
-`grep -i overfull` on the build log, while unreliable as a completeness check, *is* reliable as
-a presence check — i.e., if a paragraph doesn't appear near a logged `Overfull \hbox` warning,
-trust that over a visual "looks cut off" impression from a rendered PNG. This is wrong, and
-this session proved it wrong concretely**: three separate real page-edge text overflows (one in
-Appendix E, two in Ch.45) each ran actual content off the physical page — not a cosmetic
-tight-justification look, genuinely missing characters when the page is read at high enough
-resolution — and **none of the three produced a logged "Overfull" warning at all.** Do not use
-log-absence as evidence a suspected visual overflow is fine. The only reliable check remains:
-render to PNG (bump `-r` to 150+ and crop with PIL for a closer look if genuinely unsure) and
-read it directly. If a rendered line's last `\texttt{}`/`\cnans{}` token looks like it might be
-touching or crossing the page edge, treat it as a real defect until proven otherwise, not the
-other way around.
-
-**Also learned: a `\allowbreak{}` fix must be pixel-verified, not just re-built-and-assumed.**
-If a before/after PNG crop of the same region is visually identical, the fix did not work —
-this happened twice this session (once to a concurrent fork's fix, once to this session's own
-first attempt on the same paragraph) before a working fix was found by restructuring the
-sentence instead of just adding more `\allowbreak{}` points. See commit `4c9d177`'s message for
-the full reasoning, including the specific workaround needed when the overflowing token is
-wrapped in `\cnans{}`/`\cnaclass{}` (which cannot take `\allowbreak{}` internally without
-corrupting the index — see the Reusable findings section below).
-
-## Screenshot infrastructure: two more backends now confirmed
-
-`tools/cna-screenshot-infra/README.md` is updated: **EasyGL and SDL_Renderer via `Xvfb` + Mesa
-llvmpipe are now confirmed working**, not just plausible (built both, ran
-`xvfb-run -a --server-args="-screen 0 1024x768x24" env -u WAYLAND_DISPLAY ./<binary>`, got
-real, correct PNGs from both). The reusable demo (`xvfb_screenshot_demo.cpp`) and its CMake
-registration patch (`xvfb-demo-cmake-registration.patch`) are saved there. Also: the
-`ContentReader::ReadDecimal`/`ReadChar` stopgap this doc used to say was needed is now fixed
-upstream in `sharp-runtime` — try building without the patch's `ContentReader` hunk first.
-
-**Reusable build directories now exist** in the `cna` sibling repo (persists at
-`/rv/data/development/github.com/openeggbert/cna` in this environment, not `/workspace` —
-contrary to this doc's older note, written for a different environment): `build-sdlrenderer/`
-(424 MB) and `build-easygl/` (136 MB), both ccache-enabled, both already configured with
-`CNA_BUILD_TESTS=ON` (`build-easygl` also has `CNA_BUILD_EXAMPLES=ON`). Reuse these rather than
-reconfiguring from scratch, per the org-wide `CLAUDE.md` build-reuse policy. The `cna` working
-tree also still has the (uncommitted, by design — same pattern as the pre-existing `SOFTWARE`
-demo) `examples/xvfb_screenshot_demo.cpp` and the CMake registration edits in
-`cmake/Tests/{SdlRenderer,EasyGL}Tests.cmake` applied locally; reapply
-`tools/cna-screenshot-infra/xvfb-demo-cmake-registration.patch` if that repo ever gets reset.
-
-Untried candidates still remaining: `ASCII` and `CANVAS` (`CANVAS` is Emscripten/browser-only,
-a materially different capture path — not just "point Xvfb at it").
+**Current build state**: forced rebuild (`latexmk -g`) succeeds, **402 pages**, both grep
+checks clean (`grep -i "Warning.*undefined\|undefined reference\|undefined control"` and
+`grep -i "multiply defined\|multiply-defined"` both empty). This confirms batch 2 compiles and
+has no cross-reference regressions, but per the lesson above, a clean grep is necessary, **not
+sufficient** — batch 2's own newly-added pages have not all been individually PNG-rendered and
+read yet (a first pass sampled one page per chapter and found everything clean, but that was
+not the full systematic sweep batch 1 got). **Do that full sweep before marking batch 2's
+`PLAN.md` rows `PDF-verified clean`** — they are currently correctly marked `pending batch
+verification`.
 
 ## What is NOT yet done — the natural next body of work
 
-Furthest-below-target chapters as of this session's end (recompute from `PLAN.md`'s own table
-if this list and PLAN.md ever disagree — use PLAN.md's numbers):
+1. **Finish batch 2's verification**: resolve the possibly-still-in-progress concurrent edit
+   (see top of this file), rebuild with `latexmk -g`, re-run both grep checks, locate every
+   batch-2 chapter's physical page range via `pdftotext`, render every touched page to PNG at
+   120dpi (bump to 150+ and crop with PIL if a specific line looks borderline), read each one
+   directly, fix anything found, then relabel all eleven `PLAN.md` rows (Ch.10/19/20/23/32/37/
+   40/41/43/44, App B) `PDF-verified clean`.
+2. Continue with further chapters once batch 2 is verified. Furthest-below-target as of this
+   session's end (recompute from `PLAN.md`'s own table if this list and PLAN.md ever disagree):
+   Ch.23 Direct3D (~13 of ~85, still the largest gap even after this session's addition), Ch.41
+   Android/NDK (~7 of ~40), Ch.31 Networking and Ch.35 Sharp Runtime Namespaces (~9 of ~70
+   each), Ch.20 BGFX (~10 of ~55), Ch.10 SpriteBatch (~9 of ~55).
+3. Ch.7 Math remains the largest chapter by far and may be genuinely saturated (four-plus prior
+   sessions' worth of depth passes) — read its own `PLAN.md` row before adding more.
+4. Screenshot infrastructure: `ASCII` and `CANVAS` backends remain untried for real screenshot
+   capture (`CANVAS` is Emscripten/browser-only, a materially different path than `Xvfb`).
 
-- Ch.23 Direct3D Backends (~7 of ~85, 8%) — the largest page gap in the whole book by far
-- Ch.40 Web/Emscripten (~4 of ~40, 10%)
-- Ch.19 Vulkan Backend, Ch.18 EasyGL Backend (~7-9 of ~65 each, ~12%)
-- Ch.43 Migration Guide (~6 of ~55, 11%)
-- Ch.41 Android/NDK (~5 of ~40, 12%)
-- Ch.10 SpriteBatch, Ch.20 BGFX Backend, Ch.32 Avatar, Ch.37 EasyGL Deep Dive, Ch.44 Blupi
-  Case Study (~7 of ~55-65 each, ~13%)
-- Ch.31 Networking, Ch.35 Sharp Runtime Namespaces (~9 of ~70 each, 13%)
-- Appendix B Feature Matrix (~2 of ~15, 13%)
-
-Ch.7 Math remains the largest chapter by far and may be genuinely saturated (four prior
-sessions' worth of depth passes) — read its own PLAN.md row before adding more.
-
-If dispatching parallel forks for the next batch: expect the coordination-hazard behavior
-above (forks may keep working past their scoped task and may commit/push on their own), budget
-verification time accordingly, and re-run the full verification pass yourself at the end
-regardless of what any fork's own commit message claims.
-
-No `TaskCreate` entries exist for further work — the task-tracker MCP tool was unavailable
-last it was checked; work is tracked purely via `PLAN.md`/`NEXT.md` rows and commit messages.
-Check whether it's back before assuming it's still unusable.
+No `TaskCreate` entries exist for further work — the task-tracker MCP tool was unavailable last
+it was checked; work is tracked purely via `PLAN.md`/`NEXT.md` rows and commit messages.
 
 ## Reusable technical/mechanical findings (still true, carried forward)
 
 - **PNG-rendering the affected pages remains the only reliable overflow check — full stop, no
-  exceptions for what the log says.** See the dedicated section above; log-absence is not
-  evidence of correctness for this defect class.
+  exceptions for what the log says.** Absence of a logged `Overfull \hbox` warning is not
+  evidence of correctness for this defect class (proven concretely this session, see above).
+- **A suspected fix must be pixel-verified, not assumed from a clean build log or from a
+  previous agent's commit message.** If a before/after PNG crop of the same region looks
+  identical, the fix did not work.
 - **`grep -i undefined main.log` can false-positive** on ordinary prose containing the word
   "undefined." Use `grep -i "Warning.*undefined\|undefined reference\|undefined control"`.
+- **`\checkmark` and other amssymb/amsfonts-only commands are undefined in this project's
+  preamble** (no `amssymb` package loaded) — use plain text (`OK`, `X`, etc.) for status
+  symbols in tables rather than assuming a common LaTeX symbol command is available; check
+  `latex/common/preamble.tex`'s own `\usepackage` list before using an unfamiliar command.
 - **`\allowbreak{}` cannot go inside a `\cnans{}`/`\cnaclass{}` argument** (would corrupt the
   index). If a `\cnans{}`/`\cnaclass{}`-wrapped long identifier is the thing overflowing and the
   identical term is indexed elsewhere in the same chapter via another `\cnans{}`/`\cnaclass{}`
   instance, it's safe to switch just the overflowing instance to a plain, `\allowbreak{}`-able
-  `\texttt{}` — the index entry survives via the other instance. Verify that precondition
-  (grep for other instances of the identical term) before doing it; don't silently downgrade a
-  `\cnans{}`/`\cnaclass{}` to bare `\texttt{}` without checking, or the index entry is lost.
-- **A suspected fix must be pixel-verified, not assumed from a clean build log or from a
-  previous agent's commit message.** If a before/after PNG crop of the same region looks
-  identical, the fix did not work.
+  `\texttt{}` — the index entry survives via the other instance. Verify that precondition first;
+  don't silently downgrade without checking.
 - **Overflow-fix technique, in order of what actually worked:** (1) `\allowbreak{}` at
   camelCase/`::`/`_`/`.` boundaries — verify it actually changed the render, don't assume; (2)
   restructure the sentence into shorter independent clauses when `\allowbreak{}` alone doesn't
-  move the needle — this changes *where* the long token lands on a line, which matters more
-  than trying to hyphenate it in place; (3) split a combined `\description` `\item[...]` label
-  into two items; (4) restructure code itself inside `lstlisting`; (5) `\section[short]{long}`
-  for a running-header/folio collision.
+  move the needle; (3) split a combined `\description` `\item[...]` label into two items; (4)
+  restructure code itself inside `lstlisting`; (5) `\section[short]{long}` for a running-header/
+  folio collision; (6) for a wide multi-column `longtable`, narrowing one column's `p{}` width
+  while widening another can resolve an overflow without touching any cell's own text.
 - **`\times`, and other math-mode-only commands, will fatally break the build inside
   `\texttt{}`** — use a plain ASCII operator (`*`) for arithmetic inside `\texttt{}`.
 - **Before asserting a specific API call in a worked example, grep the real header for it.**
 
 ## Housekeeping (unchanged, still true)
 
-- Build: `cd latex && make book` → `latex/book/main.pdf`. Grep the log with the corrected
-  `undefined` pattern above and `multiply defined`/`multiply-defined` every time — but only at
-  batch-verification time, not after every chapter, per the batching policy above.
+- Build: `cd latex && make book` → `latex/book/main.pdf`. If you suspect staleness, use
+  `latexmk -pdf -interaction=nonstopmode -halt-on-error -file-line-error -g main.tex` from
+  inside `latex/book/` to force a full rebuild (see the coordination-pattern section above for
+  why the plain target can silently skip a rebuild it shouldn't).
 - `latexmk`/`pdflatex`/`texlive-latex-extra`/`texlive-fonts-recommended` are installed.
   `xvfb`/`libgl1-mesa-dri`/`ccache` are all installed too — confirmed working this session.
 - Sibling repos (`cna`, `sharp-runtime`, `easy-gl`, `free-direct`, `xna4-spec`, `cna-samples`,
-  `cna-extended`, `cna-template`, `libcna.com`, `free-api`, `free-eggbert`, `planetblupi`, and
-  two more found this session: `sprite-utils`, `mobile-eggbert-libgdx`) live at
+  `cna-extended`, `cna-template`, `libcna.com`, `free-api`, `free-eggbert`, `planetblupi`,
+  `sprite-utils`, `mobile-eggbert-libgdx`) live at
   `/rv/data/development/github.com/openeggbert/<name>` in this environment — not `/workspace`.
 - Printed page numbers and physical PDF page numbers differ (front matter uses roman
   numerals) — search by content (`pdftotext`), never assume printed page N is physical page N.
