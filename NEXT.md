@@ -17,12 +17,15 @@ including on `grep -a` output that revealed hundreds of pre-existing "overfull" 
 `grep -i` alone was silently missing).
 
 **Tasks #24-40 are all complete** (all of Parts I-IV, chapters 1-24, plus Appendix A).
-**Task #41 (Parts V-IX, chapters 25-48) is now in progress: Ch.25-28 done this session**
-(Ch.25 checked and found already well-covered from a very recent prior session, no edit
-needed; Ch.26-28 each got a real depth-pass addition). Continue with **Ch.29
-(GamerServices)** next, working sequentially through 48. See "A new, high-value technique
-discovered this session" below before starting — it materially changed how fast good gaps
-were found for Ch.26-28 and should be applied to every remaining chapter in Parts V-IX.
+**Task #41 (Parts V-IX, chapters 25-48) is in progress: all of Part V is now done this
+session (Ch.25-32)** — Ch.25 was checked and found already well-covered from a very recent
+prior session (no edit needed); Ch.26-32 each got a real depth-pass addition, several of them
+substantial (see below). Continue with **Ch.33 (Sharp Runtime: Overview and Architecture)**
+next — the start of Part VI. See "A new, high-value technique discovered this session"
+below before starting each chapter; it found real, substantial material in every single
+chapter it was tried on this session (7 for 7: Ch.26-32), and should be tried first for every
+remaining chapter, though Part VI's subject (`sharp-runtime`, a sibling repo) won't have a
+`cna` plan doc — check that sibling repo's own root for an equivalent instead.
 
 **This is an autonomous, long-running session** (the user explicitly authorized "continue
 autonomously for as long as there is useful, safe work within scope" and asked not to be
@@ -125,6 +128,25 @@ grounded in an actual source read, rebuilt and PNG-verified before commit:
   already-CLOSED two-phase Start/Stop fix, causing real heap corruption under an 8-thread
   stress test — the same "closed isn't proof" methodology point as Ch.18's EasyGL finding,
   independently rediscovered in a completely different subsystem.
+- **Ch.29 GamerServices** — no dedicated plan doc exists; found via `plan_net.md` Phase 4
+  Task 4.5 instead. Added a worked example on exactly which `Achievement` fields
+  `GetAchievements()` populates for real (`Key`/`IsEarned`/`EarnedDateTime`) versus which stay
+  at fixed defaults (`Name`/`Description`/`GamerScore`) because real XNA's own
+  `AwardAchievement` carries no catalog metadata at all.
+- **Ch.30 Networking** — mined `ENetBackend.cpp` directly (source, not a plan doc, for this
+  one) for the pre-handshake send queue's real bound (64, oldest-evicted-first) and its
+  internal `GetDroppedAppDataCount()` diagnostic counter — the chapter already described the
+  mechanism qualitatively but not with these specifics.
+- **Ch.31 Avatar** — mined `plan_net.md`'s Phase 15 (2026-07-18, GamerServices/Avatar work is
+  tracked there, not in a dedicated Avatar plan doc) for two real lighting bugs: `DrawRealEXT`
+  calling `EnableDefaultLighting()` *after* a caller's custom ambient (silently discarding
+  it — verified against the real, currently-fixed source and its own explanatory comment),
+  and a project-wide EasyGL formula bug (`EmissiveColor` double-multiplied by `DiffuseColor`)
+  found via 3 failed rounds of avatar-ambient tuning, with real before/after pixel percentages.
+- **Ch.32 Storage** — no plan doc; found by reading `StorageContainer.cpp` directly. A real,
+  currently undocumented gap: `ResolvePath()` never guards against a `..`-climbing relative
+  path, only an empty-string check exists — confirmed against both the header docs and test
+  suite, neither of which treat it as a scoped decision. **This completes all of Part V.**
 
 **Every chapter above also had at least one genuine overfull-hbox, header/folio collision, or
 API-accuracy defect found and fixed while reading the whole page** (not just the new
