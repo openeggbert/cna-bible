@@ -93,6 +93,86 @@ material, no confidentiality guarantees to get wrong'' --- a hash function used 
 or content addressing carries none of the security risk a real encryption implementation
 would.
 
+\section{IDisposable and the exception hierarchy: parity by pattern, not by mechanism}
+
+Two further deviations are less often stated outright as deviations, because the project
+does not treat them as ones --- they are cases where matching .NET's \emph{observable
+behavior} required deliberately \emph{not} matching its mechanism. \cnaclass{IDisposable}'s
+own header comment states the tradeoff directly: ``In C\#, the \texttt{using} statement calls
+\texttt{Dispose()} automatically at the end of the block. In C\texttt{++}, use RAII or call
+\texttt{Dispose()} explicitly.'' There is no C\texttt{++} language construct that runs
+arbitrary code at scope exit the way a \texttt{using} block does short of writing a dedicated
+RAII wrapper per call site, so this project's actual parity target is narrower and more
+precise than ``reproduce the \texttt{using} statement'': reproduce \emph{Dispose()'s own
+contract} --- idempotent, non-throwing, and safe to call more than once --- and let the
+caller choose their own C\texttt{++}-native mechanism (an explicit call, a destructor, or a
+scope guard) for invoking it at the right time.
+
+\cnaclass{System::Threading::ReaderWriterLockSlim} is a concrete, real implementation of this
+contract worth reading closely, because its own header comment documents a genuine
+self-correction of exactly the kind this chapter's delegate discussion above already showed
+this project performing on itself. An earlier version of this
+class had three real, independently-found bugs, each one a case where a C\texttt{++}
+implementation that merely \emph{looked} equivalent to the real .NET semantics was not
+actually equivalent under closer verification: it discarded the
+\texttt{millisecondsTimeout} parameter on every \texttt{TryEnter*} overload, always making a
+single non-blocking attempt regardless of what the caller passed; it ignored the constructor's
+\texttt{LockRecursionPolicy} entirely, so same-thread recursive acquisition always deadlocked
+instead of throwing \texttt{LockRecursionException} under the real .NET-default
+\texttt{NoRecursion} policy; and it tracked reader-lock ownership by set \emph{membership}
+rather than by count, so a legitimately nested
+\texttt{EnterReadLock()} / \texttt{EnterReadLock()} / \texttt{ExitReadLock()} sequence's second
+\texttt{ExitReadLock()} call threw \texttt{SynchronizationLockException} instead of correctly
+decrementing --- which additionally meant the internal reader tally could never reach zero
+from a genuinely nested acquisition, permanently starving any waiting writer. All three are
+fixed in the current header, verified directly against real .NET's own
+\texttt{TryEnterReadLockCore} / \texttt{TryEnterWriteLockCore} / \texttt{TryEnterUpgradeableReadLockCore}
+logic per the header's own verification comment.
+
+\begin{lstlisting}
+// Worked example: IDisposable's contract, applied explicitly (no C++ "using"
+// block exists), with the real ObjectDisposedException guard every public
+// entry point in ReaderWriterLockSlim shares (throwIfDisposed(), called
+// first inside TryEnterReadLock/TryEnterWriteLock/TryEnterUpgradeableReadLock).
+System::Threading::ReaderWriterLockSlim rwLock;
+
+rwLock.EnterReadLock();
+// ... read shared state ...
+rwLock.ExitReadLock();
+
+rwLock.EnterWriteLock();
+// ... mutate shared state ...
+rwLock.ExitWriteLock();
+
+rwLock.Dispose();          // explicit -- no using-block equivalent exists
+rwLock.Dispose();          // safe to repeat: Dispose() only ever sets a flag
+try {
+    rwLock.EnterReadLock();      // throwIfDisposed() now fires
+} catch (const System::ObjectDisposedException&) {
+    // "ReaderWriterLockSlim" -- the disposed object's own class name,
+    // matching real .NET's ObjectDisposedException(objectName) constructor.
+}
+\end{lstlisting}
+
+The exception hierarchy this last block leans on is itself worth a precise count rather than a
+vague gesture at ``lots of exception types'': a project-wide search finds 109 distinct
+exception classes across the \texttt{include/System} tree, the overwhelming majority deriving
+not directly from \cnaclass{System::Exception} but through the intermediate
+\cnaclass{System::SystemException} base --- matching real .NET's own two-level shape, where
+framework-thrown exceptions (\texttt{ArgumentException}, \texttt{InvalidOperationException},
+\texttt{ObjectDisposedException}, and the rest this book's other chapters have already used by
+name) sit under \texttt{SystemException} rather than hanging directly off the root. The root
+class's own header comment makes explicit exactly which real .NET \texttt{Exception} members
+this project deliberately does not provide, and why each one is a concrete instance of a
+deviation this chapter has already stated abstractly: \texttt{GetBaseException()} would
+require cloning the thrown object through its base type, which needs a virtual-clone mechanism
+this port does not have; \texttt{ToString()} would need a \texttt{GetType()}-equivalent class
+name, out of scope under this chapter's opening reflection deviation; and \texttt{TargetSite}
+and \texttt{GetObjectData} are out of scope for the same reflection and serialization
+deviations covered earlier in this chapter. Nothing here is a new decision --- it is the same
+two decisions, now traceable to the one root class every exception in the ecosystem inherits
+from.
+
 \section{Two further, narrower accepted gaps}
 
 Two smaller, explicitly accepted limitations round out this chapter. A fixed list of
