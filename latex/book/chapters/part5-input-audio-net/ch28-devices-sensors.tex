@@ -66,6 +66,34 @@ prior state or the fully updated state, never a mix of the two --- the separate 
 available only for the rarer case of changing one without the other, such as explicitly
 invalidating data with no new reading to publish.
 
+\subsection{A fourth finding: exceptions silently swallowed at a native callback boundary}
+
+A later re-audit found a real gap of a different shape from the first three, closer to the
+error-handling side of the same concurrency-safety theme than to locking itself: several
+native failures --- and, specifically, an exception thrown out of a game's own
+\texttt{CurrentValueChanged} handler while it was being invoked from inside a background
+sensor-event callback --- were silently absorbed by a bare \texttt{catch (\ldots{}) \{ \}}, with
+no logging and no way for anything, test or production diagnostic, to ever learn it had
+happened. This is a real hazard specific to crossing from C\texttt{++} into a C callback
+boundary (an SDL event filter, an Android NDK sensor callback, a raw \texttt{std::thread} entry
+point): an exception that escapes such a boundary is undefined behavior, so swallowing it
+outright was the safe choice at the time, but swallowing it \emph{silently} meant a real bug in
+a game's own handler could vanish without a trace. The fix is a small, shared, deliberately
+\texttt{noexcept} diagnostic channel --- a structured record (backend, operation, native
+error code and message, device id, timestamp, severity) that any native call site can publish
+to without risking becoming a new throw-across-a-callback hazard itself, since the recording
+call internally wraps its own logging and callback-invocation in its own \texttt{try}/%
+\texttt{catch}. Exposed through debug-build logging plus \texttt{NOXNA} test hooks
+(\texttt{GetRecordCountForTesting()}, \texttt{GetLastRecordForTesting()}), it was wired into one
+concretely-identified real gap first --- the Android sensor bridge's own callback dispatch,
+which previously swallowed a handler's thrown exception with no trace at all, now correctly
+distinguishes a typed \texttt{std::exception} (recording its own \texttt{.what()} message) from
+an unknown throw, both routed through the same shared record. This is deliberately scoped as a
+first migration, not a full sweep --- several other already-hardened call sites (the SDL sensor
+path's own dispatch-exception counters, haptic and sensor device connection-loss diagnostics)
+still use their own earlier, differently-shaped ad-hoc mechanisms and are named as real,
+tractable follow-up work rather than silently left unmentioned.
+
 \begin{lstlisting}
 // Worked example: subscribing to Accelerometer readings from the game
 // thread while acknowledging the callback can legitimately arrive on
@@ -85,7 +113,7 @@ accelerometer.Stop();
 accelerometer.Dispose();
 \end{lstlisting}
 
-\subsection{A fourth finding: a closed race that TSan alone caught, in the fix for a different race}
+\subsection{A fifth finding: a closed race that TSan alone caught, in the fix for a different race}
 
 The most instructive concurrency finding in this whole namespace's history is not a fresh bug
 in old code, but a genuine, later-discovered race \emph{inside a fix that had already shipped
