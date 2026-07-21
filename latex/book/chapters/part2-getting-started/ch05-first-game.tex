@@ -201,6 +201,79 @@ for this overload as the default, not the convenience one the first, minimal exa
 stay as short as possible.
 \end{sourcenote}
 
+\section{A third program: bouncing off the edges, with sound}
+
+The second program moved a sprite; it never asked whether that sprite had actually left the
+visible screen. This section adds exactly that check, plus a real audio cue when it happens
+--- the classic ``first game'' milestone of something actually \emph{reacting} to the game
+state, not just rendering it. Three more real, grounded additions on top of the same running
+example:
+
+\begin{lstlisting}
+class MyGame final : public Game {
+    // ... constructor unchanged ...
+
+    void LoadContent() override
+    {
+        spriteBatch_ = std::make_unique<SpriteBatch>(getGraphicsDeviceProperty());
+        logo_ = std::make_unique<Texture2D>("assets/logo.png", getGraphicsDeviceProperty());
+        bounceSound_ = std::make_unique<SoundEffect>("assets/bounce.wav");
+    }
+
+    void Update(GameTime& gameTime) override
+    {
+        const KeyboardState keys = Keyboard::GetState();
+        const float seconds =
+            static_cast<float>(gameTime.getElapsedGameTimeProperty().getTotalSecondsProperty());
+        const float speed = 200.0f;
+
+        if (keys.IsKeyDown(Keys::Left))  position_.X -= speed * seconds;
+        if (keys.IsKeyDown(Keys::Right)) position_.X += speed * seconds;
+        if (keys.IsKeyDown(Keys::Up))    position_.Y -= speed * seconds;
+        if (keys.IsKeyDown(Keys::Down))  position_.Y += speed * seconds;
+
+        const Viewport& viewport = getGraphicsDeviceProperty().getViewportProperty();
+        const float maxX = static_cast<float>(viewport.getWidthProperty())  - logo_->getWidthProperty();
+        const float maxY = static_cast<float>(viewport.getHeightProperty()) - logo_->getHeightProperty();
+
+        bool hitEdge = false;
+        if (position_.X < 0.0f)   { position_.X = 0.0f; hitEdge = true; }
+        if (position_.X > maxX)   { position_.X = maxX; hitEdge = true; }
+        if (position_.Y < 0.0f)   { position_.Y = 0.0f; hitEdge = true; }
+        if (position_.Y > maxY)   { position_.Y = maxY; hitEdge = true; }
+
+        if (hitEdge) bounceSound_->Play();
+    }
+
+private:
+    // ... other members unchanged ...
+    std::unique_ptr<SoundEffect> bounceSound_;
+};
+\end{lstlisting}
+
+\textbf{The bounds check clamps position, it does not just detect it.} Setting
+\texttt{position\_.X} back to \texttt{0.0f} or \texttt{maxX} in the same branch that detects
+the violation matters: without it, holding a direction key against the edge would let
+\texttt{position\_} keep accumulating past the boundary every frame, and the sprite would need
+to travel back through the entire out-of-bounds distance before visibly re-entering the
+screen. Clamping in the same statement that detects the crossing keeps the visible sprite
+exactly at the edge, every frame, for as long as the key is held.
+
+\textbf{The viewport, not a hardcoded screen size, is what \texttt{maxX} / \texttt{maxY} are
+computed against.} \cnaclass{Viewport::Width} / \texttt{Height} (Chapter~\ref{ch:graphicsdevice})
+reflect whatever the back buffer's actual current size is --- reading them here, rather than
+hardcoding the numbers the game happened to launch with, is what keeps this bounds check
+correct if the window is resized or the game runs under a different
+\cnaclass{PresentationMode} (Chapter~\ref{ch:game-loop}).
+
+\textbf{\cnaclass{SoundEffect}'s file-path constructor is a \texttt{NOXNA} convenience, the
+same shape as \cnaclass{Texture2D}'s.} Real XNA has no such constructor either --- a real XNA
+game always loads a \cnaclass{SoundEffect} through the compiled content pipeline. \texttt{Play()}
+here uses the simplest zero-argument overload (default volume, pitch, and pan); a real game
+that wants to vary bounce loudness by impact speed would reach for the three-argument
+\texttt{Play(volume, pitch, pan)} overload instead --- covered in full in this book's audio
+chapter.
+
 \section{What happens if you change the backend}
 
 Nothing in the file above mentions a graphics backend at all --- that is the entire point of
