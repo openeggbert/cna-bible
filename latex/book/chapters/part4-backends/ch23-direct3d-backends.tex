@@ -137,6 +137,57 @@ usage pattern than the default. The fix, \texttt{zFarPlane=-1}, corrects the mat
 full documented $[0,1]$ \texttt{layerDepth} range maps inside Direct3D~9's own valid clip
 volume instead of partly outside it.
 
+\section{Three resource-lifetime groups, not two, and why the distinction matters}
+\label{sec:d3d11-lifetime-groups}
+
+Before getting to what \texttt{D3D11} actually renders, one design decision recorded in this
+backend's own planning document (\texttt{plan\_dx.md}) is worth stating explicitly, because
+getting it wrong is exactly the kind of mistake that makes a hand-rolled Direct3D backend
+fragile under two of its most routine events --- a window resize and a lost device. A plain
+resize and device-removed recovery touch genuinely different resource sets, and this backend
+tracks that as three separate groups rather than the two-group split (``device stuff'' versus
+``everything else'') an earlier draft of the same plan itself started from and explicitly
+corrected:
+
+\begin{description}
+  \item[Device lifetime.] \texttt{ID3D11Device}, \texttt{ID3D11DeviceContext}, the
+        \texttt{IDXGIFactory2} chain, and a cached \texttt{allowTearingSupported\_} capability
+        flag --- created once at startup, torn down only by full device-removed recovery.
+  \item[Swap-chain lifetime.] The \texttt{IDXGISwapChain1} object itself --- also created once
+        at startup (and recreated only alongside the device, on recovery), but a plain resize
+        deliberately \emph{reuses the same object} via
+        \texttt{IDXGISwapChain1::ResizeBuffers(\ldots{})} rather than destroying and
+        recalling \texttt{CreateSwapChainForHwnd}.
+  \item[Window-size lifetime.] The back-buffer \texttt{ID3D11RenderTargetView}, the
+        depth-stencil texture and its \texttt{ID3D11DepthStencilView}, and the viewport ---
+        unbound and released \emph{before} \texttt{ResizeBuffers}, then recreated
+        \emph{after} it, on every resize and on device-removed recovery alike.
+\end{description}
+
+The payoff of keeping these three separate: an ordinary window resize --- by far the most
+frequent of the two events in practice --- touches only the third group plus one
+\texttt{ResizeBuffers} call on the second, and specifically must \emph{never} re-run the first
+group's factory/tearing-capability query or destroy and recreate the swap-chain object itself.
+Device-removed recovery, the rarer and more disruptive event, is the only path that tears down
+and rebuilds all three groups together. Collapsing swap-chain lifetime into either of the other
+two groups --- treating it as part of ``device stuff'' (recreating it on every resize, wastefully)
+or as part of ``window-size stuff'' (never giving it its own recovery-only teardown point) --- is
+precisely the shape of bug this three-way split exists to rule out by construction, not merely
+by convention.
+
+A second, smaller decision from the same design-decisions list is worth a brief, concrete
+mention for what it reveals about porting a hand-rolled COM-based backend under a non-MSVC
+toolchain: every \texttt{ID3D11*} / \texttt{IDXGI*} / \texttt{ID3D12*} interface pointer anywhere in
+this backend uses \texttt{Microsoft::WRL::ComPtr<T>}, not a bare \texttt{Release()} call or a
+project-local wrapper --- but that was a genuinely verified choice, not an assumed one. Since
+this project's actual primary dev loop is MinGW-w64 on Debian, not real MSVC, the plan records a
+real spike (device creation, \texttt{.As()}, \texttt{GetParent}, and specifically the
+\texttt{ReleaseAndGetAddressOf()} re-population pattern a swap-chain resize needs) that had to
+compile, link, and run correctly under Wine on this project's own machine before the decision
+was finalized, precisely because leaks on resize, double-releases, and forgotten releases on a
+partially-failed initialization are the default failure mode for a hand-rolled COM wrapper that
+was never actually exercised end to end.
+
 \section{D3D11: the first native, dependency-free Windows path}
 
 \texttt{D3D11} is CNA's first backend built directly on native Direct3D~11, verified in the
