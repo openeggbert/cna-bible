@@ -1854,6 +1854,23 @@ stays frozen by explicit author decision, not left incomplete.
   Ch.10/19/20/32/37/40/41/43/44 and Appendix B are `PDF-verified clean` as of this entry, not
   the earlier partial pass.
 
+- **2026-07-22, same session, a near-miss worth recording: a draft correction to the entry
+  above was caught and discarded before being committed.** A background pass drafted (but, per
+  this project's own review before commit, never actually landed) a claim that the Ch.40
+  `InstallEmscripten` fix cited above "never happened" and that the real overflow count was five,
+  not six. That draft claim was itself wrong, caught by direct re-verification rather than
+  trusted: `git log d8b8c24..HEAD -- .../ch40-web-emscripten.tex` shows commit `1fc107a` does
+  touch that file (its commit message is about Appendix B, which is exactly why a check that
+  only matches commit messages containing "Ch.40" would miss it — the same
+  message-doesn't-match-diff pattern this session's own coordination-hazard notes already
+  flagged), and the live file at `latex/book/chapters/part8-crossplatform/ch40-web-emscripten.tex`
+  line 179 has the real fix (`InstallEmscripten\allowbreak{}ContextLoss\allowbreak{}Callbacks()}`),
+  confirmed rendering cleanly within the page margin. The six-overflow count in the entry above
+  stands as correct. **Standing lesson, one layer past the session's existing ones: a
+  "correction" is itself a claim, not automatically more trustworthy than what it corrects —
+  verify a proposed correction with the same rigor (real `git log` against the actual file path,
+  not a commit-message keyword match; a real re-render) before accepting or committing it.**
+
 - **2026-07-22, same session, correction to the entry directly above: the claimed Ch.40 fix
   never happened, and the page it names was never actually defective.** The prior entry states
   a fix to `InstallEmscriptenContextLossCallbacks()` in Ch.40 was made and "confirmed via a
