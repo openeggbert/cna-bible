@@ -1510,3 +1510,63 @@ stays frozen by explicit author decision, not left incomplete.
   "re-verify a tracked claim against live source" technique as its own leading recommendation
   for whoever continues the third pass next, plus the corrected `undefined`-grep pattern and the
   `\times`-in-`\texttt{}` trap.
+
+- **2026-07-21 — Fourth pass, tasks #58-63, same continuous autonomous session, user said
+  "commitni pushni pokracuj" (commit, push, continue) to resume after a checkpoint.** Picked six
+  more chapters furthest below their page targets and depth-passed each: Ch.34, 17 (which
+  cascaded into a three-chapter fix touching Ch.9 and Ch.14 too), 31, 10, 29, 42. Every edit
+  rebuilt, checked for undefined/duplicate-label errors, PNG-verified, committed, and pushed
+  individually — 6 commits.
+
+  The "re-verify a tracked claim against live source" technique from the immediately preceding
+  batch struck gold again, this time producing the batch's single biggest finding: depth-passing
+  Ch.17 (SDL_Renderer) re-checked its own citation of `ClearOptions::Stencil` (Task 871) as "still
+  open" on the hardware backends — reading `GraphicsDevice.cpp` and each backend's own
+  `ClearStencil` implementation directly found Task 871 fully CLOSED, with a real independent
+  Vulkan bug found and fixed in the same effort (every render-pass-creation site had
+  `stencilLoadOp` hardcoded to `VK_ATTACHMENT_LOAD_OP_DONT_CARE`, discarding the stencil clear
+  value regardless of what `Clear()` requested) and a genuine methodology finding about
+  same-frame vs. cross-frame testing under this project's own per-frame-batched rendering
+  architecture (an initial same-frame stamp-then-clear test failed even with the real fix
+  applied, because Vulkan/Bgfx defer a whole frame's draws into one command buffer/view whose
+  clear always applies once before all of that frame's draws — splitting stamp and clear across
+  two real frames fixed the test). The identical stale claim turned out to be cited in two
+  *other* chapters already touched this session — Ch.9 (GraphicsDevice) and Ch.14 (State
+  Objects), both from before this exact re-verification — so all three were corrected together
+  in one commit, including the Ch.14 mirror worked example whose own "must not rely on Clear"
+  reasoning had depended on the bug being real.
+
+  Ch.34 (Sharp Runtime Namespaces) added `MemoryStream`'s own real, deliberately-left divergence
+  from real .NET (the single-buffer constructor defaults `writable_` to `false`, where real
+  .NET's equivalent defaults to writable), mined from `sharp-runtime`'s own `NEXT.md` rather than
+  a dated audit doc — found incidentally during an unrelated ticket's regression tests and left
+  as-is to avoid scope creep. Ch.31 (Avatar) added a full, honest subsection on the one real,
+  currently-open Avatar visual defect (ragged garment fragments during the `Wave` animation),
+  mined from `plan_net.md`'s Phase 15 round 7 — a seven-round investigation that reframed the bug
+  as rest-pose garment/body capsule-shell interpenetration rather than a skinning bug, traced by
+  hand to a specific, calculable collar overlap matching the measured value almost exactly, with
+  all four disproven structural fixes documented alongside the three live options still open —
+  an explicit example of this book's own "done is not the same as verified correct" methodology
+  applied to a genuinely unresolved item, not just a historical one.
+
+  Ch.10 (SpriteBatch) mined `plan_dx9.md`'s D9-91/D9-A6 tasks for the real D3D9-only half-pixel
+  offset compensation (baked into `D3D9SpriteBatchBackend::BuildMatrixTransformEXT`'s own
+  projection matrix, correctly absent from the shared, backend-agnostic `SpriteBatch.cpp`), with
+  a reusable mutation-testing lesson: two independent test designs (a 1x1 texture; quadrant-center
+  sampling) were both structurally incapable of detecting the offset's absence at all, caught
+  only by deliberately mutation-testing the passing test itself. Ch.29 (GamerServices) mined
+  `plan_net.md`'s own Phase 3 correction (dated 2026-07-18) for a self-correcting-audit story of
+  a different shape than the Task-871 pattern above: an earlier phase's own "complete" sign-off
+  for `Guide`'s keyboard-input overlay had understated four real gaps (unused title/description
+  params, hardcoded `IsVisible`, an unused password-masking flag, no cancel path), found and fixed
+  the same day by an independent post-completion audit — added a full worked example for the
+  now-real feature. Ch.42 (Migration Guide) cross-referenced the `maxGamers`=69 finding from the
+  prior batch (Ch.30) as a second concrete porting gotcha alongside the existing Achievement-%
+  fields one, and fixed a running-header/folio collision on its own Step 4 section title.
+
+  Volume recompiled clean throughout, ending the session at **359 pages (up from 355), 0
+  undefined references, 0 duplicate-label warnings**. `NEXT.md` rewritten again, consolidating
+  the "re-verify a tracked claim against live source" technique's track record across both
+  fourth-pass batches (propagate corrections to 2-4 places; check every named backend, not just
+  one; watch for a project's own self-correcting-audit story as a related but distinct pattern
+  worth also telling) as the standing recommendation for whoever continues next.
