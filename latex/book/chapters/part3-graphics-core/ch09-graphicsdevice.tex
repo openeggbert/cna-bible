@@ -45,12 +45,12 @@ The public surface above is a thin shell over eight private methods this chapter
 scope never traced. They are not callable from game code, but reading them directly (rather
 than guessing from their names) explains real, observable behavior the public API alone
 doesn't --- most notably how Chapter~\ref{ch:game-loop}'s own \texttt{NOXNA
-PresentationMode} enum (\texttt{Letterbox}/\texttt{Overscan}/\texttt{Stretch}/%
-\texttt{NativeBackBuffer}/\texttt{FixedHeightDynamicWidth}) actually reaches the graphics
+PresentationMode} enum (\texttt{Letterbox} / \texttt{Overscan} / \texttt{Stretch}/%
+\texttt{NativeBackBuffer} / \texttt{FixedHeightDynamicWidth}) actually reaches the graphics
 backend.
 
 \begin{description}
-\item[\texttt{createOrAttachWindow()}] under the \texttt{HEADLESS}/\texttt{SOFTWARE}
+\item[\texttt{createOrAttachWindow()}] under the \texttt{HEADLESS} / \texttt{SOFTWARE}
   compile-time backend selection, never creates a real window at all --- \texttt{window\_}
   stays \texttt{nullptr} unconditionally, which is exactly why this chapter's own screenshot
   tooling (\S\ref{sec:worked-drawprimitives}) needs no display server at all. Otherwise, three
@@ -65,12 +65,12 @@ backend.
   \texttt{Input::Mouse} so text input and mouse capture target the right window.
 \item[\texttt{createBackend()}] builds a \texttt{GraphicsBackendCreateArgs} struct from the
   current \cnaclass{PresentationParameters} and wires a \texttt{deviceEventCallback} that
-  drives the real \texttt{Lost}/\texttt{Resetting}/\texttt{Reset} events and
+  drives the real \texttt{Lost} / \texttt{Resetting} / \texttt{Reset} events and
   \texttt{deviceStatus\_} transitions named back in \S\ref{sec:property-surface} --- the same
   callback \texttt{D3D9} alone actually invokes.
 \item[\texttt{destroyNativeResources()}] tears the backend down first (via
   \texttt{unique\_ptr::reset()}), then destroys the SDL window only if this device created it
-  (\texttt{ownsWindow\_}) --- clearing \texttt{TextInputEXT}/\texttt{Mouse}'s own window-handle
+  (\texttt{ownsWindow\_}) --- clearing \texttt{TextInputEXT} / \texttt{Mouse}'s own window-handle
   fields first if they still point at the window about to be destroyed, so neither subsystem is
   left holding a dangling handle.
 \item[\texttt{UpdateViewportFromWindow()}] resyncs \texttt{Viewport} after a window resize:
@@ -125,14 +125,14 @@ either read the current settings or mutate them in place before a \texttt{Reset(
 \subsection{Display}
 
 \texttt{DisplayMode} (get-only) reports the adapter's current \cnaclass{DisplayMode} ---
-\texttt{Width}/\texttt{Height}/\texttt{Format} plus a computed \texttt{AspectRatio}
+\texttt{Width} / \texttt{Height} / \texttt{Format} plus a computed \texttt{AspectRatio}
 (\S\ref{sec:adapter-displaymode}).
 
 \subsection{Shader-stage bindings}
 
 Four properties expose the sampler/texture slots a shader reads from:
-\texttt{Textures}/\texttt{SamplerStates} for the pixel shader stage,
-\texttt{VertexTextures}/\texttt{VertexSamplerStates} for the vertex shader stage. Each is a
+\texttt{Textures} / \texttt{SamplerStates} for the pixel shader stage,
+\texttt{VertexTextures} / \texttt{VertexSamplerStates} for the vertex shader stage. Each is a
 mutable-reference-returning getter onto a \cnaclass{TextureCollection} or
 \cnaclass{SamplerStateCollection} --- both support integer indexing
 (\texttt{device.getTexturesProperty()[0] = \&myTexture;}), and neither has a corresponding
@@ -156,7 +156,7 @@ through a state object.
 \texttt{Indices} (get-only \texttt{const IndexBuffer*}, plus the separate
 \texttt{setIndicesProperty(const IndexBuffer*)} setter) is XNA's original property-style
 binding for the currently-bound index buffer. \S\ref{sec:vertex-index-binding} below covers why
-this property and the newer \texttt{SetIndexBuffer}/\texttt{GetIndexBuffer}/\texttt{Indices()}
+this property and the newer \texttt{SetIndexBuffer} / \texttt{GetIndexBuffer} / \texttt{Indices()}
 method trio (all NOXNA additions) end up meaning the same thing through three different
 call spellings.
 
@@ -180,7 +180,7 @@ Four overloads, only two of which are real XNA:
 \item[\texttt{Clear(const Color\& color)}] clears the color buffer only, to \texttt{color}.
 \item[\texttt{Clear(ClearOptions options, const Color\& color, float depth, int stencil)}]
   the full XNA form --- \texttt{options} is a bitwise-OR of \texttt{ClearOptions::Target}/%
-  \texttt{DepthBuffer}/\texttt{Stencil} (\S\ref{sec:clearoptions} below), \texttt{depth} is the
+  \texttt{DepthBuffer} / \texttt{Stencil} (\S\ref{sec:clearoptions} below), \texttt{depth} is the
   depth-buffer clear value in \texttt{[0,1]}, \texttt{stencil} is the stencil-buffer clear value.
 \item[\texttt{Clear(float r, float g, float b, float a)}] \texttt{NOXNA} (though under-tagged
   in the header itself --- see the audit note below) --- a convenience equivalent to
@@ -211,7 +211,7 @@ back unchanged.
 concrete gaps against FNA's public surface are the \texttt{Present} 3-arg overload, the
 \texttt{Clear(ClearOptions, Vector4, ...)} overload, and \texttt{GetRenderTargetsNoAllocEXT}.
 Several convenience overloads and aliases (the two extra \texttt{Clear} forms above, plus
-\texttt{SetIndexBuffer}/\texttt{GetIndexBuffer}/\texttt{GetVertexBuffer} aliases) exist without
+\texttt{SetIndexBuffer} / \texttt{GetIndexBuffer} / \texttt{GetVertexBuffer} aliases) exist without
 their expected \texttt{NOXNA} tag --- a real, specific instance of
 Chapter~\ref{ch:design-philosophy}'s \texttt{NOXNA}-discipline being imperfectly applied, worth
 knowing about if you are relying on the \texttt{NOXNA} build check to catch every non-XNA
@@ -305,7 +305,7 @@ from \texttt{ITextureBackend}), not a subclass of \texttt{SoftwareTextureBackend
 rasterizer's own texture-sampling code (which re-derives the same \texttt{dynamic\_cast} a
 second time, at the point it actually needs pixel data) treats a null texture as ``draw
 untextured'' --- exactly the blank white quad in the figure. Tellingly, the raw
-\texttt{DrawPrimitivesEx}/\texttt{DrawIndexedPrimitivesEx} paths (\S\ref{sec:draw-calls}) that
+\texttt{DrawPrimitivesEx} / \texttt{DrawIndexedPrimitivesEx} paths (\S\ref{sec:draw-calls}) that
 \cnaclass{GraphicsDevice}'s own \texttt{DrawUserPrimitives} family ultimately calls into
 \emph{do} guard against exactly this case --- they throw a \texttt{std::runtime\_error} when
 \texttt{TextureEnabled} is set but \texttt{texture0} is null --- so this is a real, specific
@@ -383,17 +383,17 @@ paragraph of caption disclaiming what it doesn't actually show.
   bound bindings.
 \item[\texttt{void SetIndexBuffer(const IndexBuffer* indexBuffer)}] binds an index buffer, or
   unbinds with \texttt{nullptr}. This is a plain method alongside the older
-  \texttt{Indices}/\texttt{setIndicesProperty} property pair from
+  \texttt{Indices} / \texttt{setIndicesProperty} property pair from
   \S\ref{sec:property-surface} --- both ultimately write the same
   \texttt{currentIndexBuffer\_} field, so which spelling to use is purely a matter of whichever
   reads more naturally at a given call site.
 \item[\texttt{const VertexBuffer* GetVertexBuffer() const}] returns the vertex buffer bound in
-  slot~0 (the first slot \texttt{SetVertexBuffer}/\texttt{SetVertexBuffers} populates).
+  slot~0 (the first slot \texttt{SetVertexBuffer} / \texttt{SetVertexBuffers} populates).
 \item[\texttt{const IndexBuffer* GetIndexBuffer() const}] returns the currently bound index
   buffer --- functionally identical to reading the \texttt{Indices} property.
 \item[\texttt{const IndexBuffer* Indices() const} / \texttt{void Indices(const IndexBuffer*)}]
   a third, method-call spelling of the exact same binding, present alongside the property and
-  the \texttt{SetIndexBuffer}/\texttt{GetIndexBuffer} pair --- three ways to say the same thing,
+  the \texttt{SetIndexBuffer} / \texttt{GetIndexBuffer} pair --- three ways to say the same thing,
   a real (if harmless) redundancy in the header rather than a documentation simplification.
 \end{description}
 
@@ -402,17 +402,18 @@ paragraph of caption disclaiming what it doesn't actually show.
 
 \subsection{Buffer-backed draws}
 
-\texttt{DrawPrimitives(PrimitiveType primitiveType, int vertexStart, int primitiveCount)},
-\texttt{DrawIndexedPrimitives(PrimitiveType primitiveType, int baseVertex, int minVertexIndex,
-int numVertices, int startIndex, int primitiveCount)}, and
-\texttt{DrawInstancedPrimitives(PrimitiveType primitiveType, int baseVertex, int minVertexIndex,
-int numVertices, int startIndex, int primitiveCount, int instanceCount)} are all present with
-FNA-matching signatures, drawing from whatever vertex/index buffers are currently bound per
-\S\ref{sec:vertex-index-binding}.
+Three methods share this shape, all present with FNA-matching signatures and all drawing from
+whatever vertex/index buffers are currently bound per \S\ref{sec:vertex-index-binding}.
+\texttt{DrawPrimitives} takes \texttt{primitiveType}, \texttt{vertexStart}, and
+\texttt{primitiveCount}. \texttt{DrawIndexedPrimitives} adds \texttt{baseVertex},
+\texttt{minVertexIndex}, and \texttt{numVertices} ahead of its own \texttt{startIndex}/%
+\texttt{primitiveCount} pair. \texttt{Draw\allowbreak{}Instanced\allowbreak{}Primitives} takes
+the identical parameter list as \texttt{DrawIndexedPrimitives}, with a trailing
+\texttt{instanceCount} added.
 
 \subsection{User-primitive draws: the generics-to-overloads translation}
 
-FNA's \texttt{DrawUserPrimitives<T>}/\texttt{DrawUserIndexedPrimitives<T>} generic methods ---
+FNA's \texttt{DrawUserPrimitives<T>} / \texttt{DrawUserIndexedPrimitives<T>} generic methods ---
 which in C\# work against any \texttt{struct} implementing \texttt{IVertexType} --- become, in
 CNA, a fixed set of concretely-typed overloads. This is a direct consequence of C\texttt{++}
 template instantiation requiring concrete call sites rather than C\#'s runtime generic
@@ -423,13 +424,14 @@ pixel-format element type either).
 \texttt{DrawUserPrimitives} comes in six overloads: a raw \texttt{const void* vertexData}
 form (assumed \cnaclass{VertexPositionColor} packed layout, stride 16 bytes); a second raw form
 taking an explicit \texttt{const VertexDeclaration\&} for any other layout; and four
-concretely-typed forms for \cnaclass{VertexPositionColor}, \cnaclass{VertexPositionColorTexture},
+concretely-typed forms, one per real XNA vertex struct this chapter's own worked example uses
+--- \cnaclass{VertexPositionColor}, \cnaclass{VertexPositionColorTexture},
 \cnaclass{VertexPositionTexture}, and \cnaclass{VertexPositionNormalTexture}. Every overload
 shares the same trailing parameters --- \texttt{vertexOffset} (starting vertex within the
 supplied array) and \texttt{primitiveCount}.
 
 \texttt{DrawUserIndexedPrimitives} is the same idea with an index array added, and existing in
-more overloads as a result: a raw \texttt{void*}/\texttt{void*} form; four typed forms
+more overloads as a result: a raw \texttt{void*} / \texttt{void*} form; four typed forms
 (the same four vertex types above) each with 16-bit (\texttt{std::uint16\_t}) indices; the same
 four typed forms again with 32-bit (\texttt{std::uint32\_t}) indices; and two more raw forms
 taking an explicit \texttt{VertexDeclaration} with 16-bit and 32-bit indices respectively ---
@@ -437,8 +439,8 @@ eleven overloads in total, matching FNA's own generic method's two index-width i
 times its \texttt{IVertexType}/explicit-\texttt{VertexDeclaration} split.
 
 \begin{sourcenote}
-Reusable byte scratch buffers (\texttt{userVertexScratch\_}/\texttt{userIndexScratch\_}, in the
-private section below) back every \texttt{DrawUserPrimitives}/\texttt{DrawUserIndexedPrimitives}
+Reusable byte scratch buffers (\texttt{userVertexScratch\_} / \texttt{userIndexScratch\_}, in the
+private section below) back every \texttt{DrawUserPrimitives} / \texttt{DrawUserIndexedPrimitives}
 call --- the raw bytes are staged into a transient vertex/index buffer sized from the scratch
 buffer's already-grown capacity, avoiding a fresh heap allocation on every draw call once that
 capacity has stabilized. This is purely an implementation detail (nothing about it is
@@ -447,6 +449,36 @@ call in a game's lifetime is measurably slower than every subsequent one at the 
 size --- a real, if minor, warm-up cost worth knowing about before mistaking it for a
 per-frame regression.
 \end{sourcenote}
+
+\subsection{How World/View/Projection actually reach the draw call}
+\label{sec:extract-matrices}
+
+\texttt{SetCurrentEffect} above covers half of the real per-draw pipeline --- how
+\texttt{FillGpuDrawParams()} reaches the active effect's lights, fog, and material colors ---
+but there is a second, separate half specifically for the three matrices every effect
+implementing \cnaclass{IEffectMatrices} carries, worth naming because it is not exposed as a
+public method at all: a small anonymous-namespace free function in \texttt{GraphicsDevice.cpp}
+itself, \texttt{ExtractMatrices(const Effect*, Matrix\&, Matrix\&, Matrix\&)}, called at the top
+of every one of \texttt{DrawPrimitives} / \texttt{DrawIndexedPrimitives} /
+\texttt{DrawUserPrimitives} / \texttt{DrawUserIndexedPrimitives}'s real implementations (seven
+call sites in total). Its own logic is short enough to state exactly: default all three
+matrices to identity, then \texttt{dynamic\_cast<const IEffectMatrices*>(effect)} --- if that
+succeeds, overwrite the three defaults with the effect's own \texttt{World} / \texttt{View}/%
+\texttt{Projection} properties; if it fails, the identity defaults simply stand.
+
+Every effect \cnaclass{GraphicsDevice} can actually have bound as \texttt{currentEffect\_} in
+practice --- all five stock effects (Chapter~\ref{ch:stock-effects}), \cnaclass{ShaderEffect}
+(Chapter~\ref{ch:shader-fx-gap}), and \texttt{PbrEffect} (Chapter~\ref{ch:webgpu-backend}) ---
+implements \cnaclass{IEffectMatrices}, so the identity-matrix fallback branch is not something
+any of CNA's own built-in effects ever actually triggers; it exists purely as the same defensive
+default-rather-than-crash pattern Chapter~\ref{ch:backend-architecture} already named as a
+project-wide design choice, applied here to a \texttt{dynamic\_cast} rather than a virtual
+method's own default body. The one real, checkable consequence worth knowing: a fully custom
+\cnaclass{Effect} subclass a game writes itself, if it deliberately does \emph{not} implement
+\cnaclass{IEffectMatrices} (perhaps a screen-space post-process effect with no meaningful
+World/View/Projection concept at all), draws with a silent identity transform on all three ---
+not an error, and not a crash, simply geometry rendered exactly as authored in clip space with
+no further transformation applied.
 
 \subsection{NOXNA draw-adjacent helper}
 
@@ -475,8 +507,9 @@ it's \texttt{nullptr}. All three are the same narrowing-to-\texttt{Color} patter
 \cnaclass{Color}.
 
 Every screenshot this chapter (and Chapter~\ref{ch:math-core-types}'s own worked examples)
-embeds as a real, unedited figure is ultimately produced through this exact method --- the
-\texttt{NOXNA SaveBackBufferScreenshotEXT()} test helper this book's own tooling uses
+embeds as a real, unedited figure is ultimately produced through one exact method, a
+\texttt{NOXNA} test helper this book's own tooling uses:
+\texttt{Save\allowbreak{}Back\allowbreak{}Buffer\allowbreak{}Screenshot\allowbreak{}EXT()}
 (\texttt{tools/cna-screenshot-infra/} in the book's own repository, not part of CNA itself)
 is a thin wrapper that reads the whole back buffer with the rectangle-less
 \texttt{GetBackBufferData(Color*, int)} overload and hands the resulting pixel array to
@@ -500,13 +533,16 @@ A cluster of methods exist purely to support tooling, testing, and backend-inter
 --- none are part of real XNA, and every one is tagged \texttt{NOXNA} in the header:
 
 \begin{description}
-\item[\texttt{void OnResourceCreated(System::Object* resource)} /
-  \texttt{void OnResourceDestroyed(const std::string\& name, System::Object* tag)}] fire the
-  \texttt{ResourceCreated}/\texttt{ResourceDestroyed} events; called by
-  \cnaclass{GraphicsResource}'s own constructor/\texttt{Dispose} (\S\ref{sec:resource-lifetime}).
-\item[\texttt{void AddResourceReference(GraphicsResource* resource)} /
-  \texttt{void RemoveResourceReference(GraphicsResource* resource)}] register/unregister a
-  resource for the device's own disposal-ordering guarantee (\S\ref{sec:resource-lifetime}).
+\item[\texttt{void OnResourceCreated(System::Object* resource)}] fires the
+  \texttt{ResourceCreated} event; called by \cnaclass{GraphicsResource}'s own constructor
+  (\S\ref{sec:resource-lifetime}).
+\item[\texttt{void OnResourceDestroyed(const std::string\&, System::Object*)}] fires
+  the \texttt{ResourceDestroyed} event; called by \cnaclass{GraphicsResource}'s own
+  \texttt{Dispose} (\S\ref{sec:resource-lifetime}).
+\item[\texttt{void AddResourceReference(GraphicsResource*)}] registers a resource for the
+  device's own disposal-ordering guarantee (\S\ref{sec:resource-lifetime}).
+\item[\texttt{void RemoveResourceReference(GraphicsResource*)}] unregisters it
+  (\S\ref{sec:resource-lifetime}).
 \item[\texttt{std::size\_t GetTrackedResourceCount() const}] returns how many resources are
   currently tracked and not yet disposed --- debug/test use only.
 \item[\texttt{void SetDepthTestEnabled(bool)} / \texttt{SetBlendEnabled(bool)} /
@@ -531,16 +567,18 @@ A cluster of methods exist purely to support tooling, testing, and backend-inter
   Nsight; a no-op on every other backend.
 \item[\texttt{IGraphicsBackend\& GetBackend() const}] returns a reference to the active backend
   interface --- the seam Part~IV's whole backend-by-backend treatment sits behind.
-\item[\texttt{constexpr CNA::GraphicsBackendType GetGraphicsBackendType() const} /
-  \texttt{constexpr std::string\_view GetGraphicsBackendName() const}] report which backend was
-  compiled into this build (matching the \texttt{CNA\_GRAPHICS\_BACKEND} CMake option value,
-  e.g. \texttt{"EASYGL"}, \texttt{"D3D9"}, \texttt{"SOFTWARE"}). Both are genuinely
-  \texttt{constexpr} --- they read a compile-time constant, not \texttt{this}, so they can be
-  evaluated without a live device at all.
+\item[\texttt{constexpr CNA::GraphicsBackendType GetGraphicsBackendType() const}] reports which
+  backend was compiled into this build, as an enum value matching the
+  \texttt{CNA\_GRAPHICS\_BACKEND} CMake option (e.g. \texttt{EASYGL}, \texttt{D3D9},
+  \texttt{SOFTWARE}). Genuinely \texttt{constexpr} --- it reads a compile-time constant, not
+  \texttt{this}, so it can be evaluated without a live device at all.
+\item[\texttt{constexpr std::string\_view GetGraphicsBackendName() const}] the same information
+  as a human-readable string (e.g. \texttt{"EASYGL"}) rather than an enum value; equally
+  \texttt{constexpr} for the identical reason.
 \item[\texttt{bool SupportsCapability(CNA::GraphicsCapability capability) const}] the
   recommended way to check whether the active backend (and, for device-dependent entries, the
   current runtime driver) supports a given capability --- e.g. 3D rendering on the 2D-only
-  \texttt{SDL\_RENDERER}/\texttt{DX3}/\texttt{CANVAS} backends --- \emph{before} relying on it,
+  \texttt{SDL\_RENDERER} / \texttt{DX3} / \texttt{CANVAS} backends --- \emph{before} relying on it,
   rather than calling the feature and handling whatever exception results.
 \item[\texttt{void SetCurrentEffect(Effect* effect)}] called automatically by
   \texttt{Effect::Apply()}; not meant to be called directly by ordinary game code, but included
@@ -553,9 +591,9 @@ A cluster of methods exist purely to support tooling, testing, and backend-inter
   \cnaclass{GraphicsDeviceManager} so a caller can read settings back via the
   \texttt{PresentationParameters} property after applying preferred settings, ahead of whatever
   later call actually resets the device.
-\item[\texttt{void RecreateBackendForMultiSampleCount(int multiSampleCount)}] test-only: tears
-  down and rebuilds the active backend (same window) with a new
-  \texttt{PresentationParameters.MultiSampleCount}. The header's own documentation is candid
+\item[\texttt{void RecreateBackendForMultiSampleCount(int)}] test-only: tears
+  down and rebuilds the active backend (same window) with a new requested multisample count.
+  The header's own documentation is candid
   about why this exists rather than a real \texttt{GraphicsDevice.Reset}-driven path: a
   backend-level property picked once at construction time (Vulkan's own back-buffer
   \texttt{sampleCount\_} is the motivating case) currently has no way to change after the fact
@@ -608,10 +646,10 @@ the header's own doc comment already names honestly as backend-dependent).
 
 \cnaclass{GraphicsDevice} maintains a private, non-owning
 \texttt{std::vector<GraphicsResource*> resources\_}, mutated only through
-\texttt{AddResourceReference}/\texttt{RemoveResourceReference} (\S\ref{sec:noxna-helpers} above)
+\texttt{AddResourceReference} / \texttt{RemoveResourceReference} (\S\ref{sec:noxna-helpers} above)
 --- both existing purely so the device can guarantee a specific disposal order.
 \texttt{ResourceCreated} fires immediately after registration; \texttt{ResourceDestroyed} fires
-\emph{before} de-registration, carrying a \texttt{Name}/\texttt{Tag} snapshot captured while the
+\emph{before} de-registration, carrying a \texttt{Name} / \texttt{Tag} snapshot captured while the
 resource is still valid. Removal is swap-and-pop (O(1), order not preserved) --- deliberate,
 since nothing about resource tracking depends on iteration order.
 
@@ -645,13 +683,13 @@ an in-flight frame is undefined behavior --- there is no \texttt{vkDeviceWaitIdl
 that call site; on \textbf{Bgfx}, \texttt{bgfx::destroy()} only \emph{queues} destruction for
 the next \texttt{bgfx::frame()}, so \texttt{bgfx::shutdown()} must never run before every
 resource backend has actually been destroyed. None of these are exercised by ordinary game code
-following the \texttt{Begin}/\texttt{Draw}/\texttt{End} pattern from earlier chapters, but they
+following the \texttt{Begin} / \texttt{Draw} / \texttt{End} pattern from earlier chapters, but they
 matter if your own code manages render-target lifetime manually across frame boundaries.
 
 \section{GraphicsResource: the shared base}
 
 Every texture, buffer, and state object in this Part inherits \cnaclass{GraphicsResource},
-which itself inherits \texttt{System::Object}/\texttt{System::IDisposable} and provides
+which itself inherits \texttt{System::Object} / \texttt{System::IDisposable} and provides
 \texttt{Disposing}, a get-only \texttt{GraphicsDevice}, \texttt{IsDisposed}, a virtual
 \texttt{Name}, and a raw, caller-owned \texttt{Tag} (\texttt{System::Object*}).
 \texttt{ToString()} returns \texttt{Name} if set, otherwise the type name. Its protected
@@ -663,7 +701,7 @@ tracking/registration/events entirely.
 
 A subtlety worth internalizing: GPU handles are freed on \texttt{Dispose()}, not on the
 C\texttt{++} destructor. The destructor does call \texttt{Dispose(false)} as a safety net, but
-that path deliberately skips the \texttt{Disposing}/\texttt{ResourceDestroyed} events ---
+that path deliberately skips the \texttt{Disposing} / \texttt{ResourceDestroyed} events ---
 matching the standard C\# \texttt{IDisposable} finalizer-vs-explicit-dispose distinction, now
 expressed in C\texttt{++} terms. Move semantics transfer \texttt{unique\_ptr}-owned GPU state
 correctly but do \emph{not} update the device's tracking-list pointer entry, which means moving
@@ -677,14 +715,14 @@ registered.
 \cnaclass{GraphicsAdapter} exposes \texttt{CurrentDisplayMode}, \texttt{SupportedDisplayModes},
 \texttt{Description}, and a static, re-evaluated-every-call \texttt{DefaultAdapter} --- do not
 cache it across a call to the static \texttt{AdaptersChanged()}. Two properties are honestly
-limited on this platform: \texttt{DeviceId}/\texttt{VendorId} are queried through Linux
+limited on this platform: \texttt{DeviceId} / \texttt{VendorId} are queried through Linux
 \texttt{sysfs} where available and return \texttt{0} otherwise, while
-\texttt{Revision}/\texttt{SubSystemId} are always \texttt{0} --- SDL3 has no query surface for
-either. \cnaclass{DisplayMode} pairs \texttt{Width}/\texttt{Height}/\texttt{Format} with a
+\texttt{Revision} / \texttt{SubSystemId} are always \texttt{0} --- SDL3 has no query surface for
+either. \cnaclass{DisplayMode} pairs \texttt{Width} / \texttt{Height} / \texttt{Format} with a
 computed \texttt{AspectRatio}; \cnaclass{DisplayModeCollection} supports both integer indexing
 and a \cnaclass{SurfaceFormat}-filtered \texttt{operator[]}. \cnaclass{GraphicsDeviceStatus} is
 the three-value enum (\texttt{Normal}, \texttt{Lost}, \texttt{NotReset}) already introduced
-above; \cnaclass{GraphicsProfile} is the familiar XNA \texttt{Reach}/\texttt{HiDef} pair, whose
+above; \cnaclass{GraphicsProfile} is the familiar XNA \texttt{Reach} / \texttt{HiDef} pair, whose
 \emph{only} backend that actually consults a real device capability structure for it is
 \texttt{D3D9} (Chapter~\ref{ch:direct3d-backends}) --- everywhere else the profile is present in
 the API but decorative. \cnaclass{DeviceLostException}, \cnaclass{DeviceNotResetException}, and
@@ -744,7 +782,7 @@ non-D3D9 side name the reason explicitly rather than leaving it to guesswork:
 \begin{description}
 \item[\texttt{IsProfileSupported}] on D3D9, \texttt{GraphicsProfile::Reach} short-circuits to
   \texttt{true} unconditionally (every real D3D9 HAL device already exceeds Reach's
-  \texttt{vs\_2\_0}/\texttt{ps\_2\_0} floor, so there is nothing worth querying), and
+  \texttt{vs\_2\_0} / \texttt{ps\_2\_0} floor, so there is nothing worth querying), and
   \texttt{HiDef} is checked against a real queried \texttt{D3DCAPS9} structure. On every other
   backend, the method's own source comment (labelled \texttt{D9-101} in the codebase's internal
   task numbering) states plainly that ``an implementation here would be a hardcoded table
@@ -753,7 +791,7 @@ non-D3D9 side name the reason explicitly rather than leaving it to guesswork:
   unconditionally, on the other nine backends.
 \item[\texttt{QueryRenderTargetFormat} / \texttt{QueryBackBufferFormat}] on D3D9, both check a
   requested \cnaclass{SurfaceFormat} against a real profile whitelist \emph{and} a real
-  \texttt{IDirect3D9::CheckDeviceFormat}/\texttt{CheckDeviceType} hardware query, falling back
+  \texttt{IDirect3D9::CheckDeviceFormat} / \texttt{CheckDeviceType} hardware query, falling back
   to \texttt{SurfaceFormat::Color} if either check fails --- and separately clamp the requested
   multisample count to what the selected format actually supports. On every other backend,
   \texttt{QueryRenderTargetFormat} falls back to a much simpler
