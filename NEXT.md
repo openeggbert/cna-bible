@@ -5,6 +5,20 @@ the permanent session log.** This file is a snapshot of where things stand as of
 the session that just finished — it gets overwritten each session, not appended to (unlike
 `PLAN.md`'s own internal session log, a permanent history).
 
+## The book now has 49 chapters, not 48 — READ THIS BEFORE CITING A CHAPTER NUMBER
+
+**2026-07-21, later the same session:** a new chapter, **Ch.22 (The SDL GPU Backend)**, was
+inserted into Part IV, and every chapter from the former Ch.22-48 renumbered to Ch.23-49. This
+happened because researching Ch.15 turned up `SDL_GPU` — a real, mature, 20-CTest-verified
+`CNA_GRAPHICS_BACKEND` value with zero dedicated coverage anywhere in this book. The author was
+asked and explicitly chose to add the chapter now rather than leave it flagged. If you cite a
+chapter number from memory or from an old commit message, **it may now be off by one** for
+anything that used to be 22 or higher — check the real file list under `latex/book/chapters/`
+or grep `main.tex`'s `\input{}` order before trusting a remembered number. `\label{ch:...}`
+values did **not** change (they're semantic), so every `\ref{}` in the book is still correct —
+only plain-text `Chapter~N`/`Ch.N` citations were at risk, and a full project-wide sweep already
+fixed every one found (confirmed via `make book` + PNG-render afterward, see below).
+
 ## Working-method change, effective now — READ THIS FIRST
 
 **2026-07-21, author decision, encoded in `CLAUDE.md`:** verification is now batched, not
@@ -23,55 +37,63 @@ Source-grounding is **not** relaxed by this policy — every claim still require
 
 ## Where things stand (end of session, 2026-07-21)
 
-**The book is a single, unified book**, built via `make book` (→ `latex/book/main.pdf`).
-Compiles clean as of the last commit: **367 pages, 0 undefined references, 0
-duplicate-label warnings** (re-verify — run `make book` and grep the log — before trusting
-this number in a future session; use `grep -i "Warning.*undefined\|undefined reference\|undefined
-control"`, not a plain `grep -i undefined`, which can false-positive on ordinary prose).
+**The book is a single, unified book, now 49 chapters + 6 appendices**, built via `make book`
+(→ `latex/book/main.pdf`). Compiles clean as of the last commit: **371 pages, 0 undefined
+references, 0 duplicate-label warnings** (re-verify — run `make book` and grep the log — before
+trusting this number in a future session; use `grep -i "Warning.*undefined\|undefined
+reference\|undefined control"`, not a plain `grep -i undefined`, which can false-positive on
+ordinary prose).
 
 **This session ran the first batch under the new batched-verification policy** — nine
-chapter/appendix touches (Ch.21, 27, 28, 39, 33, 46, 1, 16, 32), committed and pushed
-individually as they were written, with the one consolidated `make book` + PNG-render pass run
-only at the end. It came back completely clean: 0 undefined references, 0 duplicate labels, and
-all nine touched chapters' physical pages read directly with no overfull content, no broken
-cross-references, and no header/folio collisions found anywhere. Every PLAN.md row from this
-batch has already been relabeled "PDF-verified clean" — nothing left mid-verification.
+chapter/appendix touches, committed and pushed individually as they were written, with one
+consolidated `make book` + PNG-render pass run at the end (clean). **Immediately afterward, in
+the same session**, researching the next candidate (old Ch.15) surfaced the `SDL_GPU` finding
+above, leading to the new Ch.22 insertion and the Ch.22-49 renumbering — so every chapter
+number below is given in **current, post-renumbering** form, not the number it had while the
+work was actually happening.
 
 Highlights from this batch:
 
+- **New Ch.22 (The SDL GPU Backend)**: the headline event of the session. A real, mature,
+  20-CTest-binary-verified backend inserted into Part IV with a full first-pass chapter —
+  the zero-new-dependency rationale, the fixed HLSL-style resource-binding order, the Y-flip
+  bug a real screenshot caught, `SkinnedEffect`'s real ~4096-byte push-uniform cap worked
+  around via a storage buffer, and the runtime `libshaderc` compile built without
+  `libshaderc-dev` installed in this dev environment. See the dedicated section above for the
+  full renumbering mechanics.
 - **Ch.21 (WebGPU Backend)**: the real investigation behind the "no backend does
   block-compressed texture upload" gap — the dev machine's real GPU genuinely supports
   DXT1/3/5 (`wgpuAdapterHasFeature` confirmed true), so the actual blocker is a shared,
   project-wide `ImageData`/`Texture2D.cpp` design gap (always-CPU-decompress, no
   compressed-bytes field), not a WebGPU-specific one. A hand-crafted single-backend workaround
   was deliberately rejected as unreachable by any real game.
-- **Ch.27 (Media)**: `VideoPlayer`'s real disposed-state guard (`CheckDisposed()`, 8 call
+- **Ch.28 (Media)**: `VideoPlayer`'s real disposed-state guard (`CheckDisposed()`, 8 call
   sites), with one deliberate C++-specific exception — `Dispose()` itself stays idempotent
   rather than replicating FNA's own double-`Dispose()` throw, since a C++ destructor is
   implicitly `noexcept` and `~VideoPlayer()` unconditionally calls `Dispose()`.
-- **Ch.28 (Devices and Sensors)**: a fourth concurrency finding — native failures (including an
+- **Ch.29 (Devices and Sensors)**: a fourth concurrency finding — native failures (including an
   exception thrown from inside a game's own `CurrentValueChanged` handler mid-callback) were
   silently swallowed by a bare `catch (...) {}`; fixed with a shared, deliberately `noexcept`
   diagnostic channel safe to call from a C callback boundary. The pre-existing LIFE-001 finding
   was renumbered to fifth to keep physical document order correct after the insertion.
-- **Ch.39 (Web/Emscripten)**: traced the already-documented CANVAS build's own byproduct — a
+- **Ch.40 (Web/Emscripten)**: traced the already-documented CANVAS build's own byproduct — a
   real, still-present SDL3-for-Emscripten prebuilt cache (`.sdl-prebuilt-emscripten/`, real
   `.a` file sizes inspected directly) — and confirmed it is backend-agnostic, so a future
   EASYGL Emscripten attempt would reuse it rather than rebuild SDL3 from scratch.
-- **Ch.33 (Sharp Runtime Overview)**: added `Task::WhenAll`/`WhenAny`, including the real
+- **Ch.34 (Sharp Runtime Overview)**: added `Task::WhenAll`/`WhenAny`, including the real
   exception-type-sniffing cancellation bug (`catch (const TaskCanceledException&)` used to
   detect cancellation, unable to tell a real cancellation from a caller-supplied
   `TaskCanceledException`) found independently in two places, fixed with an out-of-band flag.
-- **Ch.46 (Project Practice) + Ch.1**: found a fifth, *self-referential* instance of this
+- **Ch.47 (Project Practice) + Ch.1**: found a fifth, *self-referential* instance of this
   project's own "stale claim, live source disagrees" pattern — the earlier four-location
-  oracle-scene-count fix (Ch.1/22/47/Appendix B) had itself missed a fifth location: two more
+  oracle-scene-count fix (Ch.1/23/48/Appendix B) had itself missed a fifth location: two more
   stale "31"s sitting further down Ch.1's own file (its verification-scale table and its own
-  illustrative completion-count example). Found while mining Ch.46 for material, fixed in Ch.1.
+  illustrative completion-count example). Found while mining Ch.47 for material, fixed in Ch.1.
 - **Ch.16 (Backend Architecture)**: `IIndexBufferBackend::SetData32`'s throwing default (the
   opposite failure mode from every other default this chapter covers) traced through all 14
   backend implementations — the 4 that don't override it are exactly the 2D-only backends that
   already refuse any index-buffer construction at all, so the throw is real but unreachable.
-- **Ch.32 (Storage)**: a compounding second finding alongside the already-documented `..`
+- **Ch.33 (Storage)**: a compounding second finding alongside the already-documented `..`
   path-traversal gap — Storage is the one ported XNA namespace with zero automated test
   coverage anywhere (no test directory, no flat test file, confirmed against the real test tree
   and CMake registration), so the traversal gap was never something a test suite could have
@@ -98,11 +120,15 @@ Highlights from this batch:
 
 **No task is currently active or blocked.** Good next candidates for a further batch, still
 meaningfully below their page targets (see `PLAN.md`'s own per-chapter table for the precise
-`~N of ~M pages` estimate after every edit): Ch.15 Shader/.fx Gap, Ch.23 Canvas/ASCII Backends,
-Ch.24 DX3/free-direct Backend, Ch.35 Parity Philosophy, Ch.41 Verification Methodology, Ch.44
-xna4-spec Auditing, Ch.48 Roadmap, and Appendices C-F (still well under their modest 15-25-page
-targets). Ch.7 Math remains the largest chapter by far — read its own PLAN.md row before adding
-more, it may be genuinely saturated.
+`~N of ~M pages` estimate after every edit — **use PLAN.md's own numbers, not this list's,
+if the two ever disagree**, since chapter numbers shifted mid-session): Ch.15 Shader/.fx Gap
+(the chapter that led to the SDL_GPU discovery — worth returning to for its own sake too),
+Ch.24 Canvas/ASCII Backends, Ch.25 DX3/free-direct Backend, Ch.36 Parity Philosophy, Ch.42
+Verification Methodology, Ch.45 xna4-spec Auditing, and Appendices C-F (still well under their
+modest 15-25-page targets). Ch.49 (Roadmap) and Ch.22 (SDL GPU Backend, brand new) were both
+just touched this session — fine to revisit in a later depth pass, but not first-priority.
+Ch.7 Math remains the largest chapter by far — read its own PLAN.md row before adding more, it
+may be genuinely saturated.
 
 No `TaskCreate` entries exist for a further batch — the task-tracker MCP tool was unavailable
 for this entire session (disconnected partway through a prior session); work has been tracked
