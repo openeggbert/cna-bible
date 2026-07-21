@@ -134,6 +134,34 @@ covers this database in full), and the two are not mechanically kept in sync wit
 A reader trusting only the source comment risks trusting a claim the project's own
 authoritative tracking database might already have superseded.
 
+\section{A pattern confirmed independently, across unrelated subsystems}
+
+The discipline the sections above describe in the abstract is worth grounding in how often it
+actually mattered while writing this book, because the same specific shape of finding recurred
+independently across subsystems tracked in entirely separate documents, with no cross-reference
+between them: a claim that looked settled --- a bug list item marked fixed, a status recorded
+as \texttt{CLOSED}, an audit round that had already run --- turned out to be stale once checked
+against the current, live source rather than trusted at face value. Four genuinely separate
+instances surfaced in the course of this book's own research alone: two oracle-methodology
+bugs the \texttt{EasyGL} backend's own bug list still described as ``logged \dots{} not fixed''
+had in fact both been closed since (Chapter~\ref{ch:easygl-backend}); a
+\texttt{sharp-runtime} concurrency fix already marked \texttt{CLOSED} turned out to hide a
+second, deeper race that only a later, dedicated ThreadSanitizer run against real concurrent
+load actually caught (Chapter~\ref{ch:devices-sensors}'s Android sensor-bridge finding is the
+structurally identical pattern, one repository over); and a \texttt{cna-samples} bug report
+describing \texttt{GraphicsDevice::Clear(Color)} as still dropping the depth buffer turned out,
+on directly reading the current implementation, to already carry an explicit fix and its own
+explanatory comment (Chapter~\ref{ch:samples-and-examples}).
+
+None of these were found by doubting this ecosystem's documentation on principle --- each was
+found by doing exactly what this chapter's own account of the tracking layer recommends:
+treating a written status as a claim to re-verify against the live, current source rather than
+a settled fact, the same discipline every \texttt{NEXT.md} and \texttt{AUDIT.md} in this
+ecosystem asks of its own readers. That the pattern recurred independently across graphics,
+concurrency, and porting-tooling code, each tracked in its own separate document with its own
+separate history, is itself evidence this is a real property of how software drifts out from
+under its own status labels generally --- not a quirk specific to any one of these subsystems.
+
 \section{Why this layer is worth knowing, not just tolerating}
 
 None of this is unusual in isolation --- plenty of large projects keep a TODO file and a set
