@@ -1377,3 +1377,58 @@ stays frozen by explicit author decision, not left incomplete.
   third pass continuing to grow every chapter toward its still-distant page target (most
   chapters remain at roughly 10-30% of target after this session's work) — see `NEXT.md`'s own
   "What is NOT yet done" section for the full detail.
+
+- **2026-07-21 — Appendices B-F depth pass (tasks #42-46), continuing the same autonomous
+  authorization.** Depth-passed all five remaining appendices in the order B through F, each
+  rebuilt, checked for undefined/duplicate-label errors, PNG-rendered/visually verified, and
+  committed+pushed individually (`deb09a9`, `d673504`, `bd08bd6`, `71dcec7`, `04bea17`). This
+  completes appendix coverage: every appendix (A-F) and every chapter (1-48) in the book has
+  now had at least one depth-pass touch.
+
+  Appendix B (Feature Matrix) had a real, substantive accuracy defect, not just a missing-content
+  gap: every one of its 12 "See" column entries used a leftover plain-text "Ch.~N (Vol.~I)"
+  citation from the pre-merge two-volume era, which has been factually wrong since the
+  2026-07-20 volume merge (there is no "Vol. I" anymore). Converted all 12 to real `\ref{}`s
+  against verified chapter labels, then enriched several rows with fresh findings already
+  established elsewhere this session (EasyGL's two now-fixed oracle bugs, Vulkan/BGFX's
+  distinct `RenderTargetCube` diagnoses, D3D9's swap-chain format fix, DX3's verified
+  Wrap/Mirror win).
+
+  Appendix C (Glossary) got 4 new alphabetized entries (ContentManager, ENet, GraphicsCapability,
+  PbrEffect) and a structural fix: "Storage" had been misalphabetized, stranded at the very end
+  of the file after "xna4-spec," moved to its correct position after "Stock effects." One new
+  overfull-hbox was introduced and caught on the ENet entry (a fully-qualified `\cnans{}`
+  namespace macro ran off the margin) and fixed by using plain English instead.
+
+  Appendix D (Repo Map) gained a real, previously-missing repository: `free-api`, verified as
+  a genuine, substantial repo (not a name-drop) by reading its own README directly — an
+  experimental C++ WinAPI-subset-on-SDL3 project that is `free-direct`'s own second-level
+  dependency, one level below what a first-level dependency table shows, which is exactly why
+  it's easy to miss without deliberately grepping a sibling's build files. `sprite-utils` was
+  also checked and deliberately *not* added (README too sparse, no established ecosystem
+  connection, low confidence) — a real judgment call worth recording as a negative result.
+
+  Appendix E (NOXNA Catalog) gained 3 missing Graphics-section entries (`PbrEffect`,
+  `AnimationPlayer`, `MorphTargetEXT` — all entirely NOXNA, all already covered narratively in
+  Ch.12/21 but never catalogued in this appendix before) and `ContentManager`'s 3 build-auditing
+  NOXNA methods (`RefreshContentManifest`, `GetContentManifest`, `GetXnbReaderUsageSummary`)
+  added to the Content section.
+
+  Appendix F (API Quick Reference: Ecosystem and Platforms) had the most structurally
+  significant gap of the five: it covered Input, Audio/Media, Networking/GamerServices, and
+  SharpRuntime core types in quick-reference form, but had **no Storage section at all**,
+  despite `StorageDevice`/`StorageContainer` having full narrative treatment in Chapter 32
+  earlier this session. Added a new F.4 section covering both classes' real method surfaces
+  (re-verified fresh against `StorageDevice.hpp` rather than trusted from memory), closing with
+  a cross-reference to Ch.32's real, still-open `..`-path-traversal finding in
+  `StorageContainer::ResolvePath()`.
+
+  Volume recompiled clean throughout, ending the session at **349 pages (up from 347), 0
+  undefined references, 0 duplicate-label warnings**. `NEXT.md` rewritten again: every
+  appendix and chapter has now had at least one depth pass; the only remaining body of work is
+  a third pass continuing to grow chapters toward their still-distant page targets (most remain
+  at 10-30% of target) — see `NEXT.md`'s own "What is NOT yet done" section, which now also
+  names the chapters furthest below target in absolute page terms as the highest-opportunity
+  starting points, and adds a note that a third mining pass is more likely to come up empty
+  than the first two, with a fallback technique (worked-example coverage gaps, reference-table
+  gaps vs. a header method count) for when a chapter's newest plan doc is already fully mined.
