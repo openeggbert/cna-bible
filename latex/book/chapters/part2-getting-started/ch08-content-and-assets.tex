@@ -53,6 +53,56 @@ carried the most mature test coverage of any loose-file reader in the project at
 non-\cnaclass{Model}-shaped system in the first place (Chapter~\ref{ch:avatar} covers exactly
 why).
 
+\subsection{Two real \texttt{.cnj} files, quoted directly}
+
+Reading \texttt{cnj.md} (the format's own design reference) turns up two genuinely different
+uses of the same envelope, worth seeing side by side rather than only described. First, a
+fully self-contained document --- a real \cnaclass{SpriteFont} needs no native payload file at
+all, since every field it needs (the glyph atlas reference, layout metrics, per-glyph bounds)
+fits directly in JSON:
+
+\begin{lstlisting}
+{
+  "cnjVersion": 1,
+  "type": "SpriteFont",
+  "texture": "Fonts/Consolas_atlas.png",
+  "lineSpacing": 24,
+  "spacing": 0.0,
+  "defaultCharacter": "?",
+  "glyphs": [
+    { "char": 65, "source": [0, 0, 16, 24], "crop": [0, 0, 16, 24], "kerning": [1, 14, 1] }
+  ]
+}
+\end{lstlisting}
+
+Second, the \texttt{sourceFile} metadata-sidecar shape this chapter's resolution-order section
+already named in the abstract, quoted here concretely:
+
+\begin{lstlisting}
+{
+  "cnjVersion": 1,
+  "type": "Texture2D",
+  "sourceFile": "ahoj.png",
+  "colorKey": [255, 0, 255],
+  "premultipliedAlpha": true
+}
+\end{lstlisting}
+
+The distinction between these two is exactly the \texttt{sourceFile} field's presence or
+absence, and it changes what the rest of the document \emph{means}: without \texttt{sourceFile}
+(the \cnaclass{SpriteFont} case), every other field is the actual data being described. With
+\texttt{sourceFile} present (the \cnaclass{Texture2D} case), CNA loads \texttt{ahoj.png}
+through the ordinary native-decode path first, and every other field in the \texttt{.cnj}
+becomes import metadata layered on top of that already-decoded texture --- here, a magenta
+\texttt{colorKey} (pixels matching \texttt{(255, 0, 255)} become transparent, the classic
+sprite-sheet convention for games authored before per-pixel alpha channels were universal) and
+an explicit premultiplied-alpha hint. This is genuinely new capability the format's own design
+notes are explicit about, not a rename of something \cnaclass{Texture2D} could already do:
+before \texttt{sourceFile} existed, a native-payload asset type could only ever load a
+self-describing file exactly as authored, with no way to attach CNA-specific import intent
+(color-key transparency, a premultiplied-alpha override) without baking it into the pixel data
+itself or inventing an entirely separate file format just to carry one flag.
+
 \section{The gap, reopened: a real, growing .xnb binary reader}
 \label{sec:xnb-and-cnj-model}
 
@@ -103,9 +153,9 @@ other two have both been tried and found nothing.
 \section{ContentManager: constructing it and calling Load}
 
 The class every asset ultimately passes through, read directly from
-\texttt{ContentManager.hpp}, has three constructors --- \texttt{explicit
-ContentManager(IServiceProvider*)}, \texttt{ContentManager(IServiceProvider*, const
-std::string\& rootDirectory)}, and a \texttt{NOXNA}-tagged no-argument
+\texttt{ContentManager.hpp}, has three constructors: \texttt{explicit
+ContentManager(IServiceProvider*)}; a second form additionally taking
+\texttt{const std::string\& rootDirectory}; and a \texttt{NOXNA}-tagged no-argument
 \texttt{ContentManager()} that defaults \texttt{RootDirectory} to \texttt{"Content"} --- plus
 the small set of methods a game actually calls day to day:
 
@@ -125,7 +175,8 @@ content.Unload();  // releases every asset this manager has loaded
 the asset name carries no extension, since resolving one is exactly the three-way order this
 chapter already covered (\texttt{.xnb}, then the literal path, then \texttt{.cnj}). Two
 \texttt{NOXNA} extension points exist for cases the built-in readers don't cover:
-\texttt{RegisterTypeReader<T>(std::unique\_ptr<LooseFileContentTypeReader<T>>)} for a whole new
+\texttt{RegisterTypeReader<T>} (taking a
+\texttt{std::unique\_ptr<LooseFileContentTypeReader<T>>}) for a whole new
 loose-file type, and \texttt{RegisterCnjLoader<T>(name, CnjLoaderFn<T>)} for a new named
 \texttt{.cnj} ``type'' string resolving to an existing C\texttt{++} type --- the mechanism
 \S\ref{sec:cnj} already named as the reason a game never needs to invent its own ad-hoc JSON
