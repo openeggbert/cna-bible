@@ -93,6 +93,38 @@ renderer.setProjectionProperty(camera.Projection);
 renderer.DrawRealEXT("Idle", elapsedClipTime, /* loop */ true);
 \end{lstlisting}
 
+\subsection{Two real lighting bugs found while chasing why avatars looked wrong}
+
+The worked example above sets \texttt{DrawRealEXT}'s custom ambient/lighting state through the
+internal \cnaclass{SkinnedEffect} \texttt{EnableRealRenderingEXT} builds --- and a real,
+found-and-fixed ordering bug lived in exactly that setup path: \texttt{AvatarRenderer::%
+DrawRealEXT} called \texttt{EnableDefaultLighting()} \emph{after} the caller's own custom
+ambient value had already been set, so \texttt{EnableDefaultLighting()}'s own unconditional
+overwrite (the same behavior Chapter~13's \cnaclass{BasicEffect} worked example already warns
+about) discarded it silently on every single draw call. A game calling
+\texttt{renderer.setAmbientLightColorProperty(...)} before \texttt{DrawRealEXT} would have seen
+no effect from it whatsoever, with no error of any kind --- fixed by reordering the two calls
+so the default lighting setup runs first and any caller customization applied afterward
+genuinely sticks.
+
+The second bug is not avatar-specific in where it lives, only in how it was found: three
+consecutive rounds of tuning avatar ambient lighting to fix visibly-too-dark materials all
+failed, and the reason turned out to be a real formula bug in EasyGL's own shader generation,
+shared by every skinned, vertex-lit, and environment-mapped 3D draw on that backend, not
+avatars alone. \texttt{EmissiveColor} was multiplied by \texttt{DiffuseColor} \emph{twice} in
+three of EasyGL's shader-variant builders --- real FNA's own \texttt{Lighting.fxh} adds the
+emissive term \emph{after} the diffuse multiply, not as part of it. Because CNA pre-folds
+ambient light into the emissive term before it reaches the shader (the same convention
+Chapter~13 covers for the stock-effect lighting model generally), the double multiply meant
+ambient light landed on screen as $\mathit{ambient} \times \mathit{diffuse}^2$ rather than the
+correct $\mathit{ambient} \times \mathit{diffuse}$ --- crushing any dark material's ambient
+contribution toward black far more aggressively than intended, and explaining exactly why
+raising the ambient value in the previous three tuning rounds never visibly fixed anything: the
+formula itself was wrong, not merely mistuned. Fixed by moving the emissive add outside the
+diffuse multiply to match FNA's real formula; a dedicated pixel test measuring the fraction of
+near-black pixels across a lit avatar mesh went from 4.1--6.0\% before the fix to exactly 0\%
+after it.
+
 \subsection{Wardrobe hot-swapping: a real, found-and-fixed leak and a real ordering bug}
 
 \cnaclass{SkinnedModelEXT}\texttt{::AttachPartEXT} lets an independently-loaded wardrobe piece
