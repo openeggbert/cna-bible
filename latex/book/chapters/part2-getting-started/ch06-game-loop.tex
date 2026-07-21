@@ -92,7 +92,7 @@ with \texttt{friend class Game} --- no code outside \cnaclass{Game} itself may m
 \cnaclass{GameTime} handed to your \texttt{Update} override is a value your code can read
 freely but never falsify.
 
-\section{GameComponent and DrawableGameComponent: the update/draw ordering contract}
+\section[GameComponent and DrawableGameComponent: the ordering contract]{GameComponent and DrawableGameComponent: the update/draw ordering contract}
 
 \cnaclass{GameComponent} implements \texttt{IGameComponent}, \texttt{IUpdateable}, and
 \texttt{System::IComparable<GameComponent>} in one base: a component knows its owning
@@ -114,6 +114,78 @@ and \texttt{IUpdateable} / \texttt{IDrawable} are the interface pair that
 \cnaclass{GameComponent} / \cnaclass{DrawableGameComponent} implement concretely: get/set
 enabled-or-visible state, an ordering value, a changed-event pair, and the actual
 \texttt{Update} / \texttt{Draw} method.
+
+\subsection{A worked example: a self-contained DrawableGameComponent}
+
+The ordering contract described above is easiest to see in a small, real
+\cnaclass{DrawableGameComponent} --- an FPS counter, a natural first component to reach for
+since it needs its own \texttt{Update} (accumulate elapsed time, recompute the average) and its
+own \texttt{Draw} (render the current value), independent of the main game's own overrides:
+
+\begin{lstlisting}
+class FpsCounterComponent final : public DrawableGameComponent {
+public:
+    explicit FpsCounterComponent(Game& game) : DrawableGameComponent(game) {}
+
+protected:
+    void LoadContent() override
+    {
+        font_ = std::make_unique<SpriteFont>(/* ... */);
+        spriteBatch_ = std::make_unique<SpriteBatch>(getGraphicsDeviceProperty());
+    }
+
+    void Update(GameTime& gameTime) override
+    {
+        elapsed_ = elapsed_ + gameTime.getElapsedGameTimeProperty(); // TimeSpan has no operator+=
+        ++frames_;
+        if (elapsed_.getTotalSecondsProperty() >= 1.0) {
+            fps_ = frames_;
+            frames_ = 0;
+            elapsed_ = TimeSpan::Zero;
+        }
+    }
+
+    void Draw(const GameTime& gameTime) override
+    {
+        (void)gameTime;
+        spriteBatch_->Begin();
+        spriteBatch_->DrawString(*font_, "FPS: " + std::to_string(fps_), Vector2(10, 10), Color::Yellow);
+        spriteBatch_->End();
+    }
+
+private:
+    std::unique_ptr<SpriteFont> font_;
+    std::unique_ptr<SpriteBatch> spriteBatch_;
+    TimeSpan elapsed_ = TimeSpan::Zero;
+    int frames_ = 0;
+    int fps_ = 0;
+};
+
+// In MyGame:
+class MyGame final : public Game {
+    // ...
+    MyGame() : graphics_(this), fpsCounter_(*this)
+    {
+        fpsCounter_.setDrawOrderProperty(1000); // draw last, on top of everything else
+        getComponentsProperty().Add(&fpsCounter_);
+    }
+private:
+    GraphicsDeviceManager graphics_;
+    FpsCounterComponent fpsCounter_;
+};
+\end{lstlisting}
+
+Two details worth being deliberate about, both real rather than incidental to this example.
+First, \texttt{GameComponentCollection::Add(IGameComponent*)} takes a raw, non-owning
+pointer --- \texttt{fpsCounter\_} must outlive the \texttt{Components} collection it is
+registered in, which is exactly why it is declared as a plain member of \texttt{MyGame}
+(constructed before, destroyed after, the collection that references it) rather than a
+dynamically-allocated object registered and forgotten. Second,
+\texttt{setDrawOrderProperty(1000)} is what guarantees the FPS counter renders \emph{after}
+whatever the game's own \texttt{Draw} override draws first --- \cnaclass{DrawableGameComponent}
+does not know or care what order its owner's own \texttt{Draw} override runs relative to
+\texttt{Game}'s own component-draw loop, so an on-top HUD element needs an explicit, high
+\texttt{DrawOrder} value to guarantee it, not just registration order.
 
 \section[GameComponentCollection: an event-raising collection]{GameComponentCollection: an event-raising collection, plus a real C\texttt{++} iterator surface}
 
