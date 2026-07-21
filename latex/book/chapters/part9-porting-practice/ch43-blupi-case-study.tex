@@ -23,6 +23,30 @@ Chapter~\ref{ch:freedirect-deep-dive}'s account of DirectDraw support describes 
 complete of the library's three subsystems: it was the subsystem under the most direct,
 continuous pressure from real gameplay.
 
+\subsection{A worked lesson in what a call-site count actually means}
+
+A later, independent re-count of the same two games' source, run for a different purpose,
+reports strikingly different totals for the identical method name --- eighteen
+\texttt{BltFast} occurrences in \emph{free-eggbert}, seventeen in \emph{Planet Blupi} --- and
+it is worth resolving that apparent contradiction directly, by hand, rather than letting two
+correct-sounding numbers sit unreconciled: it is a real, instructive lesson in what a raw
+grep actually counts versus what an API-surface audit needs to know. Re-grepping both games'
+own source confirms both numbers are genuinely correct, because they are answering two
+different questions. The larger count is every literal occurrence of the identifier
+\texttt{BltFast} at all --- two header declarations, two definitions of \emph{each game's
+own} \cnaclass{CPixmap::BltFast} convenience wrapper, and every call site, wrapper calls
+included. The smaller count (six and five, matching the numbers this chapter already cites)
+is narrower and, for the purpose of designing \texttt{free-direct}'s own API surface,
+the actually relevant one: calls that reach the real \texttt{IDirectDrawSurface::BltFast}
+interface method directly, the boundary \texttt{free-direct} itself has to implement. The
+remaining occurrences --- eight per game --- call each game's \emph{own}
+\cnaclass{CPixmap::BltFast} wrapper method instead, which itself makes exactly one of the six
+(or five) real interface calls internally; counting those wrapper call sites again would
+double-count the same underlying interface traffic. Both numbers are real and independently
+verifiable; the discrepancy is a difference in what each was scoped to measure, not an error
+in either one --- worth internalizing before treating any single grep count as ``the'' call-site
+number for an API surface audit.
+
 \section{A pixel-format mismatch that never became a visible bug}
 
 Both games request a display mode with an explicit bit depth --- \emph{free-eggbert}
