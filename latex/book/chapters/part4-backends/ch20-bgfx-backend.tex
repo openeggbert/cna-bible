@@ -46,39 +46,48 @@ specifically to force the correct view to be current first. Only the render-targ
 depth-format crash mentioned above has a different, still-unidentified root cause and was
 not resolved by this fix.
 
-\section{Sampling a render target: a wrong-handle-type cast, not a crash}
+\section{Sampling a render target: a wrong-handle-type cast, since fixed}
 \label{sec:bgfx-wrong-handle-cast}
 
-Chapter~\ref{ch:vulkan-backend} named this backend's own \cnaclass{RenderTargetCube}-sampling
-bug as ``a genuine wrong-handle-cast, diagnosed precisely'' in contrast to Vulkan's own
-still-unresolved equivalent --- this section is that precise diagnosis. Both
-\texttt{BgfxSpriteBatchBackend::Draw} and \cnaclass{BgfxGraphicsBackend}'s own
-\texttt{envMapping} branch (the code path \cnaclass{EnvironmentMapEffect}, per
-Chapter~\ref{ch:stock-effects}, reaches) unconditionally \texttt{static\_cast} whatever
-\cnaclass{ITextureBackend} / \cnaclass{ITextureCubeBackend} they are handed to the plain,
-ordinary-texture concrete type. \cnaclass{RenderTarget2D} and \cnaclass{RenderTargetCube} are
-each backed by their own, entirely separate sibling backend class --- consistent with
+Chapter~\ref{ch:vulkan-backend} named this backend's own, now-resolved
+\cnaclass{RenderTargetCube}-sampling bug as ``a genuine wrong-handle-cast, diagnosed precisely''
+in contrast to Vulkan's own still-unresolved equivalent --- this section is that precise
+diagnosis, including how it was actually closed. Both \texttt{BgfxSpriteBatchBackend::Draw} and
+\cnaclass{BgfxGraphicsBackend}'s own \texttt{envMapping} branch (the code path
+\cnaclass{EnvironmentMapEffect}, per Chapter~\ref{ch:stock-effects}, reaches) used to
+unconditionally \texttt{static\_cast} whatever \cnaclass{ITextureBackend} / \cnaclass{%
+ITextureCubeBackend} they were handed to the plain, ordinary-texture concrete type.
+\cnaclass{RenderTarget2D} and \cnaclass{RenderTargetCube} are each backed by their own,
+entirely separate sibling backend class --- consistent with
 Chapter~\ref{ch:backend-architecture}'s own \cnaclass{IRenderTargetBackend} interface design,
 not a shortcut specific to this backend. Both of those sibling classes'
 \emph{first data member} is a framebuffer handle, not a texture handle.
 
-The reason this compiles cleanly and never crashes, rather than failing loudly the moment it is
+The reason this compiled cleanly and never crashed, rather than failing loudly the moment it was
 exercised, is a genuinely instructive piece of type-confusion: bgfx represents both handle kinds
-identically at the ABI level, as a bare \texttt{struct \{ uint16\_t idx; \}}. The cast is
+identically at the ABI level, as a bare \texttt{struct \{ uint16\_t idx; \}}. The cast was
 structurally valid C\texttt{++} --- both types really do have that exact layout --- so the
-compiler has no basis to reject it, and the resulting object does not crash on access, because
-\texttt{idx} really is a valid, in-range integer. It is simply the \emph{wrong} integer: an
+compiler had no basis to reject it, and the resulting object did not crash on access, because
+\texttt{idx} really was a valid, in-range integer. It was simply the \emph{wrong} integer: an
 index into bgfx's framebuffer handle pool, read and used as though it indexed the texture handle
-pool instead. The practical consequence is a render target that silently samples whatever
-texture happens to occupy the coincidentally-matching slot in the wrong pool --- confirmed by
+pool instead. The practical consequence was a render target that silently sampled whatever
+texture happened to occupy the coincidentally-matching slot in the wrong pool --- confirmed by
 direct memory-layout analysis and by new smoke tests added specifically to prove the cast
-\emph{does not crash} on either \cnaclass{RenderTarget2D} or \cnaclass{RenderTargetCube}, which
-is exactly why ordinary ``does it crash'' testing had not caught this before. Not yet fixed
-(Tasks~873/874) --- a render-to-texture technique (a portal, a security-camera view, a
-reflection probe rendered as an ordinary 2D texture rather than through the dedicated cube-face
-path) that samples its own render target back through \cnaclass{SpriteBatch} or
-\cnaclass{EnvironmentMapEffect} on this backend should be treated as unverified until this is
-resolved, even though nothing about running the code signals that anything went wrong.
+\emph{did not crash} on either \cnaclass{RenderTarget2D} or \cnaclass{RenderTargetCube}, which is
+exactly why ordinary ``does it crash'' testing had not caught this before. Both call sites are
+now fixed (Tasks~873/874, closed by Task~907's own follow-up): \texttt{BgfxSpriteBatchBackend::%
+Draw} now reaches a render target's real dimensions through \cnaclass{ITextureBackend}'s own
+virtual \texttt{GetWidth()} / \texttt{GetHeight()} rather than an unsafe cast, and the
+\texttt{envMapping} branch resolves a bound cube texture through a real \texttt{dynamic\_cast} to
+a shared \texttt{IBgfxCubeSamplable} interface instead --- a render-to-texture technique (a
+portal, a security-camera view, a reflection probe rendered as an ordinary 2D texture rather than
+through the dedicated cube-face path) that samples its own render target back through
+\cnaclass{SpriteBatch} or \cnaclass{EnvironmentMapEffect} on this backend can now be trusted,
+where it previously could not have been even though nothing about running the code signaled that
+anything was wrong. This chapter's own closing summary below already reflected this fix
+implicitly, by not naming Tasks~873/874 among the backend's remaining open items --- the
+paragraph above exists so that omission reads as a confirmed, explained resolution rather than
+as an unexplained gap between two sections of the same chapter.
 
 \section{A real, found-and-fixed rendering bug: silent black meshes}
 

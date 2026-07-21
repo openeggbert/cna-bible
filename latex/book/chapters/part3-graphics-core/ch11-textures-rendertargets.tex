@@ -4,9 +4,11 @@
 This chapter is the one in Part~III where the gap between ``the API exists'' and ``the API
 does what it says on every backend'' is widest. \cnaclass{Texture2D} is close to fully
 faithful; \cnaclass{Texture3D} and \cnaclass{TextureCube} carry a real, load-bearing
-structural deviation from FNA; and render targets surface some of the sharpest per-backend
-divergence in the whole Graphics namespace. All three are covered here together, with the
-specific per-backend facts intact rather than smoothed into ``mostly works.''
+structural deviation from FNA; and render targets --- once the sharpest per-backend divergence
+in the whole Graphics namespace, before a wave of later fixes closed most of it, covered in
+full below --- still carry two genuinely open gaps of their own. All three are covered here
+together, with the specific per-backend facts intact rather than smoothed into ``mostly
+works.''
 
 \section{Texture: the base, and one format that actually works}
 
@@ -207,7 +209,7 @@ wrong handle pool entirely. A porting engineer hitting a black cube face on Vulk
 this as a confirmed, known backend limitation rather than a bug in call-site code structured
 like the example above.
 
-\section{Render targets: the sharpest per-backend divergence in this Part}
+\section{Render targets: a once-sharp per-backend divergence, mostly closed since}
 \label{sec:rendertargets}
 
 \cnaclass{RenderTarget2D} inherits both \cnaclass{Texture2D} and \cnaclass{IRenderTarget},
@@ -219,43 +221,59 @@ consequence of the \cnaclass{TextureCube} structural deviation above --- and so 
 \emph{cannot} get the same bound-while-disposing guard, since \cnaclass{RenderTargetBinding}
 only ever stores a \texttt{Texture*}. This is tracked, not fixed.
 
-The four things that most concretely differ by backend for a render target are:
+\texttt{docs/rendertarget-support.md} once listed five further per-backend divergences here
+(Tasks~877--881) as open gaps, and an earlier pass of this chapter reproduced that list
+faithfully. Reading every backend's own current \texttt{.cpp} directly instead of trusting that
+document's status column finds four of the five already closed --- each superseded by a later
+task (\texttt{Task~903} / \texttt{907} / \texttt{911}) whose own fix comments the tracking document
+was never updated to reflect, the identical ``a status that looked settled turned out to be
+stale'' pattern Chapters~\ref{ch:easygl-backend} and~\ref{ch:vulkan-backend} both ran into
+independently while auditing this exact same document for their own backends. What is actually
+still open, and what is now fixed:
 
 \begin{description}
   \item[Sampling a \cnaclass{RenderTargetCube} face after rendering into it, then unbinding.]
-        \textbf{EasyGL}: works correctly. \textbf{Vulkan}: renders black, for two distinct,
-        separately-tracked reasons --- a clear-only render target never actually records a
-        render pass (one bug), and a second, separate black-render defect specific to sampling
-        a cube face after rendering into faces, whose root cause has not been isolated.
-        \textbf{BGFX}: an unconditional \texttt{static\_cast} reads a framebuffer-pool handle
-        where a texture-pool handle is expected --- a real type-confusion bug, not yet fixed.
-  \item[Depth/stencil format fidelity.] No backend honors the exact requested
-        \cnaclass{DepthFormat}. \textbf{EasyGL} always allocates a depth-only 24-bit buffer,
-        never any stencil bits, regardless of what was requested. \textbf{Vulkan} ignores the
-        \texttt{hasDepth} flag entirely, always allocating a single device-global format.
-        \textbf{BGFX} always uses a combined 24-bit-depth/8-bit-stencil format. This is a
-        deliberate, documented limitation (Task~877), not a silent one.
-  \item[Mipmap generation.] \textbf{EasyGL} genuinely works --- real per-level GPU storage,
+        \textbf{EasyGL}: works correctly. \textbf{Vulkan}: still renders black, for the two
+        distinct, separately-tracked reasons Chapter~\ref{ch:vulkan-backend} covers in full ---
+        a clear-only render target never actually records a render pass, and a second, separate
+        black-render defect whose root cause remains genuinely unresolved between two named
+        candidates. \textbf{BGFX}: fixed --- the unconditional \texttt{static\_cast} that once
+        read a framebuffer-pool handle where a texture-pool handle was expected
+        (Chapter~\ref{ch:bgfx-backend} names the exact mechanism) is gone, replaced by a real
+        \texttt{dynamic\_cast} to a shared cube-samplable interface for the
+        \cnaclass{EnvironmentMapEffect} path and virtual width/height dispatch for the ordinary
+        \cnaclass{SpriteBatch} path.
+  \item[Depth/stencil format fidelity.] Now real on all three backends: each maps the actual
+        requested \cnaclass{DepthFormat} ordinal to the correct native format (GL internal
+        format plus attachment point on EasyGL; a per-instance Vulkan format; bgfx's own
+        format enum), rather than the single, always-the-same format every backend once
+        allocated regardless of what was asked for.
+  \item[Mipmap generation.] \textbf{EasyGL} already worked --- real per-level GPU storage,
         auto-regenerated via \texttt{glGenerateMipmap} on unbind, matching FNA3D's own real
-        mechanism. \textbf{Vulkan} and \textbf{BGFX} both accept the \texttt{mipMap} request
-        and silently ignore it (Task~878) --- no functional GPU mip chain exists on either.
-  \item[Multisample antialiasing.] \textbf{EasyGL} genuinely works: a real multisampled
+        mechanism. \textbf{Vulkan} and \textbf{BGFX} now do too: a real, per-level mip-chain
+        regeneration cascade (\texttt{vkCmdBlitImage} on Vulkan; bgfx's own equivalent) runs
+        against a render target's just-rendered content once its render pass ends, rather than
+        silently accepting and discarding the request the way both once did.
+  \item[Multisample antialiasing.] \textbf{EasyGL} already worked: a real multisampled
         renderbuffer with a \texttt{glBlitFramebuffer} resolve on unbind. \textbf{Vulkan} and
-        \textbf{BGFX} honestly report \texttt{MultiSampleCount = 0} (Task~879) rather than
-        pretending to honor a sample count they do not implement --- a legitimately correct
-        answer to give, not a shortcut taken to look complete.
+        \textbf{BGFX} now genuinely implement it too, rather than honestly reporting
+        \texttt{MultiSampleCount = 0} the way both once correctly did while the feature was
+        still unimplemented.
 \end{description}
 
-Two further, project-wide findings apply regardless of which specific render-target feature
-you touch. First, switching the active render target correctly resets \texttt{Viewport} and
+Two further, project-wide findings from the same original list are also now closed, not open.
+Switching the active render target correctly resets \texttt{Viewport} and
 \texttt{ScissorRectangle} to the new target's (or the backbuffer's) own dimensions, on every
-backend --- but a separate investigation of that same fix uncovered a much larger, still-open
-gap: \texttt{GraphicsDevice.Viewport} currently has \emph{no GPU wiring at all} on any of the
-three hardware backends investigated; every one of them hardcodes the viewport to the full
-render-target or window size regardless of what the API says it is set to (Task~880).
-Second, no backend matches FNA's real four-target \texttt{MAX\_RENDERTARGET\_BINDINGS} cap
-in the same way: EasyGL and BGFX both silently cap at eight bindings with no error if you
-exceed it, and Vulkan is not capped at the CNA level at all (Task~881).
+backend, and \texttt{GraphicsDevice.Viewport} itself now has real GPU wiring on all three
+hardware backends investigated --- EasyGL applies a custom sub-region \cnaclass{Viewport}
+unconditionally, whether or not a render target is currently bound, while Vulkan's own version
+of the identical fix is honestly narrower, backbuffer-pass-only, for an architectural reason
+Chapters~\ref{ch:vulkan-backend} and~\ref{ch:easygl-backend} both cover in full. And
+\texttt{GraphicsDevice::SetRenderTargets()} now genuinely enforces FNA's real four-target
+\texttt{MAX\_RENDERTARGET\_BINDINGS} cap at the shared, cross-backend level --- throwing if a
+caller passes more than four bindings, regardless of what any individual backend's own internal
+buffer happens to be sized for --- closing what this section once described as no backend
+matching that real XNA limit at all.
 
 \section{SurfaceFormat, in one sentence}
 
