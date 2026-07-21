@@ -85,6 +85,39 @@ whether a WebGL1 fallback exists --- is explicitly labeled a \emph{design-time e
 not something empirically verified, precisely because the build that would let someone verify
 it has never actually been produced.
 
+\subsection{One real asset the \texttt{CANVAS} build left behind: a reusable SDL3-for-Emscripten cache}
+
+The \texttt{CANVAS} build described above did not just prove \texttt{emcc} works in this
+project's dev environment; it also left a concrete, still-present artifact on disk that
+directly affects the cost of the next attempt at \texttt{EASYGL} under Emscripten. CNA's
+vendored-SDL build machinery (\texttt{cmake/ThirdPartySDL.cmake}) installs SDL3, SDL3\_image,
+and SDL3\_mixer once into a persistent cache directory keyed by target platform ---
+\texttt{.sdl-prebuilt-emscripten/} specifically for Emscripten, distinct from the
+per-native-platform \texttt{.sdl-prebuilt-Linux-x86\_64} / \texttt{.sdl-prebuilt-Windows-x86\_64}
+directories this book's Building CNA chapter (Chapter~\ref{ch:building-cna}) already
+describes --- and the cache's own comment states its purpose plainly: it lives
+\emph{``OUTSIDE any cmake build tree, so \texttt{cmake --build --clean-first} (or deleting the
+build directory entirely) does NOT remove SDL artefacts.''} Deleting an Emscripten build
+directory and reconfiguring from scratch does not force SDL3 to rebuild; only manually
+deleting \texttt{.sdl-prebuilt-emscripten/} itself does that.
+
+That cache is real and still present: a genuine WebAssembly static-library build of all three
+SDL3 libraries exists on disk right now, confirmed directly by inspecting the installed
+archives rather than trusting a build log --- \texttt{libSDL3.a} at 2{,}024{,}910 bytes,
+\texttt{libSDL3\_image.a} at 321{,}570 bytes, \texttt{libSDL3\_mixer.a} at 384{,}298 bytes, plus
+a \texttt{libSDL3\_test.a} at 128{,}890 bytes, alongside a proper CMake package-config
+install (\texttt{install/lib/cmake/\{SDL3,SDL3\_image,SDL3\_mixer\}/}) that lets any later
+configure step find them via ordinary \texttt{find\_package()} rather than hand-wired paths.
+Crucially, this build machinery is entirely backend-agnostic: \texttt{ThirdPartySDL.cmake}
+branches only on platform (\texttt{EMSCRIPTEN} / \texttt{ANDROID} / \texttt{WIN32} / \texttt{APPLE}/
+plain Unix), never on \texttt{CNA\_GRAPHICS\_BACKEND}. That means the SDL3-for-Emscripten cache
+the \texttt{CANVAS} build populated is exactly the same cache an \texttt{EASYGL} Emscripten
+build would consume --- whoever attempts that build next does not start from zero; the
+slowest, most failure-prone part of a first Emscripten configure (compiling SDL3 and its two
+satellite libraries to WebAssembly) is already done and sitting on disk, and only the
+\texttt{EASYGL}-specific and \texttt{easy-gl}-sibling-repository code paths remain genuinely
+unattempted.
+
 \section{Why even a successful build cannot be pixel-verified here}
 
 Even where a build genuinely succeeds and a test binary genuinely runs, there is a hard
