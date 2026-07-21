@@ -40,6 +40,7 @@ once, immediately after subscribing, specifically to receive those initial join 
 // time, before any subscription could possibly exist yet.
 NetworkSession* session = NetworkSession::Create(
     NetworkSessionType::SystemLink, /* maxLocalGamers */ 1, /* maxGamers */ 8);
+    // the 8 above is NOT actually honored -- see the worked example below
 
 session->GamerJoined.Add(
     [](System::Object* sender, const GamerJoinedEventArgs& args)
@@ -198,6 +199,46 @@ then called \texttt{getCurrent()}, never \texttt{MoveNext()}, on the disposed in
 One bug remains explicitly open at the time of writing rather than silently dropped: a real,
 confirmed leak in \texttt{NetworkSession::BeginCreate}, flagged directly and not yet
 resolved.
+
+\section{A worked example: the \texttt{maxGamers} argument that this chapter's own opening example silently ignores}
+
+The very first worked example in this chapter, at the top, passes \texttt{maxGamers = 8} to
+\cnaclass{NetworkSession}'s own \texttt{Create()} --- and that value is never actually used.
+This is worth correcting explicitly, in its own section, rather than quietly editing the
+earlier example away, because the reason is a genuine, verified piece of API fidelity rather
+than a bug in this port, and it is exactly the kind of trap a reader porting real game code
+would otherwise hit directly. \texttt{Create(NetworkSessionType, int maxLocalGamers, int
+maxGamers)}, the simplest three-argument overload, forwards straight into the matching simplest
+\texttt{BeginCreate}
+overload --- whose own \texttt{maxGamers} parameter is unused in its entire body, marked with an
+explicit comment at the call site: FNA itself never uses this parameter in this overload,
+preserved as-is. The reason is not merely that this one overload discards it: the internal
+\texttt{NetworkSessionAction} object every \texttt{BeginCreate} overload constructs to carry
+state across to the matching \texttt{EndCreate} call has no field to store a caller-supplied
+\texttt{maxGamers} value in at all --- so \emph{every} \texttt{Create} / \texttt{BeginCreate}
+overload in the whole class, not just the simplest one, ultimately reaches the same
+\texttt{EndCreate}, which constructs the real \cnaclass{NetworkSession} with a literal, hardcoded
+\texttt{69} in the \texttt{maxGamers} constructor slot, with its own comment recording exactly
+why: \emph{``FNA hardcodes 69 here instead of forwarding the caller's original maxGamers
+argument.''} \texttt{69} is not an arbitrary placeholder --- it is independently documented,
+outside this project, as genuine historical Xbox~360/Windows XNA~4.0 behavior for this exact
+call shape, which is why the prior audit that reconfirmed this quirk concluded it should be
+preserved rather than corrected to ``do what the parameter name suggests.''
+
+\begin{lstlisting}
+// Worked example: the maxGamers argument is accepted, validated in some
+// overloads, and then never actually reaches the constructed session --
+// getMaxGamersProperty() below reads back 69, not 8, on every path.
+NetworkSession* session = NetworkSession::Create(
+    NetworkSessionType::SystemLink, /* maxLocalGamers */ 1, /* maxGamers */ 8);
+assert(session->getMaxGamersProperty() == 69);  // not 8 -- real, preserved XNA behavior
+\end{lstlisting}
+
+A game genuinely relying on a specific room-size cap --- to size a lobby UI, or to refuse a
+ninth join attempt at the application level rather than trusting the framework to enforce it ---
+cannot use this parameter for that purpose on any \texttt{Create} / \texttt{BeginCreate} overload
+in this class, and must track and enforce its own desired capacity separately, exactly as a game
+targeting real Xbox~360-era XNA~4.0 would have had to.
 
 \section{Two asymmetries, preserved rather than symmetrized}
 
