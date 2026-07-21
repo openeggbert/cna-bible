@@ -195,3 +195,86 @@ through the genuine \texttt{Present()} path, unaffected by either.
 Input on this backend required zero new code at all --- verified twice, independently: once
 through the existing backend-agnostic mouse test suite, and once through a new, dedicated
 input test written specifically for this backend, passing in full.
+
+\section{Both backends are 2D-only by explicit design, not by omission}
+
+Every backend documented in the previous three chapters implements the full
+\cnaclass{IGraphicsBackend} interface, 3D pipeline included, even where a given hardware
+target turns out to have real gaps in that support (Chapter~\ref{ch:backend-architecture}
+covers several). \texttt{CANVAS} and \texttt{ASCII} are architecturally different: neither one
+\emph{attempts} 3D at all, and this is enforced in code, not merely asserted in prose.
+
+\subsection{ASCII: a dedicated test proves every 3D entry point throws}
+
+\texttt{AsciiGraphicsBackend} forwards every 3D-pipeline method it does override directly to
+the wrapped \texttt{SdlGraphicsBackend}'s own existing \texttt{ThrowNo3D()} calls, rather than
+re-declaring the same throw logic a second time --- a design decision the backend's own plan
+document (\texttt{plan\_ascii.md}, Phase~G7) records explicitly as ``same net behavior, less
+code.'' \texttt{ascii\_throwno3d\_test.cpp} exists purely to prove this forwarding is complete
+and correct, by calling each reachable 3D entry point on a real, live backend instance and
+checking that it actually throws:
+
+\begin{lstlisting}
+auto& backend = static_cast<AsciiGraphicsBackend&>(dev.GetBackend());
+
+check(Throws([&] { backend.ClearColorAndDepth(0, 0, 0, 1, 1.0f); }), "ClearColorAndDepth throws");
+check(Throws([&] { backend.SetDepthTestEnabled(true); }),            "SetDepthTestEnabled throws");
+check(Throws([&] { backend.CreateVertexBuffer(3); }),                "CreateVertexBuffer throws");
+check(Throws([&] { backend.CreateOcclusionQuery(); }),                "CreateOcclusionQuery throws");
+
+check(!backend.SupportsDepthStencil(), "SupportsDepthStencil() is false");
+check(backend.CreateTexture3D(4, 4, 4, false, 0) == nullptr, "CreateTexture3D returns nullptr");
+\end{lstlisting}
+
+Seventeen checks in total, covering three distinct failure shapes rather than one uniform
+rule: twelve directly-reachable entry points (the six \texttt{Clear*} overloads,
+\texttt{SetDepthTestEnabled}, \texttt{SetBlendEnabled}, \texttt{SetDepthWriteEnabled},
+\texttt{CreateVertexBuffer}, \texttt{CreateIndexBuffer16}, \texttt{CreateOcclusionQuery})
+throw a real \texttt{std::runtime\_error}; \texttt{SupportsDepthStencil()} returns \texttt{false}
+rather than throwing, since it is a capability query, not an action (the same ``ask, don't
+catch'' shape Chapter~\ref{ch:sdl-renderer} documents for \texttt{SDL\_RENDERER}'s own
+\texttt{SupportsCapability} overrides); and four factory methods
+(\texttt{CreateTexture3D} / \texttt{CreateTextureCube} / \texttt{CreateRenderTargetCube}/
+\texttt{CreateEffectBackend}) return \texttt{nullptr} rather than throwing at all, because
+\texttt{AsciiGraphicsBackend} never overrides them --- they fall through to
+\cnaclass{IGraphicsBackend}'s own shared defaults, which already return \texttt{nullptr}, so
+adding a local override would only duplicate behavior the base class already provides for
+free.
+
+Three further methods --- \texttt{DrawColoredPrimitives}, \texttt{DrawIndexedColoredPrimitives},
+\texttt{DrawInstancedPrimitivesEx} --- are deliberately \emph{not} exercised by this test at
+all, and the test's own comments explain why honestly rather than silently skipping them:
+each needs a real \texttt{IVertexBufferBackend\&} argument, but \texttt{CreateVertexBuffer}
+and \texttt{CreateIndexBuffer16} already throw (Checks~J/K above), so no real vertex or index
+buffer can ever exist on this backend to construct that argument with. They are structurally
+unreachable via any real call path a game could take, not merely untested by omission ---
+confirmed correct by code review instead, since both forward to the same wrapped inner backend
+with the identical one-line pattern as every other method in the file.
+
+\subsection{CANVAS: the identical contract, without a dedicated test}
+
+\texttt{CanvasGraphicsBackend} follows the exact same shape, documented directly in its own
+header rather than in a standalone test file: the ``inherently-3D-only pure virtuals'' ---
+\texttt{ClearColorAndDepth} and its five siblings, the vertex/index buffer factories,
+\texttt{DrawColoredPrimitives} --- throw via \texttt{ThrowNo3D()}, while the remaining
+3D-only surface (\texttt{Draw*Ex} / \texttt{DrawInstancedPrimitivesEx},
+\texttt{CreateIndexBuffer32}, and the same four \texttt{Create\{Texture3D, TextureCube,
+RenderTargetCube, OcclusionQuery, EffectBackend\}} factories) is left entirely on
+\cnaclass{IGraphicsBackend}'s own shared defaults, unoverridden. The header comment names its
+own precedent directly: this is ``confirmed against \texttt{SDL\_RENDERER}'s own precedent of
+not overriding these either (Phase~C7)'' --- the same reasoning \texttt{SDL\_RENDERER} itself
+established first, that \texttt{ASCII} then reused by wrapping \texttt{SDL\_RENDERER}
+verbatim, and that \texttt{CANVAS} arrived at independently for its own, unrelated
+implementation. Three separate backends, two of them with no code relationship to each other
+at all, converge on one shared answer for exactly the same reason: reimplementing a throw the
+base class already provides for free would be new code with no new behavior.
+
+Unlike \texttt{ASCII}, no dedicated \texttt{canvas\_throwno3d\_test.cpp} exists to exercise
+this behavior end-to-end against a live instance --- the claim rests on the header's own
+design-rationale comment plus code review, not on an executed test, a narrower verification
+claim consistent with the rest of this backend's own ``structural, not pixel-verified''
+ceiling described earlier in this chapter. A future session adding one would only need to
+port \texttt{ascii\_throwno3d\_test.cpp}'s own pattern across, substituting
+\texttt{CanvasGraphicsBackend} for \texttt{AsciiGraphicsBackend} --- the two backends' checks
+would be close to identical, since both ultimately assert the same
+\cnaclass{IGraphicsBackend}-level contract.
