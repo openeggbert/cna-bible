@@ -74,6 +74,35 @@ own maintainers responded by opening a dedicated, one-task-per-sample re-audit c
 samples this project has ever catalogued --- including the 67 never even attempted --- rather
 than trusting any existing ``Done'' status line at face value going forward.
 
+\subsection{Two real framework bugs a sample found that no unit test had}
+
+Two further findings from this same porting effort are worth naming because they are not
+sample-specific workarounds at all --- they are genuine CNA framework gaps that a real,
+externally-authored sample happened to exercise in a way no existing unit test did.
+\texttt{LensFlare}'s own occlusion-query technique deliberately draws a small test polygon with
+\cnaclass{BlendState.ColorWriteChannels} set to \texttt{None}, specifically so that polygon
+stays invisible while still occluding the depth/stencil test the query reads --- and on
+\texttt{EASYGL}, it renders as a solid white square instead. Reading
+\texttt{EasyGLGraphicsBackend.cpp} directly confirms why: there is no \texttt{glColorMask} call
+anywhere in the file at all, so \cnaclass{ColorWriteChannels} is accepted by the public API and
+silently never reaches the GPU on this backend --- a real, currently open gap, not something
+this specific sample can work around on its own.
+
+A second, related finding has a more encouraging ending. The same porting effort's own bug
+list once read that \texttt{GraphicsDevice::Clear(Color)}'s single-argument overload --- the
+overload every 3D sample in the repository actually uses --- never cleared the depth buffer at
+all, only the color target, diverging from real XNA/FNA's own behavior (which clears
+target/depth/stencil together through this exact overload). Reading the real, current
+implementation directly shows this has since been fixed: the single-\texttt{Color} overload now
+forwards to the full \texttt{ClearOptions::Target} / \texttt{DepthBuffer} / \texttt{Stencil}
+form, using the device's own \emph{current} viewport \texttt{MaxDepth}
+as the clear depth --- matching FNA's real \texttt{Viewport.MaxDepth} reference exactly rather
+than a hardcoded \texttt{1.0}, per the fix's own explanatory comment. Both findings make the
+same point about this book's own methodology as much as about CNA itself: a real, externally
+authored sample exercising a code path incidentally (an occlusion-query trick, an ordinary
+\texttt{Clear} call every 3D scene makes) surfaces gaps a unit test built specifically to check
+one property in isolation would never think to combine.
+
 \section{cna-examples: a coherent, in-app tour, and a project still early}
 
 \texttt{cna-examples} answers a different question, and is deliberately original,
