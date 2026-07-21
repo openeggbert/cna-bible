@@ -205,3 +205,62 @@ previously described as open gaps in earlier documentation passes and are now al
 closed --- with the documentation's own closing line telling a reader to re-verify any
 \emph{other} specific claim against the project's own live tracking file before trusting it,
 rather than this book's snapshot alone.
+
+\section{A reopened feature, and a real architectural divergence hiding under a shared foundation}
+
+\texttt{D3DCommon}'s shared HLSL/DXBC and state-mapping tables, named above, make it easy to
+assume the two backends are near-identical beneath that layer. A late pair of tasks in the
+Direct3D~11/12 implementation plan --- opened well after both backends were otherwise
+considered feature-complete, once a full feature-matrix percentage audit against \texttt{EasyGL}
+turned up a handful of remaining gaps --- shows a case where that assumption holds
+(\cnaclass{RenderTargetCube} MSAA) and one where it genuinely does not (mip-chain generation).
+
+\subsection{\cnaclass{RenderTargetCube} MSAA: a deliberate exclusion, reopened on request}
+
+Multisampled render-target cubes were, at one point, a matched, deliberate scope exclusion on
+both backends, not a silent oversight --- the project owner explicitly asked for it to be
+reopened alongside the rest of a late feature-matrix sweep. The two implementations that
+resulted are a real worked example of the same underlying Direct3D constraint solved twice,
+independently, once per API generation. Neither \texttt{D3D11\_RESOURCE\_MISC\_TEXTURECUBE} nor
+a \texttt{D3D11\_SRV\_DIMENSION\_TEXTURECUBE} view can ever be multisampled, and \texttt{D3D12}'s
+equivalent \texttt{D3D12\_SRV\_DIMENSION\_TEXTURECUBE} has no multisampled variant either --- so
+on both backends, the MSAA color resource becomes a plain, non-cube six-slice
+\texttt{Texture2DMSArray} used only as a render-target view, while a second, single-sample,
+genuinely cube-flagged resource is resolved into via \texttt{ResolveSubresource()} on unbind, and
+it is that resolved resource, not the MSAA one, that the real shader-resource view always
+targets. \texttt{D3D12}'s own version of that same resolve additionally requires two explicit
+resource-barrier transitions (\texttt{RESOLVE\_SOURCE} on the color resource,
+\texttt{RESOLVE\_DEST} on the resolve target) that \texttt{D3D11} does not need at all --- its
+context-level \texttt{ResolveSubresource()} call handles the equivalent state transition
+implicitly. Both backends resolve only the currently active face on unbind, the same
+one-face-at-a-time convention their mip-chain handling (below) also follows. Real proof on both
+backends: an $8\times8$ cube face requested at 4x MSAA, cleared, resolved on unbind, and read
+back exactly matching, with an explicit check that \texttt{GetMultiSampleCount()} reports the
+real requested sample count rather than a silent single-sample fallback.
+
+\subsection{Mip-chain generation: one native GPU call versus an explicit CPU round trip}
+
+Generating a \cnaclass{RenderTargetCube}'s mip chain after a face is drawn to is where the two
+backends' shared foundation runs out. \texttt{D3D11} calls
+\texttt{ID3D11DeviceContext::GenerateMips()} directly on the cube's own shader-resource view ---
+a single native, hardware-accelerated call with no per-face argument at all, since the view it
+operates on spans the whole six-face resource. Calling it after any one face is drawn
+regenerates the entire cube's mip chain from each face's own current level-0 content in one GPU
+call; this is harmless for the five faces that were not just drawn to (their level-0 content did
+not change, so recomputing their mips from it is a no-op in effect) and correct for the one that
+was. \texttt{D3D12} has no equivalent convenience API for generating mips on an arbitrary format
+at all, so \texttt{D3D12RenderTargetCubeBackend::GenerateMipsEXT()} implements the whole chain by
+hand: for each mip level, it reads the previous level's pixels back from the GPU for the one
+active face only (\texttt{ReadbackSubresourceRGBA8()}), box-filter-downsamples them on the CPU
+(\texttt{BoxFilterDownsample()}), and uploads the result into the next level
+(\texttt{UploadSubresourceRGBA8()}) --- an explicit, per-level CPU round trip, deliberately scoped
+to only the face that was actually just drawn, since repeating that CPU work for all six faces on
+every unbind would be needless cost for five faces whose content had not changed. The two
+mechanisms reach the same visible result --- a correctly downsampled mip chain for the face that
+was drawn --- through genuinely different means: one hardware call operating on the whole
+resource at once, and one explicit, face-scoped software loop working level by level. It is a
+concrete illustration of what ``\texttt{D3DCommon} is the shared foundation'' does and does not
+promise: shared bytecode and state-mapping tables, not identical implementation strategy for
+every individual feature, and a reader porting code that depends on either backend's own timing
+or cost characteristics for this specific operation should not assume the other backend behaves
+the same way underneath.
