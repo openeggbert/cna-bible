@@ -5,21 +5,20 @@ the permanent session log.** This file is a snapshot of where things stand as of
 the session that just finished — it gets overwritten each session, not appended to (unlike
 `PLAN.md`'s own internal session log, a permanent history).
 
-## FIRST THING TO DO: check whether a concurrent background pass finished
+## RESOLVED before this session actually ended — the item below is historical, not a to-do
 
-As this long autonomous session wound down (2026-07-21 into 2026-07-22), a second,
-independently-active background agent was mid-way through its own overflow-fixing pass on at
-least two files — `latex/book/chapters/appendices/appendix-b-feature-matrix.tex` and
-`latex/book/chapters/part7-easygl-freedirect/ch37-easygl-deep-dive.tex` — adding `\allowbreak{}`
-at `::`/camelCase boundaries inside long `\texttt{}` identifiers, the same defect class covered
-below. That work was **still uncommitted, in progress, in the shared working tree** when this
-session ended; it may have committed on its own since (check `git log` — look for commit
-messages mentioning overfull-hbox/allowbreak fixes to `appendix-b-feature-matrix.tex` or
-`ch37-easygl-deep-dive.tex` dated after `b199a92`), or it may still be sitting uncommitted in
-the working tree (check `git status` and `git diff` on those two files specifically before
-doing anything else). If it's still uncommitted: read the diff, decide whether it looks like a
-real, well-motivated fix (the pattern above is a good sign) or something to discard, and either
-commit it or `git checkout --` it before starting new work — don't let it sit in limbo.
+The "concurrent background pass" this section used to warn about (overflow fixes to
+`appendix-b-feature-matrix.tex` and `ch37-easygl-deep-dive.tex`) finished and committed on its
+own (`ab8e31a`, `a3cfd92`, `1fc107a`) before the coordinating session's own turn ended. The
+coordinating session then ran one more full, forced rebuild (`latexmk -g`) against the fully
+synced, clean `git status`, re-ran both grep checks (clean), and PNG-rendered and read **every**
+batch-2 chapter's touched pages directly (bumping to 150-300dpi for the one borderline case,
+Appendix B's `Wrap`/`Mirror` table row, which the concurrent pass had already fixed and which
+now renders correctly at every resolution checked). **Batch 2 is fully, genuinely
+PDF-verified clean as of commit `1fc107a` — 402 pages, 0 undefined references, 0 duplicate
+labels, every touched page pixel-checked.** All eleven `PLAN.md` rows (Ch.10/19/20/23/32/37/
+40/41/43/44, App B) are correctly marked `PDF-verified clean`. Nothing left to finish here —
+skip straight to "What is NOT yet done" below for the next body of work.
 
 ## A real coordination pattern this project's use of parallel forks now needs standing awareness of
 
@@ -105,9 +104,8 @@ check for this defect class — absence of a logged warning is not evidence of c
 a fix must be pixel-verified (before/after crop comparison), not assumed from a clean rebuild or
 another agent's commit message.
 
-**Batch 2 (content landed and build-verified clean at the log level; PNG-level pixel
-verification of the *new* content is incomplete as of session end — see the section above about
-a concurrent pass possibly still finishing this): Ch.10/19/20/23/32/37/40/41/43/44, Appendix B.**
+**Batch 2 (fully PDF-verified clean, PNG-checked page by page — see the RESOLVED note above):
+Ch.10/19/20/23/32/37/40/41/43/44, Appendix B.**
 Highlights: SpriteBatch's sort-deferred (not draw-call-batched) flush timing (Ch.10); Vulkan's
 `CreateSwapchain()` UNORM-not-SRGB decision and `PresentInterval` fallback chain (Ch.19); BGFX's
 free-list-backed render-target view-id pool (Ch.20); D3D11's three-group (not two)
@@ -123,31 +121,20 @@ feasibility analysis for Blupi, grounded in `free-eggbert`'s own real `cna.md` l
 source doc itself (Appendix B).
 
 **Current build state**: forced rebuild (`latexmk -g`) succeeds, **402 pages**, both grep
-checks clean (`grep -i "Warning.*undefined\|undefined reference\|undefined control"` and
-`grep -i "multiply defined\|multiply-defined"` both empty). This confirms batch 2 compiles and
-has no cross-reference regressions, but per the lesson above, a clean grep is necessary, **not
-sufficient** — batch 2's own newly-added pages have not all been individually PNG-rendered and
-read yet (a first pass sampled one page per chapter and found everything clean, but that was
-not the full systematic sweep batch 1 got). **Do that full sweep before marking batch 2's
-`PLAN.md` rows `PDF-verified clean`** — they are currently correctly marked `pending batch
-verification`.
+checks clean, and every batch-2 chapter's own touched pages have been individually
+PNG-rendered and read directly (not just log-checked) — genuinely done, not merely
+grep-plausible.
 
 ## What is NOT yet done — the natural next body of work
 
-1. **Finish batch 2's verification**: resolve the possibly-still-in-progress concurrent edit
-   (see top of this file), rebuild with `latexmk -g`, re-run both grep checks, locate every
-   batch-2 chapter's physical page range via `pdftotext`, render every touched page to PNG at
-   120dpi (bump to 150+ and crop with PIL if a specific line looks borderline), read each one
-   directly, fix anything found, then relabel all eleven `PLAN.md` rows (Ch.10/19/20/23/32/37/
-   40/41/43/44, App B) `PDF-verified clean`.
-2. Continue with further chapters once batch 2 is verified. Furthest-below-target as of this
-   session's end (recompute from `PLAN.md`'s own table if this list and PLAN.md ever disagree):
-   Ch.23 Direct3D (~13 of ~85, still the largest gap even after this session's addition), Ch.41
-   Android/NDK (~7 of ~40), Ch.31 Networking and Ch.35 Sharp Runtime Namespaces (~9 of ~70
-   each), Ch.20 BGFX (~10 of ~55), Ch.10 SpriteBatch (~9 of ~55).
-3. Ch.7 Math remains the largest chapter by far and may be genuinely saturated (four-plus prior
+1. Furthest-below-target as of this session's end (recompute from `PLAN.md`'s own table if
+   this list and PLAN.md ever disagree): Ch.23 Direct3D (~13 of ~85, still the largest gap even
+   after this session's addition), Ch.41 Android/NDK (~7 of ~40), Ch.31 Networking and Ch.35
+   Sharp Runtime Namespaces (~9 of ~70 each), Ch.20 BGFX (~10 of ~55), Ch.10 SpriteBatch (~9 of
+   ~55).
+2. Ch.7 Math remains the largest chapter by far and may be genuinely saturated (four-plus prior
    sessions' worth of depth passes) — read its own `PLAN.md` row before adding more.
-4. Screenshot infrastructure: `ASCII` and `CANVAS` backends remain untried for real screenshot
+3. Screenshot infrastructure: `ASCII` and `CANVAS` backends remain untried for real screenshot
    capture (`CANVAS` is Emscripten/browser-only, a materially different path than `Xvfb`).
 
 No `TaskCreate` entries exist for further work — the task-tracker MCP tool was unavailable last
