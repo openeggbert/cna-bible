@@ -124,7 +124,7 @@ side-effect this book has flagged elsewhere (Chapter~\ref{ch:spritebatch}'s igno
 matrix, for instance) as the class of bug most likely to go unnoticed until specifically
 tested for.
 
-\subsection{Two small, real RAII additions worth knowing about}
+\subsection{Four small, real RAII additions worth knowing about}
 
 Two small utility classes, added after this chapter's own original pass, are worth a direct
 mention because each closes a real, easy-to-get-wrong ergonomic gap rather than adding a new
@@ -162,6 +162,37 @@ shaderProgram.set_uniform(uniforms["uLightDir"], lightDir.x, lightDir.y, lightDi
 // ... later, only after shaderProgram is actually relinked ...
 uniforms.invalidate();  // required -- old cached locations are not safe to reuse otherwise
 \end{lstlisting}
+
+Two further small RAII utilities, added in the same wave as the two above, round out this
+pattern rather than introducing a new one. \cnaclass{ScopedBind} generalizes the same
+constructor-runs-first/destructor-always-runs shape into a reusable, resource-agnostic
+wrapper --- constructed from any pair of bind/unbind callables, not tied to one specific GL
+object type at all:
+
+\begin{lstlisting}
+{
+    ScopedBind bound(
+        [&]{ vao.bind(); },
+        [&]{ vao.unbind(); });
+    ConfigureVertexAttributes(vao);
+    // unbind() always runs here, even on an early return or a thrown
+    // exception mid-configuration -- the same guarantee ScopedDebugGroup
+    // gives for a debug region, applied generically to any bind/unbind
+    // pair -- VertexArray here, but the constructor takes any two
+    // callables, not one fixed resource type.
+}
+\end{lstlisting}
+
+\cnaclass{ResourceRegistration} closes a different, narrower gap: any GL resource that
+participates in this library's context-loss recovery mechanism must register itself with a
+\cnaclass{ResourceRegistry} to be told when to rebuild itself after a context is lost and
+recreated, and must remember to deregister on destruction to avoid the registry holding a
+dangling pointer. Before this addition, both calls were the caller's own responsibility to
+remember; \cnaclass{ResourceRegistration}'s constructor calls \texttt{registry.add(\&resource)}
+and its destructor unconditionally calls \texttt{registry.remove(\&resource)}, the identical
+RAII shape as every other addition in this section, applied specifically to the
+register/deregister pair a \cnaclass{RecoverableResource} would otherwise have to manage by
+hand at every one of its own constructor and destructor sites.
 
 \section{Testing without a GPU}
 
