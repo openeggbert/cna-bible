@@ -117,6 +117,37 @@ a caller-specified tolerance --- confirmed, via a deliberately corrupted test im
 correctly report exactly the number of differing pixels a known mutation introduces, not just
 a pass/fail verdict.
 
+\subsection{A real D3D9 API restriction, surfaced only by this dev loop}
+
+Real Direct3D~9 hardware/driver behavior, not a CNA logic bug, is exactly what this whole
+elaborate dev loop exists to surface reliably --- and one concrete finding from closing out the
+D3D9 backend's own verification work is worth naming as proof it does. DXVK's D3D9
+implementation, correctly matching real D3D9's own restriction, refused to create a swap chain
+using \texttt{D3DFMT\_A8B8G8R8} --- \cnaclass{SurfaceFormat::Color}'s own natural D3D9
+equivalent, and a format D3D9 accepts perfectly well for an ordinary \emph{texture}. The error
+DXVK's own \texttt{D3D9DeviceEx::ResetSwapChain} raises is explicit: this exact byte order is
+simply not one of the small set of formats D3D9 permits for the \emph{primary back buffer}
+specifically, a restriction rooted in real display-hardware compatibility, not an arbitrary API
+limitation:
+
+\begin{lstlisting}
+// Real D3D9 restriction: A8B8G8R8 is legal for a texture, illegal for the
+// swap chain's own back buffer. Substituted only at back-buffer creation --
+// every ordinary Texture2D backed by Color still requests A8B8G8R8 directly.
+if (requested == D3DFMT_A8B8G8R8) return D3DFMT_A8R8G8B8;
+\end{lstlisting}
+
+The fix substitutes the back buffer's own display-compatible sibling format,
+\texttt{D3DFMT\_A8R8G8B8} (the identical channels, reordered), specifically and only at swap-chain
+creation --- every other \cnaclass{SurfaceFormat::Color}-backed resource, an ordinary
+\cnaclass{Texture2D} in particular, keeps requesting \texttt{A8B8G8R8} directly, since that
+restriction genuinely does not apply there. The substitution stays correct end to end because
+the backend's own back-buffer readback path already handles both byte orders, not because the
+two formats happen to be interchangeable in general. This is precisely the class of finding
+this chapter's own D3D9 oracle and DXVK-gated dev loop are built to catch: a real, confirmed
+Direct3D~9 API restriction, discovered only because the verification pipeline runs against a
+genuine, correctly-behaving Direct3D~9 implementation rather than a simulated or assumed one.
+
 \section{fna-reference: a different, lighter-weight comparison, and why it uses Mono instead}
 
 Distinct from the rendering-capable D3D9 oracle above, \texttt{tools/fna-reference/} answers
