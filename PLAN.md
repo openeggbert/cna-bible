@@ -1314,3 +1314,66 @@ stays frozen by explicit author decision, not left incomplete.
   references, 0 duplicate-label warnings, 1321 index entries**. `NEXT.md` fully rewritten for
   the next session (the old "start with Ch.25" framing is now obsolete — every chapter in the
   whole book has at least a first pass as of this session).
+
+- **2026-07-21 (new session, full autonomous depth pass, tasks #24-41):** Author gave a long,
+  explicit autonomous-work authorization (after clarifying this was the target repo, not
+  `cna`), directing continued work without further questions unless a major/irreversible
+  decision arose. Executed a **depth pass** — a second, deeper touch adding real worked
+  examples/findings — across every chapter in the book that had not already received one:
+  Ch.1-6/8/10-24 + Appendix A (Parts I-IV, tasks #24-40) and Ch.25-48 (Parts V-IX, task #41),
+  one chapter at a time, each rebuilt/undefined-ref-checked/PNG-rendered/visually verified
+  before commit (47 commits to `develop` this session, pushed after each). Ch.25/35/39/44
+  were checked and found already thoroughly covered from very recent prior work, no edit made;
+  Ch.37 was checked, found explicitly author-frozen ("do not expand," confirmed 2026-07-20),
+  and correctly skipped rather than treated as just another under-target chapter.
+
+  **The single highest-value technique found this session**: for any chapter about a specific
+  CNA subsystem or sibling repo, check that repo's own most-recently-dated `plan_*.md`/
+  `NEXT.md`/`audit.md` before assuming a chapter is already exhaustive — found real,
+  substantial, previously-uncovered material in well over a dozen chapters this way, even in
+  chapters that already looked thorough (full recipe recorded in `NEXT.md`).
+
+  **A recurring meta-finding, confirmed independently at least four separate times across
+  totally unrelated subsystems, tracked in entirely separate documents with no cross-reference
+  between them**: a status that looked settled (a bug list item marked fixed, a `CLOSED` task,
+  an already-run audit round) turned out to be stale once checked against the current, live
+  source. Concrete instances: EasyGL's own bug list still called two oracle-methodology bugs
+  "logged, not fixed" when both had since been closed (Task 1111/1112, Ch.18); a
+  `sharp-runtime` concurrency fix already marked `CLOSED` hid a second, deeper race a later
+  dedicated TSan run alone caught (Ch.34's `TaskCompletionSource` writeup and, structurally
+  identical one repo over, Ch.28/40's Android `LIFE-001` TSan-inside-a-closed-fix finding); and
+  a `cna-samples` bug report describing `GraphicsDevice::Clear(Color)` as still dropping the
+  depth buffer turned out to already carry an explicit, commented fix (Task 928, Ch.45). Ch.46
+  and Ch.48 both cite this pattern explicitly as a closing methodological observation, tying
+  the whole session's own research method back to this project's own stated values from
+  Chapter 1. A fifth, different-shaped case: Ch.43 found two audits of the same two-game
+  codebase reporting very different `BltFast` call counts (6/5 vs. 18/17) and, rather than
+  assuming one was wrong, independently re-grepped both real game repos to confirm *both*
+  numbers were correct, just scoped to different questions — added as a worked methodology
+  lesson in its own right.
+
+  Other notable individual findings: Ch.9's `ExtractMatrices` mechanism (undocumented internal
+  free function, not in any header, that pulls World/View/Projection from the applied `Effect`
+  at every draw-dispatch call site) and 6 pre-existing overfull-hboxes found in the same
+  section despite Ch.9 already having had "three consecutive prior sessions" of dedicated
+  attention, per its own then-current PLAN.md row — a heavily-worked chapter is not
+  automatically layout-clean, worth remembering going forward. Ch.32 (Storage) found a real,
+  currently undocumented `..`-path-traversal gap in `StorageContainer::ResolvePath()` by
+  reading the source directly, with neither the header docs nor the test suite treating it as
+  a scoped decision. Ch.19/20 diagnosed the precise, distinct root causes behind Vulkan's and
+  BGFX's own separate `RenderTargetCube` black-render bugs (a clear-only-RT gap plus a
+  root-cause-still-unresolved sampling bug on Vulkan; a real wrong-handle-type cast on BGFX,
+  explained precisely via both backends sharing an identical `struct{uint16_t idx;}` ABI
+  shape for framebuffer and texture handles). Several plausible-but-wrong API-name guesses
+  were caught and fixed before commit (`TimeSpan::operator+=`, a `RenderTargetBinding`-taking
+  `SetRenderTarget` overload, `Device::set_uniform_1f` on `easy-gl`, `AvatarRenderer::%
+  setAmbientColorEXTProperty`) — confirming this remains a real, recurring risk category for
+  this kind of writing, not a one-off from earlier sessions.
+
+  Volume recompiled clean throughout, ending the session at **347 pages (up from 321), 0
+  undefined references, 0 duplicate-label warnings**. `NEXT.md` fully rewritten for the next
+  session: every task on the active list (#24-41) is complete; the natural next body of work
+  is Appendices B-F (never depth-passed this expansion cycle, all "Not started") or a further,
+  third pass continuing to grow every chapter toward its still-distant page target (most
+  chapters remain at roughly 10-30% of target after this session's work) — see `NEXT.md`'s own
+  "What is NOT yet done" section for the full detail.
