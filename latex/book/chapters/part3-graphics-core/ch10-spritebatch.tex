@@ -96,6 +96,25 @@ cause is simply the wrong \texttt{origin}.
 honor a sprite's \texttt{layerDepth} argument --- the others ignore it entirely, by design,
 matching XNA's own documented sort-mode semantics.
 
+\texttt{Texture} mode is worth a second look before moving on, because its sort key is a real,
+documented gotcha rather than an implementation detail: \texttt{SpriteBatch}'s flush groups
+draws by \texttt{std::stable\_sort(..., [](a, b) \{ return a.texture < b.texture; \})} ---
+comparing raw \emph{texture pointers}. The contract this actually guarantees is only two
+things, both verified directly by \texttt{SpriteBatchTests.cpp}'s
+\texttt{TextureGroupsDrawsByTextureAndPreservesGroupOrder} case (Task~414): draws sharing a
+texture end up adjacent, and within one texture's group, submission order is preserved
+(\texttt{stable\_sort}, not \texttt{sort}). \emph{Which} texture's group renders first is
+\textbf{not} part of the contract at all --- it depends on where the two \cnaclass{Texture2D}
+objects happen to live in memory for that particular run, which can differ between runs of the
+identical program. A game that submits sprites in scrambled A/B/A/B order and assumes
+\texttt{Texture} mode will always draw all of \texttt{A} before all of \texttt{B} (or vice
+versa) is relying on behavior the API never promised; only overlap-independent layouts (or an
+explicit depth/layer separation) are safe under \texttt{Texture} mode. A dedicated pixel test
+for the SDL\_RENDERER backend (Task~668) exists specifically because a mock backend can verify
+grouping and order but not that the real draw dispatch binds the correct texture to each
+reordered call --- the two are logically separate failure modes, and only a real backend can
+be wrong about the second one.
+
 \cnaclass{SpriteEffects} is where this chapter's first concrete, still-open gap lives:
 it is declared as a plain \texttt{enum class} --- \texttt{None=0}, \texttt{FlipHorizontally=1},
 \texttt{FlipVertically=2} --- with \emph{no bitwise operators defined at all}. In real XNA,
@@ -121,6 +140,51 @@ real implementation does via a pair of axis-direction/axis-mirrored terms. The f
 the shared, backend-agnostic \texttt{SpriteBatch.cpp} --- meaning it was one fix that
 corrected the behavior identically on every one of CNA's graphics backends simultaneously,
 rather than something Part~IV's chapters need to revisit backend by backend.
+
+\section{A real, lasting side effect: Begin() changes GraphicsDevice.BlendState}
+\label{sec:spritebatch-blendstate-leak}
+
+The \texttt{BlendState} passed to \texttt{Begin()} (or the default \cnaclass{BlendState::AlphaBlend}
+when omitted) is not scoped to that \texttt{Begin()} / \texttt{End()} pair --- it genuinely
+overwrites \texttt{GraphicsDevice.BlendState} as a lasting side effect, exactly as real FNA's
+own \texttt{SpriteBatch.cs} does, and \texttt{End()} does \emph{not} restore whatever
+\texttt{BlendState} was active beforehand. A 3D draw call issued right after a
+\texttt{SpriteBatch} pass, without the game explicitly reassigning \texttt{BlendState} itself,
+silently inherits the \texttt{SpriteBatch} pass's blend mode:
+
+\begin{lstlisting}
+spriteBatch_->Begin(SpriteSortMode::Deferred, BlendState::Additive);
+spriteBatch_->Draw(cornerTexture, Rectangle(0, 0, 4, 4), Color::White);
+spriteBatch_->End();
+
+// No BlendState reassignment here -- this quad draws with Additive, not AlphaBlend or Opaque,
+// because SpriteBatch::Begin() changed GraphicsDevice.BlendState and End() never restores it.
+device.DrawUserPrimitives(PrimitiveType::TriangleList, verts, 0, 2);
+\end{lstlisting}
+
+This was, until Task~956, a genuine bug rather than the faithfully-preserved FNA behavior
+described above: \texttt{EasyGLSpriteBatchBackend::Begin()} used to hardcode its own
+\texttt{SrcAlpha} / \texttt{OneMinusSrcAlpha} blend factors on the real GL state regardless of
+which \texttt{BlendState} was actually requested, and leave that hardcoded value in effect
+after \texttt{End()} --- so a following 3D draw inherited leftover \emph{implementation}
+garbage, not the requested, XNA-faithful blend mode. The fix (verified by a dedicated pixel
+test that clears to gray, additive-blends a small corner sprite, then draws a full-viewport
+opaque red 3D quad with no explicit blend state of its own, and checks that the quad's green
+channel at a point away from the corner reads $\approx 100$ rather than $0$) makes
+\texttt{Begin()} apply the real requested state and leave it there, matching FNA exactly rather
+than merely avoiding a crash.
+
+A second, related caveat is still open rather than fixed: on the EasyGL backend, a
+\textbf{full-backbuffer} \texttt{SpriteBatch} draw issued before any 3D draw in the same frame
+breaks that frame's 3D rendering entirely (Task~933) --- investigated at length (window-title
+readback state, viewport-reset ordering, and \texttt{RenderTarget2D} binding have each been
+ruled out as the trigger) but not yet root-caused as of this writing. The blend-state-leak fix
+above is a different bug with a different, narrower trigger (a \emph{non-full-backbuffer}
+sprite specifically avoids Task~933's condition, which is exactly why the Task~956 regression
+test draws its verification sprite into only a $4\times4$ corner) --- do not conflate the two
+if you hit unexplained 3D-rendering corruption after a \texttt{SpriteBatch} pass on this
+backend; check whether the preceding sprite pass covered the full backbuffer before assuming
+the blend-state fix above has regressed.
 
 \section{SpriteFont}
 
