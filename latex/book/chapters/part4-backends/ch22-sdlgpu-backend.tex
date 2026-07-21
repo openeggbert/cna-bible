@@ -1,0 +1,157 @@
+\chapter{The SDL GPU Backend}
+\label{ch:sdlgpu-backend}
+
+\texttt{SDL\_GPU} is CNA's newest graphics backend, and the one this book itself was slowest
+to give a proper account of --- Chapter~\ref{ch:roadmap} names that delay honestly as a gap in
+this book, not in CNA's own code. This chapter closes it: a real, Linux/Vulkan-driver-verified
+backend implementing the full \cnaclass{IGraphicsBackend} contract
+(Chapter~\ref{ch:backend-architecture}), built on top of SDL3's own \texttt{SDL\_gpu} API
+rather than a native vendor API of its own.
+
+\section{Why this backend costs nothing new}
+
+\texttt{SDL\_gpu} dispatches internally to Vulkan, D3D12, or Metal depending on platform and
+driver availability, and CNA's own \texttt{plan\_sdlgpu.md} states plainly why this backend was
+worth adding on top of the hardware-backed backends the project already had: SDL3 is
+already a vendored dependency of this project (\texttt{third\_party/SDL}), and
+\texttt{SDL\_gpu.c} is already compiled into every prebuilt SDL3 package this repository
+produces --- unlike Vulkan (the Vulkan SDK/loader) or WebGPU (\texttt{wgpu-native}, a separate
+library), standing this backend up required zero new third-party dependency, only new CNA-side
+code against an API already sitting in the build. The backend follows the identical naming and
+structure convention every other backend chapter in this Part has already established: main
+class \cnaclass{CNA::Internal::Backends::SdlGpuGraphicsBackend}
+(\texttt{src/\allowbreak{}CNA/\allowbreak{}Internal/\allowbreak{}Backends/\allowbreak{}SdlGpu/}), CMake target
+\texttt{cna\_backend\_graphics\_sdl\_gpu}, selected via \texttt{-DCNA\_GRAPHICS\_BACKEND=SDL\_GPU}.
+The project's own naming table is explicit that this class name is deliberately distinct from
+the pre-existing \cnaclass{SdlGraphicsBackend} in \texttt{SdlRenderer/} --- the older
+\texttt{SDL\_Renderer} 2D API and the newer \texttt{SDL\_gpu} API are unrelated, and this project
+was careful not to let the similar SDL naming collide.
+
+\section{Precompiled bytecode only, in a fixed resource-binding order}
+
+\texttt{SDL\_gpu} does not accept GLSL or HLSL source text at runtime the way
+\cnaclass{ShaderEffect}'s own public contract promises a game --- \texttt{SDL\_CreateGPUShader}
+takes only \texttt{SDL\_GPUShaderFormat}-tagged precompiled bytecode: SPIR-V for the Vulkan
+driver, DXBC/DXIL for the D3D12 driver, MSL/\texttt{metallib} for the Metal driver. A further
+constraint worth knowing before assuming any existing shader is reusable as-is: every stage's
+samplers, storage textures, storage buffers, and uniform buffers must be declared in a fixed,
+HLSL-style binding order (\texttt{t[n]} / \texttt{s[n]} in one address space, \texttt{u[n]} in
+another, \texttt{b[n]} in a third) --- a different convention from the raw
+\texttt{layout(set=, binding=)} numbering the existing \cnaclass{VulkanGraphicsBackend}'s own
+GLSL shaders use. This means Vulkan's compiled SPIR-V is a useful \emph{algorithmic} reference
+for this backend's own shader authoring (the same lighting math, alpha-test logic, and
+dual-texture blend) but not directly reusable output --- every shader's binding layout had to
+be re-authored specifically for \texttt{SDL\_gpu}'s own convention, confirmed directly against
+the real \texttt{.glsl} sources under this backend's own
+\texttt{src/\allowbreak{}CNA/\allowbreak{}Internal/\allowbreak{}Backends/\allowbreak{}SdlGpu/\allowbreak{}shaders/}
+directory (23 files today, one pair per stock effect --- \texttt{colored3d},
+\texttt{alpha\_test3d}, \texttt{dual\_texture3d}, \texttt{env\_map3d}, \texttt{lit\_textured3d},
+\texttt{pbr3d} / \texttt{pbr\_skinned3d}, \texttt{skinned3d} / \texttt{skinned\_colored3d}, and more).
+
+\subsection{A worked example: the Y-flip bug a real screenshot caught}
+
+This backend's own first real milestone --- a textured, tinted, rotated, multi-flip sprite
+scene surviving a resize --- is a concrete instance of a theme this book returns to
+repeatedly (Chapter~\ref{ch:testing-philosophy}): a ``did it throw'' test alone cannot catch a
+wrong-but-plausible image. \texttt{SDL\_gpu}'s Vulkan driver flips clip-space Y internally, for
+cross-backend NDC consistency reasons of its own --- the vertex shader's first, naively-ported
+NDC computation (\texttt{gl\_Position = vec4(ndc, 0, 1)}, the same shape every other backend's
+own sprite vertex shader already uses) compiled cleanly, ran without error, and rendered every
+single sprite upside down, a texture's top row appearing at the bottom of the screen. Only a
+real captured screenshot caught it; the fix negates Y explicitly
+(\texttt{vec4(ndc.x, -ndc.y, 0, 1)}), confirmed against an isolated single-sprite diagnostic
+tool kept permanently in the tree (\texttt{examples/sdlgpu\_diag\_single\_sprite.cpp}, the same
+``keep the diagnostic, don't throw it away once the bug is fixed'' precedent
+Chapter~\ref{ch:direct3d-backends} already covers for \texttt{cna\_diag\_d3d12\_swapchain}).
+
+\section{SkinnedEffect's storage-buffer workaround: a real, undocumented push-uniform cap}
+
+Wiring \cnaclass{SkinnedEffect} through this backend surfaced a genuine hardware/driver
+constraint rather than a CNA design choice: \texttt{SDL\_PushGPUVertexUniformData}, the
+mechanism every other stock effect above uses to deliver its per-draw uniforms, has a real,
+undocumented cap of roughly 4096 bytes per slot on this backend's own Vulkan driver --- found by
+a real empirical binary-search spike, not read out of any SDL3 header or release note, since
+the limit is not documented anywhere in \texttt{SDL\_gpu.h} itself. A 72-bone skin palette
+(\(72 \times 64\) bytes \(= 4608\) bytes) exceeds that cap outright, so
+\cnaclass{SkinnedEffect}'s bone matrices are uploaded through a real GPU storage buffer
+(\texttt{SDL\_BindGPUVertexStorageBuffers}) instead of a uniform push --- every other stock
+effect's smaller per-draw payloads (world/view/projection, \texttt{DiffuseColor}, alpha-test
+parameters, light parameters) stay on the ordinary uniform-push path, since none of them come
+close to the cap. This is exactly the kind of real, hardware-shaped constraint this book asks
+every backend chapter to name precisely rather than paper over with ``uniforms are uploaded
+per draw'' as if the mechanism were uniform across every payload size.
+
+\section{Custom ShaderEffect: a real runtime compile, built without the dev package installed}
+
+Custom \cnaclass{ShaderEffect} support (Chapter~\ref{ch:shader-fx-gap}) is real on this backend
+too, and its own implementation is worth knowing about for a reason beyond the feature itself.
+Since \texttt{SDL\_gpu} accepts only precompiled bytecode, \cnaclass{SdlGpuEffectBackend} bridges
+\cnaclass{ShaderEffect}'s public GLSL-source contract to that requirement with a genuine runtime
+\texttt{libshaderc} GLSL-to-SPIR-V compile, linked directly into the backend binary rather than
+merely invoked at build time. Reading \texttt{SdlGpuGraphicsBackend.cpp} directly shows a small,
+telling detail: this dev environment has no \texttt{libshaderc-dev} package installed, so there
+is no real \texttt{shaderc.h} to include --- the backend's own source hand-declares the exact
+handful of \texttt{shaderc\_*} C entry points it needs (\texttt{shaderc\_compiler\_initialize},
+\texttt{shaderc\_compile\_into\_spv}, \texttt{shaderc\_result\_get\_bytes}, and their siblings) as
+plain \texttt{extern "C"} function signatures, with the shader-kind and optimization-level enum
+values it needs inlined as named integer constants rather than pulled from a missing header.
+This is a real, working engineering accommodation to a genuinely constrained dev environment,
+not a shortcut around the feature itself --- the compiled shader still goes through the real
+linked \texttt{libshaderc.so}, only the header describing its C ABI is hand-authored instead of
+vendored. Building this custom-shader path also surfaced a genuine finding one layer over: the
+existing \cnaclass{VulkanGraphicsBackend}'s own \cnaclass{ShaderEffect} support does not
+actually runtime-compile GLSL text at all, despite \cnaclass{ShaderEffect}'s own documented
+contract implying every backend does --- a real, previously-unflagged discrepancy between one
+backend's implementation and the class's own stated cross-backend promise, left for
+Chapter~\ref{ch:vulkan-backend} to account for on its own terms rather than resolved here.
+
+\section{Render targets: a real use-after-free, closed before it ever shipped}
+
+\cnaclass{RenderTarget2D} and \cnaclass{RenderTargetCube} support (with real multisampling and
+mip regeneration) surfaced a genuine lifetime hazard while its own test was still being written,
+not after: this backend defers its actual render pass to \texttt{Present()} time, so a render
+target destroyed \emph{before} that deferred pass executes was a real use-after-free the moment
+anything still referenced its underlying GPU state. The fix,
+\cnaclass{SdlGpuRenderTarget2DState} / \cnaclass{SdlGpuRenderTargetCubeState}, is a pair of
+\texttt{shared\_ptr}-owned structs holding the actual GPU state independently of the
+\cnaclass{SdlGpuRenderTargetBackend} / \cnaclass{SdlGpuRenderTargetCubeBackend} wrapper's own
+C\texttt{++} object lifetime --- a short-lived, local render target destroyed mid-\texttt{Draw()}
+now keeps its pending content alive long enough to render correctly and remain safely sampleable
+elsewhere the same frame. The bug was confirmed via a real segfault in
+\texttt{sdlgpu\_mrt\_test.cpp} before the fix landed, not merely reasoned about in the abstract.
+
+\section{What remains open}
+
+Two gaps are worth stating precisely rather than glossing over. First, occlusion queries are a
+\emph{permanent} limitation of the underlying API, not a task gap: the vendored
+\texttt{SDL\_gpu.h} has no query-pool or occlusion-query type anywhere in it (only
+\texttt{SDL\_GPUFence} for CPU/GPU synchronization), so \texttt{CreateOcclusionQuery()}
+correctly returns \texttt{nullptr} on this backend, the identical posture \texttt{HEADLESS} and
+\texttt{SOFTWARE} already take for their own, unrelated reasons --- worth re-opening only if a
+future SDL3 release adds real query support, not before. Second, one genuine, unresolved bug
+remains at the time of writing: a real segfault in the swapchain-acquisition leg of
+\texttt{RenderTarget2D} / \texttt{RenderTargetCube} handling, tracked openly in
+\texttt{plan\_sdlgpu.md} rather than hidden behind the render-target work that is otherwise
+complete. Beyond these two, Windows (D3D12 driver) and macOS/iOS (Metal driver) remain code
+paths only, not validation claims, until run on real (or Wine/DXVK-class) hardware --- the same
+phased-claim discipline this book already applies to \texttt{D3D11} / \texttt{D3D12}
+(Chapter~\ref{ch:direct3d-backends}) and \texttt{WebGPU} (Chapter~\ref{ch:webgpu-backend}).
+
+\section{Verification methodology}
+
+Every claim above is backed by a real CTest binary, not a code read alone. Counting the actual
+CMake test registration directly (\texttt{cmake/Tests/SdlGpuTests.cmake}) rather than trusting a
+plan-doc's own snapshot shows \textbf{20} real CTest binaries today, spanning the 2D and 3D
+smoke tests, every stock effect (including \cnaclass{EnvironmentMapEffect},
+\cnaclass{SkinnedEffect}, and the \texttt{NOXNA} \cnaclass{PbrEffect} this book's WebGPU chapter
+already introduced), custom \cnaclass{ShaderEffect}, every render-target variant (2D, cube,
+multiple render targets, MSAA), both extra texture types, sampler/render state, draw order, and
+swapchain recovery --- run, like every other backend's own CTest suite, against this project's
+own \texttt{cna\_register\_backend\_test()} convention, gracefully skipping with a clear reason
+rather than hard-failing when no real \texttt{DISPLAY} / \texttt{WAYLAND\_DISPLAY} is present, the
+identical convention \texttt{D3D11} / \texttt{D3D12} / \texttt{WebGPU} already follow. All verification
+to date is against this project's own real dev-machine GPU via \texttt{SDL\_gpu}'s Vulkan
+driver, the only driver this project's own prebuilt SDL3 packages compile in on Linux --- the
+same single-driver-verified, other-drivers-unverified posture this chapter's own ``What remains
+open'' section already names honestly rather than implying broader coverage than actually
+exists.
