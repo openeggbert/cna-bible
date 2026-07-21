@@ -9,17 +9,17 @@ per-chapter detail this file only summarizes).
 ## Where things stand right now (mid-session, autonomous depth pass in progress, 2026-07-21)
 
 **The book is a single, unified book**, built via `make book` (→ `latex/book/main.pdf`).
-Compiles clean as of the last checkpoint: **339 pages, 0 undefined references, 0
+Compiles clean as of the last checkpoint: **341 pages, 0 undefined references, 0
 duplicate-label warnings** (verify before quoting — re-run `make book` and grep the log
 before trusting this number; and use PNG rendering, not `grep -i overfull`, to check for
 overflow — see "Reusable findings" below, this was reconfirmed many times this session,
 including on `grep -a` output that revealed hundreds of pre-existing "overfull" log lines
 `grep -i` alone was silently missing).
 
-**19 chapters depth-passed so far this session: Ch.1-6, 8, 10-21.** All of Part I-II and all
-of Part III are done; Part IV (backend chapters) is 6 of 9 done (Ch.16-21 done, Ch.22-24
-remain — task #38 covers all of them and is still in_progress). Continue with **Ch.22
-(Direct3D 9/11/12 Backends)** next.
+**22 chapters depth-passed so far this session: Ch.1-6, 8, 10-24.** All of Part I, Part II,
+Part III, and **all of Part IV (Ch.16-24, the full backend architecture chapter plus all 9
+backend chapters)** are now done — task #38 is complete. Continue with **Appendix A** (task
+#39, already marked in_progress) next.
 
 **This is an autonomous, long-running session** (the user explicitly authorized "continue
 autonomously for as long as there is useful, safe work within scope" and asked not to be
@@ -90,6 +90,13 @@ grounded in an actual source read, rebuilt and PNG-verified before commit:
 - **Ch.21 WebGPU Backend** — first-ever worked example anywhere in the book for `PbrEffect`
   (NOXNA glTF-2.0 metallic-roughness material), incl. verifying the G=roughness/B=metallic
   channel packing directly against the real EasyGL GLSL shader source.
+- **Ch.22 Direct3D Backends** — a worked example quoting a real oracle scene file in full
+  (`colored3d.scene`, 11 lines), tying its declarative flags directly to `BasicEffect`.
+- **Ch.23 Canvas/ASCII Backends** — a worked un-premultiply example in real numbers, adapted
+  from the actual per-pixel formula in `CanvasSpriteBatchBackend.cpp`.
+- **Ch.24 DX3/free-direct Backend** — a direct, parallel worked example to Ch.17's
+  SDL_RENDERER Wrap/Mirror gap (same 2-texel red/green setup; this backend gets it right).
+  **This completes all of Part IV — task #38 is done.**
 
 **Every chapter above also had at least one genuine overfull-hbox, header/folio collision, or
 API-accuracy defect found and fixed while reading the whole page** (not just the new
@@ -100,25 +107,22 @@ content) — this remains the single most common defect class in this whole proj
 
 Not yet started this session, roughly in the order a fresh session should continue in:
 
-1. **Ch.22 Direct3D Backends, Ch.23 Canvas/ASCII Backends, Ch.24 DX3/free-direct Backend**
-   (task #38, in progress — pick up with Ch.22 next) — the last three of Part IV's nine
-   backend chapters.
-2. **Appendix A** (task #39) — not yet touched this session (already has a
-   `GraphicsDevice`/state-object section from the prior breadth pass; look for what's still
-   missing beyond that).
-3. **Ch.7 (Math, ~33/110 pages) and Ch.9 (GraphicsDevice, ~23/90 pages)** (task #40) — both
+1. **Appendix A** (task #39, already marked in_progress — pick this up first) — not yet
+   touched this session (already has a `GraphicsDevice`/state-object section from the prior
+   breadth pass; look for what's still missing beyond that).
+2. **Ch.7 (Math, ~33/110 pages) and Ch.9 (GraphicsDevice, ~23/90 pages)** (task #40) — both
    already depth-passed multiple times in much earlier sessions; the previously-known gap
    lists are exhausted, so this needs fresh gap-hunting (diff the real header against the
    chapter's prose again, from scratch) rather than a ready-made list.
-4. **Parts V–IX (chapters 25–48)** (task #41) — each still 3–15 of a 30–70 page target; same
+3. **Parts V–IX (chapters 25–48)** (task #41) — each still 3–15 of a 30–70 page target; same
    "find a real, narrower gap and turn it into a worked example" approach as everything above.
 
 None of this needs to happen in the exact order listed — it's a reasonable default sequence,
-not a hard dependency chain. A session with limited time should prioritize finishing whichever
-Part is already partway through (right now: finish Part IV's depth pass, task #38, 3 chapters
-left) before starting a new Part, so the book doesn't end up with an uneven, hard-to-track
-patchwork of "which chapters got a second touch." Check `TaskList` for the live, authoritative
-status of tasks #24-41 — it is kept current, task by task, throughout this session.
+not a hard dependency chain. Parts I-IV (chapters 1-24, all of the core framework/graphics
+material) are now fully depth-passed this session; a session with limited time should treat
+Appendix A as the natural next small task before committing to the much larger Parts V-IX
+sweep. Check `TaskList` for the live, authoritative status of tasks #24-41 — it is kept
+current, task by task, throughout this session.
 
 ## Reusable findings from this session, worth knowing before continuing
 
