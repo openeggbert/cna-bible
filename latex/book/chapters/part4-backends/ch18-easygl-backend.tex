@@ -117,6 +117,34 @@ environment-map Fresnel term failed to interpolate correctly (Gouraud-style) acr
 primitive on EasyGL --- a concrete, independent confirmation of a divergence
 Chapter~\ref{ch:stock-effects} already predicted from the effect-level audit alone.
 
+\subsection{Both of those two bugs are fixed now --- verified directly against the current shader source}
+
+The investigation's own account (\texttt{docs/d3d9-divergence-report.md}) is explicit that both
+findings above were ``logged here, not fixed'' at the time --- but reading
+\texttt{EasyGLGraphicsBackend.cpp} directly today shows both have since been closed, and it is
+worth correcting the record rather than reproducing a now-stale ``still open'' framing. Every
+stock-effect fragment/vertex shader pair in the file carries an identical, explicitly-labeled
+comment: ``Task~1111: matches FNA's \texttt{EffectHelpers.SetFogVector} / \texttt{Common.fxh}
+\texttt{ComputeFogFactor} exactly \dots{} NOT a naive \texttt{(fogEnd-z)/(fogEnd-fogStart)}
+falloff, which silently inverts/collapses once \texttt{FogEnd<FogStart} (oracle scene
+\texttt{fog\_gradient\_quad})'' --- naming the exact failing scene from the cross-measurement
+above by name. Working the corrected formula through with the oracle scene's own real values
+(\texttt{FogStart=0}, \texttt{FogEnd=-1}) confirms the fix is not just labeled correctly but
+mathematically sound: \texttt{vFogFactor = clamp((z + FogEnd) / (FogEnd - FogStart), 0, 1)}
+becomes \texttt{(z - 1) / (-1) = 1 - z} at these values, giving \texttt{vFogFactor = 1} (fully
+unfogged, original color shows through) at the near edge $z=0$ and \texttt{vFogFactor = 0}
+(fully fogged) at the far edge $z=1$ --- exactly the near-white-to-near-black gradient real XNA
+renders, not the solid-black collapse the pre-fix naive formula produced. The Fresnel bug has
+an equally explicit fix comment, a few hundred lines later in the same file, labeled
+Task~1112: the vertex shader now computes \texttt{viewAngle} from \emph{each vertex's own
+un-interpolated} normal and eye vector before the Fresnel \texttt{pow()} term is evaluated, so
+the GPU's own Gouraud interpolation happens to the already-computed scalar afterward --- matching
+real XNA's \texttt{EnvironmentMapEffect.fx} exactly, rather than the mathematically distinct
+operation of interpolating the normal first and recomputing Fresnel per fragment. Both fixes
+apply uniformly across every one of this backend's stock-effect shader programs (colored,
+textured, color-plus-textured, and the lit/skinned variants alike), not as a one-off patch to
+the single scene that exposed each bug.
+
 \section{Test baseline}
 
 The feature matrix records exactly three known pre-existing test failures for this backend:
