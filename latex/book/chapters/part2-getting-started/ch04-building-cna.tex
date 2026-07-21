@@ -168,6 +168,70 @@ DXVK (D3D9/D3D11) or vkd3d-proton (D3D12) translating the Direct3D calls to Vulk
 GPU, which is how this project verifies Windows-only backends without ever touching a
 Windows machine.
 
+\section{Building for Android and the Web}
+
+Neither of these two targets gets its own \texttt{cmake/toolchains/} file the way
+\texttt{mingw-w64.cmake} does for Windows --- both instead rely on toolchain infrastructure
+that ships with the NDK and the Emscripten SDK respectively, invoked directly.
+
+\subsection{Android (NDK)}
+
+Grounded in the project's own \texttt{docs/devices-build.md}, a real cross-compile invocation
+looks like this:
+
+\begin{lstlisting}[style=cnashell]
+cmake -S . -B cmake-build-android -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE="$HOME/Android/Sdk/ndk/30.0.14904198/build/cmake/android.toolchain.cmake" \
+  -DANDROID_ABI=arm64-v8a \
+  -DANDROID_PLATFORM=android-24 \
+  -DCNA_BUILD_TESTS=OFF
+
+cmake --build cmake-build-android --target CNA -j"$(nproc)"
+\end{lstlisting}
+
+Three details worth knowing before running this yourself, each one a real, documented finding
+rather than a generic Android-CMake tip: the exact NDK version path
+(\texttt{30.0.14904198}) is whatever happens to be installed in a given environment, not a
+fixed requirement --- check \texttt{ls~\textasciitilde{}/Android/Sdk/ndk/} first rather than
+assuming either that it exists or that this exact version is what you have.
+\texttt{-DCNA\_BUILD\_TESTS=OFF} is not optional on this path today: \texttt{googletest} was
+never configured for the NDK toolchain, so only the \texttt{CNA} static library itself
+cross-compiles, not \texttt{CnaTests}. And this specific invocation is a
+\textbf{compile-only} verification --- no APK packaging and no emulator/device run happen as
+part of it; Chapter~\ref{ch:android-ndk} covers the further steps (the NDK's own
+\texttt{llvm-nm}, not the host's plain \texttt{nm}, is what actually confirms
+platform-conditional code compiled in) that turn a successful compile into a running,
+on-device verification.
+
+\subsection{Web (Emscripten)}
+
+The \texttt{CANVAS} backend (Chapter~\ref{ch:canvas-ascii-backends}) is Emscripten-only, hard-gated
+at configure time the same way the Direct3D backends are hard-gated to Windows. Building it
+follows the standard Emscripten CMake pattern --- \texttt{emcmake} wraps the configure step,
+\texttt{emmake} (or a plain \texttt{cmake~--build}, once configured) wraps the build --- applied
+to the same \texttt{-DCNA\_GRAPHICS\_BACKEND} flag every other backend uses:
+
+\begin{lstlisting}[style=cnashell]
+emcmake cmake -S . -B build-web -DCNA_GRAPHICS_BACKEND=CANVAS
+cmake --build build-web
+node build-web/CnaTests.js
+\end{lstlisting}
+
+This is a real, verified path, not a hopeful sketch: the project's own tracking records a
+genuine \texttt{emcmake} / \texttt{emcc}~6.0.2 configure-and-build succeeding, with the resulting
+\texttt{CnaTests.js} linking cleanly and a backend-agnostic GTest suite (35 of 35
+\cnaclass{Rectangle}-family tests) genuinely passing under \texttt{node}. Getting there
+surfaced a real, pre-existing bug outside CNA's own tree entirely: \texttt{sharp-runtime}'s
+\texttt{FileSystemWatcher.hpp} declared three \texttt{inotify}-specific fields
+unconditionally, even though they were only ever \emph{used} under \texttt{\#ifdef
+\_\_linux\_\_} --- a guard \texttt{emcc} does not define, so the fields existed but nothing
+initialized them, a genuine latent bug independent of Emscripten that this cross-compile
+attempt is what actually surfaced. Fixed directly in \texttt{sharp-runtime}, project-owner
+approved. What this build does \emph{not} yet prove is anything about a real browser: this
+project's own dev loop has no DOM and no \texttt{CanvasRenderingContext2D} at all, so
+\texttt{node}-based verification and real-browser verification remain two genuinely different
+claims, covered in full in Chapter~\ref{ch:canvas-ascii-backends}.
+
 \section{System-installed SDL, if you prefer it}
 
 Rather than the vendored submodules, system SDL3/SDL3\_image/SDL3\_mixer packages can be
@@ -177,9 +241,10 @@ used instead:
 cmake -S . -B build -DCNA_USE_SYSTEM_SDL=ON -DCNA_GRAPHICS_BACKEND=SDL_RENDERER
 \end{lstlisting}
 
-This calls \texttt{find\_package(SDL3 REQUIRED)}, \texttt{find\_package(SDL3\_image REQUIRED)},
-and \texttt{find\_package(SDL3\_mixer REQUIRED)}, and requires those development packages to
-already be installed system-wide.
+This calls \texttt{find\_package(SDL3 REQUIRED)},
+\texttt{find\_package(SDL3\allowbreak{}\_image REQUIRED)}, and
+\texttt{find\_package(SDL3\allowbreak{}\_mixer REQUIRED)}, and requires those development
+packages to already be installed system-wide.
 
 \section{Linux system dependencies beyond SDL}
 
