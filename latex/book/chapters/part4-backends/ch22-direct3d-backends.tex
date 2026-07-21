@@ -65,6 +65,42 @@ result in this section: \texttt{D3DCAPS9} itself is synthesized by DXVK on this 
 reported by genuine XNA-era driver hardware --- real-Windows-hardware verification remains
 open, as stated above.
 
+\subsection{A worked example: one real oracle scene, quoted in full}
+
+The oracle's own scene format is a small, declarative text file, not a compiled asset or a
+piece of C\texttt{++} --- the simplest real scene in the corpus, \texttt{colored3d.scene},
+fits in eleven lines and is worth quoting directly rather than only described:
+
+\begin{lstlisting}
+width=256
+height=256
+profile=HiDef
+clearcolor=100,149,237,255
+vertexcolor=true
+lighting=false
+primitive=TriangleList
+vertex=-0.6,-0.6,0,255,0,0,255
+vertex=0.0,0.7,0,0,255,0,255
+vertex=0.6,-0.6,0,0,0,255,255
+\end{lstlisting}
+
+This declares exactly the scene Chapter~\ref{ch:stock-effects}'s own \cnaclass{BasicEffect}
+coverage would predict from the flags alone: \texttt{vertexcolor=true} with
+\texttt{lighting=false} is \cnaclass{BasicEffect}'s \texttt{VertexColorEnabled} path with no
+lighting applied, drawing a single red/green/blue-cornered triangle (World/View/Projection all
+implicitly identity) over a \texttt{CornflowerBlue} clear --- the well-known default XNA clear
+color, matching \texttt{Color.CornflowerBlue}'s own real RGBA value exactly
+$(100, 149, 237, 255)$. Both the real XNA~4.0 oracle runtime and \texttt{D3D9} render this
+identical declarative scene independently, and the zero-tolerance diff checks two things a
+screenshot comparison alone would not separate cleanly: the flat-shaded corners prove basic
+vertex-color plumbing works at all, while the \emph{center} of the triangle --- genuinely
+Gouraud-interpolated between three different corner colors, not any one of them --- proves the
+interpolation itself is correct, not merely that three isolated sample points happen to match.
+A more elaborate scene in the same corpus, \texttt{fog\_gradient\_quad}
+(Chapter~\ref{ch:easygl-backend}'s own negative-\texttt{FogEnd} finding), uses the identical
+file format with a handful of additional \texttt{fog*} keys --- the same declarative scheme
+scales from this eleven-line triangle up to every one of the 36 scenes in the corpus.
+
 \subsection{Two real bugs the oracle methodology itself found}
 
 Both are worth naming because they demonstrate what a pixel-exact reference actually buys
