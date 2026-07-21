@@ -123,6 +123,43 @@ architecture decision, not more engineering effort:
         unresolved rather than made unilaterally.
 \end{description}
 
+\subsection{A worked example: exactly what ``clamp-like, by coincidence'' means in pixels}
+
+The blocked \texttt{TextureAddressMode::Wrap} / \texttt{Mirror} decision above is easy to read
+as an abstract API gap; a concrete pixel case makes it precise instead. Take a $2\times1$
+texture, texel~0 red and texel~1 blue, and draw it with a source rectangle \emph{twice} the
+texture's own width --- source texel range $[0,4]$ against a 2-texel-wide texture, the classic
+XNA scrolling-background tiling technique, which FNA's real \cnaclass{SpriteBatch} never clamps
+\texttt{sourceRectangle} to the texture's own bounds to prevent:
+
+\begin{lstlisting}
+Texture2D redBlue(getGraphicsDeviceProperty(), 2, 1);
+const Color pixels[2] = {Color::Red, Color::Blue};
+redBlue.SetData(pixels, 2);
+
+Rectangle oversizedSource(0, 0, 4, 1); // spans texel [0,4] on a 2-texel-wide texture
+spriteBatch_->Begin(SpriteSortMode::Deferred, BlendState::Opaque, &pointClamp, nullptr, nullptr);
+spriteBatch_->Draw(redBlue, destRect, oversizedSource, Color::White);
+spriteBatch_->End();
+\end{lstlisting}
+
+Reading back the destination pixel corresponding to source position $1.25$ (three-quarters of
+the way into the oversized range, past the real 2-texel-wide texture entirely) is where the
+``clamp-like, by coincidence'' finding becomes a concrete, checkable number rather than a
+qualitative claim: with \texttt{PointClamp} requested, the correct XNA answer is
+\textbf{blue} --- clamped to the texture's last real texel --- and \texttt{SDL\_RenderTexture}'s
+one fixed edge behavior genuinely produces exactly that, with zero production code written to
+make it happen. Requesting \texttt{PointWrap} at the identical source position is where the
+still-open gap becomes equally concrete: the XNA-correct answer for a wrapped read at position
+$1.25$ is \textbf{red} (wrapping back around to texel~0), but this backend's \texttt{Draw()}
+produces \textbf{blue} again --- the same fixed clamp-like behavior applies regardless of which
+\cnaclass{TextureAddressMode} was actually requested, since (per the finding above)
+\texttt{SDL\_RenderTexture} has no address-mode parameter reachable from this specific draw
+path at all. A game relying on horizontally-scrolling tiled backgrounds --- a common enough
+technique that this is not a hypothetical edge case --- gets the wrong pixel on this backend
+today, silently, with no exception and no visual artifact obviously identifiable as ``wrong''
+unless you already know to look for texel~0 failing to reappear at the wrap boundary.
+
 \section{What is honestly emulated versus what is real}
 
 Beyond the \texttt{DepthFormat} case above, \texttt{TextureAddressMode::Clamp} is flagged as
