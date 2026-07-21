@@ -806,12 +806,12 @@ needed will get a genuinely hardware-informed answer only when built against the
 (Chapter~\ref{ch:direct3d-backends}); on every other backend the answer is either a hardcoded
 \texttt{true} or a simplified format check, both honestly documented as such in the source
 rather than silently passed off as a real capability query. This is the same category of
-finding as \S\ref{sec:worked-mrt}'s \texttt{SupportsCapability(MultipleRenderTargets)} gap
-above --- an API surface that reads as a genuine hardware query but is only actually backed by
-one out of eleven backends --- worth knowing before writing portable code that branches on
-either method's return value.
+finding as \S\ref{sec:worked-mrt}'s own \texttt{MultipleRenderTargets} capability gap above ---
+an API surface that reads as a genuine hardware query but is only actually backed by one out of
+eleven backends --- worth knowing before writing portable code that branches on either method's
+return value.
 
-\section{ClearOptions: one confirmed cross-backend gap}
+\section{ClearOptions: two confirmed cross-backend gaps}
 \label{sec:clearoptions}
 
 \cnaclass{ClearOptions} is a three-value flags enum (\texttt{Target=1}, \texttt{DepthBuffer=2},
@@ -822,6 +822,62 @@ Vulkan (Task~871), with Bgfx unverified --- clearing the stencil buffer this way
 nothing on the two backends where it has actually been checked. This is a small, concrete
 example of the kind of specific, checkable claim Chapter~\ref{ch:what-is-cna} promised this
 book would preserve rather than round off to ``clearing works.''
+
+\subsection{A silent no-op, not a thrown exception, for an impossible depth/stencil clear}
+
+\texttt{Clear()}'s own real implementation carries a second, distinct wrinkle worth reading
+directly from \texttt{GraphicsDevice.cpp} rather than assuming from the header alone. Before
+issuing any backend call, it checks whether the currently active render target genuinely has a
+real depth/stencil buffer --- via the currently bound \cnaclass{RenderTarget2D}'s own backend
+when one is set, or \texttt{IGraphicsBackend::SupportsDepthStencil()} for the back buffer
+otherwise --- and, if not, masks \texttt{options} down to \texttt{ClearOptions::Target} alone
+before doing anything else. This is a deliberate, documented design choice with a clear
+motivation: without it, plain \texttt{Clear(const Color\&)} --- which always requests
+\texttt{Target\ \textbar\ DepthBuffer\ \textbar\ Stencil}, matching FNA's own single-argument
+overload exactly --- would crash outright on a 2D-only backend with no depth buffer at all,
+rather than degrading gracefully to the color-only clear such a backend can actually perform.
+
+The still-open question this masking leaves behind is what happens to a caller who asks for
+something narrower and more deliberate: \texttt{Clear(ClearOptions::DepthBuffer, color, 1.0f,
+0)} on a backend with no real depth buffer masks down to an \emph{empty} options value, and the
+call returns having cleared nothing at all, silently, with no exception and no way for the
+caller to tell the difference between ``the depth buffer was cleared'' and ``there was no depth
+buffer to clear, so nothing happened.'' Found running this project's own \texttt{SDL\_Renderer}
+regression suite --- a dedicated audit test expects exactly this call to throw, matching the
+``ask, don't catch'' philosophy \texttt{SupportsCapability} above is built around, and it
+currently does not, confirmed as a genuine, pre-existing behavior rather than a regression by
+reproducing it identically against an unmodified checkout. The project's own tracking leaves
+the resolution deliberately open rather than picking one side unilaterally: either the test's
+own expectation is the one that is wrong (a graceful, silent no-op may simply be the intended,
+documented contract, mirroring how \texttt{DX3}'s own equivalent test was written from the
+start to expect exactly this and check the honest internal method directly instead), or
+\texttt{Clear()}'s masking itself should learn to distinguish ``nothing was requested that this
+backend can't do'' from ``the caller explicitly asked for something impossible and deserves to
+be told'' --- a real API-design question, not a bug with one obvious fix, left to be settled
+against real XNA/FNA's own documented behavior for this exact case.
+
+This same finding connects directly to the \texttt{SupportsCapability} discussion above, and
+sharpens it: \texttt{CNA::GraphicsCapability::DepthStencilBuffer} exists in the enum, its own doc
+comment describing exactly ``a real depth/stencil buffer on the currently active render
+target'' --- precisely the fact \texttt{Clear()}'s own internal masking check above already
+computes for itself, through a completely separate mechanism
+(\texttt{IGraphicsBackend::SupportsDepthStencil()} / \cnaclass{RenderTarget2D}'s own backend,
+neither of which the public \texttt{GraphicsCapability} enum value ever consults). Reading every
+3D-capable backend's own \texttt{SupportsCapability} override directly confirms none of EasyGL,
+Vulkan, or Bgfx has a \texttt{case} for \texttt{DepthStencilBuffer} at all --- every one falls
+through to the shared default, which returns \texttt{true} unconditionally, regardless of
+whether the currently active target actually has a real depth/stencil buffer or not. This is the
+same exact shape as \texttt{MultipleRenderTargets}' own gap above --- another capability, in the
+same eight-entry enum, declared for a caller to check ahead of time and never actually wired on
+any backend that would need to answer anything other than an unconditional \texttt{true} ---
+making \texttt{MultipleRenderTargets} and \texttt{DepthStencilBuffer} two confirmed-unreliable
+entries so far, against \texttt{ThreeD} (confirmed correctly wired above) and \texttt{WireFrame}
+(confirmed, by the identical direct-source-read method, to have a real, dedicated
+\texttt{case} on both EasyGL and Vulkan --- a hardcoded \texttt{false} on EasyGL, since GLES3
+has no wireframe fill mode at all, and a genuine runtime driver-feature check on Vulkan)
+confirmed reliable; the remaining four entries (\texttt{MultiSampleAntiAliasing},
+\texttt{AnisotropicFiltering}, \texttt{OcclusionQuery}, \texttt{CustomEffects}) were not
+re-audited for this finding and should not be assumed either way without the same direct check.
 
 \section{Worked example: a raw two-triangle scene, no SpriteBatch}
 \label{sec:worked-drawprimitives}
