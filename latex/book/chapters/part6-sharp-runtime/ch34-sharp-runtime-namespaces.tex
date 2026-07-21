@@ -187,7 +187,7 @@ TValue GetOrAdd(const TKey& key, std::function<TValue(const TKey&)> factory)
 }
 \end{lstlisting}
 
-\section{A second, independent audit, and what sanitizers found that reasoning alone did not}
+\section[A second audit, and what sanitizers found that reasoning alone did not]{A second, independent audit, and what sanitizers found that reasoning alone did not}
 
 A further, separate audit produced seven more findings, six fixed in the same session ---
 among them a stream-backed ZIP archive implementation that never actually wrote its output
@@ -196,6 +196,42 @@ destructors (spanning compression streams and XML writing) that could call
 \texttt{std::terminate()} if an I/O failure occurred during RAII cleanup, since a
 C\texttt{++} destructor that lets an exception escape terminates the program outright rather
 than propagating the failure the way a .NET \texttt{Dispose()} call safely could.
+
+A third of that same round's findings deserves its own worked treatment, because it is a real
+race between two things that individually look correct: \cnaclass{TaskCompletionSource<TResult>}%
+\texttt{::TrySetResult} first atomically claims completion (\texttt{completed\_.%
+compare\_exchange\_strong}), \emph{then} calls \texttt{promise\_.set\_value(result)} to actually
+publish the result. If \texttt{TResult}'s own copy constructor throws --- a real possibility for
+any non-trivial result type, not a contrived one --- that throw happens \emph{after} completion
+was already claimed but \emph{before} the underlying \texttt{std::promise}'s shared state ever
+becomes ready. Before the fix, nothing caught that exception at this layer, so it propagated
+straight out of \texttt{TrySetResult} with the promise left permanently unset: every current and
+future waiter on \texttt{GetResult()} or the bridging \cnaclass{Task} blocked forever, and no
+later \texttt{TrySetResult} / \texttt{TrySetException} / \texttt{TrySetCanceled} call could ever
+re-claim \texttt{completed\_} to unblock them, since it was already (falsely) true.
+
+\begin{lstlisting}
+bool TrySetResult(const TResult& result) {
+    bool expected = false;
+    if (!completed_.compare_exchange_strong(expected, true)) return false;
+    try {
+        promise_.set_value(result);         // TResult's copy ctor could throw here
+    } catch (...) {
+        promise_.set_exception(std::current_exception());  // settle the promise anyway
+        throw;                              // still propagates to this immediate caller
+    }
+    return true;
+}
+\end{lstlisting}
+
+The fix settles the promise with the copy failure itself inside the same \texttt{catch}, so
+every waiter still unblocks --- now with an exception to observe rather than a hang --- while
+the immediate caller of \texttt{TrySetResult} still sees the same throw it always did, keeping
+existing callers that already wrap the call in their own \texttt{try} / \texttt{catch} unaffected.
+The general shape worth remembering: an atomic ``claim the transition'' step and the actual
+state-publishing step that follows it are two separate operations, and a real exception thrown
+strictly between them is exactly the kind of failure window unit tests built around the happy
+path will never exercise on their own.
 
 A first-ever full run of the full sanitizer trio --- ThreadSanitizer, AddressSanitizer, and
 UndefinedBehaviorSanitizer --- found real bugs no amount of code review alone had caught:

@@ -119,7 +119,17 @@ deviation on \cnaclass{Dictionary}: its \texttt{Remove()} bumps the version coun
 real .NET's own \texttt{Dictionary.Remove()} does not do, because \texttt{std::unordered\_map}'s
 own iterator-invalidation guarantees on erase differ from the array-backed entry table real
 .NET's dictionary uses internally --- a deliberate, reasoned adaptation to the underlying
-C\texttt{++} standard library type, not an oversight.
+C\texttt{++} standard library type, not an oversight. This is not just a two-type pattern:
+every mutable generic collection this library ships --- \cnaclass{HashSet}, \cnaclass{LinkedList},
+\cnaclass{Queue}, \cnaclass{Stack}, \cnaclass{SortedDictionary}, \cnaclass{SortedList},
+\cnaclass{SortedSet}, and \cnaclass{OrderedDictionary} alongside the two above --- carries the
+identical version-counter invariant, made project-wide as a deliberate late addition rather
+than left as a two-type special case. \cnaclass{OrderedDictionary} specifically needed a
+follow-up fix of its own even after that rollout: its \texttt{EnsureCapacity} method resized
+the backing storage without bumping the version counter, meaning an enumerator already in
+flight across a capacity-triggered resize would not detect the mutation the way every other
+structural change on the same type correctly does --- closed as its own, narrower fix once
+found, on the same underlying invariant.
 
 \section{Concurrency primitives}
 
