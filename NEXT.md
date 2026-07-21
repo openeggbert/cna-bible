@@ -9,10 +9,17 @@ per-chapter detail this file only summarizes).
 ## Where things stand right now (mid-session, autonomous depth pass in progress, 2026-07-21)
 
 **The book is a single, unified book**, built via `make book` (→ `latex/book/main.pdf`).
-Compiles clean as of the last checkpoint: **337 pages, 0 undefined references, 0
+Compiles clean as of the last checkpoint: **339 pages, 0 undefined references, 0
 duplicate-label warnings** (verify before quoting — re-run `make book` and grep the log
 before trusting this number; and use PNG rendering, not `grep -i overfull`, to check for
-overflow — see "Reusable findings" below, this was reconfirmed multiple times this session).
+overflow — see "Reusable findings" below, this was reconfirmed many times this session,
+including on `grep -a` output that revealed hundreds of pre-existing "overfull" log lines
+`grep -i` alone was silently missing).
+
+**19 chapters depth-passed so far this session: Ch.1-6, 8, 10-21.** All of Part I-II and all
+of Part III are done; Part IV (backend chapters) is 6 of 9 done (Ch.16-21 done, Ch.22-24
+remain — task #38 covers all of them and is still in_progress). Continue with **Ch.22
+(Direct3D 9/11/12 Backends)** next.
 
 **This is an autonomous, long-running session** (the user explicitly authorized "continue
 autonomously for as long as there is useful, safe work within scope" and asked not to be
@@ -28,7 +35,7 @@ separate branch to look for. Commit and push directly to `develop`, small commit
 chapter, exactly as this whole session has been doing (check `git log --oneline -20` to see
 the pattern if in doubt).
 
-## This session's work so far: depth pass on Part I–III chapters (13 of ~18+ planned)
+## This session's work so far: depth pass on Part I–IV chapters (19 of ~24+ planned)
 
 The prior session did a **breadth pass** (first-ever touch) on all 22 previously-untouched
 Part I–IV chapters plus Appendix A. This session is doing the natural next step, a **depth
@@ -64,19 +71,38 @@ grounded in an actual source read, rebuilt and PNG-verified before commit:
   mipmapped-floor filter choice); found/fixed one new and one pre-existing overfull-hbox.
 - **Ch.15 Shader/.fx Gap** — matching real D3D9 HLSL worked example alongside the existing
   GLSL one, incl. a real minor doc-comment inaccuracy noted in `ShaderEffect`'s own header.
+- **Ch.16 Backend Architecture** — `IRenderTargetBackend` deep-dive tying its default methods
+  directly to Ch.11's per-backend render-target findings, and an `IEffectBackend`/%
+  `IOcclusionQueryBackend` deep-dive (real finding: every `SetUniform*` setter defaults to a
+  silent no-op).
+- **Ch.17 SDL_RENDERER Backend** — a concrete pixel-value worked example for the blocked
+  Wrap/Mirror decision (2x1 red/blue texture, oversized source rect).
+- **Ch.18 EasyGL Backend** — a **stale-claim correction**: the two "real, large" bugs from the
+  D3D9-oracle cross-measurement (negative-`FogEnd` solid-black, Fresnel interpolation) were
+  logged as open but are both fixed in the current source (Tasks 1111/1112) — verified by
+  reading `EasyGLGraphicsBackend.cpp` directly and hand-checking the fog formula's arithmetic.
+- **Ch.19 Vulkan Backend** — expanded Ch.11's one-sentence `RenderTargetCube` black-render
+  preview into a full section naming both root causes (Task 875 clear-only-RT gap, Task 876
+  still-unresolved between two named candidates).
+- **Ch.20 BGFX Backend** — the matching wrong-handle-type-cast diagnosis for BGFX's own
+  `RenderTargetCube` bug (Tasks 873/874 — both handle types share an identical
+  `struct{uint16_t idx;}` ABI shape, which is why the cast compiles and doesn't crash).
+- **Ch.21 WebGPU Backend** — first-ever worked example anywhere in the book for `PbrEffect`
+  (NOXNA glTF-2.0 metallic-roughness material), incl. verifying the G=roughness/B=metallic
+  channel packing directly against the real EasyGL GLSL shader source.
 
-**Every chapter above also had at least one genuine overfull-hbox or API-accuracy defect
-found and fixed while reading the whole page** (not just the new content) — this remains the
-single most common defect class in this whole project; see "Reusable findings" below for the
-patterns that actually worked to fix them this time.
+**Every chapter above also had at least one genuine overfull-hbox, header/folio collision, or
+API-accuracy defect found and fixed while reading the whole page** (not just the new
+content) — this remains the single most common defect class in this whole project; see
+"Reusable findings" below for the patterns that actually worked to fix them this time.
 
 ## Remaining depth-pass work, in the planned order (see Task list / PLAN.md)
 
 Not yet started this session, roughly in the order a fresh session should continue in:
 
-1. **Ch.16 Backend Architecture** (task #37, in progress — pick this up first) through
-   **Ch.24** (the rest of Part IV's backend chapters, tasks #37-38) — not yet touched this
-   session.
+1. **Ch.22 Direct3D Backends, Ch.23 Canvas/ASCII Backends, Ch.24 DX3/free-direct Backend**
+   (task #38, in progress — pick up with Ch.22 next) — the last three of Part IV's nine
+   backend chapters.
 2. **Appendix A** (task #39) — not yet touched this session (already has a
    `GraphicsDevice`/state-object section from the prior breadth pass; look for what's still
    missing beyond that).
@@ -89,10 +115,10 @@ Not yet started this session, roughly in the order a fresh session should contin
 
 None of this needs to happen in the exact order listed — it's a reasonable default sequence,
 not a hard dependency chain. A session with limited time should prioritize finishing whichever
-Part is already partway through (right now: finish Part IV's depth pass, tasks #37-38) before
-starting a new Part, so the book doesn't end up with an uneven, hard-to-track patchwork of
-"which chapters got a second touch." Check `TaskList` for the live, authoritative status of
-tasks #24-41 — it is kept current, task by task, throughout this session.
+Part is already partway through (right now: finish Part IV's depth pass, task #38, 3 chapters
+left) before starting a new Part, so the book doesn't end up with an uneven, hard-to-track
+patchwork of "which chapters got a second touch." Check `TaskList` for the live, authoritative
+status of tasks #24-41 — it is kept current, task by task, throughout this session.
 
 ## Reusable findings from this session, worth knowing before continuing
 
@@ -154,6 +180,28 @@ tasks #24-41 — it is kept current, task by task, throughout this session.
   for the plural `SetRenderTargets(vector<...>&)` overload instead). Caught before commit by
   grepping `GraphicsDevice.hpp` directly — this is the same risk category flagged in the prior
   session's `TimeSpan::operator+=` mistake, confirmed recurring rather than a one-off.
+- **A long trailing `//` comment on a code line inside `lstlisting` overflows exactly the same
+  way a long prose identifier does** — found and fixed three separate times this session (Ch.14
+  RasterizerState ternary, Ch.19 an identifier in prose, Ch.21 twice in one chapter, both times
+  a trailing comment explaining a line of real call-site code). The fix is the same restructuring
+  principle every time: pull the comment onto its own line **above** the code it explains
+  instead of trailing it, or shorten it — never try to wrap a trailing comment onto a second
+  `//`-prefixed line hanging off the same statement, which is what actually produces the
+  character-by-character cascade down the margin.
+- **Always re-verify a source claim against the real header/source when writing a worked
+  example, even when adapting content from this book's own earlier, already-fixed prose** —
+  Ch.16's `IEffectBackend` deep-dive and Ch.20's BGFX wrong-handle-cast diagnosis both required
+  a fresh grep pass (not just trusting the one-sentence preview an earlier chapter had already
+  given) to get the full, precise mechanism right before writing it up in depth.
+- **A "still logged as open" claim in an older project doc can go stale just like anything
+  else — check the actual current source before reproducing it as fact.** Ch.18's EasyGL depth
+  pass found the highest-value example of this yet: `docs/d3d9-divergence-report.md` explicitly
+  says two real bugs were "logged here, not fixed," but the current `EasyGLGraphicsBackend.cpp`
+  carries explicit, named fix comments (Task 1111/1112) for both, naming the exact failing
+  oracle scene by name. Treat any doc's "still open"/"not fixed" framing as a claim to verify
+  against the current source before reproducing it, not as ground truth by default — this is
+  the same discipline CLAUDE.md's Vol. I Ch.8 `.xnb`-reader example already established as the
+  project's standard, now with a second, independently-found instance.
 
 ## Housekeeping reminders (unchanged from before, still true)
 
