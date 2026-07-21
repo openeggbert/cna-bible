@@ -124,6 +124,45 @@ side-effect this book has flagged elsewhere (Chapter~\ref{ch:spritebatch}'s igno
 matrix, for instance) as the class of bug most likely to go unnoticed until specifically
 tested for.
 
+\subsection{Two small, real RAII additions worth knowing about}
+
+Two small utility classes, added after this chapter's own original pass, are worth a direct
+mention because each closes a real, easy-to-get-wrong ergonomic gap rather than adding a new
+GL capability. \cnaclass{ScopedDebugGroup} is a two-call RAII pair --- its constructor calls
+\texttt{Device::push\_debug\_group}, its destructor unconditionally calls
+\texttt{pop\_debug\_group} --- specifically so a labeled debug region in a RenderDoc or NVIDIA
+Nsight capture can never be left unbalanced by an early return or an exception unwinding
+through the scope:
+
+\begin{lstlisting}
+{
+    ScopedDebugGroup group(device, "Shadow Pass");
+    RenderShadowCasters();
+    // pop_debug_group() always runs here, even if RenderShadowCasters()
+    // throws or returns early -- no separate try/finally needed.
+}
+\end{lstlisting}
+
+\cnaclass{UniformCache} addresses the other classic OpenGL ergonomics problem: repeatedly
+calling \texttt{glGetUniformLocation} by name is a real, measurable per-draw cost real engines
+avoid by caching the resolved integer location once. \texttt{operator[]} looks up a cached
+location by name, falling through to a real \texttt{Program::uniform\_location} call and
+memoizing the result only on a cache miss --- and, worth knowing explicitly since it is not
+stated in the header's own brief comment, a \emph{failed} lookup (a typo'd or since-optimized-out
+uniform name, returning $-1$) is memoized exactly the same way a successful one is. Calling
+\texttt{operator[]} again with the same wrong name will not re-attempt the GL query and
+magically start succeeding once the shader changes --- only an explicit \texttt{invalidate()}
+call (needed after any program relink, since old locations are not guaranteed valid against a
+newly linked program) clears the cache and allows a fresh lookup:
+
+\begin{lstlisting}
+UniformCache uniforms(shaderProgram);
+shaderProgram.set_uniform(uniforms["uTime"], elapsedSeconds);
+shaderProgram.set_uniform(uniforms["uLightDir"], lightDir.x, lightDir.y, lightDir.z);
+// ... later, only after shaderProgram is actually relinked ...
+uniforms.invalidate();  // required -- old cached locations are not safe to reuse otherwise
+\end{lstlisting}
+
 \section{Testing without a GPU}
 
 \texttt{easy-gl}'s own test suite is three small, hand-rolled (not GoogleTest-based)
