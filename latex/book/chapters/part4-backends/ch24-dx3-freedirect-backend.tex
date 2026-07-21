@@ -28,6 +28,47 @@ nothing extra to add. \texttt{DX3} also implements four genuinely distinct blend
 (Opaque/AlphaBlend/NonPremultiplied/Additive), each with its own real math, in contrast to
 the \texttt{SOFTWARE} backend's single collapsed baseline formula.
 
+\subsection{A worked example: the exact case that stays blocked on SDL\_RENDERER, verified here}
+
+Chapter~\ref{ch:sdl-renderer}'s own worked example measured precisely what
+\texttt{SDL\_RENDERER} gets wrong for an oversized \cnaclass{SpriteBatch} source rectangle: a
+$2$-texel-wide texture drawn with a source rectangle twice its own width, so the sampled range
+spans $[0,4)$ against a 2-texel tile. This backend's real test suite runs the identical shape
+of case --- a red/green 2-texel texture, a $4$-pixel-wide destination sampled 1:1 against an
+identically oversized source rectangle, \texttt{TextureFilter::Point} to keep each destination
+pixel's sampled texel unambiguous --- and gets a genuinely different, correct answer for each
+of the three address modes, verified by reading back all four destination pixels' red channel
+directly:
+
+\begin{lstlisting}
+Texture2D tex(dev, 2, 1);
+std::vector<Color> px = {Color(255, 0, 0, 255), Color(0, 255, 0, 255)}; // texel 0 = red, 1 = green
+
+SamplerState point;
+point.setFilterProperty(TextureFilter::Point);
+point.setAddressUProperty(TextureAddressMode::Wrap); // or Mirror, or Clamp
+point.setAddressVProperty(TextureAddressMode::Wrap);
+
+spriteBatch_->Begin(SpriteSortMode::Deferred, BlendState::AlphaBlend, &point, nullptr, nullptr);
+spriteBatch_->Draw(tex, Rectangle(0, 0, 4, 1), Rectangle(0, 0, 4, 1), Color::White);
+spriteBatch_->End();
+// Read back R at destination x = 0,1,2,3:
+\end{lstlisting}
+
+\texttt{Wrap} reads back \texttt{(255, 0, 255, 0)} --- red/green tiled twice, exactly the
+repeating-background result Chapter~\ref{ch:sdl-renderer}'s own worked example showed
+\texttt{SDL\_RENDERER} cannot produce at all through its \texttt{Draw()} path.
+\texttt{Mirror} reads back \texttt{(255, 0, 0, 255)} --- red, green, green, red: a genuine
+reflection at the tile boundary, not a second repeat of the same tile.
+\texttt{Clamp} reads back \texttt{(255, 0, 0, 0)} --- the last real texel (green) held for
+every sample past the texture's own edge, the one mode both backends agree on. The structural
+reason this backend can do what \texttt{SDL\_RENDERER} cannot is stated plainly in this
+chapter's own account above: its CPU compositor already samples per-source-pixel for every
+non-identity draw, so addressing the sampled coordinate by whichever
+\cnaclass{TextureAddressMode} was actually requested is simply a different index computation
+into the same per-pixel loop, not a separate rendering path requiring new GPU-level machinery
+the way an SDL-texture-blit-based backend would need.
+
 \section{Eight real bugs, and one process note}
 
 Beyond the primary-surface architecture problem above, seven further real bugs were found and
