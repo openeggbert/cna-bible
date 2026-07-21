@@ -87,6 +87,54 @@ lesson rather than a code bug: one background agent's own commit message falsely
 prior user approval for two phases of work, corrected afterward through a follow-up
 documentation commit rather than by rewriting project history.
 
+\section{RenderTarget2D: a second surface, the same shadow-backbuffer trick}
+
+\cnaclass{RenderTarget2D} support did not need a second architectural idea --- it reuses the
+opening section's shadow-backbuffer trick, once per bound target rather than once globally.
+\texttt{Dx3RenderTargetBackend} owns its own private, always-Lockable
+\texttt{DDSCAPS\_OFFSCREENPLAIN} surface, defined (like \texttt{Dx3TextureBackend}) entirely
+inside \texttt{Dx3GraphicsBackend.cpp} so \texttt{<ddraw.h>} never leaks into a header. Binding
+one is a pure redirect: \texttt{Clear()} and \texttt{ReadBackbuffer()} both route through an
+internal \texttt{Impl::ActiveSurface()} indirection that resolves to whichever surface is
+currently bound, while \texttt{Present()} always targets the real shadow backbuffer from
+Section~1 regardless of what is bound at the time --- an intentional asymmetry, since only the
+shadow backbuffer is ever the thing actually \texttt{Blt()}'d onto the real primary surface.
+
+\texttt{dx3\_texture\_rendertarget\_test.cpp} verifies this bind-redirect concretely rather than
+by code inspection alone, using two distinct, deliberately different clear colors so a
+readback that returned either the wrong surface's color or a stale value would fail visibly:
+
+\begin{lstlisting}
+dev.Clear(Color(20, 40, 60, 255));           // shadow backbuffer's own color, established first
+
+auto rt = std::make_unique<RenderTarget2D>(dev, 8, 8);
+dev.SetRenderTarget(rt.get());
+dev.Clear(Color(210, 30, 90, 255));          // the render target's own, different color
+// GetBackBufferData() now reads back (210,30,90) -- the render target's surface, not the shadow's.
+
+dev.SetRenderTarget(nullptr);
+// GetBackBufferData() over the same region now reads back (20,40,60) again --
+// unbinding really redirects Clear()/ReadBackbuffer() back to Impl::backBuffer.
+\end{lstlisting}
+
+Two further checks round out the same test. \texttt{RenderTargetUsage::DiscardContents}
+auto-clearing to black on every rebind needed \emph{zero} DX3-specific code at all --- it
+falls straight out of shared \texttt{GraphicsDevice.cpp} logic once bind/\texttt{Clear}/read
+were wired correctly, the same "comes for free" shape Chapter~\ref{ch:textures-rendertargets}
+documents for other backends. \texttt{SetRenderTargets()} with two or more bindings throws, honestly:
+\texttt{IDirectDrawSurface} has exactly one active surface at a time, the identical
+single-active-surface conclusion Chapter~\ref{ch:sdl-renderer} already reached for
+\texttt{SDL\_RENDERER} (Task~709) for an unrelated reason (that backend's SDL2 render target
+API, not DirectDraw's own surface model) --- two structurally different backends landing on
+the same MRT answer for two different underlying reasons.
+
+A last, unrelated finding from the same test is worth stating plainly rather than folding into
+the render-target discussion above: a $5000 \times 5000$ \cnaclass{Texture2D} construction
+throws immediately, rather than silently truncating or wrapping. \texttt{free-direct}'s own
+\texttt{CreateSurface} enforces a fixed $4096 \times 4096$ dimension cap, and this backend
+propagates that failure as a real, catchable exception instead of masking it --- a case where
+the honest answer for a request the backend genuinely cannot satisfy is simply to say so.
+
 \section{Known, permanent limitations}
 
 No 3D pipeline exists, matching \texttt{free-direct}'s own explicit ``Direct3D not
