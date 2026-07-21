@@ -177,6 +177,61 @@ if (!Guide::getHasPendingMessageBoxEXTProperty())
 }
 \end{lstlisting}
 
+\subsection{A worked example: password-masked keyboard input, and a self-correcting audit}
+
+The keyboard-input half of \cnaclass{Guide} is worth its own worked example, alongside a real
+finding about how it reached its current, real state --- an instance of this project's own
+recurring ``don't trust a checked-off task list'' discipline (Chapter~\ref{ch:sharp-runtime-namespaces}
+covers the identical pattern for \texttt{sharp-runtime}), this time applied to one of its own
+prior phases rather than another repository entirely. A later, independent post-completion audit
+of this exact feature found that an earlier phase's own ``complete'' write-up had understated
+what was actually still missing: \texttt{BeginShowKeyboardInput}'s \texttt{title}/%
+\texttt{description} parameters were, at the time, literally unused in the implementation (commented
+out in the parameter list); \texttt{Guide.IsVisible} was hardcoded to always return \texttt{false}
+regardless of whether an overlay was genuinely pending; the password-masking flag was stored but
+never actually consulted anywhere, so a password-mode keyboard input rendered its typed text in
+the clear; and there was no cancel path at all, only Enter. None of those four gaps had been
+disclosed in the phase's own original sign-off. All four are real now, fixed the same day they
+were found:
+
+\begin{lstlisting}
+// Worked example: password-masked keyboard input, rendered via its own
+// dedicated overlay hook, with a real cancel path this feature did not
+// originally have.
+System::IAsyncResult* pending = Guide::BeginShowKeyboardInput(
+    PlayerIndex::One, "Enter Passphrase", "Used to protect your save file",
+    /* defaultText */ "", nullptr, std::any{}, /* usePasswordMode */ true);
+
+// In Game::Draw(), called once per frame: renders the title/description
+// and the typed-so-far text, masked as '*' per character on screen --
+// the masking is display-only, never applied to the value EndShowKeyboardInput
+// actually returns.
+Guide::RenderPendingKeyboardInputEXT(*graphicsDevice, spriteBatch, uiFont, whitePixel);
+
+// Later, once the player has pressed Enter or Escape:
+if (!Guide::getIsVisibleProperty())
+{
+    if (Guide::WasKeyboardInputCanceledEXT(pending))
+    {
+        // Escape was pressed -- distinct from "confirmed with an empty
+        // string," which this port's non-nullable std::string return type
+        // could not otherwise represent (real XNA returns null on cancel).
+    }
+    else
+    {
+        std::string passphrase = Guide::EndShowKeyboardInput(pending);
+    }
+    delete pending;
+}
+\end{lstlisting}
+
+\texttt{WasKeyboardInputCanceledEXT} above is the concrete answer to a real representational gap
+this fix had to solve: real XNA's own documented contract returns a null string on cancel, which
+a C\texttt{++} \texttt{std::string} return value cannot express directly, since an empty string
+is exactly what a player who pressed Enter with nothing typed would also produce. Checking this
+method first, before trusting whatever \texttt{EndShowKeyboardInput} returns, is the only way to
+tell those two real, distinct outcomes apart.
+
 \section{Dispatcher and component}
 
 \cnaclass{GamerServicesComponent} must be added to \texttt{Game.Components}
