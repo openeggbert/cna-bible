@@ -1570,3 +1570,72 @@ stays frozen by explicit author decision, not left incomplete.
   fourth-pass batches (propagate corrections to 2-4 places; check every named backend, not just
   one; watch for a project's own self-correcting-audit story as a related but distinct pattern
   worth also telling) as the standing recommendation for whoever continues next.
+
+- **2026-07-21 — Fifth pass, tasks #64-69, same continuous autonomous session, user said
+  "commitni pushni pote pokracuj" (commit, push, then continue) to resume after the fourth-pass
+  checkpoint.** Picked six more chapters furthest below their page targets and depth-passed
+  each: Ch.8, 36, 43, 38, 45, 47 — the last of which cascaded into a four-location propagation
+  (Ch.1, Ch.22, Appendix B) found while verifying Ch.47's own oracle-corpus claim. Every edit
+  rebuilt, checked for undefined/duplicate-label errors, PNG-verified, committed, and pushed
+  individually — 6 commits.
+
+  Ch.8 (Content and Assets) found its own "\texttt{.xnb} reader still growing" framing was
+  itself stale (`plan_xnb.md`'s Phase G, complete 2026-07-16) — every phase through the reader's
+  own closing hardening pass is done. Added two real findings: three more heap-buffer-overflows
+  found by deterministic whole-container fuzzing (not code review) during that closing phase,
+  and the custom-reader extension point verified against a real, independent third-party reader
+  (`prime31/Nez`'s `BitmapFontReader`) rather than only declared to exist. Incidentally
+  cross-checked a potential conflict between `plan_xnb.md`'s own handoff notes and `plan_net.md`
+  about `NetworkSession::Dispose()` idempotency and confirmed no book correction was needed —
+  Ch.30 (from an earlier batch) already had it right.
+
+  Ch.36 (EasyGL Deep Dive) mined easy-gl's own `NEXT.md`/`PLAN.md` for two more real RAII
+  additions the chapter's own prior pass had missed (`ScopedBind`, a generic resource-agnostic
+  bind/unbind wrapper; `ResourceRegistration`, an RAII register/deregister guard for the
+  context-loss-recovery `ResourceRegistry`) — caught and fixed an invented API call in an early
+  worked-example draft (`Texture::unbind()` does not exist on that class) before it could reach
+  a commit, verifying against `VertexArray`'s real `bind()`/`unbind()` pair instead.
+
+  Ch.43 (Blupi Case Study) mined `free-direct`'s own `NEXT.md` (dated 2026-07-19, the newest
+  source found this entire session) for two further "confirm, don't assume" findings applying
+  the chapter's own established discipline to new questions: `GetCurrentPosition` has zero real
+  call sites in either target game once vendored SDK headers are excluded from the search, so it
+  stays unimplemented rather than speculative; and a mixed 8-bit/32-bit blit audit found zero
+  real 8-bit `CreateSurface` requests in either game, confirming a silent fallthrough path is
+  currently unreachable rather than adding new error-handling for it.
+
+  Ch.38 (Windows/Wine) mined `plan_dx9.md`'s D9-105/D9-140 rows for a project-wide caveat this
+  chapter — despite owning the verification machinery it qualifies — had never given its own
+  full explanation: under Wine+DXVK, `D3DCAPS9` is synthesized by DXVK itself, not reported by
+  an authentic period Direct3D~9 driver. The verification *logic* this whole methodology proves
+  is real; the capability *numbers* those real calls return in this dev loop are not yet proven
+  authentic against period hardware. Real Windows hardware verification (`needs_human`) remains
+  the one explicitly-tracked task that would close this gap.
+
+  Ch.45 (Samples and Examples) mined `plan_samples.md` (dated 2026-07-16) to break down the
+  chapter's own passing "153 samples" figure precisely for the first time: the 67 beyond the
+  official 86-sample XNA~4.0 collection are not an unattempted backlog, each individually
+  carries a named, permanent, structural exclusion reason (Xbox~LIVE Avatar dependency, WinForms
+  tooling, phone-only hardware, pre-4.0 XNA versions, art-only asset packs, a VB-language
+  duplicate, Silverlight/WP7-native lifecycle code, unofficial third-party kits) with no
+  CNA-side revisit trigger at all.
+
+  Ch.47 (Testing Philosophy) is where this batch's biggest finding surfaced: double-checking its
+  own D3D9-oracle-corpus claim against a direct file count (`find tools/xna-oracle/scenes -iname
+  '*.scene' | wc -l`) found **39** real scene files on disk today, not the 36 the chapter itself
+  cited — and grepping the rest of the book for the same figure found Chapter~1 still citing an
+  even older snapshot (31) and both Chapter~22 and Appendix~B independently citing 36, all four
+  written at different points as the corpus grew across this project's own history and never
+  reconciled against each other. Corrected all four locations together in the same commit,
+  framing the Chapter~47 correction itself as a worked instance of that chapter's own "how do we
+  know this is actually true, rather than merely believed to be true" theme — the throughline the
+  chapter's own closing section already names. This is a genuinely new technique for this
+  project's own toolbox, distinct from (though related to) the "re-verify a tracked claim"
+  pattern used throughout the rest of this session: *directly recounting* a number the book
+  itself cites, rather than re-reading a doc that itself might already be stale.
+
+  Volume recompiled clean throughout, ending the session at **365 pages (up from 355), 0
+  undefined references, 0 duplicate-label warnings**. `NEXT.md` rewritten again, adding the
+  "directly recount a number the book cites" technique alongside the now-well-established
+  "re-verify a tracked claim against live source" one, both illustrated with this batch's own
+  concrete finds, as the standing recommendation for whoever continues next.
