@@ -110,6 +110,24 @@ specifically under UndefinedBehaviorSanitizer, not by inspection. Sanitizer cove
 project is targeted at the specific subsystems where genuine concurrency or native-interop
 risk exists, rather than blanket-applied everywhere.
 
+Two further, independent instances make the same point from different corners of this
+ecosystem. \texttt{sharp-runtime} (Chapter~\ref{ch:sharp-runtime-namespaces})'s first-ever full
+run of the complete sanitizer trio found real bugs no amount of prior code review had caught:
+ThreadSanitizer found a genuine production deadlock (a \cnaclass{Channel} implementation
+missing a \texttt{notify\_all} call, a real lost-wakeup affecting multiple blocked waiters),
+AddressSanitizer found a confirmed heap-buffer-overflow in an aligned-reallocation helper, and
+UndefinedBehaviorSanitizer found a genuine UB call reaching into vendored \texttt{miniz} code
+from an empty vector's \texttt{.data()} pointer. And the Android sensor bridge
+(Chapter~\ref{ch:android-ndk})'s own concurrency fix --- already reviewed, tested, and marked
+closed --- still hid a second, deeper race that only a dedicated, later \texttt{devices-tsan}
+run under real 8-thread concurrent load actually surfaced, cascading into genuine heap
+corruption in a test fixture's own callback bookkeeping. Both are the same lesson from the
+opposite direction of the sensor-flag race above: a fix that looks complete after careful
+manual reasoning can still hide a real, low-probability race that only a sanitizer run under
+genuine concurrent load will find, which is precisely why this project treats a sanitizer pass
+as something to re-run against new concurrency-sensitive code, not a one-time gate a subsystem
+passes once and never revisits.
+
 \section{What CI actually covers, stated honestly}
 
 Chapter~\ref{ch:building-cna} already gave this fact once, and it is worth
