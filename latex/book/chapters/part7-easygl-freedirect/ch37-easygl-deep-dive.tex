@@ -202,9 +202,10 @@ reveals a fuller picture worth spelling out on its own: \texttt{easy-gl} actuall
 \emph{two} separate mechanisms for surviving a lost GL context, at two different levels of
 commitment, and only one of them is currently used by anything real.
 
-The first tier is universal and effectively free. Every single GL object class inherits
-\texttt{easygl::detail::GenerationTracked}, which stamps each resource with the
-\texttt{meta-gl}-tracked context generation number at creation time
+The first tier is universal and effectively free. Every single GL object class inherits a
+common base class,
+\texttt{easygl::\allowbreak{}detail::\allowbreak{}GenerationTracked}. It stamps each
+resource with the \texttt{meta-gl}-tracked context generation number at creation time
 (\texttt{creation\_generation()}) and exposes \texttt{is\_valid\_for\_current\_generation()} so
 any caller can cheaply ask ``was this handle created against the context that is actually
 current right now, or a since-lost one'' without any registration step at all --- every
@@ -231,10 +232,11 @@ planning document confirms this is a known, tracked state rather than an oversig
 is the first to notice: Task U2 (``Test context-loss / \texttt{ResourceRegistry} recovery
 cycle'') is explicitly scoped against ``a concrete \texttt{RecoverableResource} subclass''
 precisely because no real one currently exists to test against --- and, consistent with that,
-\texttt{ContextLifecycleTests.cpp}'s own two \texttt{ResourceRegistry} tests
-(\texttt{test\_resource\_registry\_context\_lost}, \texttt{test\_resource\_registry\_wired\_to\_meta\_gl})
-both construct a minimal, test-only \texttt{FakeResource} stub rather than exercising any real
-resource type, for exactly this reason:
+\texttt{ContextLifecycleTests.cpp}'s own two \texttt{ResourceRegistry} tests ---
+\texttt{test\_resource\_registry\_\allowbreak{}context\_\allowbreak{}lost} and
+\texttt{test\_resource\_registry\_\allowbreak{}wired\_\allowbreak{}to\_\allowbreak{}meta\_\allowbreak{}gl}
+--- both construct a minimal, test-only \texttt{FakeResource} stub rather than exercising any
+real resource type, for exactly this reason:
 
 \begin{lstlisting}
 // From the real test suite -- note this is a hand-rolled stub, not Texture,
