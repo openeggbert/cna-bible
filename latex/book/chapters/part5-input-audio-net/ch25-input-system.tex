@@ -529,6 +529,62 @@ if (Haptics::IsMouseHapticEXT())
 }
 \end{lstlisting}
 
+\section{Focus loss: what happens to \texttt{Game::IsActive}, and to held input}
+
+Two connected findings, closed together by the same recent audit remediation pass, are worth
+knowing as one story rather than two unrelated facts. Real FNA's own SDL3 platform loop raises
+\texttt{Game.IsActive} on \emph{both} a mobile-style background/foreground transition and an
+ordinary desktop focus switch (Alt-Tab, clicking another window) --- but for a real stretch of
+this project's own history, \texttt{Game::PollEvents()} handled only the mobile-style
+background/foreground SDL event pair (\texttt{WILL\_ENTER\_BACKGROUND} /
+\texttt{DID\_ENTER\_FOREGROUND}). It had no case at all for the desktop-style focus-change pair,
+\texttt{SDL\_EVENT\_WINDOW\_FOCUS\_LOST} / \texttt{FOCUS\_GAINED}. The practical consequence: an
+ordinary desktop window losing focus
+never raised \texttt{Activated} / \texttt{Deactivated} at all, and \texttt{getIsActiveProperty()}
+stayed \texttt{true} indefinitely regardless of whether the game window was actually focused ---
+confirmed and fixed by adding the two missing \texttt{switch} cases, matching FNA's own handler
+exactly for this specific toggle. A related scope gap was found and deliberately \emph{not}
+folded into the same fix: FNA's own handler for these two events also restores an X11
+``fullscreen desktop'' window flag and toggles the OS screensaver, both left undone here and
+recorded as an intentional, out-of-scope difference rather than silently matched or silently
+ignored.
+
+The second finding is a genuine policy question this fix resolved, not a second bug, and it
+connects directly to the \cnaclass{Keyboard} / \cnaclass{Mouse} worked examples earlier in this
+chapter: neither says what happens to a held key or an in-progress mouse drag when the game
+window loses focus mid-frame. The answer, confirmed correct and deliberately unchanged by the
+\texttt{IsActive} fix above: nothing --- keyboard and mouse state is retained across a focus
+loss, matching FNA's own real behavior exactly, rather than cleared, locked in by a dedicated
+test named precisely for what it guarantees
+(\texttt{WindowFocusLostDoesNotClearHeldKeysMatchingFna}). Before the \texttt{IsActive} fix, this
+retention policy was quietly unsafe in combination: a held key could look permanently,
+indistinguishably stuck to game code with no accompanying ``the window is not actually focused
+right now'' signal to gate on, since \texttt{IsActive} never actually changed on desktop. With
+both halves now fixed together, the documented, correct pattern is exactly what \cnaclass{Game}'s
+own field already promises rather than anything the input classes themselves need to do:
+
+\begin{lstlisting}
+// Worked example: the documented, correct pattern for trusting held-key
+// state, now that IsActive genuinely toggles on a desktop focus change
+// too, not only on a mobile background/foreground transition.
+void MyGame::Update(GameTime& gameTime)
+{
+    if (!getIsActiveProperty())
+    {
+        // Alt-Tabbed away, or the window otherwise lost focus. Keyboard/
+        // Mouse state below is still real (CNA deliberately does not
+        // clear it, matching FNA) but is not meaningful right now.
+        return;
+    }
+
+    const KeyboardState keyboard = Keyboard::GetState();
+    if (keyboard.IsKeyDown(Keys::Space))
+    {
+        // Only trusted here, now that IsActive is known to be correct.
+    }
+}
+\end{lstlisting}
+
 \section{Platform-specific behavior worth knowing}
 
 A handful of platform facts are worth stating plainly, because they are not CNA bugs even
