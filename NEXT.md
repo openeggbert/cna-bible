@@ -17,15 +17,16 @@ including on `grep -a` output that revealed hundreds of pre-existing "overfull" 
 `grep -i` alone was silently missing).
 
 **Tasks #24-40 are all complete** (all of Parts I-IV, chapters 1-24, plus Appendix A).
-**Task #41 (Parts V-IX, chapters 25-48) is in progress: all of Part V is now done this
-session (Ch.25-32)** — Ch.25 was checked and found already well-covered from a very recent
-prior session (no edit needed); Ch.26-32 each got a real depth-pass addition, several of them
-substantial (see below). Continue with **Ch.33 (Sharp Runtime: Overview and Architecture)**
-next — the start of Part VI. See "A new, high-value technique discovered this session"
-below before starting each chapter; it found real, substantial material in every single
-chapter it was tried on this session (7 for 7: Ch.26-32), and should be tried first for every
-remaining chapter, though Part VI's subject (`sharp-runtime`, a sibling repo) won't have a
-`cna` plan doc — check that sibling repo's own root for an equivalent instead.
+**Task #41 (Parts V-IX, chapters 25-48) is in progress: all of Part V (Ch.25-32) and Ch.33-34
+of Part VI are done this session**, plus Ch.36 of Part VII. Ch.35 was checked and found
+already thoroughly covered (no edit needed). Continue with **Ch.37 (free-direct in Depth)**
+next. See "A new, high-value technique discovered this session" below before starting each
+chapter — it found real, substantial material in every chapter it was tried on this session
+except Ch.25/35 (already-thorough, checked-not-edited), including in sibling-repo chapters:
+`sharp-runtime`'s own `NEXT.md`/`audit.md`, and `easy-gl`'s own `NEXT.md`, each had exactly the
+same kind of not-yet-mined recent findings the `cna` plan docs did. For any remaining Part
+VI/VII/VIII/IX chapter about a specific sibling repo, check that repo's own root for a
+`NEXT.md`/`PLAN.md`/`plan_*.md`/`audit*.md` first, the same way.
 
 **This is an autonomous, long-running session** (the user explicitly authorized "continue
 autonomously for as long as there is useful, safe work within scope" and asked not to be
@@ -147,6 +148,18 @@ grounded in an actual source read, rebuilt and PNG-verified before commit:
   currently undocumented gap: `ResolvePath()` never guards against a `..`-climbing relative
   path, only an empty-string check exists — confirmed against both the header docs and test
   suite, neither of which treat it as a scoped decision. **This completes all of Part V.**
+- **Ch.33-34 Sharp Runtime** — mined `sharp-runtime`'s own `NEXT.md` (dated 2026-07-14):
+  Ch.33 corrected/extended a 2-type version-counter finding to project-wide (10 types) plus
+  `OrderedDictionary::EnsureCapacity`'s own follow-up fix; Ch.34 added a third worked example
+  from `audit.md`'s A-01–A-07 remediation round (distinct from the already-covered
+  post-stabilization audit) — `TaskCompletionSource::TrySetResult`'s claim-then-publish race.
+  Ch.35 checked, found already thorough, no edit made. **This completes Part VI.**
+- **Ch.36 EasyGL Deep Dive** — mined `easy-gl`'s own `NEXT.md` for two real RAII additions
+  added after this chapter's original pass: `ScopedDebugGroup` and `UniformCache` (with the
+  real, undocumented "a failed lookup is memoized too" behavior, verified against the .cpp).
+  **Note for future reference:** grepping LaTeX source for an escaped identifier like
+  `result_u64` will miss it if the source has `result\_u64` — account for the backslash
+  before concluding something isn't already covered.
 
 **Every chapter above also had at least one genuine overfull-hbox, header/folio collision, or
 API-accuracy defect found and fixed while reading the whole page** (not just the new
