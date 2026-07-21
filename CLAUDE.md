@@ -50,14 +50,27 @@ before the current expansion phase started; useful for background, not for "what
 cd latex && make book   # -> book/main.pdf
 ```
 
-Uses `latexmk -pdf -interaction=nonstopmode -halt-on-error -file-line-error`. After any
-edit, rebuild and grep the log for `undefined` before committing:
+Uses `latexmk -pdf -interaction=nonstopmode -halt-on-error -file-line-error`.
+
+**As of 2026-07-21, the build/verify step is deliberately batched, not per-chapter** (an
+explicit author decision, trading slower error discovery for faster writing throughput — see
+"Batched verification" below). Do not rebuild after every single chapter edit; do rebuild and
+fully verify once per batch of roughly 8–10 chapters/appendices.
+
+When a verification pass does run, check both of these — the first is a substring match and
+can silently false-positive on ordinary prose containing the word "undefined" (e.g. "...an
+address, undefined behavior..."), so prefer the second, tighter pattern:
 
 ```bash
-grep -i undefined latex/book/main.log | grep -v "san-i-tiz"   # the "-tiz" exclusion is
-                                                                 # for an unrelated sanitizer
-                                                                 # mention in running prose
+grep -i "Warning.*undefined\|undefined reference\|undefined control" latex/book/main.log
+grep -i "multiply defined\|multiply-defined" latex/book/main.log
 ```
+
+Both should be empty. Neither check substitutes for the PNG-render visual pass described below
+— `grep -i overfull` is proven unreliable in both directions on this project (misses real
+overflows; separately, hundreds of pre-existing "overfull" log lines never surface under a
+plain `grep -i` due to binary-detection false negatives) — only rendering the affected pages to
+PNG and reading them catches a real text overflow.
 
 ## Non-negotiable methodology (established across this whole project, not just the expansion)
 
@@ -74,12 +87,33 @@ grep -i undefined latex/book/main.log | grep -v "san-i-tiz"   # the "-tiz" exclu
 - **Code examples must be real, compilable code**, adapted from an actual test or example call
   site wherever one exists — not invented from scratch, and never presented as verified when it
   wasn't actually compiled.
-- **Recompile after every chapter or small batch of edits.** This project's most common real
-  failure mode is a stale cross-reference (a plain-text "Chapter~17" citation left behind after
-  inserting or renumbering a chapter) — grep for `Chapter~[0-9]` patterns project-wide after
-  any renumbering and fix every stale one by hand.
+- **Batched verification (author decision, 2026-07-21): write across roughly 8–10
+  chapters/appendices, then do one consolidated build-and-verify pass, not one per chapter.**
+  This is a deliberate speed/safety tradeoff — writing throughput matters more than catching a
+  layout defect the moment it's introduced. During the writing part of a batch: run the
+  spacing-fix regex on each touched file as usual, but do **not** run `make book`, and do
+  **not** render pages to PNG. Once a batch's writing is done (or a natural stopping point is
+  reached), run the full verification pass once: `make book`, both `grep` checks above, locate
+  each touched chapter's physical page range (`pdftotext -f N -l N`), render every touched page
+  to PNG (`pdftoppm -png -f N -l N -r 120`), read each one, and fix whatever is found — stale
+  cross-references (this project's most common real failure mode: a plain-text "Chapter~17"
+  citation left behind after inserting or renumbering a chapter — grep for `Chapter~[0-9]`
+  patterns project-wide after any renumbering), overfull-hboxes, running-header/folio
+  collisions, and any hard LaTeX compile error, all fixed together in the same pass rather than
+  chased one at a time. A batch can compile broken (or overflow) for the length of the batch —
+  that is the accepted cost of this policy, not an oversight if it happens.
+- **Mark each row's verification status honestly while a batch is in flight.** A `PLAN.md` row
+  written during the writing part of a batch is not yet PDF-verified — say so explicitly (e.g.
+  `**In progress (~N of ~M pages, pending batch verification)**`) rather than claiming
+  `PDF-verified clean` before the batch's own verification pass has actually run. Only relabel
+  a row `PDF-verified clean` once the consolidated pass has actually rendered and inspected its
+  pages. `NEXT.md` should likewise always state, at handoff, which chapters in the current
+  batch are still pending verification, so a future session (or this one, after an
+  interruption) knows exactly where the batch left off.
 - **Commit in small, descriptive increments and push after each one** — not one giant commit at
-  the end of a session. This is what makes a multi-session project actually resumable.
+  the end of a session. This is what makes a multi-session project actually resumable. This is
+  independent of the batched-verification policy above: keep committing per chapter even while
+  deferring the build/PNG-verify step to the end of the batch.
 - **Honor explicit author scope decisions even when they conflict with a later, broader
   instruction** — flag the conflict in `PLAN.md` and ask, don't resolve it silently by picking
   whichever reading is more convenient. (Two such conflicts already came up and were resolved
