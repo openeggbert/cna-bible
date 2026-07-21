@@ -102,6 +102,53 @@ environment --- suspected to be an environment or driver limitation shared with 
 finding made independently on \texttt{D3D9} (Chapter~\ref{ch:direct3d-backends}), rather than
 a Vulkan-specific defect.
 
+\section{Two distinct render-target black-render bugs, both still open}
+\label{sec:vulkan-rendertarget-black}
+
+Chapter~\ref{ch:textures-rendertargets} previewed, in one sentence, that sampling a
+\cnaclass{RenderTargetCube} face after rendering into it renders black on this backend ``for
+two distinct, separately-tracked reasons.'' \texttt{docs/rendertarget-support.md} documents
+both in enough detail to name precisely, and it is worth doing so here rather than leaving the
+preview as the whole story.
+
+The first (Task~875) is not specific to cube targets at all: \texttt{VulkanGraphicsBackend::%
+Clear()} only records a global clear-color scalar and never registers the currently-bound
+render target as actually ``used'' --- only a real draw call does that. The consequence is a
+narrow but real trap for exactly the kind of code a cube-face render pass often looks like:
+
+\begin{lstlisting}
+device.SetRenderTarget(&probe, CubeMapFace::PositiveZ);
+device.Clear(Color::CornflowerBlue); // records a clear color, but nothing else
+device.SetRenderTarget(nullptr);     // no draw call happened in between -- Task 875's trigger
+\end{lstlisting}
+
+With no draw call between the \texttt{Clear} and the unbind, no Vulkan render pass is ever
+recorded at all, and the target's underlying image stays permanently in
+\texttt{VK\_IMAGE\_LAYOUT\_UNDEFINED} --- confirmed directly via a Vulkan validation error, not
+inferred. Chapter~\ref{ch:textures-rendertargets}'s own \cnaclass{RenderTargetCube} worked
+example sidesteps this specific trap by drawing real scene geometry into the probe (a genuine
+draw call always follows the \texttt{Clear} there); a face that is deliberately left as flat
+clear color with no further drawing is exactly the case this bug catches.
+
+The second (Task~876) is the more interesting one, because it survives \emph{even after}
+working around the first: rendering real content into all six \cnaclass{RenderTargetCube}
+faces via an ordinary \cnaclass{SpriteBatch} draw (so Task~875 no longer applies), then
+sampling that cube map back through \cnaclass{EnvironmentMapEffect} --- Chapter~\ref{ch:stock-effects}'s
+own worked chrome-car-body example --- still renders black. The investigation's own account is
+candid that this is not a simple, already-diagnosed bug: the sampling path itself
+(\texttt{dynamic\_cast<IVulkanCubeSamplable*>} plus \texttt{GetVkCubeImageView()}) is described
+as ``architecturally sound,'' unlike \textbf{BGFX}'s own cube-sampling bug covered in
+Chapter~\ref{ch:bgfx-backend} (a genuine wrong-handle-cast, diagnosed precisely). Vulkan's root
+cause instead remains genuinely unresolved between two named candidates. One possibility is that
+the \cnaclass{SpriteBatch}-into-cube-face rendering itself is subtly wrong. The other is that the
+descriptor-set cache behind environment-map sampling, \texttt{GetOrCreateEnvMapDescSet}, is
+serving a stale or incorrect descriptor. The project's own record is explicit that this
+ambiguity, not a lack of investigation, is why it remains open. A porting engineer relying on
+real-time cube-map
+reflections (dynamic environment mapping, a reflection probe updated every frame) should treat
+this as a confirmed, currently-unworkaroundable gap on Vulkan specifically, not attempt to
+debug their own call-site code against it first.
+
 \section{A confirmed non-gap: device-feature gating}
 
 Not every investigation into this backend found a bug. A dedicated check of whether optional
