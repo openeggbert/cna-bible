@@ -9,9 +9,10 @@ per-chapter detail this file only summarizes).
 ## Where things stand right now (mid-session, autonomous depth pass in progress, 2026-07-21)
 
 **The book is a single, unified book**, built via `make book` (→ `latex/book/main.pdf`).
-Compiles clean as of the last checkpoint: **329 pages, 0 undefined references, 0
+Compiles clean as of the last checkpoint: **337 pages, 0 undefined references, 0
 duplicate-label warnings** (verify before quoting — re-run `make book` and grep the log
-before trusting this number).
+before trusting this number; and use PNG rendering, not `grep -i overfull`, to check for
+overflow — see "Reusable findings" below, this was reconfirmed multiple times this session).
 
 **This is an autonomous, long-running session** (the user explicitly authorized "continue
 autonomously for as long as there is useful, safe work within scope" and asked not to be
@@ -27,7 +28,7 @@ separate branch to look for. Commit and push directly to `develop`, small commit
 chapter, exactly as this whole session has been doing (check `git log --oneline -20` to see
 the pattern if in doubt).
 
-## This session's work so far: depth pass on Part I–II chapters (7 of ~18+ planned)
+## This session's work so far: depth pass on Part I–III chapters (13 of ~18+ planned)
 
 The prior session did a **breadth pass** (first-ever touch) on all 22 previously-untouched
 Part I–IV chapters plus Appendix A. This session is doing the natural next step, a **depth
@@ -36,31 +37,35 @@ mirroring the exact pattern already validated multiple times on Parts V–IX in 
 sessions. Completed so far this session, each with a real new worked example or finding,
 grounded in an actual source read, rebuilt and PNG-verified before commit:
 
-- **Ch.1 What Is CNA** — added "Design goals in the project's own words" (all 6 real README
-  goals) and a cross-backend "scale of verification" comparison table (test counts + method
-  per backend, side by side).
-- **Ch.2 Ecosystem Map** — added a real, previously-undocumented second-level sibling
-  dependency: `free-direct` itself depends on a third repo, `free-api` (a ~1998-era WinAPI
-  subset via SDL3), confirmed by reading `BackendSelection.cmake` directly; named
-  `free-eggbert`/`planetblupi` as independent real consumers.
-- **Ch.3 Design Philosophy** — added a validated-property-setter worked example
-  (`SkinnedEffect::WeightsPerVertex`) and a full missing-dependency lifecycle worked example
-  (`sharp-runtime`'s `BinaryReader::ReadChar`/`ReadDecimal` — real gap, documented stopgap,
-  now properly implemented; verified against the current header).
-- **Ch.4 Building CNA** — added real Android/NDK and Web/Emscripten build walkthroughs
-  (grounded in `docs/devices-build.md` and the project's own real `emcc` 6.0.2 verification
-  record, including a real `sharp-runtime` bug — `FileSystemWatcher.hpp`'s unconditional
-  `inotify` fields — found and fixed along the way).
-- **Ch.5 First Game** — added a third complete worked program (edge-bounce + `SoundEffect`,
-  real `Viewport`-bounds clamp-in-same-branch finding).
-- **Ch.6 Game Loop** — added a full `DrawableGameComponent` worked example
-  (`FpsCounterComponent`), including the real `Add(IGameComponent*)` raw-pointer-ownership
-  finding and the `DrawOrder` finding.
-- **Ch.8 Content and Assets** — quoted two real `.cnj` files directly from `cnj.md` (a
-  self-contained `SpriteFont` document and a `Texture2D` `sourceFile`/`colorKey` metadata
-  sidecar).
+- **Ch.1 What Is CNA** — "Design goals in the project's own words" + cross-backend
+  verification-scale comparison table.
+- **Ch.2 Ecosystem Map** — a real, previously-undocumented second-level sibling dependency
+  (`free-direct` → `free-api`), confirmed via `BackendSelection.cmake`.
+- **Ch.3 Design Philosophy** — `SkinnedEffect::WeightsPerVertex` validated-setter example +
+  `sharp-runtime`'s `BinaryReader::ReadChar`/`ReadDecimal` missing-dependency lifecycle example.
+- **Ch.4 Building CNA** — real Android/NDK and Web/Emscripten build walkthroughs, incl. a real
+  `sharp-runtime` `FileSystemWatcher.hpp` bug found and fixed along the way.
+- **Ch.5 First Game** — a third complete worked program (edge-bounce + `SoundEffect`).
+- **Ch.6 Game Loop** — a full `DrawableGameComponent` worked example (`FpsCounterComponent`).
+- **Ch.8 Content and Assets** — two real `.cnj` files quoted directly from `cnj.md`.
+- **Ch.10 SpriteBatch** — `SpriteSortMode::Texture` pointer-sort non-determinism finding
+  (Task~668/414) + a full section on `Begin()`'s lasting `GraphicsDevice.BlendState` side
+  effect (Task~956 fix, still-open Task~933 caveat).
+- **Ch.11 Textures/Render Targets** — `TextureCube` six-face worked example +
+  `RenderTargetCube` render-into-face worked example (`SetRenderTarget(RenderTargetCube*,
+  CubeMapFace)` — caught and corrected a wrong first-draft API guess against the real header).
+- **Ch.12 Models and Meshes** — full `MorphTargetEXT` worked example adapted from
+  `MorphTargetEXTTests.cpp`'s own two-target fixture.
+- **Ch.13 Stock Effects** — worked examples for all 4 remaining stock effects (AlphaTest,
+  DualTexture, EnvironmentMap, Skinned), each tied to that effect's own already-documented
+  audit findings.
+- **Ch.14 State Objects** — worked examples for DepthStencilState (stencil-masked mirror),
+  RasterizerState (shadow-map depth bias + wireframe toggle), SamplerState (pixel-art vs.
+  mipmapped-floor filter choice); found/fixed one new and one pre-existing overfull-hbox.
+- **Ch.15 Shader/.fx Gap** — matching real D3D9 HLSL worked example alongside the existing
+  GLSL one, incl. a real minor doc-comment inaccuracy noted in `ShaderEffect`'s own header.
 
-**Every one of the above also had at least one genuine pre-existing overfull-hbox defect
+**Every chapter above also had at least one genuine overfull-hbox or API-accuracy defect
 found and fixed while reading the whole page** (not just the new content) — this remains the
 single most common defect class in this whole project; see "Reusable findings" below for the
 patterns that actually worked to fix them this time.
@@ -69,24 +74,25 @@ patterns that actually worked to fix them this time.
 
 Not yet started this session, roughly in the order a fresh session should continue in:
 
-1. **Ch.10 SpriteBatch** through **Ch.16 Backend Architecture** (Part III tail + start of
-   Part IV) — not yet touched this session.
-2. **Ch.17 through Ch.24** (the rest of Part IV's backend chapters) — not yet touched this
+1. **Ch.16 Backend Architecture** (task #37, in progress — pick this up first) through
+   **Ch.24** (the rest of Part IV's backend chapters, tasks #37-38) — not yet touched this
    session.
-3. **Appendix A** — not yet touched this session (already has a `GraphicsDevice`/state-object
-   section from the prior breadth pass; look for what's still missing beyond that).
-4. **Ch.7 (Math, ~33/110 pages) and Ch.9 (GraphicsDevice, ~23/90 pages)** — both already
-   depth-passed multiple times in much earlier sessions; the previously-known gap lists are
-   exhausted, so this needs fresh gap-hunting (diff the real header against the chapter's
-   prose again, from scratch) rather than a ready-made list.
-5. **Parts V–IX (chapters 25–48)** — each still 3–15 of a 30–70 page target; same "find a
-   real, narrower gap and turn it into a worked example" approach as everything above.
+2. **Appendix A** (task #39) — not yet touched this session (already has a
+   `GraphicsDevice`/state-object section from the prior breadth pass; look for what's still
+   missing beyond that).
+3. **Ch.7 (Math, ~33/110 pages) and Ch.9 (GraphicsDevice, ~23/90 pages)** (task #40) — both
+   already depth-passed multiple times in much earlier sessions; the previously-known gap
+   lists are exhausted, so this needs fresh gap-hunting (diff the real header against the
+   chapter's prose again, from scratch) rather than a ready-made list.
+4. **Parts V–IX (chapters 25–48)** (task #41) — each still 3–15 of a 30–70 page target; same
+   "find a real, narrower gap and turn it into a worked example" approach as everything above.
 
 None of this needs to happen in the exact order listed — it's a reasonable default sequence,
 not a hard dependency chain. A session with limited time should prioritize finishing whichever
-Part is already partway through (right now: finish Part III/IV's depth pass) before starting a
-new Part, so the book doesn't end up with an uneven, hard-to-track patchwork of "which chapters
-got a second touch."
+Part is already partway through (right now: finish Part IV's depth pass, tasks #37-38) before
+starting a new Part, so the book doesn't end up with an uneven, hard-to-track patchwork of
+"which chapters got a second touch." Check `TaskList` for the live, authoritative status of
+tasks #24-41 — it is kept current, task by task, throughout this session.
 
 ## Reusable findings from this session, worth knowing before continuing
 
@@ -126,6 +132,28 @@ got a second touch."
   Ecosystem Map chapter's own table shows** — `free-direct` depends on `free-api`. Worth
   checking whether any other sibling repo has its own further `add_subdirectory(../something)`
   the same way, next time Ch.2 or the repo-map appendix gets touched again.
+- **A single overly-long line inside an `lstlisting` block can silently wrap character-by-
+  character down the right margin instead of breaking at a sensible point** — found in Ch.14's
+  first draft of a ternary-expression example (`device.setRasterizerStateProperty(cond ? a :
+  b);` on one long line). `\allowbreak{}` does not apply inside `lstlisting` the way it does in
+  running prose; the fix that actually works is restructuring the statement itself (here, into
+  a plain `if`/`else`) so no single line is too long, not trying to force a break within the
+  listing. Check every code block that has one conspicuously long line, not just prose
+  paragraphs, when PNG-rendering a chapter.
+- **A prose paragraph can genuinely be pre-existing and still be overfull** even in a chapter
+  you are only adding to, not rewriting — Ch.14's SamplerState section had a real, pre-existing
+  overfull-hbox (a long chain of slash-joined `\texttt{}` overload names) that had nothing to do
+  with anything added this session. Read the whole rendered page, not just the new paragraphs,
+  every time — this has now happened often enough across this project that it should be treated
+  as the default expectation, not a surprise.
+- **Guessing a plausible-sounding overload from prose description alone is a real, repeatable
+  risk — always grep the actual header before finalizing a worked example.** Ch.11's first
+  draft assumed a `RenderTargetBinding`-taking `SetRenderTarget` overload existed for
+  single-target cube-face binding; the real header only has
+  `SetRenderTarget(RenderTargetCube*, CubeMapFace)` directly (the `RenderTargetBinding` form is
+  for the plural `SetRenderTargets(vector<...>&)` overload instead). Caught before commit by
+  grepping `GraphicsDevice.hpp` directly — this is the same risk category flagged in the prior
+  session's `TimeSpan::operator+=` mistake, confirmed recurring rather than a one-off.
 
 ## Housekeeping reminders (unchanged from before, still true)
 
