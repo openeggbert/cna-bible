@@ -179,6 +179,68 @@ is pre-multiplied by each bone's own \texttt{InverseBindPose}, which is specific
 \cnaclass{SkinnedEffect::SetBoneTransforms} expects, since GPU skinning needs the bone's
 \emph{delta} from bind pose, not its absolute pose.
 
+\subsection{A worked example: a two-target morph, adapted from its own test suite}
+
+\texttt{MorphTargetEXTTests.cpp} builds every one of its cases around the same small,
+hand-crafted fixture, which doubles as a clear, minimal illustration of how the whole system
+fits together: a single stride-32 triangle (three vertices, each Position/Normal/TextureCoordinate)
+as the base pose, and two morph targets --- target~0 pushes every vertex by $+1$ in $Z$ with no
+normal change; target~1 moves only vertex~0 by $+2$ in $X$ and tilts its normal toward $+X$:
+
+\begin{lstlisting}
+MorphTargetDataEXT morph;
+morph.BaseVertexBytes = BuildBaseTriangleBytes(); // 3 verts, stride-32, +Z normal, origin plane
+morph.Stride = 32;
+
+morph.PositionDeltas.push_back({Vector3(0, 0, 1), Vector3(0, 0, 1), Vector3(0, 0, 1)}); // target 0
+morph.NormalDeltas.emplace_back();                                    // no normal delta, target 0
+
+morph.PositionDeltas.push_back({Vector3(2, 0, 0), Vector3(0, 0, 0), Vector3(0, 0, 0)}); // target 1
+morph.NormalDeltas.push_back({Vector3(1, 0, 0), Vector3(0, 0, 0), Vector3(0, 0, 0)});
+
+morph.Weights = {0.0f, 0.0f}; // both targets off -- base pose
+
+part.setTagProperty(&morph); // ModelMeshPart::Tag, the same attachment convention SkinningData
+                              // uses on Model::Tag, but one level down the hierarchy
+\end{lstlisting}
+
+Driving both targets to full weight at once is the case worth reasoning through by hand, because
+it is where an easy mental model (``morph targets are independent'') breaks in a way the real
+math does not: \emph{additive} combination means vertex~0 (the only vertex both targets touch)
+receives \textbf{both} deltas simultaneously, while vertices~1 and~2 (untouched by target~1)
+receive only target~0's:
+
+\begin{lstlisting}
+SetMorphWeightsEXT(part, {1.0f, 1.0f}); // re-blends CPU-side, re-uploads the vertex buffer
+
+// Vertex 0: base (0,0,0) + target 0's (0,0,1) + target 1's (2,0,0) = (2, 0, 1)
+// Vertex 1: base (1,0,0) + target 0's (0,0,1) + target 1's zero-for-this-vertex = (1, 0, 1)
+\end{lstlisting}
+
+The blended normal at vertex~0 is the second detail worth internalizing, because it is a place
+\texttt{BlendMorphTargetsEXT} does strictly more work than a naive weighted sum would: the base
+normal $(0,0,1)$ plus target~1's full-weight delta $(1,0,0)$ sums to $(1,0,1)$, which has length
+$\sqrt{2}$, not~1 --- \cnaclass{BlendMorphTargetsEXT} renormalizes every blended normal back to
+unit length before returning, exactly because a weighted sum of unit vectors is not itself a
+unit vector in general. \texttt{TextureCoordinate} (and, by the same rule, \texttt{BlendWeight}/
+\texttt{BlendIndices} on a rigged mesh part) is copied from the base pose completely unchanged
+by any of this --- only \texttt{Position} and \texttt{Normal} ever participate in morph blending.
+Passing a weight vector whose length does not match \texttt{PositionDeltas.size()} throws rather
+than silently truncating or ignoring the extra entries, verified directly by the test suite's
+own \texttt{WrongWeightCountThrows} case.
+
+Per-frame animated weights layer directly on top of this via \texttt{EvaluateMorphWeightsEXT}
+and a \texttt{MorphWeightTrackEXT} attached to \texttt{MorphTargetDataEXT::WeightTrack} --- the
+same three interpolation modes glTF's own ``weights'' animation channel supports (\texttt{LINEAR},
+\texttt{STEP} hold-last-value, and real Hermite \texttt{CUBICSPLINE} when a keyframe's tangents
+are populated), evaluated independently of \cnaclass{AnimationPlayer}'s own bone-track timeline,
+consistent with this system's complete independence from bone-based skinning noted above:
+
+\begin{lstlisting}
+const auto weights = EvaluateMorphWeightsEXT(morph.WeightTrack, animationTimeSeconds);
+SetMorphWeightsEXT(part, weights);
+\end{lstlisting}
+
 \section{Collections, uniformly}
 
 \cnaclass{ModelBoneCollection}, \cnaclass{ModelMeshCollection},
