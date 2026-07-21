@@ -233,6 +233,78 @@ owner-approved cost. This is exactly the kind of open, well-diagnosed-but-unreso
 book's own closing chapters (Chapter~47, Chapter~49) point to as evidence that ``done'' and
 ``verified correct'' are not the same claim, even inside a single actively-maintained system.
 
+\subsection{A worked example: what \texttt{ComputeBoneTransformsEXT} actually computes}
+
+Every worked example so far treats \cnaclass{SkinnedModelEXT}'s animation sampling as a black
+box behind \texttt{DrawRealEXT}. \texttt{ComputeBoneTransformsEXT(clipName, position, loop,
+outWorldBones)} --- the function that actually does it --- is worth tracing through directly,
+since its real test file builds the smallest possible rig that still exercises hierarchy
+composition: two bones, bone~1 a child of bone~0 offset $(0,1,0)$ in the bind pose, with a
+single keyframe track moving bone~0 from $(0,0,0)$ at $t{=}0$s to $(2,0,0)$ at $t{=}1$s:
+
+\begin{lstlisting}
+SkinnedModelEXT model;
+model.BoneCount = 2;
+model.ParentBoneIndices = {-1, 0};
+model.BindPoseLocal = {Matrix::getIdentityProperty(),
+                        Matrix::CreateTranslation(Vector3(0, 1, 0))};
+model.InverseBindPoseGlobal = {Matrix::getIdentityProperty(),
+                                Matrix::getIdentityProperty()};
+
+BoneTrackEXT track;
+track.BoneIndex = 0;
+track.Keys.push_back(KeyframeEXT{TimeSpan::FromSeconds(0.0), Vector3(0, 0, 0)});
+track.Keys.push_back(KeyframeEXT{TimeSpan::FromSeconds(1.0), Vector3(2, 0, 0)});
+
+AnimationClipEXT clip;
+clip.Duration = TimeSpan::FromSeconds(1.0);
+clip.Tracks.push_back(track);
+model.Clips["Move"] = clip;
+
+std::vector<Matrix> bones;
+model.ComputeBoneTransformsEXT("Move", TimeSpan::FromSeconds(0.5), false, bones);
+// bones[0].Translation.X == 1.0f -- linear interpolation, exactly halfway
+\end{lstlisting}
+
+Reading \texttt{SkinnedModelEXT.cpp} directly shows the real algorithm behind that single
+number: sample each bone track's translation (\texttt{Lerp}) and rotation
+(\texttt{Quaternion::Slerp}) at the clamped/wrapped clip position into a local transform per
+bone, then walk \texttt{ParentBoneIndices} in stored (topological) order composing each bone's
+local transform with its already-computed parent's world transform, and finally multiply by
+\texttt{InverseBindPoseGlobal} to produce the skinning matrix \cnaclass{SkinnedEffect} actually
+consumes. Three real, independently-fixed defects live inside this one function, each verified
+by its own dedicated test:
+
+\begin{description}
+  \item[Task 11.1 --- unbounded looping cost.] The original wraparound for \texttt{loop=true}
+        repeatedly subtracted or added one \texttt{Duration} at a time until the position fell
+        back in range --- a real per-call cost proportional to \texttt{position / Duration},
+        catastrophic for a long-running session animating a short clip.
+        \cnaclass{System::TimeSpan} has no modulo operator, so the fix works in raw ticks
+        instead: C\texttt{++}'s \texttt{\%} truncates toward zero, so a single conditional
+        \texttt{+= durationTicks} normalizes a negative remainder into
+        \texttt{[0, durationTicks)} --- floor-mod without ever actually looping. The real
+        regression test constructs a position 1{,}000{,}000{,}000.5 clip-durations in (using
+        integer tick arithmetic specifically to keep the expected result exact) and asserts
+        the call completes in under 100ms.
+  \item[Task 11.3 --- unchecked skeleton-data lengths.] \texttt{ParentBoneIndices} /
+        \texttt{BindPoseLocal} / \texttt{InverseBindPoseGlobal} are populated straight from
+        file content and then indexed up to \texttt{BoneCount} with no check that each
+        vector's own \texttt{.size()} actually matches it --- a corrupt or truncated
+        \texttt{.skeleton.bin} (or, as the real test file's own comment notes, a
+        hand-constructed model in a test) previously produced a real out-of-bounds
+        \texttt{std::vector::operator[]} read instead of a clean, catchable error. Fixed with
+        an explicit length check that throws \texttt{ArgumentException} naming exactly which
+        vector disagreed with \texttt{BoneCount}, before any indexing happens.
+  \item[Task 13.2 --- an out-of-range track is skipped, not crashed.] A defensive bounds check
+        (\texttt{!track.Keys.empty() \&\& track.BoneIndex >= 0 \&\& track.BoneIndex <
+        localTransforms.size()}) means a track referencing a bone index that does not exist on
+        this model --- 99 on a 2-bone rig, or a negative index --- is safely skipped, leaving
+        that (nonexistent) bone at its bind pose rather than corrupting memory or throwing. The
+        real test asserts this with \texttt{EXPECT\_NO\_THROW} on two simultaneously-bad tracks
+        (index 99 and index $-5$) added to the same clip used above.
+\end{description}
+
 \section{Backend support and real content proof}
 
 Real GPU skinning through this extension is proven end-to-end via pixel readback on EasyGL;
