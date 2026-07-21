@@ -126,6 +126,49 @@ strategy already shown, independently, three separate times, to find real bugs n
 had caught, which is the strongest argument available for continuing to invest in it rather
 than treating current coverage as good enough.
 
+\section{A gap in this book itself: \texttt{SDL\_GPU}, a real backend with no dedicated chapter}
+
+Every gap named so far in this chapter is a gap in CNA's own code. This one is different in
+kind, and worth naming with the same honesty this book applies to the project it describes:
+\texttt{SDL\_GPU} is a real, working, extensively-verified graphics backend that this book has
+never given a dedicated chapter, despite Part~IV covering every other backend
+\texttt{CNA\_GRAPHICS\_BACKEND} accepts. It surfaces only in passing so far --- named as one of
+the backends overriding \cnaclass{IEffectBackend}'s full setter set (Chapter~\ref{ch:backend-architecture})
+and one of the five backends \cnaclass{ShaderEffect} genuinely supports
+(Chapter~\ref{ch:shader-fx-gap}) --- never introduced in its own right the way
+\texttt{BGFX} or \texttt{WebGPU} are.
+
+This is not a thin or experimental backend being fairly left out. Reading \texttt{plan\_sdlgpu.md}
+directly shows a real, Linux/Vulkan-driver-verified implementation: both stock 2D
+(\cnaclass{SpriteBatch}, all sampler/blend states) and 3D rendering (colored, textured, lit,
+skinned geometry, real depth-test occlusion proofs), every stock effect including
+\cnaclass{EnvironmentMapEffect} and \cnaclass{SkinnedEffect}, custom \cnaclass{ShaderEffect}
+support via a genuine runtime GLSL-to-SPIR-V compile (\texttt{libshaderc} linked directly into
+the backend, not merely used at build time), and render targets with real MSAA and mip
+regeneration. Counting the actual CMake test registration
+(\texttt{cmake/Tests/SdlGpuTests.cmake}) directly rather than trusting a possibly-stale plan-doc
+snapshot shows \textbf{20} real CTest binaries today, spanning 2D, 3D, every stock effect,
+custom shaders, render-target variants, texture types, sampler/render state, draw order, and
+swapchain recovery --- a genuinely broader CTest binary count than several backends this book
+does give a full chapter to. Its one permanent, documented limitation is occlusion queries:
+the vendored SDL3's own \texttt{SDL\_gpu.h} has no query-pool API at all, so
+\texttt{CreateOcclusionQuery()} correctly returns \texttt{nullptr}, the identical posture
+\texttt{HEADLESS} and \texttt{SOFTWARE} already take for the same underlying reason. Windows,
+macOS, and Android validation remain deferred pending real (or Wine-class) hardware, the same
+caveat structure this book already applies to \texttt{D3D11} / \texttt{D3D12} / \texttt{WebGPU}.
+
+Why this gap exists is itself instructive: this book's chapter list was fixed early, against
+the set of backends that existed and were verified at the time Part~IV was drafted, and
+\texttt{SDL\_GPU} matured afterward without a corresponding pass ever being scheduled to add
+it. This is the same category of drift this book's own project-practice chapter
+(Chapter~\ref{ch:project-practice}) describes for the ecosystem's tracking documents ---
+a written structure (here, this book's own table of contents) that was accurate when fixed and
+has since fallen behind a codebase that kept moving. Closing it properly would mean a genuine
+new Part~IV chapter, not a paragraph grafted onto an existing one, and that is a scope decision
+for the project owner to make, not one for this book to resolve unilaterally by quietly
+renumbering every downstream chapter --- named here, honestly, as an open item rather than
+either silently left out of this roadmap chapter or fixed without asking.
+
 \section{A closing note on how to use this chapter}
 
 Every gap named in this chapter is named because a specific, dated source said so ---
