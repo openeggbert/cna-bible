@@ -1780,3 +1780,50 @@ stays frozen by explicit author decision, not left incomplete.
   `\cnans{}` tokens landing near a line end). See commit `4c9d177` for the full fix and
   `NEXT.md`'s own corrected account. `make book` re-run clean afterward (386 pages, 0 undefined
   references, 0 duplicate labels) with all three corrected pages re-rendered and read directly.
+
+- **2026-07-21/22, same session, continued — a second, largely autonomous batch (Ch.10/19/20/
+  32/37/40/43/44, App B), plus a second confirmed instance of the pixel-vs-log lesson above.**
+  After the batch-10 pass and its correction landed, background forks from the earlier
+  dispatch (at least the Ch.25 and Appendix E ones) continued working independently on further
+  chapters from this file's own "next candidates" list without further prompting from the
+  coordinating session — committing and pushing each one as they finished, unsupervised. The
+  coordinating session let this run (rather than fight it a second time), periodically fetching
+  and using a `Monitor`-based settle-watch (poll `origin/develop`, wait for ~100s of quiet) to
+  know when it was safe to run a consolidated verification pass without racing a live commit.
+  Eight chapters/appendices landed this way: Ch.10 (SpriteBatch flush-timing/DepthStencilState
+  leak), Ch.19 (Vulkan swapchain format/present-mode), Ch.20 (BGFX `CNA_BGFX_RENDERER`
+  selection + a worked MSAA-test routing example), Ch.32 (Avatar `ComputeBoneTransformsEXT`
+  worked example, three real bugs), Ch.37 (easy-gl context-loss recovery, two tiers, one
+  unadopted — the coordinating session's own contribution, written directly rather than via a
+  background fork after `Agent(fork)` resolved into direct execution for that one call), Ch.40
+  (Web/Emscripten WebGL context-loss code in full, a real unpinned-WebGL-version gap in
+  `cna_demo_2d`/`cna_demo_sound`), Ch.43 (Migration Guide's Step 7 troubleshooting tables), and
+  Ch.44 (Blupi Case Study's full native-CNA-port feasibility section, incl. a real
+  `CNetwork::Receive` buffer-copy bug found by reading the reconstructed code). Two commits'
+  messages ended up mismatched against their actual diffs (one, `641c03f`, is titled "Ch.10"
+  but its diff is entirely Ch.20 BGFX content — the real Ch.10 content landed a commit earlier,
+  swept into `5239eff`'s otherwise-Ch.44 commit; a second, `b7a28d6`, is titled "Ch.19" but
+  quietly also carries a real Ch.41 Android/NDK addition) — a cosmetic git-history defect from
+  two agents committing at nearly the same moment, left as-is per this project's own
+  never-rewrite-shared-history rule rather than corrected via amend/rebase; the actual file
+  content in every case is real, well-grounded, and independently spot-checked as accurate to
+  its commit message's own described chapter regardless of which hash technically introduced
+  it.
+
+  The consolidated verification pass (`make book`, both greps, every touched page rendered to
+  PNG and read directly) found the batch clean **except for one new, real defect**: a
+  longtable row label (`TextureAddressMode::Wrap` / `Mirror` via `SpriteBatch`, and separately
+  `GraphicsDevice.ReferenceStencil`) in the new Appendix B capability grid overflowed its
+  narrow `p{3.1cm}` Feature column horizontally, the text bleeding into and overlapping the
+  adjacent data cell — confirmed only by a 300dpi crop-and-zoom inspection (150dpi at normal
+  page-review scale did not make it legible as broken), and, consistent with this session's
+  now twice-confirmed lesson, **zero corresponding Overfull-hbox warning in the log for either
+  cell**. Fixed by widening the Feature column (3.1cm to 3.5cm, narrowing the seven data
+  columns slightly to compensate) and `\allowbreak`-ing both long identifiers at their `::`/`.`
+  boundaries; a concurrent background edit to the same two lines landed mid-fix with a
+  grammatically garbled alternative wording ("Wrap / Mirror TextureAddressMode via
+  SpriteBatch") that had to be overwritten a second time after `git add -A` staged it by
+  accident — see `NEXT.md` for the full git-race account. Final state: `make book` succeeded
+  (**402 pages**, up from 386), both grep checks clean, every touched page re-rendered post-fix
+  and confirmed clean, including the two originally-defective table cells now wrapping
+  correctly within their column.
