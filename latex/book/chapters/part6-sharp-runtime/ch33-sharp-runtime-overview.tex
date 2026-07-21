@@ -171,6 +171,37 @@ System::Threading::Tasks::Task continuation = loadTask.ContinueWith(
     });
 \end{lstlisting}
 
+\subsection{WhenAll and WhenAny: the same exception-sniffing bug, found twice}
+
+\cnaclass{Task::WhenAll} and \cnaclass{Task::WhenAny} round out the async surface, and
+\texttt{WhenAny} specifically was rebuilt to match real .NET's own zero-extra-thread design
+(\texttt{TaskFactory.CommonCWAnyLogic}'s completion-registration strategy) rather than the
+naive one-watcher-thread-per-input-task approach it started as --- \texttt{WhenAny}'s own
+header comment records that the original version \texttt{join()}'d its losing watcher threads,
+making the whole call as slow as its slowest input, fixed by \texttt{detach()}ing them instead
+once \texttt{ContinueWith}'s continuation-registration mechanism made a dedicated watcher
+thread unnecessary in the first place. \texttt{WhenAll} waits on every input task to completion
+(never short-circuiting on the first fault, matching real .NET) and, if one or more faulted,
+rethrows the first one encountered in input order when the returned task is waited on --- a
+deliberate simplification versus real .NET's \texttt{AggregateException} wrapping, consistent
+with the same choice \cnaclass{Task::Wait} already makes for a single faulted task.
+
+Both methods needed to distinguish a genuinely canceled input task from one that faulted with a
+directly-thrown \cnaclass{TaskCanceledException}, and both hit the identical bug independently
+before the fix: an earlier version of the underlying completion watcher used
+\texttt{catch (const TaskCanceledException\&)} to detect cancellation, which cannot tell a real
+cancellation apart from a caller-supplied \cnaclass{TaskCanceledException} passed to
+\texttt{TaskCompletionSource::SetException()}, since \texttt{TrySetCanceled()} completes its own
+promise with a \cnaclass{TaskCanceledException} internally too --- silently discarding the
+caller's actual exception object and message, confirmed via a standalone repro rather than
+inferred from a code read. The fix, applied in both places once found, does not sniff the
+exception type at all: a separate, out-of-band atomic cancellation flag is set only by the
+genuine producer-side cancellation path (\texttt{TrySetCanceled()}), and the watcher
+checks that flag instead of pattern-matching the caught exception --- so a task whose action
+throws \cnaclass{TaskCanceledException} itself, with no cooperative
+\cnaclass{CancellationToken} involved, now correctly reports Faulted rather than being
+misclassified as Canceled.
+
 \cnaclass{Threading::Thread} is a thin wrapper over \texttt{std::thread} that deliberately does
 not start at construction --- a second call to \texttt{Start()} throws
 \texttt{ThreadStateException}, matching real .NET's own one-shot-start contract exactly,
