@@ -33,6 +33,48 @@ CNA)'' and lists CNA as its own downstream consumer, not the other way around; y
 principle, use \texttt{sharp-runtime} or \texttt{easy-gl} in a project that has nothing to do
 with XNA at all.
 
+\section{How the siblings are actually wired together at build time}
+\label{sec:sibling-wiring}
+
+The dependency graph above is not just a narrative claim --- it is exactly what CNA's own
+\texttt{CMakeLists.txt} and \texttt{cmake/BackendSelection.cmake} do at configure time, checked
+directly rather than assumed. Every sibling dependency follows the identical pattern: an
+\texttt{if(NOT EXISTS \ldots/CMakeLists.txt)} guard that fails configuration outright, with a
+real, copy-pasteable fix in the error message itself, rather than failing confusingly deep in a
+missing-header compile error later:
+
+\begin{lstlisting}[style=cnashell]
+CNA: Missing sibling repository 'sharp-runtime' at
+${CMAKE_CURRENT_SOURCE_DIR}/../sharp-runtime -- this is a separate git
+checkout expected next to this repo's own directory, not a git
+submodule (git submodule update --init will not fetch it). Fix:
+cd ${CMAKE_CURRENT_SOURCE_DIR}/.. &&
+git clone https://github.com/openeggbert/sharp-runtime.git
+\end{lstlisting}
+
+\texttt{sharp-runtime} is unconditionally required (\texttt{add\_subdirectory(../sharp-runtime
+SHARP\_RUNTIME)} runs regardless of backend choice); \texttt{easy-gl} and \texttt{free-direct}
+are each pulled in only when the matching \texttt{-DCNA\_GRAPHICS\_BACKEND} value is selected,
+so a plain \texttt{SDL\_RENDERER} or \texttt{VULKAN} build never even checks whether those two
+sibling directories exist.
+
+\begin{sourcenote}
+\textbf{A real, second-level dependency this book's dependency-graph table doesn't show.}
+\texttt{free-direct} is not a leaf in this graph --- its own \texttt{CMakeLists.txt} pulls in a
+\emph{third} sibling repository, \texttt{free-api}, an experimental, small
+WinAPI-compatibility-subset project (targeting roughly the Win32 API surface as it existed
+around 1998) built on SDL3 the same way every other project in this ecosystem is, per
+\texttt{free-api}'s own README. \texttt{BackendSelection.cmake}'s own comment explains why this
+does not need a separate SDL configuration flag: \texttt{free-direct} resolves
+\texttt{SDL3::SDL3} / \texttt{SDL3\_image::SDL3\_image} / \texttt{SDL3\_mixer::SDL3\_mixer} from
+CNA's own already-vendored targets, set up before backend selection runs, so the whole
+three-level chain (CNA~$\to$~\texttt{free-direct}~$\to$~\texttt{free-api}) shares one SDL3
+build rather than each level vendoring its own. The same comment names two real, independent
+consumers of \texttt{free-direct} beyond CNA itself --- \texttt{free-eggbert} and
+\texttt{planetblupi} --- confirming this sibling chain is genuinely reused ecosystem
+infrastructure, not machinery built only for CNA's own \texttt{DX3} backend.
+\end{sourcenote}
+
 \section{sharp-runtime: the floor CNA stands on}
 \label{sec:sharp-runtime-intro}
 
