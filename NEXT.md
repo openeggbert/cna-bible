@@ -9,19 +9,20 @@ per-chapter detail this file only summarizes).
 ## Where things stand right now (mid-session, autonomous depth pass in progress, 2026-07-21)
 
 **The book is a single, unified book**, built via `make book` (→ `latex/book/main.pdf`).
-Compiles clean as of the last checkpoint: **343 pages, 0 undefined references, 0
+Compiles clean as of the last checkpoint: **347 pages, 0 undefined references, 0
 duplicate-label warnings** (verify before quoting — re-run `make book` and grep the log
 before trusting this number; and use PNG rendering, not `grep -i overfull`, to check for
 overflow — see "Reusable findings" below, this was reconfirmed many times this session,
 including on `grep -a` output that revealed hundreds of pre-existing "overfull" log lines
 `grep -i` alone was silently missing).
 
-**25 chapters/appendix-sections depth-passed so far this session: Ch.1-9 (all except 7/9
-being fresh-gap top-ups since they'd been done before), Ch.10-24 (all of Parts I-IV), and
-Appendix A.** Tasks #24-40 are all complete. Only task #41 remains: **Parts V-IX (chapters
-25-48), not yet touched this session** — this is the large remaining item. Continue with
-**Ch.25 (The Input System)** next, working sequentially through 48, using the identical
-established methodology (see below).
+**Tasks #24-40 are all complete** (all of Parts I-IV, chapters 1-24, plus Appendix A).
+**Task #41 (Parts V-IX, chapters 25-48) is now in progress: Ch.25-28 done this session**
+(Ch.25 checked and found already well-covered from a very recent prior session, no edit
+needed; Ch.26-28 each got a real depth-pass addition). Continue with **Ch.29
+(GamerServices)** next, working sequentially through 48. See "A new, high-value technique
+discovered this session" below before starting — it materially changed how fast good gaps
+were found for Ch.26-28 and should be applied to every remaining chapter in Parts V-IX.
 
 **This is an autonomous, long-running session** (the user explicitly authorized "continue
 autonomously for as long as there is useful, safe work within scope" and asked not to be
@@ -109,24 +110,70 @@ grounded in an actual source read, rebuilt and PNG-verified before commit:
   (not in the header) that pulls World/View/Projection from the applied `Effect` at every
   draw-dispatch call site — ties Ch.13/15/21's effect chapters to this chapter's own draw
   dispatch. Found and fixed 6 pre-existing overfull-hboxes in the same section while there.
+- **Ch.25 Input System** — checked, found already thoroughly covered from a very recent prior
+  session (the very last commit before this session's own work began); no edit made.
+- **Ch.26 Audio System** — two fresh bugs mined from `plan_audio20260717.md` Phase 14 (dated
+  2026-07-17, not previously used as a source): a `SoundBank::GetCue()` cue-lifetime gap (a
+  held-but-unplayed `Cue` could outlive its bank) and a `DynamicSoundEffectInstance` byte-
+  accounting bug (a whole chunk popped for one byte of real playback), both with the real
+  audit's own numbers worked through.
+- **Ch.27 Media** — one fresh bug mined from `plan_media.md` Phase 16 Group B: `Song`'s real
+  `TrackNumber` tag was parsed correctly but silently discarded one call-layer above, caught
+  by a mutation-verified fixture using 4 distinct non-identical track numbers.
+- **Ch.28 Devices and Sensors** — a fourth concurrency finding mined from `plan_devices.md`'s
+  LIFE-001 (dated 2026-07-17): a genuine TSan-only-detectable race discovered *inside* an
+  already-CLOSED two-phase Start/Stop fix, causing real heap corruption under an 8-thread
+  stress test — the same "closed isn't proof" methodology point as Ch.18's EasyGL finding,
+  independently rediscovered in a completely different subsystem.
 
 **Every chapter above also had at least one genuine overfull-hbox, header/folio collision, or
 API-accuracy defect found and fixed while reading the whole page** (not just the new
 content) — this remains the single most common defect class in this whole project; see
 "Reusable findings" below for the patterns that actually worked to fix them this time.
 
+## A new, high-value technique discovered this session — use it for every remaining chapter
+
+Parts V-IX (chapters 25-48) map onto CNA subsystems that mostly have their own dedicated
+`plan_<subsystem>.md` file at the `cna` repo root (`plan_audio20260717.md`/`plan_audio.md`,
+`plan_media.md`, `plan_devices.md`, `plan_net.md`, and so on — `ls
+/rv/data/development/github.com/openeggbert/cna/plan_*.md` to see what exists for a given
+chapter's subsystem). These files accumulate phases over many real sessions, each dated, and
+**the book's own prior coverage of a chapter was very often written from an earlier phase,
+before the plan file's own later phases existed.** The technique that worked well for Ch.26-28
+this session:
+
+1. Find the newest/most-recently-touched plan doc for the chapter's subsystem
+   (`grep -o "2026-[0-9-]*" plan_X.md | sort -u | tail -5`, or just check the tail of the
+   phase/section outline — `grep -n "^#\|^##" plan_X.md | tail -20`).
+2. Read its most recent phase(s) for concrete, real, dated findings (a specific bug, a
+   specific fix, ideally with real before/after numbers or a named test).
+3. Grep the book chapter for whether that specific finding (method name, bug description) is
+   already mentioned. If not, it is very likely a genuinely fresh gap, not something already
+   covered under different wording — this was true every single time it was tried this
+   session (3 for 3: Ch.26's two audio findings, Ch.27's TrackNumber finding, Ch.28's TSan
+   finding).
+4. Write it up the same way as every other worked example/finding in this book: grounded,
+   specific, with the real mechanism and (where the source has them) real numbers.
+
+This is meaningfully faster than the alternative (re-reading the whole chapter and the whole
+relevant header hunting for anything unmentioned) and found genuinely substantial material
+every time — including one especially strong example worth knowing about before starting
+Parts V-IX: **a bug found and fixed inside a fix that was already marked CLOSED**, only by a
+later real ThreadSanitizer run (Ch.28's LIFE-001 amendment). Don't skip a chapter's plan file
+just because the chapter already looks thorough — Ch.26-28 all looked reasonably thorough
+before this technique still found real, substantial, uncovered material in each one.
+
 ## Remaining depth-pass work
 
-**Only task #41 remains: Parts V-IX, chapters 25-48, not yet touched this session.** Every
-other task (#24-40, covering all of Parts I-IV plus Appendix A) is complete. Each of the 24
-remaining chapters is still 3-15 of a 30-70 page target — same "find a real, narrower gap
-grounded in an actual source read and turn it into a worked example, verify via PDF render,
-fix any overfull-hbox found along the way" approach used throughout this whole session.
-Continue sequentially starting with **Ch.25 (The Input System)**. Check `TaskList` for the
-live, authoritative status — task #41 is the only one still open, and it is large enough that
-a fresh session picking this up should expect to work through many chapters in sequence
-without needing to re-derive the approach; the methodology below is now proven across 25
-chapters and does not need to change.
+**Only task #41 remains: Parts V-IX, chapters 25-48.** Every other task (#24-40, covering all
+of Parts I-IV plus Appendix A) is complete. Ch.25-28 are done this session (see above); 20
+chapters remain (29-48), each still roughly 3-15 of a 30-70 page target. Continue
+sequentially starting with **Ch.29 (GamerServices)**, using the technique above plus the same
+build/render/verify loop used throughout this whole session (rebuild, check for
+undefined/multiply-defined refs, render the chapter's own physical pages to PNG and read them,
+fix any overfull-hbox or header/folio collision found along the way — PNG rendering remains
+the only reliable check, not `grep -i overfull`). Check `TaskList` for the live, authoritative
+status — task #41 is the only one still open.
 
 ## Reusable findings from this session, worth knowing before continuing
 
