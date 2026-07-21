@@ -9,7 +9,7 @@ per-chapter detail this file only summarizes).
 ## Where things stand right now (mid-session, autonomous depth pass in progress, 2026-07-21)
 
 **The book is a single, unified book**, built via `make book` (→ `latex/book/main.pdf`).
-Compiles clean as of the last checkpoint: **347 pages, 0 undefined references, 0
+Compiles clean as of the last checkpoint (Ch.40): **347 pages, 0 undefined references, 0
 duplicate-label warnings** (verify before quoting — re-run `make book` and grep the log
 before trusting this number; and use PNG rendering, not `grep -i overfull`, to check for
 overflow — see "Reusable findings" below, this was reconfirmed many times this session,
@@ -17,16 +17,15 @@ including on `grep -a` output that revealed hundreds of pre-existing "overfull" 
 `grep -i` alone was silently missing).
 
 **Tasks #24-40 are all complete** (all of Parts I-IV, chapters 1-24, plus Appendix A).
-**Task #41 (Parts V-IX, chapters 25-48) is in progress: all of Part V (Ch.25-32) and Ch.33-34
-of Part VI are done this session**, plus Ch.36 of Part VII. Ch.35 was checked and found
-already thoroughly covered (no edit needed). Continue with **Ch.37 (free-direct in Depth)**
-next. See "A new, high-value technique discovered this session" below before starting each
-chapter — it found real, substantial material in every chapter it was tried on this session
-except Ch.25/35 (already-thorough, checked-not-edited), including in sibling-repo chapters:
-`sharp-runtime`'s own `NEXT.md`/`audit.md`, and `easy-gl`'s own `NEXT.md`, each had exactly the
-same kind of not-yet-mined recent findings the `cna` plan docs did. For any remaining Part
-VI/VII/VIII/IX chapter about a specific sibling repo, check that repo's own root for a
-`NEXT.md`/`PLAN.md`/`plan_*.md`/`audit*.md` first, the same way.
+**Task #41 (Parts V-IX, chapters 25-48) is in progress: all of Part V and Part VI are done,
+plus Ch.36/38/40 of Parts VII-VIII.** Ch.25, Ch.35, Ch.37, Ch.39 were each checked and found
+either already thoroughly covered or (Ch.37 only) **explicitly author-frozen — do not
+expand, confirmed 2026-07-20, see PLAN.md's own row** — no edit made to any of those four.
+Continue with **Ch.41 (Verification Methodology, Compared)** next, then into Part IX
+(Ch.42-48). See "A new, high-value technique discovered this session" below before starting
+each chapter. **Important: always check PLAN.md's own row for a chapter before editing it —
+Ch.37 is a real example of an explicit author scope cap that must be honored, not treated as
+just another under-target chapter to grow.**
 
 **This is an autonomous, long-running session** (the user explicitly authorized "continue
 autonomously for as long as there is useful, safe work within scope" and asked not to be
@@ -160,6 +159,20 @@ grounded in an actual source read, rebuilt and PNG-verified before commit:
   **Note for future reference:** grepping LaTeX source for an escaped identifier like
   `result_u64` will miss it if the source has `result\_u64` — account for the backslash
   before concluding something isn't already covered.
+- **Ch.37 free-direct** — checked PLAN.md first: explicitly frozen by the author
+  ("Stays marginal per author confirmation 2026-07-20 — do not expand"). Skipped entirely,
+  correctly — this is a real instance of CLAUDE.md's "honor explicit author scope decisions"
+  rule, not a chapter that merely looks low-priority.
+- **Ch.38 Windows/Wine** — mined `cna`'s own root `NEXT.md` for a real D3D9 API restriction
+  found closing out D9-30/D9-31: DXVK correctly refuses `D3DFMT_A8B8G8R8` as a swap-chain
+  format (legal for a texture, illegal for the back buffer specifically).
+- **Ch.39 Web/Emscripten** — checked (root `NEXT.md`, `plan_canvas.md`), found already
+  thoroughly covered; no edit made.
+- **Ch.40 Android/NDK** — mined `plan_devices.md`'s ANDR2-003 for a real, general-lesson
+  concurrency bug: a genuine bounded timeout defeated by an unconditional `join()`
+  immediately downstream of it, affecting 3 call paths (Start's own cleanup, a concurrent
+  external Stop, the destructor) — fixed with a second bounded wait plus a sticky abandoned
+  flag and `detach()` fallback.
 
 **Every chapter above also had at least one genuine overfull-hbox, header/folio collision, or
 API-accuracy defect found and fixed while reading the whole page** (not just the new
