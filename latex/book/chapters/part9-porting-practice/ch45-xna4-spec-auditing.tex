@@ -96,6 +96,83 @@ zero-argument constructor (\texttt{Ray() = default;}). This is not flagged as an
 expectation for a plain aggregate struct, not a deliberate extension of the XNA surface, and
 this book's own audits do not require a \texttt{NOXNA} tag for it.
 
+\section{A second worked audit: \cnaclass{Viewport}, member by member}
+
+Every example above comes from \texttt{Microsoft.Xna.Framework}, the root namespace. The same
+three-step process applies unchanged to any of the other eighteen namespaces
+\texttt{xna4-spec} covers --- worth demonstrating once with a type from elsewhere in the tree,
+both to confirm the process generalizes and because this second audit turns up a genuinely
+different kind of finding than \cnaclass{Ray} did.
+
+\cnaclass{Viewport} lives in \cnans{Microsoft.Xna.Framework.Graphics}, and \texttt{xna4-spec}'s
+own \texttt{Microsoft.Xna.Framework.Graphics/Viewport.xml} lists: two constructors
+(\texttt{Viewport(Rectangle)} and \texttt{Viewport(Int32, Int32, Int32, Int32)}), nine
+properties --- \texttt{AspectRatio} (get-only), \texttt{Bounds}, \texttt{Height},
+\texttt{MaxDepth}, \texttt{MinDepth}, \texttt{TitleSafeArea} (get-only), \texttt{Width},
+\texttt{X}, and \texttt{Y} --- and three methods: \texttt{Project}, \texttt{Unproject}, and
+\texttt{ToString}. No fields and no events are declared at all, matching \cnaclass{Viewport}'s
+own nature as a pure value-type view onto four coordinates and a depth range.
+
+Checking that list against the real header
+(\texttt{include/\allowbreak{}Microsoft/\allowbreak{}Xna/\allowbreak{}Framework/\allowbreak{}Graphics/\allowbreak{}Viewport.hpp})
+finds every member present. Both constructors match exactly, including the same defaulted
+\texttt{MinDepth=0} / \texttt{MaxDepth=1} the spec's own remarks describe for each --- and, as
+with \cnaclass{Ray}, \cnaclass{Viewport} also adds one member the spec does not list: a
+defaulted zero-argument constructor, the same baseline-aggregate case already established as
+not requiring a \texttt{NOXNA} tag. \texttt{Height}, \texttt{MaxDepth}, \texttt{MinDepth},
+\texttt{Width}, \texttt{X}, and \texttt{Y} are each backed by \texttt{DEF\_PROP} --- the same
+getter/setter-generating macro whose \texttt{getXProperty()} / \texttt{setXProperty()} naming
+convention Chapter~\ref{ch:migration-guide} already covers --- while \texttt{AspectRatio},
+\texttt{Bounds}, and \texttt{TitleSafeArea} are hand-written methods instead. That split is not
+an inconsistency; it tracks a real distinction in what each property actually is.
+\texttt{DEF\_PROP} models a property backed directly by one stored field; \texttt{AspectRatio}
+is computed from two fields with no field of its own, \texttt{Bounds} constructs a
+\cnaclass{Rectangle} from four fields (and, being settable, unpacks one back into all four on
+the way in), and \texttt{TitleSafeArea} --- see below --- is computed from \texttt{Bounds}
+again. None of the three can be expressed as a direct getter/setter pair over a single field,
+so all three fall outside what \texttt{DEF\_PROP} can generate and are written out by hand,
+exactly as the macro's own design would predict once you know what it does and does not cover.
+\texttt{Project} and \texttt{Unproject} both match the spec's four-parameter
+\texttt{(Vector3, Matrix, Matrix, Matrix)} shape exactly, confirmed directly against
+\texttt{Viewport.cpp}'s own implementation of each.
+
+The audit's one substantive finding sits inside that hand-written trio. \texttt{xna4-spec}'s
+own remarks for \texttt{TitleSafeArea} are specific about what the property is supposed to do:
+the title safe area is ``the part of the screen where text should be displayed,'' and the
+property itself ``reduces the title safe area of the viewport uniformly.'' A real console-era
+XNA implementation insets the returned rectangle by a fixed margin (historically an
+80\%-of-viewport safe region on Xbox 360, the platform the remark is written for).
+\cnaclass{Viewport}'s own header describes its C\texttt{++} member differently --- ``Same
+rectangle as Bounds'' --- and \texttt{getTitleSafeAreaProperty()}'s real implementation in
+\texttt{Viewport.cpp} bears that out exactly: \texttt{return getBoundsProperty();}, no inset
+applied at all. This is not an untested oversight either; \texttt{ViewportTests.cpp} carries a
+dedicated \texttt{TitleSafeAreaEqualsBounds} test that asserts precisely this behavior ---
+\texttt{TitleSafeArea} returning the same four coordinates as \texttt{Bounds} is the
+deliberate, regression-tested baseline, not a bug nobody has gotten to yet.
+
+By the three-step process alone, \texttt{TitleSafeArea} is a clean pass: present, correctly
+named, correctly typed (\cnaclass{Rectangle}), get-only exactly as the spec describes, no
+\texttt{NOXNA} tag needed because nothing about it is an addition. It is the first concrete
+instance in this chapter of the limitation the closing section below names in the abstract: a
+membership-and-shape audit has nothing further to say once a member exists and type-checks,
+even when --- as here --- its actual behavior openly diverges from what the specification's
+own prose says that member is for. Whether the divergence is the right call is a separate,
+judgment-requiring question (the physical off-screen bleed an 80\%-safe-area convention
+corrected for on a CRT-era television essentially does not exist on a modern flat-panel
+display, which is a real argument for leaving \texttt{Viewport} as-is) --- but that judgment is
+not something the audit itself can render; it can only surface the gap between documented and
+implemented behavior for a human to weigh next.
+
+A practical heuristic falls out of how this specific finding was actually found: the properties
+worth reading past their signature are the hand-written ones, not the \texttt{DEF\_PROP} ones.
+A \texttt{DEF\_PROP}-backed property is a direct read or write of one stored field --- it either
+holds the value it was given or it does not, and \cnaclass{Ray}'s own audit above already
+establishes that class of check is straightforward. A hand-written accessor is where an
+implementation choice can hide, because it is free to compute something other than what its
+name and the spec's remarks describe. When auditing a type with a mix of both, reading every
+hand-written property's full \texttt{<remarks>} block in \texttt{xna4-spec}'s own XML --- not
+just its signature --- is the specific step that catches a case like \texttt{TitleSafeArea}.
+
 \section{A licensing note worth stating plainly}
 
 \texttt{xna4-spec}'s own README is direct about its content's origin: the API names,
@@ -115,3 +192,12 @@ Chapter~\ref{ch:testing-philosophy} exist to do instead. A useful mental model f
 this Part: \texttt{xna4-spec} auditing answers ``is the surface complete and correctly
 shaped,'' while the testing mechanisms from the previous chapter answer ``does the surface
 that exists actually work.'' Both questions matter, and neither answers the other.
+
+The \cnaclass{Viewport} / \texttt{TitleSafeArea} case above is a concrete instance of exactly
+this limit, with a further wrinkle worth naming: \texttt{TitleSafeAreaEqualsBounds} is a real,
+passing unit test, so this is not a gap either kind of check would surface as a failure. The
+test faithfully verifies the implementation's own chosen behavior; it says nothing about
+whether that behavior matches \texttt{xna4-spec}'s remarks, because nothing in this project's
+test suite is written against \texttt{xna4-spec} directly. Closing a gap like this one, if it
+is ever judged worth closing, starts with the manual read this chapter demonstrates --- not
+with a red test, because there is not one.
