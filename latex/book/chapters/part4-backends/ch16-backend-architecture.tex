@@ -73,6 +73,54 @@ all for ``does this backend actually honor a \cnaclass{SpriteBatch} transform ma
 caller has no way to \emph{ask} before hitting this specific silent no-op --- unlike the eight
 capabilities that mechanism does cover.
 
+\subsection{IRenderTargetBackend: where Chapter~\ref{ch:textures-rendertargets}'s honest defaults actually live}
+
+Reading \cnaclass{IRenderTargetBackend}'s own interface definition directly explains
+\emph{why} several of Chapter~\ref{ch:textures-rendertargets}'s per-backend render-target
+findings take the specific shape they do, rather than being independent per-backend choices:
+\texttt{GetMultiSampleCount()} defaults to returning \texttt{0}, and
+\texttt{HasRealDepthBuffer(bool depthFormatWasRequested)} defaults to simply echoing back
+whatever was requested. Vulkan and BGFX ``honestly reporting \texttt{MultiSampleCount = 0}''
+is not a special case either backend had to write --- it is what happens automatically by
+\emph{not overriding} this method at all, exactly the same ``graceful capability degradation''
+default-no-op pattern this chapter opened with, applied here to a getter rather than a
+command. \textbf{SDL\_RENDERER} is the one backend that does override
+\texttt{HasRealDepthBuffer} specifically to return \texttt{false} unconditionally (Task~708)
+--- the one case in this whole family of defaults where the honest answer requires active
+code rather than falling out of inaction, because the naive default (echoing the request back)
+would otherwise silently claim a depth buffer exists on a backend whose 2D-only render targets
+never allocate one.
+
+\subsection{IEffectBackend and IOcclusionQueryBackend: capability-gated by construction}
+
+These are the two thinnest interfaces in the table above, and both connect directly to
+\cnaclass{GraphicsCapability} values already named in this chapter.
+\cnaclass{IOcclusionQueryBackend} is fully pure virtual --- \texttt{Begin()}, \texttt{End()},
+\texttt{IsComplete()}, \texttt{PixelCount()} --- with no default-no-op escape hatch at the
+interface level at all; a backend that does not support occlusion queries simply never
+constructs one in the first place, since \texttt{CreateOcclusionQuery()} on
+\cnaclass{IGraphicsBackend} itself is what defaults to \texttt{nullptr}
+(\cnaclass{GraphicsCapability::OcclusionQuery} is the flag a caller checks before ever
+reaching this interface at all).
+
+\cnaclass{IEffectBackend} takes the opposite approach for a subtler reason worth reading
+carefully: only \texttt{CompileProgram}, \texttt{Bind}, \texttt{Unbind}, \texttt{IsValid}, and
+\texttt{GetCompileError} are pure virtual --- every one of its \texttt{SetUniform*} setters
+(\texttt{Float}, \texttt{Int}, \texttt{Vec2/3/4}, \texttt{Mat4}, and the array forms) defaults
+to a silent no-op body in the interface itself, the identical shape as
+\cnaclass{ISpriteBatchBackend}'s \texttt{SetTransformMatrix} default from this chapter's own
+\texttt{ISpriteBatchBackend} section above. This means a backend could, in
+principle, compile a \cnaclass{ShaderEffect}'s program successfully (\texttt{IsValid()}
+returning \texttt{true}) while silently dropping every single uniform value a game sets on it
+--- exactly the kind of ``it compiles and something appears on screen'' risk
+Chapter~\ref{ch:shader-fx-gap}'s own \texttt{IsEffectValid()} worked example already warned
+readers to check for, extended one level deeper here: a valid program is not the same
+guarantee as a program that actually receives the uniforms it was given. Every backend that
+ships \cnaclass{ShaderEffect} support in practice does override the full setter set (this is
+not a real, observed gap the way the \cnaclass{SpriteBatch} transform-matrix one is) --- but
+the interface's own permissiveness here is worth knowing before assuming a new or
+partially-ported backend's uniform setters are wired up just because its shader compiles.
+
 \section{GpuDrawParams: already covered, worth remembering here}
 
 Chapter~\ref{ch:stock-effects} already introduced \cnaclass{GpuDrawParams} in full --- the
