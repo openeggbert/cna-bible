@@ -145,6 +145,36 @@ apply uniformly across every one of this backend's stock-effect shader programs 
 textured, color-plus-textured, and the lit/skinned variants alike), not as a one-off patch to
 the single scene that exposed each bug.
 
+\section{A second stale-doc claim, this time about \texttt{Viewport}}
+
+The staleness warning this chapter opened with applies to more than just
+\texttt{docs/easygl\_bugs.md}. \texttt{docs/rendertarget-support.md} --- the same document
+Chapter~\ref{ch:vulkan-backend}'s own equivalent finding drew from, where three of its own
+tracked tasks turned out to already be fixed on Vulkan --- lists this backend's own
+\texttt{Viewport} support identically: ``zero wiring on any backend'' (Task~880), meaning a
+custom sub-region \cnaclass{Viewport} was believed to have no actual GPU effect at all.
+Reading \texttt{EasyGLGraphicsBackend.cpp} directly instead of trusting that status column
+finds the same Task~880 fix already landed here too, with real, unconditional
+\texttt{device.set\_viewport()} / \texttt{device.set\_depth\_range()} calls replacing whatever
+no-op previously sat behind \texttt{SetViewport()}.
+
+The comparison with Vulkan's own version of this exact fix (Chapter~\ref{ch:vulkan-backend})
+is worth drawing out, because the two backends did not land at the same scope. Vulkan's fix is
+honestly limited to the backbuffer pass only --- a render-target pass there stays hardcoded to
+that target's own full size, because Vulkan's deferred, once-per-frame command-recording model
+has no way to recover which \cnaclass{Viewport} was active at the moment a given render
+target's draws were originally issued. EasyGL has no equivalent limitation, for an
+architectural reason rather than extra effort spent on this specific fix: \texttt{SetViewport()}
+issues its OpenGL calls immediately, at the moment a game actually calls it, with no deferred
+recording step in between --- so the same fix genuinely applies whether or not a
+\cnaclass{RenderTarget2D} / \cnaclass{RenderTargetCube} face is currently bound, using the active
+target's own height (\texttt{currentRtHeight\_}) for the coordinate-origin flip instead of the
+window's physical height whenever one is. A concrete illustration of a theme
+Chapter~\ref{ch:backend-architecture} already introduced in the abstract: two backends
+implementing the identical interface method can genuinely differ in how completely they can
+honor it, for reasons rooted in each backend's own underlying execution model rather than in
+how carefully either one was built.
+
 \section{Test baseline}
 
 The feature matrix records exactly three known pre-existing test failures for this backend:
