@@ -101,6 +101,21 @@ deriving \texttt{Title} / \texttt{Album} / \texttt{Artist} from the file's own p
 parent directory, and grandparent directory respectively), so a scan never simply drops an
 otherwise-playable file for lacking metadata.
 
+\texttt{TRCK} deserves its own note, because the fix here is a different shape of bug than
+anything else in this section --- not a missing parser, but a parsed value silently discarded
+one layer up. The tag parser itself always genuinely read and stored a real track number; the
+bug was that \cnaclass{MediaLibrary}'s own \cnaclass{Song}-construction call only ever passed
+through \texttt{(path, title)} or \texttt{(path, title, durationMs)}, with no parameter slot
+for the track number at all, so \texttt{Song::TrackNumber} stayed hardcoded at~0 regardless of
+what the file actually tagged. The real, mutation-verified fixture that caught this uses four
+distinct, independently-confirmed track numbers on purpose --- \emph{Sunrise}=1,
+\emph{Twilight}=1, \emph{Daybreak}=2, \emph{{\'E}toile}=3 --- specifically so an
+all-zero-or-all-one stub implementation cannot accidentally pass by coincidence the way a
+single-fixture test might. This is worth remembering as a general testing lesson beyond this
+one property: a bug that silently drops a correctly-parsed value one layer up in the call chain
+is invisible to any test that only checks the parser in isolation, and a fixture whose expected
+values are not all identical is what actually forces a real, non-stub implementation to exist.
+
 The user-rating conversion is a real, if underspecified, corner: ID3v2's \texttt{POPM} frame
 uses a 0--255 byte, while the Vorbis \texttt{RATING} comment has no agreed standard at all ---
 different taggers write 0--100, 0--5, or 0--10 into it in practice. Neither real XNA nor FNA
