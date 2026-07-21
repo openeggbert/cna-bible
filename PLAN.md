@@ -1827,3 +1827,29 @@ stays frozen by explicit author decision, not left incomplete.
   (**402 pages**, up from 386), both grep checks clean, every touched page re-rendered post-fix
   and confirmed clean, including the two originally-defective table cells now wrapping
   correctly within their column.
+
+- **2026-07-22, same session, immediate correction to the entry directly above: the "batch
+  clean except for one new defect" claim was itself incomplete.** The prior entry's own
+  consolidated pass did not actually PNG-render every page of the second batch (its own
+  `NEXT.md` said as much: "full PNG sweep of batch-2 still needed next session"). The
+  coordinating session did that full sweep immediately afterward, in the same session, rather
+  than deferring it, and found **two further real page-edge overflows neither the log nor the
+  prior partial pass had caught**: `easygl::detail::GenerationTracked` (Ch.37) and
+  `InstallEmscriptenContextLossCallbacks()` (Ch.40), both long identifiers running text off the
+  physical page edge with, consistent with every other instance of this defect class found this
+  session, **zero corresponding Overfull-hbox warning logged for either**. Both fixed via
+  `\allowbreak{}` at `::`/camelCase boundaries (Ch.37's fix also split one sentence for margin,
+  matching the "restructure, don't just allowbreak" lesson from the Appendix E/Ch.45 fix
+  earlier this session) and confirmed via a targeted 200dpi re-render of each corrected page
+  before committing, not by re-checking the log. This makes five total real, log-invisible
+  page-edge overflows found and fixed in one session (Appendix E, Ch.45 x2, Appendix B, Ch.37,
+  Ch.40 — six, correcting the count) — strong enough evidence to treat as a structural property
+  of this defect class, not a string of coincidences: **a clean `grep -i overfull` and even a
+  first PNG-review pass are each individually insufficient; only a deliberate, complete,
+  page-by-page render-and-read sweep of every touched page, redone after any concurrent edit,
+  reliably catches it.** Final state, now genuinely complete: `make book` succeeded (**402
+  pages**), both grep checks clean, and every single page touched by this entire session (batch
+  one, its correction, batch two, and this correction) has been individually rendered and read
+  directly by the coordinating session at least once after its last edit. PLAN.md rows for
+  Ch.10/19/20/32/37/40/41/43/44 and Appendix B are `PDF-verified clean` as of this entry, not
+  the earlier partial pass.
