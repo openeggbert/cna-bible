@@ -59,6 +59,49 @@ for line from EasyGL's own GLSL implementation) and skinned variants of both
 \cnaclass{SkinnedEffect} and \texttt{PbrEffect} (bone-palette skinning up to 72 bones, again
 ported directly from EasyGL) were added and both pass their dedicated test suites in full.
 
+\subsection{A worked example: PbrEffect, a NOXNA metallic-roughness material}
+
+\cnaclass{PbrEffect} is worth a concrete look before moving on, since --- unlike every stock
+effect in Chapter~\ref{ch:stock-effects} --- it has no real-XNA counterpart at all: real XNA
+4.0 predates the glTF~2.0 metallic-roughness PBR model by years, so this is a \texttt{NOXNA}
+addition ported line for line from EasyGL's own GLSL implementation, not a port of anything
+Microsoft ever shipped. Its property surface mixes ordinary \cnaclass{IEffectMatrices}/%
+\cnaclass{IEffectLights} / \cnaclass{IEffectFog} plumbing (identical in shape to every stock
+effect) with a genuinely new four-texture-map PBR material:
+
+\begin{lstlisting}
+PbrEffect effect(getGraphicsDeviceProperty());
+effect.setWorldProperty(worldMatrix);
+effect.setViewProperty(camera.View());
+effect.setProjectionProperty(camera.Projection());
+
+effect.setTextureProperty(&baseColorMap);               // glTF "baseColorTexture"
+effect.setNormalMapProperty(&normalMap);
+effect.setMetallicRoughnessMapProperty(&metalRoughMap); // one texture: G=rough, B=metal
+effect.setOcclusionMapProperty(&aoMap);
+effect.setEmissiveMapProperty(&emissiveMap);
+
+// Both factors multiply the map's channel value (glTF's own "value * factor" convention),
+// or stand alone with no map bound:
+effect.setMetallicFactorProperty(1.0f);
+effect.setRoughnessFactorProperty(1.0f);
+effect.setEmissiveFactorProperty(Vector3(0.0f, 0.0f, 0.0f));
+
+effect.setLightingEnabledProperty(true);
+effect.EnableDefaultLighting();
+\end{lstlisting}
+
+The \texttt{MetallicRoughnessMap} single-texture, two-channel packing above is not an
+implementation shortcut CNA introduced --- it is glTF~2.0's own real specified layout for this
+material model (green channel roughness, blue channel metallic, red and alpha unused), and
+\texttt{PbrEffect} follows it exactly so a metallic-roughness texture exported by any
+standards-conformant glTF pipeline can be bound directly with no channel-repacking step. This
+is also, concretely, the effect Chapter~\ref{ch:models-meshes}'s two independent skinning
+systems both connect to on this backend: the WebGPU port adds a skinned variant of
+\texttt{PbrEffect} alongside skinned \cnaclass{SkinnedEffect}, so a glTF character rig
+authored with a metallic-roughness material and driven by \cnaclass{AnimationPlayer} reaches
+GPU skinning through this effect rather than through \cnaclass{SkinnedEffect} at all.
+
 \section{Render targets, environment mapping, instancing, and mip generation}
 
 \cnaclass{RenderTarget2D} support combines depth and stencil into a single format regardless
@@ -92,8 +135,8 @@ mentally, and worth walking through precisely because it produces no error of an
 only a subtly wrong result:
 
 \begin{lstlisting}
-device.SetRenderTarget(&smallOffscreenTarget); // e.g. a 256x256 render target,
-                                                // while the game window is 1920x1080
+// e.g. a 256x256 render target, while the game window itself is 1920x1080:
+device.SetRenderTarget(&smallOffscreenTarget);
 spriteBatch.Begin();
 spriteBatch.Draw(sourceTexture, Vector2::Zero, Color::White); // "fill the target"
 spriteBatch.End();
