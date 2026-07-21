@@ -144,6 +144,37 @@ tone.BufferNeeded += [&tone](System::Object*, const System::EventArgs&)
 tone.Play();
 \end{lstlisting}
 
+\subsection{A real, recent bug: a whole chunk popped for one byte of real playback}
+
+The claim earlier in this section --- \texttt{PendingBufferCount} only decreases once a chunk
+is \emph{genuinely} consumed --- is worth the same scrutiny as the \cnaclass{Cue} lifetime bug
+above, because a real, externally-reported bug (found the same week, independently
+re-verified by hand-tracing the exact algorithm against real byte counts before any fix) shows
+how easy that guarantee is to get subtly wrong. The pre-fix byte-accounting loop compared
+\texttt{total} (bytes SDL reports as consumed so far) against \texttt{queuedBytes} (bytes this
+instance still believes are queued), and popped an \emph{entire} submitted chunk off its
+internal tracking list the instant \texttt{total > queuedBytes} became true at all --- not once
+that specific chunk's own full byte count had actually finished playing. Hand-tracing two
+whole-second, 4096-byte chunks against real elapsed time makes the consequence concrete: after
+roughly 30~ms of real playback (perhaps 92 bytes genuinely consumed), the comparison already
+went true, and the \emph{entire} first 4096-byte chunk was popped --- \texttt{PendingBufferCount}
+dropped from~2 to~1 after 30~ms of a chunk that needed a full second to actually finish. By
+roughly 1017~ms (barely past that first chunk's own real duration), the loop's second iteration
+fired for the same reason, popping the \emph{second} chunk too --- \texttt{PendingBufferCount}
+reached~0 a little over a second in, roughly half the real two-second runway both chunks
+together should have provided.
+
+The fix computes a single \texttt{consumed = total - queuedBytes} budget once per
+\texttt{Update()} call, and only pops a chunk once that budget actually covers the chunk's
+entire real size, decrementing the budget as each one is confirmed --- so a second chunk can
+never be credited with bytes the first one has not finished consuming yet. The practical
+consequence for the worked example above: before this fix, the \texttt{while
+(getPendingBufferCountProperty() < 2)} refill loop could be triggered roughly twice as often as
+the audio hardware actually needed, silently over-generating and over-submitting chunks well
+ahead of genuine playback need --- wasted CPU work rather than an audible glitch, and exactly
+the kind of gap invisible to any test that does not model real elapsed time against real chunk
+durations, which is why it went untested for as long as it did.
+
 \section{The XACT object model: AudioEngine, SoundBank, WaveBank, Cue}
 
 \cnaclass{AudioEngine} parses a compiled \texttt{.xgs} settings file and owns the lifecycle of
@@ -209,6 +240,35 @@ delete engineLoop;
 // Once per frame, unconditionally:
 engine.Update();
 \end{lstlisting}
+
+\subsection{A real, recent bug: a Cue obtained but never played could outlive its bank}
+
+The \texttt{GetCue} / \texttt{Play} split shown above --- obtaining a \cnaclass{Cue} handle
+without immediately playing it --- is precisely the case a real, externally-reported bug (dated
+2026-07-17, independently re-verified line-by-line before any fix was written, per this
+project's own standard practice) found a genuine gap in. \cnaclass{SoundBank}'s own
+\texttt{Dispose()} force-stops every cue the bank still owns by walking its
+\texttt{activeCues\_} list --- but \cnaclass{Cue}'s constructor never registered a newly
+obtained cue into that list at all; only \texttt{Play()} did, at each of its three real exit
+points. A cue obtained via \texttt{GetCue()} but never played --- exactly \texttt{engineLoop}
+above, in the brief window before its own \texttt{Play()} call runs --- was therefore
+completely invisible to the bank's disposal cascade: disposing the \cnaclass{SoundBank} while
+such a cue was still held would leave it referencing a \texttt{SoundBank*} that could go
+dangling the moment the bank object itself was actually destructed, with no exception and no
+warning at either the bank's disposal or the cue's own subsequent (now unsafe) \texttt{Play()}
+call.
+
+The fix moves registration into \cnaclass{Cue}'s own constructor, unconditionally, so a cue is
+tracked by its bank for its entire C\texttt{++} lifetime --- prepared, playing, stopping, or
+stopped --- not merely while actively playing; unregistration moved correspondingly from the
+moment playback genuinely stops to \cnaclass{Cue::Dispose()} instead, closing both the
+never-played gap and a narrower played-then-stopped-but-not-yet-disposed gap in the same
+change. The practical rule this implies for any code holding a caller-managed \cnaclass{Cue}
+the way \texttt{engineLoop} does above: the safety net now genuinely covers the full period
+between \texttt{GetCue()} and your own \texttt{delete}, not merely the period the cue happens
+to be audibly playing --- but only as of this fix; a build predating it would leave the same
+\texttt{engineLoop} pattern one \texttt{soundBank.Dispose()} away from a dangling pointer if
+the vehicle were destroyed before the cue's own \texttt{Play()} call had run.
 
 \subsection{AudioCategory: a detail easy to get wrong}
 
