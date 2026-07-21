@@ -61,6 +61,51 @@ EasyGL's own bug list: a real success recorded at one point in time, superseded 
 less favorable finding, and this book reports the more recent one rather than the more
 flattering one.
 
+\section{A real, subtle concurrency bug: a bounded timeout defeated by an unbounded join}
+
+A separate finding from this platform's own sensor-bridge code is worth its own worked
+treatment, because the failure shape --- a correct-looking timeout that does not actually
+bound the total wait --- is a real, general trap, not an Android-specific quirk. The Android
+sensor bridge's \texttt{Start()} already waited on its own startup-handshake condition
+variable with a genuine, real five-second bound; if a wedged native call
+(\texttt{ASensorManager\_createEventQueue()} or \texttt{ASensorEventQueue\_enableSensor()}, the
+only two calls the worker thread makes before its own poll loop starts re-checking a stop
+flag) never signaled success or failure, that five-second wait correctly gave up and called
+\texttt{Stop()} to clean up. The bug lived immediately afterward: \texttt{Stop()}'s own cleanup
+path called a plain, unconditional \texttt{worker\_.join()} --- which blocks for exactly as
+long as the still-stuck native call takes to return, possibly forever, completely defeating
+the bounded wait that preceded it. A concurrent, independent external \texttt{Stop()} call (not
+only \texttt{Start()}'s own internal cleanup path) carried the identical risk, and so did this
+bridge's own destructor, since it simply calls \texttt{Stop()} too --- three call paths, one
+underlying unbounded block.
+
+\begin{lstlisting}
+// The shape of the bug: a real, bounded wait immediately followed by an
+// unbounded one, silently erasing the first bound's own guarantee.
+if (!startCv_.wait_for(lock, kNativeCallTimeout, [] { return signaled; })) {
+    Stop();  // gives up correctly after 5 seconds...
+}
+// ...but Stop() itself used to do this, unconditionally:
+worker_.join();  // ...and this can still block forever on the same stuck call.
+\end{lstlisting}
+
+The fix applies the identical timeout a second time, at the point that actually matters: an
+atomic, sticky \texttt{abandoned\_} flag plus a second bounded wait
+(\texttt{runExitedCv\_.wait\_for}, the same five-second constant) for the worker's own run
+state to genuinely reach completion before calling \texttt{join()} at all. If that second wait
+succeeds, the subsequent \texttt{join()} is safe and near-instant, since the run state only
+reaches completion at the very end of the worker function, right before it would return
+anyway. If it does not succeed in time, \texttt{detach()} replaces \texttt{join()} ---
+well-defined on any joinable \texttt{std::thread} regardless of whether the underlying OS
+thread has actually finished, since it only severs the C\texttt{++} object's own association
+with it --- and \texttt{abandoned\_} is set, permanently, so a once-wedged bridge instance is
+never mistaken for a healthy one again even if the abandoned native call eventually does
+return on its own. The general lesson worth carrying beyond this one bridge: bounding the
+\emph{first} blocking wait in a cleanup path is not sufficient on its own if anything
+downstream of it --- a join, a second condition-variable wait, another native call --- can
+still block unboundedly; every step in a timeout-driven cleanup path needs its own bound,
+not just the first one a reviewer's eye naturally lands on.
+
 \section{What the Gradle path actually proves, concretely}
 
 The one real Android application in this project is not a graphics demo at all --- it is a
