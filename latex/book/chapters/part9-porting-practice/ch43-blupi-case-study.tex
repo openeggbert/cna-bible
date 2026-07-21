@@ -48,6 +48,7 @@ in either one --- worth internalizing before treating any single grep count as `
 number for an API surface audit.
 
 \section{A pixel-format mismatch that never became a visible bug}
+\label{sec:blupi-pixel-format-mismatch}
 
 Both games request a display mode with an explicit bit depth --- \emph{free-eggbert}
 requesting either 8-bit or 16-bit depending on a runtime flag, \emph{Planet Blupi} hardcoding
@@ -182,6 +183,29 @@ looping-flags parameter always receives a literal zero at every real call site -
 confirming, from the calling side, that DirectSound looping support genuinely cannot be
 reached by either game today, the same conclusion Chapter~\ref{ch:freedirect-deep-dive}
 already drew from the library's own implementation side.
+
+A later hardening pass ran the identical ``confirm, don't assume'' discipline against two
+further, more specific questions, each resolved the same way: grep both real games first, then
+let the answer decide whether new surface is worth adding at all. \texttt{GetCurrentPosition}
+--- a real DirectSound method \texttt{free-direct}'s own header does not currently
+declare at all, only its counterpart \texttt{SetCurrentPosition} --- turned up zero real call
+sites in either game's own source once the vendored DirectX~3 SDK headers were excluded from the
+search; every match was the SDK's own interface declaration, never an actual call. The explicit
+decision that followed is the same discipline this whole chapter has illustrated repeatedly:
+\emph{do not implement \texttt{GetCurrentPosition} speculatively}, since neither target game
+would exercise it, and revisit only if a future game genuinely calls it. A second, separate
+audit asked whether either
+game ever blits directly between an 8-bit paletted surface and a 32-bit surface --- as opposed
+to the already-documented palette-to-RGBA32 conversion that happens at present time --- and
+found zero matches for either game explicitly requesting an 8-bit \texttt{CreateSurface} pixel
+format at all; combined with the already-known fact that \texttt{SetDisplayMode} always creates
+a 32-bit primary surface regardless of what was requested
+(\S\ref{sec:blupi-pixel-format-mismatch} above), every surface either game creates in practice
+ends up 32-bit, meaning a mixed-depth blit simply cannot occur for either target. Rather than adding new error-return behavior for \texttt{BlitFrom}'s own silent,
+no-op mixed-depth fallthrough --- a case with no real call site to justify hardening against ---
+the decision was to leave the existing silent behavior exactly as it is and document why, the
+same ``do not add surface no real caller exercises'' discipline applied a second time to a
+different subsystem.
 
 \section{What this case study demonstrates about porting more generally}
 
