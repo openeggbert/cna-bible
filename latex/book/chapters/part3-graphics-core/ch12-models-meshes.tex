@@ -61,21 +61,20 @@ for (ModelMesh& mesh : model.getMeshesProperty()) {
 
 \texttt{boneTransforms[mesh.getParentBoneProperty()->getIndexProperty()]} is the one line
 worth pausing on: it looks up the mesh's \emph{own} parent bone's absolute transform, not bone
-0 or the model's own root --- which is exactly why the earlier ``two loaders'' distinction
-matters practically here, not just architecturally. Every mesh drawn through a real
-\texttt{.xnb}-loaded model gets its correct, distinct \texttt{ParentBone}; every mesh loaded
-through the older \texttt{.model.json} path silently gets the same default bone regardless of
-what the source data says, so this exact loop --- copied verbatim from a real XNA tutorial ---
-would render every part of a \texttt{.model.json}-loaded model rigidly welded together, with no
-error or warning that anything was wrong.
+0 or the model's own root. This used to be exactly where the ``two loaders'' distinction below
+bit hardest --- every mesh loaded through the older \texttt{.model.json} path once silently got
+the same default bone regardless of what the source data said, so this exact loop would have
+rendered every part of a \texttt{.model.json}-loaded model rigidly welded together. That
+specific failure mode is fixed now (Task~937, below); this worked example still holds for both
+loaders today, not just the \texttt{.xnb} one.
 
-\section{Two loaders, two very different stories}
+\section{Two loaders, two very different stories --- one now much closer to the other}
 \label{sec:model-loading}
 
-This is the single most important thing to understand about \cnaclass{Model} in CNA, and it
-is easy to miss if you only read the runtime class headers: \textbf{there are two separate,
-independent \cnaclass{Model} loaders}, and \texttt{ContentManager::Load<Model>()} always
-tries the newer, real one first.
+This is still one of the most important things to understand about \cnaclass{Model} in CNA,
+even though the gap between the two paths has narrowed substantially since an earlier pass of
+this chapter first described it: \textbf{there are two separate, independent \cnaclass{Model}
+loaders}, and \texttt{ContentManager::Load<Model>()} always tries the newer, real one first.
 
 \begin{description}
   \item[The real \texttt{.xnb} \texttt{ModelReader}] (\texttt{CNA::Internal::Xnb::ModelReader})
@@ -83,29 +82,48 @@ tries the newer, real one first.
         the full bone hierarchy, assigns each mesh's real \texttt{ParentBone}, computes a real
         \texttt{BoundingSphere}, and correctly resolves shared \cnaclass{VertexBuffer}/%
         \cnaclass{IndexBuffer} / \cnaclass{Effect} resources across meshes that share them ---
-        everything below in this section that describes a gap does \emph{not} apply to this
-        loader.
-  \item[The older \texttt{.model.json} loose-file loader] (\texttt{ModelTypeReader}) is what
-        every gap below describes. It always synthesizes exactly one \cnaclass{ModelBone}
-        (index~0), even when the source JSON's own \texttt{"bones"} array lists more --- only
-        the first entry's name is ever read, and no \texttt{AddChild} hierarchy is ever built.
-        Every mesh's \texttt{ParentBone} is left at its default regardless of what the JSON
-        says, even though the runtime constructor has supported an explicit parent-bone
-        argument since the fix mentioned above --- the loader simply never calls it.
-        \texttt{BoundingSphere} is never computed, staying at a degenerate zero radius, and
-        neither \texttt{Model.Tag} nor any \texttt{ModelMesh.Tag} is ever set. Resource
-        sharing is also absent: every mesh gets a freshly-allocated
-        \cnaclass{VertexBuffer} / \cnaclass{IndexBuffer}, and every part using anything other
-        than the plain \texttt{"BasicEffect"} string gets its own freshly-constructed
-        \cnaclass{Effect} rather than a shared one --- there is no dependency-graph-aware
-        resource deduplication of the kind FNA's own \texttt{ReadSharedResource<T>}
-        performs. At the time of writing, this loader has \emph{zero} test coverage of its
-        own, confirmed by a repository-wide search.
+        everything below in this section that describes a remaining gap does \emph{not} apply
+        to this loader.
+  \item[The \texttt{.model.json} loose-file loader] (\texttt{ModelTypeReader}) had, at the time
+        this chapter was first written, a whole cluster of real gaps against the \texttt{.xnb}
+        path --- most of that cluster is closed now, confirmed by reading the reader's current
+        implementation directly rather than trusting this chapter's own earlier pass. It no
+        longer collapses every mesh onto one synthetic root bone: each mesh gets its own real,
+        distinctly-named \cnaclass{ModelBone}, correctly attached as a child of the model's
+        root via a real \texttt{AddChild()} call, with that mesh's own \texttt{ParentBone} set
+        to point at it (Task~937) --- this is a synthesized one-bone-per-mesh scheme, not a
+        parse of an explicit hierarchy from the JSON's own \texttt{"bones"} array, but it is
+        enough to unblock exactly the kind of independently-posable-rigid-part model
+        (a tank's wheels/turret/cannon/hatch) that motivated the fix. Separately, the format
+        itself has grown a real, direct path to GPU-skinned animation: an optional top-level
+        \texttt{"skeleton"} / \texttt{"animations"} pair (Task~941, reusing the same
+        \texttt{.skeleton.bin} / \texttt{.clip.bin} binary formats \cnaclass{SkinnedModelEXT}
+        already used) attaches a real \cnaclass{SkinningData} to the loaded \cnaclass{Model}'s
+        own \texttt{Tag} property, exactly the convention
+        \S\ref{sec:animation-player-worked-example} below already describes for driving
+        \cnaclass{AnimationPlayer} --- a \texttt{.model.json} asset with a \texttt{"skeleton"}
+        field and \texttt{"effect": "SkinnedEffect"} mesh entries can now be animated the same
+        way, not only a model routed through the separate Avatar-specific format. What remains
+        genuinely unfixed: \texttt{BoundingSphere} is still never computed for this loader,
+        staying at a degenerate zero radius; \texttt{ModelMesh.Tag} itself (as opposed to
+        \cnaclass{Model}'s own \texttt{Tag}, now real) is still never set; and resource sharing
+        is still absent --- every mesh still gets a freshly-allocated \cnaclass{VertexBuffer}/%
+        \cnaclass{IndexBuffer}, and every part using anything other than the plain
+        \texttt{"BasicEffect"} string still gets its own freshly-constructed \cnaclass{Effect}
+        rather than a shared one, with no dependency-graph-aware resource deduplication of the
+        kind FNA's own \texttt{ReadSharedResource<T>} performs. The ``zero test coverage''
+        claim this chapter's own earlier pass made is also no longer true: three dedicated
+        structural tests now exist for exactly the fixes named above (bone hierarchy, skeleton/%
+        animation parsing, and an end-to-end skinned-animation pixel test proving a real
+        per-frame bone transform actually reaches the GPU).
 \end{description}
 
-Whether this distinction matters to you depends entirely on which loader your assets go
-through --- a real \texttt{.xnb} asset pipeline (this book's migration chapter) sidesteps
-every gap in this section; a hand-authored \texttt{.model.json} asset inherits all of them.
+Whether the remaining distinction matters to you depends on which loader your assets go
+through and which specific gap you rely on --- a real \texttt{.xnb} asset pipeline (this book's
+migration chapter) still sidesteps every one of them; a hand-authored \texttt{.model.json}
+asset now only inherits the narrower remaining list above, not the wholesale ``rigidly welded
+together, no bounding sphere, no shared resources, no tests'' picture an earlier pass of this
+chapter described.
 
 \section{Skinning: two independent systems, not one}
 
@@ -137,6 +155,7 @@ has its own full test coverage, and is covered alongside the rest of the Avatar 
 this book.
 
 \subsection{A worked example: driving AnimationPlayer, adapted from its own test suite}
+\label{sec:animation-player-worked-example}
 
 \texttt{AnimationPlayerTests.cpp} builds its fixtures around the smallest rig that can
 actually exercise bone-hierarchy composition: two bones, where bone~1 is a child of bone~0
