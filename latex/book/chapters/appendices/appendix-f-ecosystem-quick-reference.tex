@@ -3,8 +3,8 @@
 
 Appendix~\ref{ch:api-quick-reference} did the same job for the core framework and graphics
 classes; this appendix extends that lookup companion to the namespaces covered in
-Parts~V--IX --- Input, Audio, Media, Networking, GamerServices, and a handful of
-\repolink{sharp-runtime} core types every other chapter in those parts leans on. As in
+Parts~V--IX --- Input, Audio, Media, Devices and Sensors, Networking, GamerServices, and a
+handful of \repolink{sharp-runtime} core types every other chapter in those parts leans on. As in
 Appendix~\ref{ch:api-quick-reference}, every entry here was read directly from the
 corresponding header at the time of writing, and this is a summary of classes already given
 full narrative treatment elsewhere in this book, not a substitute for reading that treatment.
@@ -83,6 +83,58 @@ a \cnaclass{SongCollection}, or a collection plus a starting index), \texttt{Pau
 \texttt{Resume} / \texttt{Stop} / \texttt{MoveNext} / \texttt{MovePrevious}, and
 \texttt{IsRepeating} / \texttt{IsShuffled} / \texttt{IsMuted} / \texttt{Volume} / \texttt{PlayPosition}
 properties, plus an \texttt{ActiveSongChanged} and \texttt{MediaStateChanged} event pair.
+
+\section{Devices and Sensors: Accelerometer and Compass}
+\label{sec:api-devices-sensors}
+
+Chapter~\ref{ch:devices-sensors} gives this namespace's full narrative treatment, including its
+concurrency findings; this section is the lookup-companion summary. \cnaclass{Accelerometer} and
+\cnaclass{Compass} both derive from the template base \cnans{SensorBase<TSensorReading>}
+(\cnans{TSensorReading} is \cnaclass{AccelerometerReading} or \cnaclass{CompassReading}
+respectively), which supplies every sensor class's shared surface: \texttt{CurrentValue} (throws
+\texttt{System::InvalidOperationException} unless \texttt{IsSupported} is \texttt{true} ---
+callers must check \texttt{IsSupported} first, never catch the exception as a substitute),
+\texttt{IsDataValid}, \texttt{TimeBetweenUpdates} (a \cnaclass{System::TimeSpan}, real WP7 default
+2~milliseconds, re-read fresh on every incoming sample so a change while the sensor is running
+takes effect immediately without a \texttt{Stop()} / \texttt{Start()} cycle), the
+\texttt{CurrentValueChanged} event, and the pure-virtual \texttt{Start()} / \texttt{Stop()} pair
+every derived class implements against its own hardware.
+
+\cnaclass{Accelerometer} adds a static \texttt{IsSupported} and a \texttt{State} property ---
+the one strict-XNA-API member of \cnaclass{SensorState} among this namespace's four sensor
+classes, per that enum's own documentation; \cnaclass{Compass} / \cnaclass{Gyroscope} / \texttt{Motion}
+expose the identical property only as a \texttt{NOXNA} symmetry addition, since the real WP7
+\cnaclass{Compass} class has no \texttt{State} member at all. \cnaclass{Accelerometer} also
+carries a legacy \texttt{ReadingChanged} event, deprecated on real WP7 7.1 in favor of
+\texttt{CurrentValueChanged} but still present and still raised here for API completeness with
+every real WP7 version; \texttt{CurrentValueChanged} always fires first and
+\texttt{ReadingChanged} second for the same reading, never the reverse and never interleaved.
+Each delivered \cnaclass{AccelerometerReading} carries a \texttt{Timestamp}
+(\cnaclass{System::DateTimeOffset}) and an \texttt{Acceleration} (\cnaclass{Vector3}, in
+$\text{m/s}^2$, SDL's own native unit for this axis).
+
+\cnaclass{Compass} has no SDL-backed implementation on any platform --- SDL3 exposes no
+magnetometer API anywhere --- so its real data path exists only on Android, via a dedicated
+native backend (\cnans{Detail::AndroidCompassBackend}) reading the NDK's rotation-vector and
+magnetic-field sensors directly, with no SDL involvement at all. On every other supported
+platform, \texttt{IsSupported} is permanently \texttt{false} and \texttt{Start()} always throws
+\cnaclass{SensorFailedException}. Each delivered \cnaclass{CompassReading} carries
+\texttt{HeadingAccuracy} / \texttt{MagneticHeading} / \texttt{TrueHeading} (all
+\texttt{double}, in degrees) and \texttt{MagnetometerReading} (\cnaclass{Vector3}, in
+micro-teslas). \texttt{TrueHeading} is honestly documented as currently identical to
+\texttt{MagneticHeading} on every backend in this codebase: a genuine true-north correction needs
+magnetic declination, which in turn needs geographic location data this namespace does not yet
+implement, and this project's own methodology forbids fabricating an assumed declination rather
+than reporting the most accurate value actually available. \cnaclass{Compass} additionally
+raises a \texttt{Calibrate} event (\cnaclass{CalibrationEventArgs}) when the backend detects the
+sensor needs recalibration.
+
+\cnaclass{SensorState} (\texttt{NotSupported} / \texttt{Ready} / \texttt{Initializing} /
+\texttt{NoData} / \texttt{NoPermissions} / \texttt{Disabled}) is shared across all four sensor
+classes in this namespace, but only four of its six values are ever actually produced by any of
+them today, confirmed by reading every assignment site directly: \texttt{NoData} and
+\texttt{NoPermissions} are declared and reachable in principle but currently dead code across
+this entire codebase, documented as such rather than silently left unexplained.
 
 \section{Networking and GamerServices}
 \label{sec:api-net-gamerservices}
