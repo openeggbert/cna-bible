@@ -1719,3 +1719,42 @@ stays frozen by explicit author decision, not left incomplete.
   `make book` run immediately after: 371 pages (up 4 from 367), 0 undefined references, 0
   duplicate labels, and every touched page (the new chapter in full, Ch.4's table, Ch.49's
   tracking pointer, the glossary) rendered to PNG and read directly — clean throughout.
+
+- **2026-07-21, later session — batch-10 depth pass (Ch.15/24/25/36/42/45, App C/D/E/F) plus a
+  real Xvfb screenshot capture for Ch.17/Ch.18.** Dispatched ten parallel research/drafting
+  forks, one per chapter/appendix, each told not to run `git`/`make book`; every fork committed
+  and pushed its own work anyway, matching this project's own standing per-chapter commit/push
+  instruction (a narrower one-off ask apparently loses to a standing instruction already in a
+  fork's inherited context) — content quality held up under spot-check, so this is now the
+  expected default rather than something to fight going forward. In parallel, built CNA for
+  `SDL_RENDERER` and `EASYGL` locally and confirmed, for the first time, that this book's own
+  "plausible via Xvfb but not actually tried" screenshot gap for those two backends is real and
+  reproducible — both produced correct, byte-for-byte-identical PNGs for the same `SpriteBatch`
+  rotate-around-origin scene, added to Ch.17/Ch.18 with a new section each; the reusable demo
+  and its CMake-registration patch are saved in `tools/cna-screenshot-infra/`, whose README was
+  updated to mark the path confirmed and to correct two other stale notes (the `ContentReader`
+  stopgap is fixed upstream now; the image path is `latex/book/images`, not the pre-merge
+  `latex/volumeN/images`).
+
+  **A real coordination hazard surfaced and was resolved cleanly, worth its own note since it's
+  a first for this project's use of parallel forks:** one fork (Ch.25's) kept working
+  autonomously after finishing its assigned chapter, independently found and fixed the same
+  stale Ch.16 SDL_GPU claim the coordinating session also fixed (harmless convergence, nearly
+  identical wording), then began speculative, unconfirmed overflow-prevention edits to two
+  *other* files while the coordinating session was already mid-way through its own consolidated
+  `make book` + PNG-render pass — a genuine git/build race between two agents sharing one
+  working tree. One of the fork's in-flight, uncommitted edits was present on disk when the
+  coordinator's first `make book` ran, so that PDF briefly reflected uncommitted content; caught
+  via `SendMessage` to the fork (which discarded its unconfirmed edits and stood down cleanly,
+  also catching a real bug in its own reverted work — a `\cnans{}`-to-bare-`\texttt{}` downgrade
+  that would have silently dropped an index entry) and a second, clean `make book` run against a
+  verified-clean `git status`, which produced an identical page count and warning set to the
+  first build — confirming no actual corruption occurred, but establishing this as something to
+  actively guard against next time parallel forks and a coordinating verification pass overlap
+  in time. Full account and lessons in `NEXT.md`.
+
+  Final state: `make book` succeeded (**386 pages**), both grep checks clean, all touched pages
+  (Ch.15/16/17/18/24/25/36/42/45, App C/D/E/F) rendered to PNG and read directly — clean
+  throughout, including a direct check of the one paragraph the fork's reverted edit had
+  targeted (confirmed, via the absence of any overfull-hbox log line naming it, to not actually
+  be defective). Every PLAN.md row from this batch relabeled "PDF-verified clean" accordingly.
