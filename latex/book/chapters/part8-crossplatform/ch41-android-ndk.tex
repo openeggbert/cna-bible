@@ -61,6 +61,57 @@ EasyGL's own bug list: a real success recorded at one point in time, superseded 
 less favorable finding, and this book reports the more recent one rather than the more
 flattering one.
 
+\subsection{Re-verified again: the original regression is fixed, and a new one took its place}
+
+The paragraph above is itself a snapshot, and this book's own methodology (Chapter~\ref{ch:what-is-cna})
+says to re-check a tracked claim against live source rather than trust it indefinitely. Doing
+exactly that --- grepping \cnans{sharp-runtime} directly for the two symptoms named above ---
+finds neither one still present: \texttt{FileStream.hpp} has no unused \texttt{mode\_} field
+left to trip \texttt{-Wunused-private-field}, and \texttt{FileSystemInfo.cpp} no longer calls
+\texttt{std::chrono::clock\_cast} at all, replaced by an explicit
+\texttt{std::chrono::file\_clock::to\_sys()} plus \texttt{time\_point\_cast} --- a real fix,
+not a coincidental rename, and one that sidesteps the NDK libc\texttt{++} gap entirely rather
+than working around it.
+
+Re-running the identical cross-compile command confirms it: the build now proceeds cleanly
+straight through both previously-failing files and on past \texttt{SHARP\_RUNTIME}'s entire
+\texttt{Net} / \texttt{IO} surface --- roughly 140 of 470 objects built before anything stops it.
+What stops it is a third file, previously unreached because the build never got this far
+before: \texttt{RandomNumberGenerator.cpp}.
+
+\begin{lstlisting}
+error: no member named 'getrandom' in the global namespace
+   ssize_t n = ::getrandom(data.data() + total, data.size() - total, 0);
+\end{lstlisting}
+
+The cause is a real, narrow platform-version gap, not a missing include or a typo:
+\texttt{RandomNumberGenerator.cpp} correctly includes \texttt{<sys/random.h>} on every
+non-Windows, non-Emscripten platform (Android included, since it takes the same \texttt{\#else}
+branch as desktop Linux) and calls \texttt{::getrandom()} unconditionally in that branch. On
+desktop glibc this compiles without qualification. The Android NDK's own unified sysroot
+headers gate the same declaration behind
+\texttt{\_\_INTRODUCED\_IN(28)} --- confirmed by reading
+\texttt{sys/random.h} directly in the NDK 30.0.14904198 sysroot used throughout this chapter
+--- meaning \texttt{getrandom()} is not declared \emph{at all} when compiling against
+\texttt{-DANDROID\_PLATFORM=android-24}, the exact minimum API level this chapter's own worked
+cross-compile example (and \texttt{docs/devices-build.md}) has used throughout. Android added
+\texttt{getrandom()} to Bionic at API~28; this project deliberately targets API~24 for broader
+device compatibility, four levels below where the call the code assumes is universally
+available first exists.
+
+The shape of this finding is worth naming explicitly, because it is not simply ``still
+broken'': the two originally-reported blockers are genuinely closed, and the cross-compile
+made real, confirmed progress past both of them before hitting a different wall. Whoever next
+picks up Android NDK portability work should not re-fix the \texttt{mode\_} / \texttt{clock\_cast}
+issues (already done) and should instead look at \texttt{RandomNumberGenerator.cpp}'s
+\texttt{\#else} branch specifically --- a runtime \texttt{dlopen}/weak-symbol check against
+Bionic's \texttt{getrandom()}, a raw \texttt{syscall(SYS\_getrandom, ...)} invocation (bypassing
+the header gate entirely, since the underlying kernel syscall has existed since Linux 3.17,
+well before Android API~24), or a documented, explicit decision to raise this project's Android
+minimum supported API level to 28 are the three realistic options, none of them attempted here
+since fixing a separate repository's own code is outside this chapter's own scope, exactly as
+the original regression finding above already stated for the prior two bugs.
+
 \section{A real, subtle concurrency bug: a bounded timeout defeated by an unbounded join}
 
 A separate finding from this platform's own sensor-bridge code is worth its own worked

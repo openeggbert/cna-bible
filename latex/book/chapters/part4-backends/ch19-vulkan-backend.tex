@@ -200,6 +200,87 @@ deferred, potentially-multiple-render-targets-per-frame recording model has no w
 \emph{which} \cnaclass{Viewport} was actually active at the moment each render target's own draws
 were originally issued, by the time a frame's commands actually get recorded.
 
+\section{How a swapchain gets built: format, color space, and present mode}
+\label{sec:vulkan-swapchain}
+
+\texttt{VulkanGraphicsBackend::CreateSwapchain()} is where two real, easy-to-get-wrong
+decisions get made once, at swapchain-creation time, rather than left to chance: which pixel
+format the swapchain presents through, and which \texttt{VkPresentModeKHR} actually governs
+frame pacing. Both are worth reading directly rather than assumed, since Vulkan's own API
+surface makes it easy to pick a format that looks equivalent but silently changes what a game
+sees on screen.
+
+\subsection{UNORM, not SRGB: a deliberate color-space decision}
+
+A physical device typically reports several supported \texttt{(VkFormat, VkColorSpaceKHR)}
+swapchain pairs, and it is common in Vulkan tutorials to prefer an SRGB-variant format (e.g.\
+\texttt{VK\_FORMAT\_B8G8R8A8\_SRGB}) for its automatic linear-to-sRGB gamma encode on every
+presented pixel. This backend deliberately does the opposite, and says why directly in its own
+source comment: real XNA's default backbuffer format, \cnans{SurfaceFormat}\texttt{::Color}
+(Appendix~\ref{ch:api-quick-reference}), is linear --- a separate,
+NOXNA\allowbreak{} \texttt{ColorSrgbEXT} value exists specifically for the gamma-encoded
+variant (Appendix~E) --- so an SRGB swapchain format would apply an automatic gamma encode XNA
+itself never performed, silently darkening every frame relative to what a real XNA game
+produced. The fix is a preference search rather than a hardcoded pick, since not every device
+lists the exact pair in the same order:
+
+\begin{lstlisting}
+VkSurfaceFormatKHR fmt = fmts[0];  // fallback: whatever the device lists first
+for (auto& f : fmts)
+    if (f.format == VK_FORMAT_B8G8R8A8_UNORM &&
+        f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+    { fmt = f; break; }
+\end{lstlisting}
+
+The two fields answer two different questions, which is exactly the subtlety worth stating
+plainly: \texttt{colorSpace} here is \texttt{VK\_COLOR\_SPACE\_SRGB\_NONLINEAR\_KHR} regardless
+--- that value describes the \emph{display}'s own expected color space (the near-universal
+default virtually every consumer monitor and every Vulkan implementation supports), not
+whether the swapchain itself gamma-encodes on write. \texttt{format} is the field that
+controls the encode: \texttt{\_UNORM} writes the raw bytes a game submits with no
+transformation, while a sibling \texttt{\_SRGB} format of the identical byte layout would
+gamma-encode automatically. Picking \texttt{UNORM} with the standard nonlinear color space is
+therefore not a contradiction --- it is precisely ``present to a normal monitor, but do not
+add an encode step XNA's own \texttt{Color} format never had.'' A porting engineer who
+free-associates ``SRGB'' with ``correct color space, always prefer it'' and swaps this one
+line risks introducing a real, visible darkening regression across every scene in the game,
+not just an edge case.
+
+\subsection{SwapInterval to VkPresentModeKHR: the same three-way switch Chapter~\ref{ch:game-loop} introduced}
+
+\cnaclass{PresentationMode}'s \texttt{PresentInterval} (Immediate / Default-a.k.a.-One / Two,
+Chapter~\ref{ch:game-loop}) is not merely stored on this backend --- it selects among the
+device's actually-supported present modes with an explicit fallback chain for each case,
+verified directly against \texttt{CreateSwapchain()}:
+
+\begin{lstlisting}
+VkPresentModeKHR mode = VK_PRESENT_MODE_FIFO_KHR; // safe default: guaranteed available
+if (swapInterval_ == 0) {         // Immediate: tearing allowed, lowest latency
+    // prefer true IMMEDIATE; MAILBOX (triple-buffered, no tearing) is the fallback
+    // if IMMEDIATE isn't supported; FIFO if neither is
+} else if (swapInterval_ == 2) {  // Two: allow a slower-than-vsync present without stalling
+    // prefer FIFO_RELAXED; falls through to FIFO if unsupported
+}
+// swapInterval_ == 1 (Default/One): FIFO unconditionally -- always available, real VSync
+\end{lstlisting}
+
+Two things about this chain are worth internalizing rather than skimming past. First,
+\texttt{FIFO} is the only present mode the Vulkan specification \emph{guarantees} every
+conformant implementation supports --- choosing it as the unconditional starting value, and as
+every fallback's own final fallback, is what makes swapchain creation itself never fail for
+lack of an exotic present mode, on any device. Second, \texttt{PresentInterval::Two}'s mapping
+to \texttt{FIFO\_RELAXED} is a deliberately different request from \texttt{Immediate}'s: FIFO
+Relaxed still waits for vsync when the application is keeping up, and only presents
+immediately (accepting a single tear) on the specific frame where the application would
+otherwise have missed vsync and stalled --- the Vulkan-native shape of ``prefer vsync, but
+don't let a single slow frame cascade into a visible stutter,'' not a request for tearing as a
+matter of course the way \texttt{Immediate} is. A game that sets \texttt{PresentInterval::Two}
+expecting literally half the refresh rate (the historical, D3D9-era ``present interval two''
+reading some porting engineers carry over) will not get that on this backend --- it gets FIFO
+Relaxed's own, different throughput/latency tradeoff instead, worth checking explicitly against
+a real target frame-rate requirement before assuming interval semantics carried over unchanged
+from a Direct3D background.
+
 \section{A documented, not a hidden, coverage gap}
 
 One honest gap in \emph{testing}, not rendering: at the time of writing there is no dedicated
