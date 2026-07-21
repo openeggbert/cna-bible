@@ -155,10 +155,38 @@ until this is fixed: avoid drawing \cnaclass{SpriteBatch} content into a render 
 dimensions differ from the back buffer's own on this specific backend, or verify the result
 with an actual pixel readback rather than trusting the call to behave as documented.
 
+\subsection{Why block-compressed texture upload stays open: a real investigation, not a shrug}
+
+The ``no backend anywhere in the project does real block-compressed texture upload'' gap named
+below is worth a fuller account on this backend specifically, because it was genuinely
+investigated here rather than assumed unfixable. A direct diagnostic against this project's own
+pinned \texttt{wgpu-native} v29.0.1.1, run on the real development GPU, confirmed the hardware
+side is not the obstacle at all: \texttt{wgpuAdapterHasFeature(adapter,
+TextureCompressionBC)} returned true, and requesting a device with that feature in
+\texttt{requiredFeatures} succeeded too --- this machine's real adapter genuinely supports
+DXT1/3/5 upload today. The actual blocker sits one layer up, and applies project-wide, not just
+to \texttt{WEBGPU}: \texttt{Texture2D::FromStream()} always fully CPU-decompresses DXT-compressed
+source bytes to plain RGBA8 \emph{before} any backend ever sees them, and the shared
+\texttt{CNA::Internal::Graphics::ImageData} struct every backend's texture-creation path
+consumes has no field at all for a surface format or a compressed-bytes flag --- it is
+hardcoded to a plain \texttt{std::vector<uint8\_t>} of RGBA8 pixels. A WebGPU-only workaround
+was considered and deliberately rejected: hand-crafting a direct \texttt{IGraphicsBackend::%
+CreateTexture()} call with raw BC1 bytes stuffed into that RGBA8-typed field would compile and
+might even render correctly on this one backend, but would be reachable by no real game (nothing
+in the actual \cnaclass{Texture2D} loading path could ever produce it) and would misrepresent
+\texttt{ImageData}'s own documented contract --- exactly the shape of shortcut this project's
+own culture treats as worse than leaving the gap honestly open. Closing this for real needs a
+cross-backend \texttt{ImageData} design change (or a parallel compressed-texture entry point)
+plus a matching \texttt{Texture2D.cpp} change to stop always-decompressing DXT source data ---
+deliberately scoped out of any single backend's own task list, tracked as a dedicated follow-up
+instead.
+
 \section{What remains open}
 
 Several gaps are shared with every other CNA backend rather than unique to this one: no
-backend anywhere in the project does real block-compressed texture upload, and
+backend anywhere in the project does real block-compressed texture upload (the paragraph above
+covers exactly why, and why it is a shared architectural gap rather than a per-backend one),
+and
 \texttt{Texture2D::GetData()} readback from an arbitrary texture remains unimplemented here
 too. Specific to this backend: multiple simultaneous render targets, the stencil half of
 \cnaclass{DepthStencilState} (the depth half is done), full \cnaclass{BlendState}/%
