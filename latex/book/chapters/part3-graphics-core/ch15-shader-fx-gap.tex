@@ -177,6 +177,103 @@ example is proof the same class and the same constructor compile real HLSL just 
 the active backend is a Direct3D one; the comment describes the common case, not a hard
 constraint enforced anywhere in the code.
 
+\subsection{Beyond SpriteBatch: driving a real 3D draw call}
+
+Both worked examples so far apply a \cnaclass{ShaderEffect} through
+\cnaclass{SpriteBatch}. For a long stretch of this project's history that was the only
+place a \cnaclass{ShaderEffect} could actually take effect: applying one before a raw
+\cnaclass{GraphicsDevice}\allowbreak\texttt{::DrawIndexedPrimitives()} call --- the call
+shape \cnaclass{ModelMesh}\allowbreak\texttt{::Draw()} and a hand-rolled
+\cnaclass{RawMesh} both use --- was silently ignored. Because
+\cnaclass{ShaderEffect} did not yet implement \cnaclass{IEffectMatrices}
+(Chapter~\ref{ch:stock-effects}) and its \texttt{FillGpuDrawParams()} override still ran
+the \cnaclass{Effect} base class's no-op, \texttt{GpuDrawParams} stayed at its default,
+zero value on every 3D draw, and \textbf{EasyGL}'s
+\texttt{DrawIndexedPrimitivesEx()} fell back to selecting one of its own built-in,
+stride-keyed shaders regardless of whatever custom effect the caller had just applied ---
+exactly the same silent-fallback failure shape Chapter~\ref{ch:graphicsdevice}'s
+\texttt{ExtractMatrices()} section already documents for stock effects, one layer further
+out.
+
+This was closed by three coordinated changes, verified directly against
+\texttt{ShaderEffect.hpp} / \texttt{.cpp} and \texttt{EasyGLGraphicsBackend.cpp}: (1)
+\texttt{GpuDrawParams} gained a \texttt{customEffectBackend} field; (2)
+\cnaclass{ShaderEffect} now implements \cnaclass{IEffectMatrices} --- real
+\texttt{World} / \texttt{View} / \texttt{Projection} properties, extracted by the same
+\texttt{GraphicsDevice::ExtractMatrices()} every stock effect already goes through --- and
+overrides \texttt{FillGpuDrawParams()} to populate \texttt{customEffectBackend}; (3)
+EasyGL's \texttt{DrawPrimitivesEx()} / \texttt{DrawIndexedPrimitivesEx()} check that field
+first and, when it is set, bind the custom compiled program and its
+\texttt{World} / \texttt{View} / \texttt{Projection} uniforms directly, bypassing the
+built-in stride-selected shaders entirely.
+
+A worked example, adapted from \texttt{easygl\_shadereffect\_3d\_test.cpp}, makes the
+wiring concrete. The shader is a minimal N-dot-L diffuse lighting pass over a single
+textured quad, using the same GLSL attribute-location convention (\texttt{location = 0/1/2}
+for \texttt{Position} / \texttt{Normal} / \texttt{TexCoord}) as
+\cnaclass{VertexPositionNormalTexture}'s existing 32-byte stride:
+
+\begin{lstlisting}
+auto* fx = dynamic_cast<ShaderEffect*>(fxBase_.get());
+fx->setWorldProperty(world);
+fx->setViewProperty(Matrix::CreateLookAt(Vector3(0, 0, 3), Vector3::Zero, Vector3::Up));
+fx->setProjectionProperty(Matrix::CreatePerspectiveFieldOfView(
+    MathHelper::PiOver4, aspectRatio, 0.1f, 100.0f));
+fx->Apply();                          // binds the compiled program first
+fx->SetTexture(0, whiteTex_);
+fx->SetUniformVec3("uLightDir", 0.0f, 0.0f, 1.0f);
+fx->SetUniformVec3("uDiffuseColor", 200.0f / 255.0f, 100.0f / 255.0f, 50.0f / 255.0f);
+
+device.SetVertexBuffer(vb_.get());
+device.setIndicesProperty(ib_.get());
+device.DrawIndexedPrimitives(PrimitiveType::TriangleList, 0, 0, 4, 0, 2);
+\end{lstlisting}
+
+The real test behind this example is deliberately built to rule out a false positive: it
+draws the same quad twice, once with \texttt{World = Identity} (facing the light, world
+normal \texttt{(0,0,1)}, expected color close to the full \texttt{(200,100,50)} diffuse
+value) and once with \texttt{World = CreateRotationY(180\textdegree{})}. A
+\(90\)\textdegree{} rotation was deliberately \emph{not} chosen for the second case ---
+it would turn the quad edge-on to the camera, so ``renders nothing'' and ``renders
+black'' would look identical in a single-pixel readback. \(180\)\textdegree{} keeps the
+exact same on-screen footprint (the quad is X-symmetric, so mirroring X does not change
+its silhouette) while flipping the world-space normal to \texttt{(0,0,-1)}, which the
+shader's own \texttt{max(dot(...), 0.0)} clamps to a genuinely lit black. Only a
+\texttt{World} matrix that is actually reaching the vertex shader and actually affecting
+world-space lighting can produce that second, specific result rather than merely happening
+to draw something.
+
+\subsection{A second, narrower gap this one uncovered: fixed vertex strides only}
+
+The 3D draw path above only recognizes the five byte-strides EasyGL's pre-existing
+\texttt{ApplyLayout()} switch already knew about (16/20/24/32/52, one stock
+\texttt{VertexPositionXxx} type per case) --- deliberately scoped that way rather than
+solved in the same task, since several real ported sample shaders
+(\texttt{NormalMapping.fx}'s \texttt{Position+Normal+Binormal+Tangent+TexCoord} layout,
+among others) need a vertex format that matches none of the five. A truly custom
+\cnaclass{VertexDeclaration} --- arbitrary element count, arbitrary per-element offset,
+any \cnaclass{VertexElementFormat} --- reads back correctly through the same 3D
+\cnaclass{ShaderEffect} draw path via a second, separately-tracked fix: \texttt{VertexBuffer::SetDataRaw()}
+now pushes the buffer's own \cnaclass{VertexDeclaration} down to the backend through a new
+\texttt{IVertexBufferBackend::SetVertexDeclaration()} call (default no-op, so Vulkan/BGFX/SDL\_Renderer
+needed zero code changes for this to stay correct), and \texttt{ApplyLayout()} binds
+generically from that declaration when one is present --- GLSL attribute location equals
+the element's own index within the declaration --- falling straight through to the
+original stride-keyed switch, unchanged, whenever no declaration was supplied. This is a
+purely additive capability, not a replacement of the fixed-stride path the first worked
+example already exercises.
+
+The real test behind this (\texttt{easygl\_shadereffect\_custom\_vertex\_layout\_test.cpp})
+is worth citing for its own verification technique, not just its result: it declares a
+5-element, 48-byte layout (\texttt{Position} / \texttt{Normal} / \texttt{Tangent} / \texttt{TextureCoordinate} / \texttt{Color})
+that matches none of the five built-in strides, then diagnostically encodes three of the
+four non-position attributes directly into the output pixel
+(\texttt{FragColor = vec4(Normal.x, Tangent.y, TexCoord.x, Color.r)}) and draws the same
+quad twice with two independently-chosen sets of attribute values. Distinct, correctly-offset
+readback values across both draws is what proves each attribute is being read from its own
+correct byte offset --- not aliased to a neighbor, and not a value that happens to be
+correct by coincidence.
+
 \section{The honest summary}
 
 If your porting target relies only on \cnaclass{SpriteBatch} and the five stock effects from
