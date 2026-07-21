@@ -133,6 +133,80 @@ types on Vulkan and BGFX} all hardcode a single mip level regardless of what is 
 out-of-range face throws \texttt{std::out\_of\_range} at the public API layer, a safety check
 real XNA never performs at all.
 
+\subsection{A worked example: six faces, six SetData calls}
+
+\cnaclass{TextureCube}'s constructor takes a single face size (every face is square and
+identical in size, per the real XNA contract) plus \texttt{mipMap} and \texttt{format} --- and,
+per this chapter's own opening finding, \texttt{format} must be
+\cnaclass{SurfaceFormat::Color} or construction throws immediately. Populating a solid-color
+test cube (a stand-in for a real skybox's six photographic faces) is a direct, mechanical loop
+over \cnaclass{CubeMapFace}'s six enumerators, since \texttt{SetData} takes the face as its
+first argument:
+
+\begin{lstlisting}
+const int faceSize = 128;
+TextureCube skybox(getGraphicsDeviceProperty(), faceSize, /*mipMap=*/false,
+                    SurfaceFormat::Color);
+
+const CubeMapFace faces[6] = {
+    CubeMapFace::PositiveX, CubeMapFace::NegativeX,
+    CubeMapFace::PositiveY, CubeMapFace::NegativeY,
+    CubeMapFace::PositiveZ, CubeMapFace::NegativeZ,
+};
+const Color faceColors[6] = {
+    Color::Red,    Color(128, 0, 0, 255),   // +X, -X
+    Color::Green,  Color(0, 128, 0, 255),   // +Y, -Y
+    Color::Blue,   Color(0, 0, 128, 255),   // +Z, -Z
+};
+
+std::vector<Color> pixels(faceSize * faceSize);
+for (int i = 0; i < 6; ++i) {
+    std::fill(pixels.begin(), pixels.end(), faceColors[i]);
+    skybox.SetData(faces[i], pixels.data(), static_cast<int>(pixels.size()));
+}
+\end{lstlisting}
+
+Two of this chapter's own already-stated facts constrain what this loop can safely do next.
+\texttt{GetData} on any of these six faces is a genuine no-op on Vulkan and BGFX (silently
+leaves the caller's buffer untouched) --- so a readback-based unit test of this exact loop can
+only run meaningfully on EasyGL, which is exactly why \texttt{docs/texture3d-texturecube-support.md}
+scopes its own \texttt{GetData} verification to that one backend. And because
+\cnaclass{TextureCube} does not inherit \cnaclass{Texture} (the structural deviation noted at
+the top of this chapter), \texttt{skybox} cannot be bound to a custom \cnaclass{ShaderEffect}'s
+texture slot --- only \cnaclass{EnvironmentMapEffect}'s dedicated \texttt{EnvironmentMap} field
+can actually sample it, via that effect's bypass mechanism, not the generic binding path every
+other texture in this chapter goes through.
+
+\subsection{A worked example: rendering into one RenderTargetCube face}
+
+\cnaclass{GraphicsDevice} has a dedicated overload for exactly this purpose ---
+\texttt{SetRenderTarget(RenderTargetCube*, CubeMapFace)} --- distinct from the plain
+\texttt{SetRenderTarget(RenderTarget2D*)} form used for ordinary 2D targets, and from the
+\texttt{SetRenderTargets(const std::vector<RenderTargetBinding>\&)} form used for
+simultaneous multi-target binding (\cnaclass{RenderTargetBinding}'s own
+\texttt{(Texture*, CubeMapFace)} constructor exists specifically to build entries for that
+vector form, not for single-target binding). Rendering a small scene into a single cube face
+and then reading it back is the pattern a real-time reflection probe or a baked-environment-map
+tool would use:
+
+\begin{lstlisting}
+RenderTargetCube probe(getGraphicsDeviceProperty(), 256, /*mipMap=*/false,
+                        SurfaceFormat::Color, DepthFormat::Depth24Stencil8);
+
+device.SetRenderTarget(&probe, CubeMapFace::PositiveZ);
+device.Clear(Color::CornflowerBlue);
+// ... draw the scene as seen looking down +Z from the probe's location ...
+device.SetRenderTarget(nullptr); // back to the backbuffer
+\end{lstlisting}
+
+Whether this actually produces a correct image is, per \S\ref{sec:rendertargets} below,
+backend-dependent in a way no amount of correct call-site code can work around: EasyGL renders
+this correctly; Vulkan renders black for either (or both) of two distinct, separately-tracked
+reasons; and BGFX has an unconditional \texttt{static\_cast} type-confusion bug reading the
+wrong handle pool entirely. A porting engineer hitting a black cube face on Vulkan should treat
+this as a confirmed, known backend limitation rather than a bug in call-site code structured
+like the example above.
+
 \section{Render targets: the sharpest per-backend divergence in this Part}
 \label{sec:rendertargets}
 
