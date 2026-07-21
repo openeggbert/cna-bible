@@ -182,3 +182,37 @@ the two-attachment MRT test, a reference-stencil test, and the upstream \texttt{
 resource smoke-test issue already covered above --- against a full suite exceeding 4{,}500
 tests overall, giving a sense of how narrow the genuinely open surface is relative to the
 backend's total scope.
+
+\section{A real screenshot, captured headlessly under Xvfb}
+
+\texttt{EASYGL} opens a real SDL3 window and issues real OpenGL ES calls, so --- unlike the
+\texttt{SOFTWARE} backend's screenshots elsewhere in this book, reachable with no display at
+all --- a genuine screenshot needs a genuine (if virtual) display. This book's own
+screenshot-feasibility notes named \texttt{Xvfb} plus Mesa's software \texttt{llvmpipe} GL
+implementation as plausible for exactly this case, but had explicitly left it untested.
+
+Building this backend with \texttt{CNA\_BUILD\_EXAMPLES=ON} and running a small headless demo
+under \texttt{xvfb-run} confirms the technique works here too, using the identical scene and
+capture helper as Chapter~\ref{ch:sdl-renderer}'s own equivalent section: the real
+\texttt{examples/easygl\_spritebatch\_rotation\_golden\_test.cpp} rotate-around-origin scene
+(Task~465/417; also Chapter~\ref{ch:spritebatch}'s own worked example), captured via
+\texttt{SaveBackBufferScreenshotEXT} after \texttt{xvfb-run -a --server-args="-screen 0
+1024x768x24" env -u WAYLAND\_DISPLAY ./build-easygl/cna\_xvfb\_screenshot\_demo\_easygl}.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.5\textwidth]{images/ch18-spritebatch-rotation-easygl.png}
+\caption{Real, unedited output of the same rotate-around-origin \cnaclass{SpriteBatch} scene as
+Figure~\ref{fig:ch17-spritebatch-rotation}, this time rendered by \texttt{EASYGL} through a real
+OpenGL ES context under a virtual \texttt{Xvfb} display. The two images are pixel-identical for
+this scene --- a real, independent cross-backend agreement on a case both backends' own audits
+(this chapter's Phase~1111/1112 fixes; Chapter~\ref{ch:sdl-renderer}'s Phase~70 audit) already
+established each gets right on its own.}
+\label{fig:ch18-spritebatch-rotation}
+\end{figure}
+
+Figure~\ref{fig:ch18-spritebatch-rotation} is that real output. Confirming both backends
+produce the same result for the same scene is a small but genuine independent data point: it is
+exactly the kind of pixel-level cross-backend agreement the D3D9 oracle corpus elsewhere in this
+chapter measures far more systematically, here obtained by the simplest possible
+means --- two real screenshots, compared by eye.

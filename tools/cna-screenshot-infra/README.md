@@ -2,23 +2,30 @@
 
 This directory preserves what a feasibility check (2026-07-20) found when trying to build
 `cna` and capture a real, actually-rendered screenshot in this project's remote container
-environment (headless: no `DISPLAY`, no GPU passthrough). `/workspace/cna` is a scratch clone
-local to one session's container and is **not** persisted across sessions — reapply this patch
-to a fresh clone at the start of any future session that needs to build CNA or capture a
-screenshot.
+environment (headless: no `DISPLAY`, no GPU passthrough), plus a follow-up session's (2026-07-21)
+confirmation that the `Xvfb`-based path (left untested by the first check) actually works.
+Whether `cna` persists across sessions is environment-dependent — check
+`/rv/data/development/github.com/openeggbert/cna` (this book's own sibling-repo convention, see
+this repo's own `NEXT.md`) before assuming a fresh clone is needed; `/workspace/cna`, referenced
+below, is this document's original, more conservative assumption (a scratch clone local to one
+session's container, not persisted) and is still the right fallback in an environment where the
+fixed sibling-repo path doesn't exist. Either way, if a fresh clone is genuinely needed, reapply
+the CMake-registration patch below to it first.
 
 ## Findings
 
-- CNA's checked-out HEAD at the time of this check did **not** compile for any backend: the
-  content-pipeline's `ContentReader::ReadDecimal()`/`ReadChar()` are called by
+- CNA's checked-out HEAD at the time of the original 2026-07-20 check did **not** compile for
+  any backend: the content-pipeline's `ContentReader::ReadDecimal()`/`ReadChar()` are called by
   `DecimalDateTimeContentTypeReaders.hpp`/`PrimitiveContentTypeReaders.hpp` but were never
-  implemented. `contentreader-stopgap-and-demo-target.patch` adds minimal, clearly-marked
-  stopgap implementations (raw-byte-widening `ReadChar`, standard 4×int32 decimal-bits
-  `ReadDecimal`) — **diagnostic-quality, not verified against real FNA encoding semantics**.
-  Treat this as a real, current gap worth naming honestly in the book (Chapter 4, "Building
-  CNA") if this is still reproducible when a chapter actually gets written, not as a permanent
-  claim about the project — it may already be fixed upstream by the time any given session
-  reads this.
+  implemented on `sharp-runtime`'s `BinaryReader` base class at the time.
+  `contentreader-stopgap-and-demo-target.patch` (kept here for the historical record) added
+  minimal, clearly-marked stopgap implementations for that gap. **Update, 2026-07-21: this is
+  fixed upstream now** — `sharp-runtime/include/System/IO/BinaryReader.hpp`/`.cpp` both
+  implement `ReadChar()`/`ReadDecimal()` for real (matching .NET's actual documented decimal-bits
+  and single-UTF-16-code-unit semantics; also covered from the book's own side in Ch.3, Design
+  Philosophy). The stopgap patch's `ContentReader` hunk is very likely unnecessary against a
+  current checkout — try building without it first, exactly as this document already advised;
+  only its `cmake/Tests/SoftwareTests.cmake` demo-registration hunk is still needed.
 - CNA has a real, dedicated **`SOFTWARE` graphics backend** (`docs/software-backend.md`): a
   CPU triangle rasterizer (edge functions, perspective-correct interpolation, per-pixel depth
   test) that never touches SDL video/X11/a GPU at all. This is the realistic path to a genuine
@@ -68,10 +75,22 @@ screenshot.
 - **Other backends**: `HEADLESS` exists but is logic-only (never rasterizes a real pixel, just
   reports the last `Clear()` color) — not useful for a screenshot. `CANVAS` is
   Emscripten/browser-only. `ASCII` decorates `SDL_RENDERER` and still needs a real X11 window.
-  `EASYGL`/`SDL_RENDERER` screenshots are plausible via `Xvfb` + Mesa llvmpipe software GL
-  (`xvfb`, `libgl1-mesa-dri` were already installed in the container checked) but this was
-  **not actually tried** — treat as untested, not confirmed. D3D9/D3D11/D3D12/BGFX are
-  Windows/GPU-only and unrealistic to screenshot in this container at all.
+  D3D9/D3D11/D3D12/BGFX are Windows/GPU-only and unrealistic to screenshot in this container at
+  all.
+- **`EASYGL`/`SDL_RENDERER` via `Xvfb` + Mesa llvmpipe: CONFIRMED, 2026-07-21.** A prior session
+  left this "plausible but not actually tried." This session tried it and it works cleanly for
+  both backends, no caveats found. `xvfb_screenshot_demo.cpp` (saved alongside this README)
+  reuses the real `examples/easygl_spritebatch_rotation_golden_test.cpp` scene (Task 465/417) —
+  a rotate-around-origin `SpriteBatch` draw — since both backends are 2D-capable but
+  `SDL_RENDERER` specifically throws (`"SDL_Renderer does not support 3D"`) on the raw
+  `VertexBuffer` 3D scene `software_screenshot_demo.cpp` uses, so a 2D `SpriteBatch` scene is the
+  one that actually works on both. Built via `cmake -DCNA_GRAPHICS_BACKEND=SDL_RENDERER` /
+  `-DCNA_GRAPHICS_BACKEND=EASYGL -DCNA_BUILD_EXAMPLES=ON`, run via
+  `xvfb-run -a --server-args="-screen 0 1024x768x24" env -u WAYLAND_DISPLAY ./<binary>` — no
+  `DISPLAY` needs to be pre-set, `xvfb-run` handles that. Both backends' output PNGs are
+  byte-for-byte identical for this scene (visually confirmed correct independently: the red
+  marker lands in the destination rectangle's top-right corner, matching the rotation's own
+  geometric derivation). Used for Ch.17 (SDL\_Renderer Backend) and Ch.18 (EasyGL Backend).
 
 ## Reproducing from a fresh clone
 
@@ -108,15 +127,55 @@ env -u DISPLAY -u WAYLAND_DISPLAY ./cmake-build-software/cna_software_screenshot
 env -u DISPLAY -u WAYLAND_DISPLAY ./cmake-build-software/cna_math_rotation_demo
 ```
 
+## Reproducing an SDL\_RENDERER / EASYGL screenshot via Xvfb (confirmed 2026-07-21)
+
+These two backends open a real SDL3 window, so they need a real (if virtual) display, unlike
+`SOFTWARE` above. `xvfb` and Mesa's software `llvmpipe` GL implementation must be installed
+(`apt-get install -y xvfb libgl1-mesa-dri` if not already present — both were already present in
+the container this was verified in).
+
+```bash
+cd cna   # same clone as above
+
+# Apply the CMake-registration patch (adds the demo target to both backends' test files) and
+# copy the demo source in, unless already present from a prior session in this same clone.
+git apply /home/user/cna-bible/tools/cna-screenshot-infra/xvfb-demo-cmake-registration.patch
+cp /home/user/cna-bible/tools/cna-screenshot-infra/xvfb_screenshot_demo.cpp examples/
+
+# SDL_Renderer
+cmake -S . -B build-sdlrenderer -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+  -DCNA_GRAPHICS_BACKEND=SDL_RENDERER -DCNA_BACKEND_SDL_RENDERER=ON -DCNA_BUILD_TESTS=ON
+cmake --build build-sdlrenderer --target cna_xvfb_screenshot_demo -j"$(nproc)"
+CNA_SCREENSHOT_OUT=/path/to/out.png xvfb-run -a --server-args="-screen 0 1024x768x24" \
+  env -u WAYLAND_DISPLAY ./build-sdlrenderer/cna_xvfb_screenshot_demo
+
+# EasyGL (needs CNA_BUILD_EXAMPLES=ON -- this backend's test block has always required it)
+cmake -S . -B build-easygl -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+  -DCNA_GRAPHICS_BACKEND=EASYGL -DCNA_BACKEND_EASY_GL=ON -DCNA_BUILD_TESTS=ON -DCNA_BUILD_EXAMPLES=ON
+cmake --build build-easygl --target cna_xvfb_screenshot_demo_easygl -j"$(nproc)"
+CNA_SCREENSHOT_OUT=/path/to/out.png xvfb-run -a --server-args="-screen 0 1024x768x24" \
+  env -u WAYLAND_DISPLAY ./build-easygl/cna_xvfb_screenshot_demo_easygl
+```
+
+`CNA_SCREENSHOT_OUT` selects the output path (defaults to `/tmp/cna_xvfb_screenshot.png` if
+unset) — per this project's own org-wide build rules, use a real path, not one under a
+per-session scratchpad that won't exist next time this is reproduced. `xvfb_screenshot_demo.cpp`
+draws the same rotate-around-origin `SpriteBatch` scene as
+`examples/easygl_spritebatch_rotation_golden_test.cpp` (Task 465/417) rather than
+`software_screenshot_demo.cpp`'s raw-`VertexBuffer` 3D scene, since `SDL_RENDERER` throws on any
+3D draw call by design (Chapter~17) — a 2D `SpriteBatch` scene is the one shape of demo that
+actually runs on every backend, `SOFTWARE` included. Build only the one demo target shown, not
+the full test suite, to keep build time down (the full CNA static library still has to build
+once per backend, but nothing beyond it).
+
 To add a **new** worked-example demo for a future chapter: write a new `examples/<name>.cpp`
-following either existing demo's pattern (subclass `Game`, draw through
-`BasicEffect`/`SpriteBatch`/raw vertex buffers as needed, call `SaveBackBufferScreenshotEXT`),
-add one more `cna_software_test(cna_<name> examples/<name>.cpp)` line to
-`cmake/Tests/SoftwareTests.cmake` (right where the existing two are registered), reconfigure
-(`cmake .` from inside `cmake-build-software/`) and build. Copy the new source file into this
-directory and regenerate `contentreader-stopgap-and-demo-target.patch`
-(`git diff -- cmake/Tests/SoftwareTests.cmake include/.../ContentReader.hpp
-src/.../ContentReader.cpp > .../contentreader-stopgap-and-demo-target.patch` from inside
-`cna/`) so the next session's fresh clone picks up the new target too. Copy the resulting PNG
-into the book's own `latex/volumeN/images/` and `\includegraphics` it from the chapter `.tex`
-file.
+following the demo pattern that fits the target backend (subclass `Game`, draw through
+`SpriteBatch` for 2D-only backends or `BasicEffect`/raw vertex buffers for 3D-capable ones, call
+`SaveBackBufferScreenshotEXT`), register it via the matching backend's own test macro
+(`cna_software_test`/`cna_sdl_test`/`cna_easygl_test`/etc., defined near the top of that
+backend's own `cmake/Tests/<Backend>Tests.cmake`), reconfigure and build. Copy the new source
+file into this directory and regenerate the relevant patch file (`git diff -- <touched
+cmake/Tests file(s)> > .../<name>.patch` from inside `cna/`) so a future session picks up the new
+target too. Copy the resulting PNG into the book's own `latex/book/images/` (the whole book
+merged into one directory tree on 2026-07-20 — there is no more separate `latex/volumeN/`) and
+`\includegraphics` it from the chapter `.tex` file.

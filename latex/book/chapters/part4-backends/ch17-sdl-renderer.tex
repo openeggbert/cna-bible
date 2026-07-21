@@ -190,3 +190,49 @@ construction) --- the same two items covered above, and, notably, two of only fo
 project-wide entries anywhere in the whole feature matrix that carry the ``blocked, needs a
 project-owner decision'' status rather than either a solid pass or an openly acknowledged,
 still-being-worked gap.
+
+\section{A real screenshot, captured headlessly under Xvfb}
+
+Every screenshot elsewhere in this book credited to CNA's \texttt{SOFTWARE} backend
+(Chapter~\ref{ch:graphicsdevice}) was reachable with no display at all, since that backend
+never touches SDL video/X11/a GPU. \texttt{SDL\_RENDERER} is different: it opens a real SDL3
+window and issues real \texttt{SDL\_RenderTexture} calls through a real OpenGL context, so a
+genuine screenshot requires a genuine (if virtual) display. This book's own screenshot-feasibility
+notes had long identified \texttt{Xvfb} plus Mesa's software \texttt{llvmpipe} renderer as
+plausible for exactly this case but explicitly left it \emph{untested} pending someone actually
+trying it --- CNA's own \texttt{CNA\_TEST\_DISPLAY} CMake cache variable already anticipates the
+technique, defaulting to the real desktop's \texttt{:0} but documented as overridable to a
+virtual display such as \texttt{:99} for exactly this reason.
+
+Building this backend (\texttt{cmake -B build-sdlrenderer -DCNA\_GRAPHICS\_BACKEND=SDL\_RENDERER})
+and running a small headless demo under \texttt{xvfb-run} confirms the technique works end to
+end. The demo reuses the exact same scene as the real golden-image regression test
+\texttt{examples/easygl\_spritebatch\_rotation\_golden\_test.cpp} (Task~465/417, also the basis
+of Chapter~\ref{ch:spritebatch}'s own rotate-around-origin worked example): a
+$100\times100$ \cnaclass{Texture2D} whose top-left $20\times20$ block is red and the remainder
+blue, drawn through \cnaclass{SpriteBatch} rotated $90$ degrees ($\texttt{MathHelper::PiOver2}$)
+around \texttt{origin}~$(100,100)$ --- the source's own bottom-right corner --- then captured
+with the same \texttt{SaveBackBufferScreenshotEXT} helper the \texttt{SOFTWARE}-backend
+screenshots use:
+
+\begin{lstlisting}
+xvfb-run -a --server-args="-screen 0 1024x768x24" \
+    env -u WAYLAND_DISPLAY ./build-sdlrenderer/cna_xvfb_screenshot_demo
+\end{lstlisting}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.5\textwidth]{images/ch17-spritebatch-rotation-sdlrenderer.png}
+\caption{Real, unedited output of the rotate-around-origin \cnaclass{SpriteBatch} scene,
+rendered by \texttt{SDL\_RENDERER} under a virtual \texttt{Xvfb} display, no physical GPU or
+real desktop involved. The red marker lands in the destination rectangle's top-right corner,
+exactly where a $90$-degree rotation about the source's bottom-right corner should place it.}
+\label{fig:ch17-spritebatch-rotation}
+\end{figure}
+
+Figure~\ref{fig:ch17-spritebatch-rotation} is that real output: the rotated red marker lands
+in the destination rectangle's top-right corner, matching the same geometric derivation the
+golden test itself already relies on (Chapter~\ref{ch:spritebatch}). This closes the one
+remaining ``untested, not confirmed feasible'' item this book's own screenshot-infrastructure
+notes had left open for the two backends needing a virtual display rather than a headless
+software rasterizer.

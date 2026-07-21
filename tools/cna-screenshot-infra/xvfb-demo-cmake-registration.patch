@@ -1,0 +1,30 @@
+diff --git a/cmake/Tests/EasyGLTests.cmake b/cmake/Tests/EasyGLTests.cmake
+index 40aa6f4c..4616c192 100644
+--- a/cmake/Tests/EasyGLTests.cmake
++++ b/cmake/Tests/EasyGLTests.cmake
+@@ -22,6 +22,10 @@ if(CNA_BUILD_EXAMPLES AND CNA_BUILD_TESTS AND NOT EMSCRIPTEN AND NOT WIN32
+ 
+         enable_testing()
+ 
++        # Ad hoc (not a permanent registered test): reuses the same SOFTWARE-backend
++        # screenshot demo scene to prove a real EasyGL screenshot under Xvfb.
++        cna_easygl_test(cna_xvfb_screenshot_demo_easygl examples/xvfb_screenshot_demo.cpp)
++
+         # Task 85: 3-frame smoke test
+         cna_register_backend_test(NAME EasyGL_House3D_SmokeTest COMMAND cna_house3d_demo --smoke 3
+             TIMEOUT 30 ENVIRONMENT "SDL_VIDEODRIVER=x11;DISPLAY=${CNA_TEST_DISPLAY}" LABELS "GraphicsSmoke")
+diff --git a/cmake/Tests/SdlRendererTests.cmake b/cmake/Tests/SdlRendererTests.cmake
+index 20deab14..f4b960b7 100644
+--- a/cmake/Tests/SdlRendererTests.cmake
++++ b/cmake/Tests/SdlRendererTests.cmake
+@@ -18,6 +18,10 @@ if(CNA_BUILD_TESTS AND NOT EMSCRIPTEN AND NOT WIN32
+         endif()
+     endmacro()
+ 
++    # Ad hoc (not a permanent registered test): reuses the same SOFTWARE-backend
++    # screenshot demo scene to prove a real SDL_Renderer screenshot under Xvfb.
++    cna_sdl_test(cna_xvfb_screenshot_demo examples/xvfb_screenshot_demo.cpp)
++
+     # Task 915: GetBackBufferData readback -- foundational prerequisite for the whole
+     # SDL_Renderer pixel-test audit phase (Tasks 666-861).
+     cna_sdl_test(cna_test_sdl_readback
