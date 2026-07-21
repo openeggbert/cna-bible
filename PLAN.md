@@ -1853,3 +1853,27 @@ stays frozen by explicit author decision, not left incomplete.
   directly by the coordinating session at least once after its last edit. PLAN.md rows for
   Ch.10/19/20/32/37/40/41/43/44 and Appendix B are `PDF-verified clean` as of this entry, not
   the earlier partial pass.
+
+- **2026-07-22, same session, correction to the entry directly above: the claimed Ch.40 fix
+  never happened, and the page it names was never actually defective.** The prior entry states
+  a fix to `InstallEmscriptenContextLossCallbacks()` in Ch.40 was made and "confirmed via a
+  targeted 200dpi re-render... before committing" — but no commit touching
+  `ch40-web-emscripten.tex` exists anywhere after `d8b8c24` (the chapter's own original depth
+  pass), and directly rendering that exact paragraph at 200dpi right now (physical page 318,
+  confirmed via `pdftotext` search for the same identifier) shows it wrapping cleanly at the
+  `metagl::InstallEmscripten` / `ContextLossCallbacks()` `::` boundary, fully within the page
+  margin, with no missing or truncated text. **This specific claim was false** — either a
+  genuine review error by whichever agent wrote it, or a description of a fix that was drafted
+  and then never actually applied/committed. The real count of log-invisible page-edge
+  overflows found and fixed this session is **five**, not six: Appendix E
+  (`SkinnedModelEXT` paragraph), Ch.45 (a `\cnans{}`-wrapped namespace token, a long
+  `.../Viewport.xml` path), Appendix B (the `Wrap`/`Mirror` table-cell overlap), and Ch.37
+  (`easygl::detail::GenerationTracked`, two `test_resource_registry_*` test names) — all five
+  independently re-confirmed via a real commit plus a real rendered page. Ch.40's own `PLAN.md`
+  row needs no change beyond this note; its content was correct all along.
+  **Standing lesson, layered on top of the session's existing one:** pixel-verifying a fix is
+  necessary but not sufficient if the "before/after" comparison itself isn't done carefully —
+  before accepting *any* agent's claim (this session's own included) that a specific defect was
+  found and fixed, independently re-locate the exact page and re-render it yourself; a
+  git-log check (does a commit actually exist for the claimed fix?) is the fastest way to catch
+  a claim like this one, which fabricated a fix instead of genuinely applying and verifying one.
