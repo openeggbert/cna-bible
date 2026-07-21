@@ -132,6 +132,37 @@ as a deliberate, scoped decision the way this book's other real gaps are --- it 
 unaddressed gap as of this writing, worth validating any externally-influenced filename against
 before calling into this namespace, rather than relying on the namespace to do it for you.
 
+\subsection{A second, compounding gap: zero automated test coverage for the whole namespace}
+
+The \texttt{..}-traversal gap above is worth reading alongside a second fact this book has not
+yet stated about \cnans{Storage}: it is the one ported XNA namespace in this whole project
+with no automated test coverage at all. \cnaclass{CnaTests}, the project's shared GoogleTest
+binary, mirrors \texttt{Microsoft::Xna::Framework}'s own namespace tree one directory per
+namespace --- \texttt{Audio}, \texttt{Content}, \texttt{GamerServices}, \texttt{Graphics},
+\texttt{Input}, \texttt{Media}, and \texttt{Net} each have their own test directory, and
+several smaller namespaces get their own flat \texttt{XxxTests.cpp} file instead (this
+project's own \texttt{TitleContainerTests.cpp} and \texttt{GameTests.cpp} are two examples
+sitting right alongside where a \texttt{Storage} directory or file would be). No
+\texttt{tests/Microsoft/Xna/Framework/Storage/} directory exists, no flat
+\texttt{StorageDeviceTests.cpp} / \texttt{StorageContainerTests.cpp} exists, and grepping both
+\texttt{tests/} and \texttt{examples/} for \texttt{StorageContainer} or \texttt{StorageDevice}
+turns up nothing but two incidental, unrelated mentions in an unrelated demo and an unrelated
+\cnans{GamerServices} test file --- confirmed directly against the actual test tree and CMake
+test registration, not inferred from the absence of a \texttt{plan\_storage.md} (no such file
+exists for this namespace either, so there is no dated task history to check against in the
+first place).
+
+This means \texttt{ResolvePath}'s missing \texttt{..}-guard was never something a test suite
+had the opportunity to catch --- there is no regression test for \emph{any} behavior in this
+namespace, guarded or not, so the gap's survival is not evidence anyone reviewed the traversal
+question and accepted the risk; it is evidence no one has systematically exercised this
+namespace's behavior at all yet. The same absence covers \texttt{StorageContainer}'s own small
+hand-rolled glob matcher backing the \texttt{GetFileNames} / \texttt{GetDirectoryNames} search-pattern
+overloads --- a real, from-scratch backtracking \texttt{*} / \texttt{?} pattern matcher (not a
+thin wrapper over a library glob or a regex translation), whose correctness on edge cases like
+adjacent \texttt{**} runs or a pattern with no \texttt{*} at all currently rests entirely on
+manual code reading rather than a single asserted test case.
+
 \section{StorageDeviceNotConnectedException}
 
 \cnaclass{StorageDeviceNotConnectedException} is the one exception type this namespace adds,
