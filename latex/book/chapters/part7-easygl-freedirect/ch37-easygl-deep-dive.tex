@@ -194,6 +194,72 @@ RAII shape as every other addition in this section, applied specifically to the
 register/deregister pair a \cnaclass{RecoverableResource} would otherwise have to manage by
 hand at every one of its own constructor and destructor sites.
 
+\section{Context loss recovery: two real tiers, one of them built but not yet adopted}
+
+\cnaclass{ResourceRegistration} above closes the register/deregister half of the context-loss
+story, but reading \texttt{GenerationTracked.hpp} and the context-lifecycle test suite together
+reveals a fuller picture worth spelling out on its own: \texttt{easy-gl} actually has
+\emph{two} separate mechanisms for surviving a lost GL context, at two different levels of
+commitment, and only one of them is currently used by anything real.
+
+The first tier is universal and effectively free. Every single GL object class inherits
+\texttt{easygl::detail::GenerationTracked}, which stamps each resource with the
+\texttt{meta-gl}-tracked context generation number at creation time
+(\texttt{creation\_generation()}) and exposes \texttt{is\_valid\_for\_current\_generation()} so
+any caller can cheaply ask ``was this handle created against the context that is actually
+current right now, or a since-lost one'' without any registration step at all --- every
+resource gets this check purely by existing, and \texttt{reset\_handle\_no\_gl()} (used
+internally after a detected loss) zeroes the handle without issuing a single \texttt{gl*} call,
+since a lost context cannot be trusted to process one correctly anyway.
+
+The second tier is the opt-in, full self-healing mechanism this chapter already covers:
+\cnaclass{RecoverableResource}'s \texttt{release\_gl\_handle\_only()} / \texttt{recreate\_gl\_resource()}
+pair, driven by \cnaclass{ResourceRegistry} (itself a real \texttt{metagl::ContextListener},
+receiving \texttt{OnContextLost()} / \texttt{OnContextRestored()} automatically once
+\texttt{register\_with\_meta\_gl()} is called). This tier is where the real commitment lives:
+implementing it means a resource class must retain enough CPU-side state (raw pixel data, shader
+source text, buffer contents) to rebuild the GPU object from scratch, not merely notice that its
+handle went stale.
+
+\textbf{A genuinely worth-knowing gap}: reading every header and source file in the library that
+mentions \cnaclass{RecoverableResource} finds exactly one production consumer,
+\cnaclass{ResourceRegistration} itself (the generic RAII wrapper) --- and \emph{zero} concrete
+resource classes. \cnaclass{Texture}, \cnaclass{Buffer}, \cnaclass{VertexArray},
+\cnaclass{Framebuffer}, and every other real GL object class inherit \texttt{GenerationTracked}
+(tier one) but none of them implement \texttt{RecoverableResource} (tier two). The library's own
+planning document confirms this is a known, tracked state rather than an oversight this chapter
+is the first to notice: Task U2 (``Test context-loss / \texttt{ResourceRegistry} recovery
+cycle'') is explicitly scoped against ``a concrete \texttt{RecoverableResource} subclass''
+precisely because no real one currently exists to test against --- and, consistent with that,
+\texttt{ContextLifecycleTests.cpp}'s own two \texttt{ResourceRegistry} tests
+(\texttt{test\_resource\_registry\_context\_lost}, \texttt{test\_resource\_registry\_wired\_to\_meta\_gl})
+both construct a minimal, test-only \texttt{FakeResource} stub rather than exercising any real
+resource type, for exactly this reason:
+
+\begin{lstlisting}
+// From the real test suite -- note this is a hand-rolled stub, not Texture,
+// Buffer, or any other production easy-gl resource class. None of those
+// currently implement RecoverableResource.
+struct FakeResource : easygl::RecoverableResource
+{
+    int& released;
+    int& recreated;
+    void release_gl_handle_only() override { ++released; }
+    void recreate_gl_resource()   override { ++recreated; }
+};
+\end{lstlisting}
+
+The practical upshot for a caller today: a context loss is cheaply \emph{detectable} per
+resource via \texttt{is\_valid\_for\_current\_generation()} (tier one, universal), but nothing
+in \texttt{easy-gl} itself will \emph{automatically rebuild} a lost \texttt{Texture} or
+\texttt{Buffer} for you (tier two, fully built and independently tested as a mechanism, but with
+no adopters yet) --- a caller that needs real survive-context-loss behavior today has to detect
+staleness via tier one and rebuild the resource manually, or write its own
+\cnaclass{RecoverableResource} subclass around its own CPU-side data. This is the same shape of
+gap this book has already named on the CNA side more than once (a mechanism exists and is
+correctly wired, but nothing yet plugs into it) --- here, one level further down the stack, in
+the sibling library CNA's own \texttt{EASYGL} backend is built on.
+
 \section{Testing without a GPU}
 
 \texttt{easy-gl}'s own test suite is three small, hand-rolled (not GoogleTest-based)
