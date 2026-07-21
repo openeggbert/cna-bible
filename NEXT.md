@@ -9,17 +9,19 @@ per-chapter detail this file only summarizes).
 ## Where things stand right now (mid-session, autonomous depth pass in progress, 2026-07-21)
 
 **The book is a single, unified book**, built via `make book` (→ `latex/book/main.pdf`).
-Compiles clean as of the last checkpoint: **341 pages, 0 undefined references, 0
+Compiles clean as of the last checkpoint: **343 pages, 0 undefined references, 0
 duplicate-label warnings** (verify before quoting — re-run `make book` and grep the log
 before trusting this number; and use PNG rendering, not `grep -i overfull`, to check for
 overflow — see "Reusable findings" below, this was reconfirmed many times this session,
 including on `grep -a` output that revealed hundreds of pre-existing "overfull" log lines
 `grep -i` alone was silently missing).
 
-**22 chapters depth-passed so far this session: Ch.1-6, 8, 10-24.** All of Part I, Part II,
-Part III, and **all of Part IV (Ch.16-24, the full backend architecture chapter plus all 9
-backend chapters)** are now done — task #38 is complete. Continue with **Appendix A** (task
-#39, already marked in_progress) next.
+**25 chapters/appendix-sections depth-passed so far this session: Ch.1-9 (all except 7/9
+being fresh-gap top-ups since they'd been done before), Ch.10-24 (all of Parts I-IV), and
+Appendix A.** Tasks #24-40 are all complete. Only task #41 remains: **Parts V-IX (chapters
+25-48), not yet touched this session** — this is the large remaining item. Continue with
+**Ch.25 (The Input System)** next, working sequentially through 48, using the identical
+established methodology (see below).
 
 **This is an autonomous, long-running session** (the user explicitly authorized "continue
 autonomously for as long as there is useful, safe work within scope" and asked not to be
@@ -96,33 +98,35 @@ grounded in an actual source read, rebuilt and PNG-verified before commit:
   from the actual per-pixel formula in `CanvasSpriteBatchBackend.cpp`.
 - **Ch.24 DX3/free-direct Backend** — a direct, parallel worked example to Ch.17's
   SDL_RENDERER Wrap/Mirror gap (same 2-texel red/green setup; this backend gets it right).
-  **This completes all of Part IV — task #38 is done.**
+  **This completes all of Part IV.**
+- **Appendix A** — new section on `VertexBuffer`/`IndexBuffer`, the `Effect` base class +
+  `EffectParameter`'s full surface, and `OcclusionQuery` — three classes used throughout
+  Parts III-IV with no quick-reference entry until now.
+- **Ch.7 Math** — a genuinely fresh gap found via header/test diff: `Curve`'s real
+  `.xnb`/`.cnj` content-pipeline support, previously undocumented anywhere in the chapter,
+  quoting a real `CnjCurveTests.cpp` fixture in full.
+- **Ch.9 GraphicsDevice** — another fresh gap: `ExtractMatrices`, the internal free function
+  (not in the header) that pulls World/View/Projection from the applied `Effect` at every
+  draw-dispatch call site — ties Ch.13/15/21's effect chapters to this chapter's own draw
+  dispatch. Found and fixed 6 pre-existing overfull-hboxes in the same section while there.
 
 **Every chapter above also had at least one genuine overfull-hbox, header/folio collision, or
 API-accuracy defect found and fixed while reading the whole page** (not just the new
 content) — this remains the single most common defect class in this whole project; see
 "Reusable findings" below for the patterns that actually worked to fix them this time.
 
-## Remaining depth-pass work, in the planned order (see Task list / PLAN.md)
+## Remaining depth-pass work
 
-Not yet started this session, roughly in the order a fresh session should continue in:
-
-1. **Appendix A** (task #39, already marked in_progress — pick this up first) — not yet
-   touched this session (already has a `GraphicsDevice`/state-object section from the prior
-   breadth pass; look for what's still missing beyond that).
-2. **Ch.7 (Math, ~33/110 pages) and Ch.9 (GraphicsDevice, ~23/90 pages)** (task #40) — both
-   already depth-passed multiple times in much earlier sessions; the previously-known gap
-   lists are exhausted, so this needs fresh gap-hunting (diff the real header against the
-   chapter's prose again, from scratch) rather than a ready-made list.
-3. **Parts V–IX (chapters 25–48)** (task #41) — each still 3–15 of a 30–70 page target; same
-   "find a real, narrower gap and turn it into a worked example" approach as everything above.
-
-None of this needs to happen in the exact order listed — it's a reasonable default sequence,
-not a hard dependency chain. Parts I-IV (chapters 1-24, all of the core framework/graphics
-material) are now fully depth-passed this session; a session with limited time should treat
-Appendix A as the natural next small task before committing to the much larger Parts V-IX
-sweep. Check `TaskList` for the live, authoritative status of tasks #24-41 — it is kept
-current, task by task, throughout this session.
+**Only task #41 remains: Parts V-IX, chapters 25-48, not yet touched this session.** Every
+other task (#24-40, covering all of Parts I-IV plus Appendix A) is complete. Each of the 24
+remaining chapters is still 3-15 of a 30-70 page target — same "find a real, narrower gap
+grounded in an actual source read and turn it into a worked example, verify via PDF render,
+fix any overfull-hbox found along the way" approach used throughout this whole session.
+Continue sequentially starting with **Ch.25 (The Input System)**. Check `TaskList` for the
+live, authoritative status — task #41 is the only one still open, and it is large enough that
+a fresh session picking this up should expect to work through many chapters in sequence
+without needing to re-derive the approach; the methodology below is now proven across 25
+chapters and does not need to change.
 
 ## Reusable findings from this session, worth knowing before continuing
 
@@ -206,6 +210,21 @@ current, task by task, throughout this session.
   against the current source before reproducing it, not as ground truth by default — this is
   the same discipline CLAUDE.md's Vol. I Ch.8 `.xnb`-reader example already established as the
   project's standard, now with a second, independently-found instance.
+- **A `\description` list `\item[...]` label that combines two full method signatures (e.g.
+  `\item[\texttt{void A(...)} / \texttt{void B(...)}]`) is a frequent, easy-to-miss overfull-hbox
+  source** — bold item labels are visually wider than the same characters in body text, so a
+  combined two-signature label overflows well before a similar-length body sentence would.
+  Ch.9's depth pass found six of these in one section alone. The reliable fix is always the
+  same: split into two separate `\item` entries, one method each, rather than trying to
+  `\allowbreak{}` a label into submission — this was faster and more reliable every single time
+  it was tried this session. When revisiting any `\begin{description}` block with combined
+  `A / B` method-signature labels, check it proactively rather than waiting to find it by
+  accident.
+- **A chapter revisited across many past sessions (Ch.7, Ch.9 — both flagged in PLAN.md as
+  already depth-passed multiple times) can still have a substantial number of undiscovered
+  pre-existing overfull-hboxes** — six were found in one ~150-line span of Ch.9 alone,
+  despite that chapter's own PLAN.md history describing it as thoroughly gone-over. Don't
+  assume a heavily-worked chapter is layout-clean; render and check it the same as any other.
 
 ## Housekeeping reminders (unchanged from before, still true)
 
