@@ -128,7 +128,17 @@ required a live Xbox Live connection to begin with. A game whose multiplayer was
 system-link/LAN-based (as \emph{Speedy Blupi} and \emph{Planet Blupi} were, per
 Chapter~\ref{ch:blupi-case-study}) ports its networking with comparatively little friction;
 a game built around Xbox Live matchmaking or friends lists does not have a real target to
-port that part to at all.
+port that part to at all. One specific, easy-to-miss gotcha worth checking before porting any
+achievement-toast UI: \cnaclass{Achievement} objects \cnaclass{SignedInGamer::GetAchievements()}
+returns carry real \texttt{Key} / \texttt{IsEarned} / \texttt{EarnedDateTime} data, but
+\texttt{Name}, \texttt{Description}, and \texttt{GamerScore} stay at fixed, empty defaults ---
+the original game's own achievement catalog metadata never had a local source of truth to begin
+with (Chapter~\ref{ch:gamerservices}'s own worked example covers this precisely). A game whose
+achievement-earned toast reads directly from the returned \cnaclass{Achievement} object's own
+\texttt{Name} / \texttt{GamerScore} fields will port and compile cleanly, then silently render a
+blank name and \texttt{+0G} for every single achievement --- the fix is maintaining your own
+small achievement-metadata table keyed by \texttt{Key}, not something this namespace can supply
+for you.
 
 \section{Step five: pick and verify your graphics backend}
 
