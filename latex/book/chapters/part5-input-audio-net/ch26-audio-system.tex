@@ -359,6 +359,31 @@ fire-and-forget \texttt{SoundEffect::Play(volume, pitch, pan)} convenience helpe
 carries the old, unfixed behavior, tracked separately rather than silently left inconsistent
 without a record.
 
+A follow-up round of the same audit, prompted by nothing external this time --- simply
+re-reading \cnaclass{SoundEffect} / \cnaclass{SoundEffectInstance} /
+\cnaclass{DynamicSoundEffectInstance} end to end against FNA once more --- found a third,
+wide-reaching numeric bug in exactly the \texttt{Pitch} formula this chapter's own opening
+section states as correct today: \texttt{Pitch}'s conversion to a playback-rate ratio was, for a
+real stretch of this project's history, \texttt{ratio = (pitch<0) ? (1+pitch*0.5) :
+(1+pitch)} --- a linear approximation, not real FNA's genuine exponential octave curve,
+$2^{\text{pitch}}$, independently re-verified directly against FNA's own
+\texttt{SoundEffectInstance.cs}. The two formulas agree only at the three points
+$\text{pitch} \in \{-1, 0, 1\}$; at $\text{pitch} = 0.5$ the old linear formula gave a ratio of
+exactly $1.5$ against the correct $2^{0.5} \approx 1.4142$ --- roughly one semitone off, clearly
+audible, and never caught by any existing test because every prior Doppler/pitch test happened
+to exercise only $\text{pitch} = 0$, the one value (besides $\pm 1$) where the two formulas
+coincidentally produce the same answer. Because \cnaclass{Cue} routes every XACT pitch
+application --- base pitch, an RPC pitch curve, effect-variation pitch --- through this same
+\texttt{SoundEffectInstance::setPitchProperty()} internally, the bug reached all pitched XACT
+playback, not only code calling \cnaclass{SoundEffectInstance.Pitch} directly. The fix unified
+what had been three separately duplicated copies of the wrong formula (the static
+\texttt{SoundEffect::Play} fire-and-forget path, the shared \texttt{ApplyTrackProperties()}
+helper both \texttt{Play()} and \texttt{Apply3D()} use, and the pitch setter itself) into one
+small, independently-testable, correctly-exponential helper --- and, while fixing it, caught a
+second small defect in the same code: \texttt{ApplyTrackProperties()}'s own doc comment already
+\emph{claimed} to implement the correct $2^{\text{pitch}}$ formula before the fix, a stale,
+aspirational comment describing behavior the code had never actually had.
+
 \section{Accepted deviations, stated as such}
 
 Several differences from a hypothetical ``full XACT'' implementation are documented as
