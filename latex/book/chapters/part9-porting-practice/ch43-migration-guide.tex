@@ -175,6 +175,99 @@ introduce an unmarked extension, for exactly the reason Chapter~\ref{ch:media-sy
 \cnaclass{Song} finding illustrated: FNA itself is not always a perfectly faithful stand-in
 for the real spec.
 
+\section{Step seven: troubleshooting the build and the first run}
+
+The six steps above assume the port compiles and the graphics backend actually starts.
+\texttt{docs/migration-guide.md} in the \texttt{cna} repository (Task 486, the source this
+whole chapter draws its structure from) closes with two practical troubleshooting tables ---
+real configure-time and runtime failures a porter is likely to hit, each checked directly
+against the current \texttt{CMakeLists.txt}/source rather than assumed from general CMake or
+XNA knowledge. Both are reproduced here, condensed, since they are exactly the kind of
+concrete, checkable-cost information this chapter's own closing section already asks you to
+value over a general sense of the project's maturity.
+
+\subsection{Configure-time failures}
+
+\begin{center}
+\begin{longtable}{>{\raggedright\arraybackslash}p{0.32\textwidth}>{\raggedright\arraybackslash}p{0.58\textwidth}}
+\toprule
+\textbf{Symptom} & \textbf{Cause and fix} \\
+\midrule
+\endhead
+\texttt{CNA: Missing sibling repository 'sharp-runtime'} / \texttt{'easy-gl'} & These are
+  sibling checkouts next to \texttt{cna}, \emph{not} git submodules ---
+  \texttt{git submodule update --init} will not fetch them. Clone the missing repo as a
+  sibling directory instead; the real error message prints the exact URL. \\[4pt]
+\texttt{Missing vendored 'SDL' \dots} right after a fresh clone & Downloaded a ZIP/release
+  archive instead of cloning with Git, or forgot to init submodules --- vendored
+  \texttt{third\_party/SDL} / \texttt{SDL\_image} / \texttt{SDL\_mixer} are empty. Run
+  \texttt{git submodule update --init --recursive}, or configure with
+  \texttt{-DCNA\_USE\_SYSTEM\_SDL=ON} to use system SDL3 packages instead. \\[4pt]
+\texttt{Could not find a package configuration file for Vulkan} (\texttt{VULKAN} backend) &
+  No Vulkan SDK/loader installed. Install your distribution's \texttt{vulkan-sdk}/%
+  \texttt{libvulkan-dev} package, or the LunarG SDK, before configuring. \\[4pt]
+CMake \texttt{FetchContent} hangs or fails cloning \texttt{bgfx.cmake} (\texttt{BGFX} backend)
+  & \texttt{BGFX} fetches \texttt{bgfx.cmake} from GitHub at configure time --- needs network
+  access, and the first fetch can be slow. Retry, or pre-seed a local clone and point
+  \texttt{FETCHCONTENT\_SOURCE\_DIR\_BGFX\_CMAKE} at it. \\[4pt]
+\cnaclass{VideoPlayer}-related link errors & Missing FFmpeg dev packages --- hits every
+  backend, not just video code. Install \texttt{libavcodec-dev libavformat-dev
+  libavutil-dev libswresample-dev}. \\
+\bottomrule
+\end{longtable}
+\end{center}
+
+\subsection{Runtime failures}
+
+\begin{center}
+\begin{longtable}{>{\raggedright\arraybackslash}p{0.32\textwidth}>{\raggedright\arraybackslash}p{0.58\textwidth}}
+\toprule
+\textbf{Symptom} & \textbf{Cause and fix} \\
+\midrule
+\endhead
+Any 3D call throws \texttt{std::runtime\_error} & You are on \texttt{SDL\_RENDERER} --- not a
+  bug, it is 2D-only by design (Chapter~\ref{ch:sdl-renderer}). Switch to \texttt{EASYGL},
+  \texttt{VULKAN}, or \texttt{BGFX} for 3D. \\[4pt]
+\texttt{bgfx::init failed}, or a native-window-handle error on \texttt{BGFX} & No usable
+  native window handle for \texttt{bgfx}'s chosen renderer under the current SDL video
+  driver. Check \texttt{SDL\_GetCurrentVideoDriver()}'s output (printed in the real error
+  message); try forcing a renderer explicitly (see below). \\[4pt]
+\texttt{BGFX} picks an unavailable graphics API (e.g.\ Vulkan on a machine with no Vulkan
+  ICD) & \texttt{bgfx}'s own renderer auto-detection picked something unavailable. Set the
+  \texttt{CNA\_BGFX\_RENDERER} environment variable to force one explicitly: \texttt{AUTO},
+  \texttt{OPENGL}, \texttt{OPENGLES}, \texttt{VULKAN}, \texttt{METAL}, \texttt{DIRECT3D11},
+  \texttt{DIRECT3D12}, or \texttt{NOOP} (case-insensitive; an unsupported value throws
+  immediately with this exact list). \\[4pt]
+Blank/black window, or an OpenGL-based backend fails to create a context in CI/headless
+  environments & No real X server or GPU driver --- common under \texttt{Xvfb} with only a
+  software (\texttt{llvmpipe}) GL driver (Chapters~\ref{ch:sdl-renderer}
+  and~\ref{ch:easygl-backend} both now include a real, confirmed-working example of exactly
+  this setup). Expected in headless CI; tests still run against software rendering. If an
+  entire run fails rather than just individual pixel-tolerance edge cases, confirm a display
+  is actually reachable (the \texttt{DISPLAY} environment variable, or
+  \texttt{-DCNA\_TEST\_DISPLAY=:99} at configure time to point the whole \texttt{ctest} suite
+  at a specific \texttt{Xvfb} display). \\[4pt]
+A pixel-comparison example or test fails right after an intentional rendering change &
+  Golden images are stale references, not a bug. Re-run the specific test with
+  \texttt{CNA\_UPDATE\_GOLDEN=1} set to regenerate the golden PNG, then review the diff before
+  committing it (Chapter~\ref{ch:verification-methodology} covers this golden-image mechanism
+  in full). \\[4pt]
+Flaky test failures that do not reproduce in isolation & \textbf{Never run multiple
+  backends' full \texttt{ctest} suites concurrently} --- confirmed to cause transient
+  GPU/driver-contention false failures. Run backend test suites sequentially, and re-run any
+  single anomalous test in isolation (\texttt{ctest -R <TestName>}) before treating it as a
+  real regression, not a race. \\
+\bottomrule
+\end{longtable}
+\end{center}
+
+Before filing anything as a new CNA bug during a port, check three sources in this order:
+\texttt{docs/xna-4-api-coverage.md}'s per-backend support table and its ``Known deviations
+from XNA/FNA'' list, then \texttt{NEXT.md}'s own actively-maintained current bug section ---
+most currently-open gaps already have a task number and a documented root cause. If a symptom
+genuinely is not covered by any of the three, it is more likely a real, new finding worth its
+own report than a known, already-tracked limitation.
+
 \section{A realistic expectation, stated plainly}
 
 Every chapter in this book that has named a real, still-open gap has also named its measured
