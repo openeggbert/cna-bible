@@ -166,3 +166,42 @@ explicitly deferred as a substantially larger undertaking, left for the D3D9 ora
 instead. One real, if narrow, divergence this tool did catch: \cnaclass{IndexElementSize}'s
 \texttt{SixteenBits} / \texttt{ThirtyTwoBits} values did not match FNA's own \texttt{0} / \texttt{1}
 numbering at all --- confirmed and fixed once this comparison surfaced it.
+
+\section{The one caveat every result in this chapter inherits}
+
+Every measurement this elaborate dev loop produces --- the D3D9 oracle's 0-of-31 divergence
+count, the D3D11/D3D12 smoke suites, the \texttt{GraphicsProfile.Reach} / \texttt{HiDef} logic
+Chapter~\ref{ch:graphicsdevice} already covers as the one CNA backend where that distinction is
+genuinely real --- inherits the same single, explicitly-named qualifier, stated plainly and
+project-wide rather than buried in one task's own footnote: under Wine plus DXVK,
+\texttt{D3DCAPS9} is \emph{synthesized by DXVK itself}, not reported by an authentic,
+period-correct Direct3D~9 driver from Intel, AMD, or NVIDIA circa the real Xbox~360/Windows
+XNA~4.0 era. The distinction is precise and worth holding onto exactly as stated: the
+\emph{logic} this whole verification methodology proves is real --- real \texttt{D3DCAPS9}
+fields, read through real \texttt{IDirect3D9} / \texttt{IDirect3DDevice9} calls, with real
+profile-ceiling enforcement and no hardcoded ``pretend'' table standing in anywhere. What is
+not yet proven is whether the specific \emph{numbers} those real calls return in this
+Wine+DXVK dev loop match what an authentic XNA-era GPU driver would have reported --- because
+no such hardware exists anywhere in this development environment to compare against. A result
+like ``\texttt{IsProfileSupported(HiDef)} returns \texttt{true}'' in this loop proves the
+comparison logic correctly reads and evaluates real capability fields; it does not by itself
+prove a genuine HiDef-class GPU was actually asked, since DXVK's own synthesized capability set
+is standing in for one.
+
+Exactly one remaining task closes this gap, and this book states its status as plainly as the
+project's own tracking does: real Windows hardware verification, covering a real device-lost
+event fired by an actual alt-tab/RDP/lock-screen transition (not this dev loop's own simulated
+context-loss test hook), real \texttt{D3DCAPS9} values from an authentic period driver, real
+exclusive fullscreen behavior, and --- the single most definitive remaining measurement in the
+whole methodology --- re-running the D3D9 oracle itself on real Windows against a real XNA~4.0
+installation rather than through this chapter's own cross-compiled, Wine-hosted substitute for
+one. This task is formally marked \texttt{needs\_human} in the project's own tracking --- not
+unfinished engineering, but a verification step that requires physical hardware and a human
+hand no amount of further Wine/DXVK tooling can substitute for, the identical gap
+Chapter~\ref{ch:verification-methodology}'s own cross-platform account already names plainly:
+real Windows hardware verification remains open on all three Direct3D backends. Every specific,
+checkable claim this book has made about D3D9 pixel authenticity should be read with this
+qualifier attached --- ``indistinguishable from real XNA~4.0 running through the same DXVK
+path, on this machine,'' a real and rigorously earned result, but not yet ``authentically
+indistinguishable on real period Xbox~360/Windows hardware,'' which remains the one honestly
+unclosed claim in this entire chapter's own account of itself.
