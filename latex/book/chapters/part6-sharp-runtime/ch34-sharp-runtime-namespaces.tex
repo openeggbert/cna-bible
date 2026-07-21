@@ -90,6 +90,39 @@ private:
 };
 \end{lstlisting}
 
+\subsection{\cnaclass{MemoryStream}, and a small, deliberately-left divergence in its own constructor}
+
+\cnaclass{System::IO::MemoryStream} is the concrete \texttt{Stream} subclass this ecosystem
+actually uses in practice --- CNA's own \texttt{ContentManager} reaches for it to wrap data
+loaded from sources like Android APK assets, where a real filesystem path is not available at
+all. Its default constructor creates an empty, writable buffer, matching real .NET exactly. The
+single-buffer constructor is where a small, real, currently accepted divergence lives:
+
+\begin{lstlisting}
+MemoryStream(const bytecs* buffer, intcs size);   // real signature, MemoryStream.hpp
+\end{lstlisting}
+
+Real .NET's own equivalent single-array constructor, \texttt{MemoryStream(byte[] buffer)},
+defaults to a \emph{writable} stream --- its own documented implementation is literally
+\texttt{this(buffer, true)}, forwarding to the two-argument overload with \texttt{writable}
+explicitly \texttt{true}. This port's constructor instead defaults \texttt{writable\_} to
+\texttt{false}, confirmed directly in \texttt{MemoryStream.cpp}:
+
+\begin{lstlisting}
+MemoryStream::MemoryStream(const bytecs* buffer, intcs size)
+    : data_(buffer, buffer + size), position_(0), writable_(false) {}
+\end{lstlisting}
+
+This was found, not invented, incidentally while writing regression tests for an unrelated
+audit ticket --- and deliberately left as-is right there rather than fixed on the spot, to
+avoid scope creep into a ticket that was not about this constructor at all. It remains a
+real, open, precisely-scoped divergence today: code that passes a raw buffer to this
+constructor and then calls \texttt{Write} on the result will get a real
+\texttt{NotSupportedException} in this port, where the equivalent real .NET call would have
+succeeded. A caller that genuinely wants a writable copy of existing buffer contents should
+construct an empty \cnaclass{MemoryStream} and \texttt{Write} the source bytes into it
+explicitly, rather than relying on this specific constructor's own writability default.
+
 \section{The post-stabilization audit: distrusting a complete-looking task list on purpose}
 
 \texttt{sharp-runtime}'s own ticket backlog --- 1{,}709 tickets across sixteen categories ---
