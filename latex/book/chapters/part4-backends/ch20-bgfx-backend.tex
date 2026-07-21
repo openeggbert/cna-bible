@@ -21,6 +21,70 @@ thirty-eight real gaps; thirty-seven were fixed in a single closing session, lea
 depth-bias item covered below --- which was itself subsequently fixed too, closing the phase
 in full.
 
+\section{Choosing bgfx's underlying native renderer}
+\label{sec:bgfx-renderer-selection}
+
+Unlike every other backend in this book, \texttt{BGFX} is itself an abstraction over several
+further, distinct native graphics APIs --- OpenGL, OpenGL ES, Vulkan, Direct3D~11/12, and
+Metal --- and CNA exposes a real, previously-undocumented mechanism to choose among them: the
+\texttt{CNA\_BGFX\_RENDERER} environment variable, resolved through three small, dedicated
+functions in \texttt{BgfxRendererSelection.cpp}. \texttt{GetDefaultRendererType()} picks
+\texttt{bgfx::RendererType::OpenGL} on Linux specifically and \texttt{Count} (bgfx's own
+``let the library auto-detect'' sentinel) everywhere else; \texttt{ParseRendererTypeOverride()}
+case-insensitively accepts \texttt{AUTO}, \texttt{OPENGL}, \texttt{OPENGLES}, \texttt{VULKAN},
+\texttt{METAL}, \texttt{DIRECT3D11} / \texttt{D3D11}, \texttt{DIRECT3D12} / \texttt{D3D12}, and
+\texttt{NOOP} (bgfx's own headless no-op renderer, useful for pure logic testing with no GPU
+work issued at all), throwing a \texttt{std::runtime\_error} naming every valid value for
+anything else; \texttt{ResolveRendererType()} ties the two together, falling back to the
+platform default whenever the environment variable is unset or empty.
+
+\subsection{A worked example: routing one specific test around a real bgfx/GL limitation}
+
+This mechanism exists for a concrete, real reason, not as a speculative escape hatch:
+\texttt{examples/bgfx\_rendertarget2d\_msaa\_test.cpp}'s own header comment documents a genuine
+investigation. In this project's own Linux development sandbox, bgfx's default OpenGL renderer
+negotiates only a legacy OpenGL~2.1 context --- confirmed via \texttt{glxinfo} that the
+underlying Mesa/RadeonSI driver actually supports OpenGL~4.6 with full hardware acceleration,
+so this is bgfx itself requesting an old context by default, not a driver ceiling --- and
+MSAA-flagged framebuffer-attached textures do not actually resolve with real sub-pixel blending
+under that legacy GL~2.1 path, despite \texttt{bgfx::getCaps()} itself reporting
+\texttt{BGFX\_CAPS\_FORMAT\_TEXTURE\_FRAMEBUFFER\_MSAA} support for the exact format requested.
+The investigation ruled out a CNA-side defect specifically: forcing bgfx onto its Vulkan
+renderer instead (\texttt{CNA\_BGFX\_RENDERER=VULKAN}, routing through the identical GPU) made
+both of the test's own checks pass cleanly, including a genuine intermediate (blended) pixel
+value along the test triangle's diagonal edge, with \emph{zero} code changes on either side ---
+proof the C++ wiring itself is correct and backend-agnostic, and the gap is specifically in
+bgfx's own default legacy-GL-context resolve path. The real \texttt{ctest} registration
+(\texttt{cmake/Tests/BgfxTests.cmake}) reflects this finding directly rather than leaving it as
+a comment nobody acts on:
+
+\begin{lstlisting}
+cna_register_backend_test(NAME Bgfx_RenderTarget2D_MsaaResolve
+    COMMAND cna_test_bgfx_rendertarget2d_msaa
+    TIMEOUT 30
+    ENVIRONMENT "SDL_VIDEODRIVER=x11;DISPLAY=${CNA_TEST_DISPLAY};CNA_BGFX_RENDERER=VULKAN")
+\end{lstlisting}
+
+This is worth reading alongside, not instead of, this chapter's own ``Test baseline'' section
+above and \texttt{docs/graphics-backend-feature-matrix.md}'s repeatedly-reconfirmed count
+(spanning multiple independently-dated task closures) that \texttt{Bgfx\_RenderTarget2D\_%
+MsaaResolve} remains one of exactly two still-failing tests in \emph{that} project's own
+tracked baseline, attributed there to a related but distinctly-framed cause: ``this sandbox's
+\texttt{Xvfb} has no DRI3 support.'' The two explanations are not actually in tension --- DRI3
+is specifically what a windowed OpenGL context needs to negotiate real hardware acceleration
+under X11 indirect rendering, so its absence is a plausible reason bgfx's OpenGL path falls
+back to a legacy context in the first place, while Vulkan's own presentation integration does
+not depend on the same DRI3/GLX negotiation at all. What this book cannot independently confirm
+is whether the specific sandbox behind that repeatedly-cited count genuinely has real Vulkan/GPU
+access available to the \texttt{CNA\_BGFX\_RENDERER=VULKAN} override the way the test's own
+comment describes, or whether that particular environment lacks real GPU access down either
+path --- this book's own screenshot-feasibility investigation (Chapter~\ref{ch:graphicsdevice})
+independently confirmed no GPU passthrough at all in \emph{this} book-writing session's own
+container, a genuinely different environment from CNA's own separate development sandbox. Both
+real, sourced explanations are given here rather than silently picking one, consistent with
+this book's own methodology of not resolving an ambiguity the underlying sources themselves
+leave open.
+
 \section{DepthBias: a real gap in the underlying library, not just CNA}
 
 \cnaclass{RasterizerState.DepthBias} is the one feature in this chapter whose fix required
