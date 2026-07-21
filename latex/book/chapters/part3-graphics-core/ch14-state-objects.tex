@@ -106,6 +106,52 @@ all), and \texttt{GraphicsDevice.Clear(ClearOptions::Stencil, ...)} is confirmed
 actually clear the stencil buffer on EasyGL, Vulkan, or BGFX --- the same gap already flagged
 in Chapter~\ref{ch:graphicsdevice}.
 
+\subsection{A worked example: masking a reflection with the stencil buffer}
+
+The classic real use of the stencil-test properties above, taken together, is a planar mirror:
+render the mirror surface into the stencil buffer only, then render the reflected scene a
+second time, but only where that stencil mark was left behind --- so the reflection never
+spills past the mirror's own on-screen footprint even though the reflected geometry itself may
+extend well beyond it. This needs two distinct \cnaclass{DepthStencilState} configurations, not
+one:
+
+\begin{lstlisting}
+DepthStencilState writeMirrorMask;
+writeMirrorMask.setDepthBufferEnableProperty(true);
+writeMirrorMask.setStencilEnableProperty(true);
+writeMirrorMask.setStencilFunctionProperty(CompareFunction::Always);
+writeMirrorMask.setStencilPassProperty(StencilOperation::Replace);
+writeMirrorMask.setReferenceStencilProperty(1);
+
+DepthStencilState maskedByMirror;
+maskedByMirror.setDepthBufferEnableProperty(true);
+maskedByMirror.setStencilEnableProperty(true);
+maskedByMirror.setStencilFunctionProperty(CompareFunction::Equal);
+maskedByMirror.setReferenceStencilProperty(1); // only draw where the mirror already wrote 1
+
+// Pass 1: draw the mirror quad itself, writing 1 into the stencil buffer everywhere it covers.
+device.setDepthStencilStateProperty(writeMirrorMask);
+mirrorQuad.Draw();
+
+// Pass 2: draw the reflected scene, masked to the mirror's own footprint by the stencil test.
+device.setDepthStencilStateProperty(maskedByMirror);
+reflectedScene.Draw(); // a full scene draw, using a reflected view matrix
+\end{lstlisting}
+
+Two of this chapter's own already-stated facts directly constrain whether this exact technique
+is safe to ship across all three hardware backends. \texttt{ReferenceStencil} above is set once,
+as part of constructing each \cnaclass{DepthStencilState} --- this worked example does not rely
+on changing it independently afterward, which is exactly the still-open gap flagged above (no
+\texttt{SetReferenceStencil} entry point exists on EasyGL or BGFX; a technique needing a
+per-draw-call reference value without rebuilding the whole state object would hit that gap
+directly). And because \texttt{GraphicsDevice.Clear(ClearOptions::Stencil, ...)} does not
+actually clear the stencil buffer on any of the three hardware backends today, a game using this
+exact two-pass technique across multiple frames must not rely on \texttt{Clear} to reset the
+mirror mask between frames --- the first pass's unconditional \texttt{CompareFunction::Always} /
+\texttt{StencilOperation::Replace} configuration is what actually keeps this specific technique
+correct despite that gap, since it overwrites the stencil value outright rather than depending on
+it having been zeroed first.
+
 \section{RasterizerState}
 
 Three presets (\texttt{CullClockwise}, \texttt{CullCounterClockwise} --- the XNA default ---
@@ -132,6 +178,48 @@ project, so its state coverage is smoke-test/no-regression only, a scope differe
 remembering whenever this book or the project's own docs describe a BGFX row as
 ``correct.''
 
+\subsection{A worked example: shadow-map depth bias, and a wireframe debug toggle}
+
+\texttt{DepthBias} and \texttt{SlopeScaleDepthBias} exist for exactly one recurring real
+problem: shadow acne, the self-shadowing Moir\'e artifact a shadow-mapped surface shows when its
+own depth-buffer sample is compared against itself with no tolerance at all. A small, fixed bias
+plus a slope-scaled term (larger at grazing angles, where acne is worst) is the standard fix:
+
+\begin{lstlisting}
+RasterizerState shadowMapBias;
+shadowMapBias.setCullModeProperty(CullMode::CullClockwiseFace);
+shadowMapBias.setDepthBiasProperty(0.0015f);
+shadowMapBias.setSlopeScaleDepthBiasProperty(1.5f);
+
+device.setRasterizerStateProperty(shadowMapBias);
+// ... render the scene from the light's own view/projection into the shadow map ...
+\end{lstlisting}
+
+This chapter's own audit notes one specific, narrow failure at an extreme magnitude
+(\texttt{DepthBias = -1e6}) on Vulkan --- ordinary shadow-mapping bias values like \texttt{0.0015}
+above are nowhere near that magnitude and are unaffected; the caveat only matters if a game
+computes its bias value dynamically and that computation could, under some real input, blow up
+toward an extreme.
+
+A second, unrelated everyday use for the same class --- toggling a wireframe debug overlay ---
+is a one-property change with no bias involved at all:
+
+\begin{lstlisting}
+RasterizerState wireframe;
+wireframe.setFillModeProperty(FillMode::WireFrame);
+wireframe.setCullModeProperty(CullMode::None); // see both front and back edges while debugging
+
+if (showWireframeOverlay)
+    device.setRasterizerStateProperty(wireframe);
+else
+    device.setRasterizerStateProperty(RasterizerState::CullCounterClockwise);
+\end{lstlisting}
+
+Remember this chapter's own scope caveat before trusting a wireframe-toggle test on BGFX
+specifically: \texttt{FillMode} there has no GPU-readback pixel verification at all (BGFX has no
+readback API in this project), so \texttt{FillMode::WireFrame} on that one backend is
+smoke-tested, not pixel-proven, unlike the same toggle on EasyGL or Vulkan.
+
 \section{SamplerState}
 
 Six presets --- \texttt{AnisotropicClamp} / \texttt{Wrap}, \texttt{LinearClamp} / \texttt{Wrap},
@@ -145,10 +233,11 @@ The central, now-fixed finding here was not about the address-mode or filter map
 themselves --- both were correct in isolation for as long as they were tested --- but about
 whether \texttt{GraphicsDevice.SamplerStates} / \texttt{VertexSamplerStates} were actually
 \emph{applied} before a 3D draw at all. They were not, for three separate, backend-specific
-reasons: on EasyGL, eighteen of the \texttt{DrawUserPrimitives}/%
-\texttt{DrawUserIndexedPrimitives} / \texttt{DrawInstancedPrimitives} overloads simply never
-called the internal sampler-application step that \texttt{DrawPrimitives}/%
-\texttt{DrawIndexedPrimitives} did call; on Vulkan, the dual-texture descriptor-set path
+reasons: on EasyGL, eighteen overloads across three user-primitive draw families ---
+\texttt{DrawUserPrimitives}, \texttt{DrawUserIndexedPrimitives}, and
+\texttt{DrawInstancedPrimitives} --- simply never called the internal sampler-application step;
+that step was only ever called by the two ordinary buffer-bound draw entry points,
+\texttt{DrawPrimitives} and \texttt{DrawIndexedPrimitives}. On Vulkan, the dual-texture descriptor-set path
 hardcoded a default sampler into its slots regardless of what sampler state was actually
 current; on BGFX, a dual-texture draw bound its second texture slot using the \emph{first}
 slot's sampler flags. All three were fixed, and --- once actually applied --- the underlying
@@ -175,6 +264,45 @@ regardless of the requested anisotropy level until a fix wired real
 capability; BGFX remains partially fixed --- it enables the anisotropic sampling flag but
 never communicates the actual requested level, an on/off switch rather than a graduated one,
 still open.
+
+\subsection{A worked example: crisp pixel art versus a minified, mipmapped floor}
+
+Two everyday sampler needs pull \texttt{Filter} in opposite directions, and the chapter's own
+mip-awareness deviation above means the obvious choice is not always the correct one for both.
+A 2D pixel-art sprite wants hard, un-blurred texel edges at every zoom level --- the
+\texttt{PointClamp} preset, unmodified, is exactly right, and mip level~0 is the \emph{only}
+level a sprite like this has anyway:
+
+\begin{lstlisting}
+SamplerState pointClamp = SamplerState::PointClamp;
+spriteBatch_->Begin(SpriteSortMode::Deferred, BlendState::AlphaBlend,
+                     &pointClamp, nullptr, nullptr); // crisp texel edges, no mip chain to worry about
+\end{lstlisting}
+
+A distant, minified 3D floor texture with a real mipmap chain is the case where plain
+\texttt{TextureFilter::Point} is the wrong choice in CNA specifically, precisely because of this
+chapter's own already-stated deviation: \texttt{Point} and \texttt{Linear} both always sample mip
+level~0 here, regardless of minification, so a floor texture with mips generated but sampled via
+plain \texttt{Point} would show the same aliased, moir\'e-prone level~0 detail at any distance ---
+mip selection never engages at all. Getting real mip-aware minification with a point-filtered
+look (retro, blocky, but not shimmering into the distance) needs one of the explicitly
+\texttt{Mip}-qualified filter values instead:
+
+\begin{lstlisting}
+SamplerState blockyButMipAware;
+blockyButMipAware.setFilterProperty(TextureFilter::PointMipLinear); // point min/mag, real mip chain
+blockyButMipAware.setAddressUProperty(TextureAddressMode::Wrap);
+blockyButMipAware.setAddressVProperty(TextureAddressMode::Wrap);
+
+device.getSamplerStatesProperty()[0] = blockyButMipAware;
+\end{lstlisting}
+
+This is a deliberate CNA deviation from FNA (which is mip-aware for plain \texttt{Point}/
+\texttt{Linear} too), not an oversight left unfixed --- the chapter's own account of why explains
+the alternative would be worse: unconditionally engaging mip selection for the common
+non-mipmapped 2D case would render as GL-incomplete (solid black) rather than simply ignoring
+mips, so the plain filters were deliberately kept mip-\emph{unaware} and the \texttt{Mip}-qualified
+values are the one correct way to opt in for an asset that actually has mips.
 
 \section{One recurring, small bug worth naming on its own}
 
