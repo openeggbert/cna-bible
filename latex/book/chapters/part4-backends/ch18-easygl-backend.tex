@@ -179,8 +179,9 @@ how carefully either one was built.
 An earlier pass of this chapter listed ``two-sided stencil incorrectly reusing the front-face
 read mask for the back face too'' among this backend's confirmed gaps. Reading
 \texttt{ApplyDepthStencilState()} in \texttt{EasyGLGraphicsBackend.cpp} directly shows exactly
-that: its \texttt{Back}-face call to \texttt{set\_stencil\_func\_separate()} is passed the same
-\texttt{stencilMask} local variable as the \texttt{Front}-face call, with no separate
+that: the function's \texttt{Back}-face call to
+\texttt{set\_stencil\_func\_separate()} passes the same \texttt{stencilMask} local
+variable the \texttt{Front}-face call already used, with no separate
 back-face mask value anywhere in the function:
 
 \begin{lstlisting}
@@ -188,10 +189,10 @@ device.set_stencil_func_separate(::easygl::CullFace::Front,
     ToEasyGLCompareFunc(stencilFunc),
     referenceStencil, static_cast<unsigned int>(stencilMask));
 // ...
+// Back-face call below passes the same stencilMask -- not a separate ccw one.
 device.set_stencil_func_separate(::easygl::CullFace::Back,
     ToEasyGLCompareFunc(ccwStencilFunc),
-    referenceStencil, static_cast<unsigned int>(stencilMask));  // same stencilMask, not a
-                                                                  // separate ccw one
+    referenceStencil, static_cast<unsigned int>(stencilMask));
 \end{lstlisting}
 
 The claim that this is \emph{incorrect} does not survive checking real XNA's own documented
