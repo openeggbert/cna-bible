@@ -103,6 +103,104 @@ authored sample exercising a code path incidentally (an occlusion-query trick, a
 \texttt{Clear} call every 3D scene makes) surfaces gaps a unit test built specifically to check
 one property in isolation would never think to combine.
 
+\subsection{The largest framework bug a sample ever found: a project-wide vertex-corruption defect}
+
+The two findings above are real, but modest in blast radius --- each affects one code path.
+Porting \texttt{InverseKinematics} surfaced something categorically bigger: a silent
+vertex-data corruption bug reachable by \emph{every} \cnaclass{Model} loaded through
+\cnaclass{ContentManager} with a particular, extremely common vertex layout, confirmed as
+the likely true cause of a symptom family this project had been chasing across several
+unrelated samples for multiple sessions.
+
+The investigation itself is worth walking through, because the isolation technique is as
+instructive as the bug. A straightforward port of a 418-vertex cylinder mesh built and
+loaded without error --- \cnaclass{ContentManager} reported the correct mesh count, vertex
+count, and primitive count --- but the model never rendered, at any camera distance, scale,
+or cull mode, even reduced to one full-scale, unlit, untextured triangle drawn through the
+ordinary \cnaclass{Model} / \cnaclass{ModelMesh}\allowbreak{}\texttt{::Draw()} path. A
+hand-built triangle bypassing the content pipeline entirely failed identically, and so did
+an already-shipped, already-working \texttt{.model.json} loaded fresh into the same code
+--- ruling out this one mesh's own data as the cause. A much larger model (3{,}252
+vertices) rendered correctly through the exact same code path at every scale tested,
+including scaled down to match the failing cases' size --- the detail that pointed at the
+\emph{reader} itself, not any one sample's asset or draw call, and hinted that whatever was
+wrong was sensitive to something about the failing meshes specifically, not to rendering in
+general.
+
+The root cause, confirmed by direct source read and a standalone \texttt{sizeof()} probe
+rather than guessed: every CNA vertex struct
+(\cnaclass{VertexPositionColor}, \cnaclass{VertexPositionTexture},
+\cnaclass{VertexPositionColorTexture}, \cnaclass{VertexPositionNormalTexture}) publicly
+inherits the polymorphic \cnaclass{IVertexType}, so every instance carries an 8-byte vtable
+pointer real XNA's own clean, unpadded C\# layouts never had:
+
+\begin{lstlisting}
+sizeof(VertexPositionColor)         = 40   (XNA/clean size: 16)
+sizeof(VertexPositionTexture)       = 32   (XNA/clean size: 20)
+sizeof(VertexPositionColorTexture)  = 56   (XNA/clean size: 24)
+sizeof(VertexPositionNormalTexture) = 40   (XNA/clean size: 32)
+\end{lstlisting}
+
+The reader, at the time, selected which typed \texttt{VertexBuffer::SetData} overload to
+call for a mesh by comparing the \texttt{.model.json}'s own declared \texttt{"vertexStride"}
+--- always one of the clean XNA sizes, since every offline conversion tool writes the
+tightly-packed layout, never the vtable-inflated one --- directly against \texttt{sizeof()}
+of these now-inflated structs. None of the four clean stride values equals its
+\emph{intended} struct's real, inflated size any more --- \textbf{except one}: a declared
+stride of 32 happens, by pure coincidence of \cnaclass{VertexPositionTexture}'s own
+particular field-count-plus-padding arithmetic (8-byte vtable + 12-byte position + 8-byte
+texture-coordinate, padded to 32 for 4-byte alignment), to equal \texttt{sizeof(Vertex}\allowbreak{}
+\texttt{PositionTexture)} --- which is also 32. Every single \texttt{Content.Load<Model>}-based
+sample in the entire \texttt{cna-samples} repository declares stride 32, because every
+conversion tool only ever emits \cnaclass{VertexPositionNormalTexture} data. The reader
+therefore always silently dispatched to the \emph{wrong} branch, reinterpreting raw,
+vtable-free file bytes (laid out as position[12] + normal[12] + texcoord[8], with no
+vtable at all) as an array of real, vtable-shifted \cnaclass{VertexPositionTexture} objects
+--- reading each vertex's position and texture-coordinate fields from byte offsets that
+matched neither the file's actual layout nor the struct's own intended one, silently
+corrupting the GPU-bound vertex data for every stride-32 model in the repository, not just
+the one sample that happened to surface it.
+
+This is very likely the true root cause of a symptom family this project had already spent
+several sessions attributing, without ever directly inspecting the rasterizer itself, to
+``near-plane clipping'' across multiple unrelated samples: a corrupted, effectively
+arbitrary byte-offset reinterpretation of a mesh's own position data produces exactly the
+two symptoms already on record --- a degenerate thin line, if the corrupted positions still
+land roughly in the same region of space, or full invisibility, if they land outside the
+view frustum entirely --- without any actual clip-space or projection defect being involved
+at all.
+
+The fix landed in \texttt{cna} itself (confirmed by direct source read of
+\texttt{ContentManager.cpp}'s \texttt{BuildVertexBufferFromRawBytes()}), and its own code
+comment explicitly credits where the bug was actually found:
+
+\begin{lstlisting}
+// Task 927: `stride` is always one of XNA's own "clean" (tightly packed, no
+// vtable) sizes -- 16/20/24/32/52/56 -- ... Every CNA vertex struct below
+// publicly inherits the polymorphic IVertexType (a vtable pointer XNA's own
+// C# interface never carried), inflating its real sizeof() past that clean
+// size -- comparing `stride` against sizeof(...) directly, then
+// reinterpret_cast-ing the tightly-packed bytes as an array of those
+// inflated structs, silently reads every vertex field from the wrong byte
+// offset (confirmed the true cause of a long-tracked "near-plane-clipping"/
+// invisible-model symptom family in ../cna-samples). Read each vertex's
+// fields explicitly from the buffer's own known-clean offsets instead...
+\end{lstlisting}
+
+The fix reads each vertex's fields explicitly at known-clean offsets and constructs real,
+normally-initialized C\texttt{++} objects field by field --- letting the compiler resolve
+member layout correctly --- rather than reinterpreting raw bytes as an inflated struct at
+all; two further, larger skinned/PBR stride values sidestep the whole class of risk by
+uploading raw bytes directly (\texttt{SetDataRaw()}) instead of ever constructing a
+vtable-carrying struct from file data. Rebuilding the full sample suite against this fix and
+re-running a previously-affected sample confirmed it live: a tank mesh previously invisible
+at that sample's own camera distance rendered as a complete, correctly-shaped solid
+silhouette afterward, no other change. This is, by a wide margin, the most consequential
+single bug this project's sample-porting effort has ever surfaced --- not because any one
+sample's code was unusual, but precisely because it was not: an ordinary, correctly-written
+port of ordinary content, run far enough to notice that ``the mesh loads without error but
+never appears'' is not the same claim as ``the mesh loaded correctly.''
+
 \subsection{The 67 samples beyond the 86: not forgotten, each excluded for a named, structural reason}
 
 The ``153 samples this project has ever catalogued'' figure above is worth breaking down
