@@ -163,6 +163,104 @@ thin wrapper over a library glob or a regex translation), whose correctness on e
 adjacent \texttt{**} runs or a pattern with no \texttt{*} at all currently rests entirely on
 manual code reading rather than a single asserted test case.
 
+\section{Where the storage root actually resolves to}
+
+\texttt{GetStorageRootEXT()}'s own real implementation, \texttt{EnsureStorageRoot()}, is worth
+reading directly rather than trusting the one-line summary given above --- it is a real,
+three-tier platform-resolution chain, not a single fixed path, and it is lazily evaluated and
+cached (\texttt{storageRootInitialized\_}) exactly once per application-name change:
+
+\begin{lstlisting}
+// From EnsureStorageRoot(), the real resolution order:
+// 1. SDL_GetPrefPath(nullptr, app) -- SDL3's own per-platform, per-app
+//    preference-directory API (creates the directory as a side effect).
+// 2. XDG_DATA_HOME/<app>, if SDL_GetPrefPath failed and the environment
+//    variable is set and non-empty.
+// 3. HOME/.local/share/<app>, if XDG_DATA_HOME is unset.
+// 4. The current working directory, as a last-resort fallback if even
+//    HOME is unset.
+\end{lstlisting}
+
+\texttt{SDL\_GetPrefPath} is the tier that actually resolves on every desktop platform this
+project targets --- on Linux it typically returns something under
+\texttt{\$XDG\_DATA\_HOME/<org>/<app>/} or \texttt{\textasciitilde/.local/share/<org>/<app>/} itself,
+so tiers 2 and 3 exist specifically for the case where SDL's own call genuinely fails (a
+sandboxed or unusual environment with no writable preference directory at all), not as the
+common path. Tier 4, the current working directory, is a real fallback with a real practical
+consequence worth stating plainly: a game whose save data ends up here because every preceding
+tier failed is one \texttt{cd} away from writing (or reading) save data from a completely
+different location the next time it runs --- the least robust of the four tiers by a wide
+margin, and worth knowing about before assuming \texttt{GetStorageRootEXT()} always returns a
+stable, session-independent path.
+
+\texttt{SetAppNameEXT()}'s own implementation is worth a specific, reassuring note against a
+plausible-sounding bug that turns out not to exist: calling it a \emph{second} time (contrary
+to the class's own ``call once, early'' guidance) does not leave a stale, already-cached root
+behind. The setter explicitly clears \texttt{storageRoot\_} and resets
+\texttt{storageRootInitialized\_} to \texttt{false} every time it runs, forcing the next
+\texttt{EnsureStorageRoot()} call to re-resolve from scratch under the new application name ---
+a defensive detail that makes the ``call once'' guidance a recommendation for predictability,
+not a hard requirement the implementation would silently violate if ignored.
+
+\subsection{A related, smaller finding: \texttt{IsConnected} tolerates a root that does not exist yet}
+
+\texttt{getIsConnectedProperty()}'s own real logic is worth naming precisely, because it is not
+simply ``does \texttt{GetStorageRootEXT()}'s path exist'': if the resolved root itself has never
+been written to yet (a brand-new install, before the first save), the property walks \emph{up}
+the path one component at a time until it finds an ancestor directory that does exist, and
+reports connected as long as any such ancestor is found. On a real desktop filesystem this is
+almost always true --- even a completely fresh per-app directory sits under a real, already-existing
+\texttt{\textasciitilde/.local/share/} or equivalent --- so \texttt{IsConnected} reporting
+\texttt{true} is not itself proof the per-app storage directory has actually been created; only
+a real \texttt{BeginOpenContainer} / \texttt{EndOpenContainer} call (which does create it, via
+\cnaclass{StorageContainer}'s own constructor) confirms that.
+
+\section{A real, previously-undocumented gap: \texttt{OpenFile}'s \texttt{fileShare} parameter has nowhere to go}
+
+\cnaclass{StorageContainer}'s three-overload \texttt{OpenFile} family accepts a
+\texttt{System::IO::FileShare} argument on its fullest overload, matching real XNA's own
+signature exactly. Reading \texttt{StorageContainer.cpp}'s own implementation of that overload
+shows the parameter is not merely unused --- it cannot be honored at all, structurally, by
+anything currently in this codebase:
+
+\begin{lstlisting}
+std::unique_ptr<System::IO::Stream> StorageContainer::OpenFile(
+    const std::string& file, System::IO::FileMode fileMode,
+    System::IO::FileAccess fileAccess, System::IO::FileShare /*fileShare*/)
+{
+    if (file.empty())
+        throw std::invalid_argument("Parameter file must contain a value.");
+    return std::make_unique<System::IO::FileStream>(
+        ResolvePath(file), fileMode, fileAccess);
+}
+\end{lstlisting}
+
+The parameter name is commented out in its own declaration --- the same
+\texttt{/*paramName*/} convention this project uses project-wide to mark a genuinely unused
+parameter deliberately, rather than leaving a named-but-ignored parameter that reads as an
+accidental oversight. Confirming this is not simply an oversight in \emph{this} function
+specifically: \texttt{sharp-runtime}'s own \cnaclass{System::IO::FileStream} --- the concrete
+type \texttt{OpenFile} constructs --- has exactly three constructors (path alone; path plus
+\texttt{FileMode}; path plus \texttt{FileMode} plus \texttt{FileAccess}), read directly from
+its own header, and none of them accepts a \texttt{FileShare} value at all. There is no
+constructor overload \texttt{OpenFile} could forward a share mode to even if its own
+implementation wanted to. The underlying \texttt{std::fstream} this class wraps has no built-in
+concept of an OS-level share lock either, on the platforms this project currently targets, so
+the gap is not one missing forwarding call away from being closed --- it would need real,
+new file-locking logic added to \texttt{FileStream} itself first.
+
+Practically, this means every value of \texttt{FileShare} --- \texttt{None} (request exclusive
+access), \texttt{Read} (allow other readers only), \texttt{ReadWrite} (allow full concurrent
+access) --- currently produces byte-identical behavior: whatever the host OS's own default
+file-sharing semantics happen to be for a plain \texttt{std::fstream} open (unrestricted
+concurrent access on every platform this project currently builds for). A game relying on
+\texttt{FileShare::None} to prevent a second process from touching the same save file
+concurrently --- a real, if uncommon, XNA-era pattern for guarding against a save-corruption
+race --- gets no such protection here. As with the \texttt{..}-traversal gap earlier in this
+chapter, this is a genuine, currently open gap rather than a documented, deliberate scope
+decision; unlike that gap, this book is the first place this specific limitation has been
+written down at all.
+
 \section{StorageDeviceNotConnectedException}
 
 \cnaclass{StorageDeviceNotConnectedException} is the one exception type this namespace adds,

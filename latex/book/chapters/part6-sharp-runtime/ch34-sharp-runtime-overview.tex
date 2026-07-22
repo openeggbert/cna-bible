@@ -206,3 +206,78 @@ misclassified as Canceled.
 not start at construction --- a second call to \texttt{Start()} throws
 \texttt{ThreadStateException}, matching real .NET's own one-shot-start contract exactly,
 rather than silently allowing a thread object to be restarted the way a naive wrapper might.
+
+\section{Permanent scope boundaries: what will never be ported, and why}
+
+\texttt{sharp-runtime}'s own \texttt{CLAUDE.md} states its scope discipline directly, and it is
+worth quoting rather than paraphrasing, since the wording distinguishes a real category this
+book's own methodology depends on: ``Known permanent deviations (not bugs, not TODO).'' Five
+areas are named explicitly, each with a stated reason rather than left as an unexplained gap ---
+the delegate-tier deviation is the one already covered in full in
+Chapter~\ref{ch:parity-philosophy} (the three-tier \texttt{Action} / \texttt{Delegate}/
+\texttt{MulticastAction} split); the remaining four are covered here:
+
+\begin{description}
+  \item[Reflection] (\cnaclass{System::Type}, \cnaclass{System::Activator},
+  \texttt{Enum.GetNames} / \texttt{GetValues}) --- ``completely out of scope. Stubs are the
+  correct end state,'' not a gap awaiting engineering effort.
+  \item[GC] (\texttt{System::GC}) --- every method is a real, callable no-op; memory is managed
+  by RAII / \texttt{std::shared\_ptr} throughout, so there is no garbage collector for these
+  calls to meaningfully forward to.
+  \item[Serialization] (\texttt{[Serializable]}, \texttt{SerializationInfo}) --- ignored
+  outright; not needed for game code.
+  \item[P/Invoke and interop] --- out of scope entirely.
+  \item[Cryptography] (symmetric/asymmetric ciphers, X.509 certificates, TLS ---
+  \texttt{Aes*} / \texttt{RSA*} / \texttt{EC*} / \texttt{ChaCha20Poly1305} / \texttt{CryptoStream},
+  \texttt{X509Certificates}, \texttt{SslStream}) --- out of scope by an explicit, dated decision
+  (2026-07-07): correctly implementing this needs either a large new external dependency
+  (OpenSSL/mbedTLS) or a hand-rolled, security-critical implementation, and neither is worth it
+  for game code. This deviation is deliberately narrow, not a blanket ``no crypto'' rule: hash
+  algorithms (\texttt{MD5} / \texttt{SHA*} / \texttt{HMAC} / \texttt{PBKDF2}) carry no key material and
+  no confidentiality guarantee to get wrong, so they remain in scope and are already ported.
+\end{description}
+
+\subsection{Reflection's real stub, and the one contradiction it deliberately accepts}
+
+\cnaclass{System::Type}'s own header comment is worth reading in full for what it says about
+\emph{how} a permanent stub should behave, not just that it exists: constructed via
+\texttt{Type::From<T>()}, backed by C++ RTTI's \texttt{std::type\_info} rather than any real
+reflection metadata, its boolean predicates (\texttt{IsClass}, \texttt{IsValueType},
+\texttt{IsAbstract}, \texttt{IsSealed}, \texttt{IsInterface}) each return a fixed value
+regardless of what the actual type argument is --- because C++ RTTI cannot determine any of
+them --- and the comment states plainly that these fixed values are \emph{not} mutually
+consistent: \texttt{Type::From<int>()} reports both \texttt{IsClass()==true} and
+\texttt{IsValueType()==false} simultaneously, a combination that would be self-contradictory for
+a real .NET type (\texttt{int} is \texttt{IsValueType==true}, \texttt{IsClass==false}). This is
+not an oversight left for a future fix --- the header says explicitly that these predicates
+exist only so ported code calling \texttt{type.IsClass} still \emph{compiles}, not to answer the
+question correctly, and that calling code must not branch on them to distinguish value types
+from class types. \cnaclass{System::Activator} narrows the same permanent gap to exactly the
+part that survives the loss of reflection: its real, callable
+\texttt{CreateInstance<T>()} template constructs any default-constructible \texttt{T} at
+compile time, while the reflection-based overloads real .NET exposes ---
+\texttt{CreateInstance(Type)}, \texttt{CreateInstanceFrom} --- are absent entirely, not stubbed,
+because \texttt{sharp-runtime} has no \texttt{System.Reflection} for them to resolve a
+\texttt{Type} argument against in the first place.
+
+\section{Vendored dependencies and build structure}
+
+\texttt{sharp-runtime}'s own \texttt{CMakeLists.txt} builds a single static library target,
+\texttt{SHARP\_RUNTIME}, from every \texttt{.cpp} file glob-matched under \texttt{src/}, linked
+against three vendored third-party libraries built alongside it in the same configure step:
+\texttt{tinyxml2} (a two-file XML parser, zlib license), \texttt{miniz} (a multi-file ZIP/DEFLATE
+implementation, MIT/public domain), and \texttt{nlohmann/json} (header-only, vendored directly
+rather than built as a target). \texttt{ZLIB::ZLIB} is the one dependency this project expects
+the host system to already provide rather than vendoring. When \texttt{cna} adds
+\texttt{sharp-runtime} as a subdirectory, it inherits this single \texttt{SHARP\_RUNTIME} link
+target directly --- there is no separate ``core'' versus ``extended'' split at the build-system
+level, matching the single-namespace-tree structure Section~2 above already described. One
+platform-specific wiring detail worth knowing precisely rather than assuming: on Android,
+\texttt{StoragePaths.cpp} calls \texttt{SDL\_GetPrefPath} / \texttt{SDL\_GetAndroidInternalStoragePath}
+directly, which means \texttt{sharp-runtime} depends on SDL3 being available on that one
+platform specifically --- but its own \texttt{CMakeLists.txt} does not vendor or find SDL3
+itself; it expects the parent project (\texttt{cna}) to have already configured a real
+\texttt{SDL3::SDL3} target via its own \texttt{cna\_configure\_vendored\_sdl()} call before
+\texttt{sharp-runtime}'s subdirectory is added, and links against it conditionally
+(\texttt{if(ANDROID AND TARGET SDL3::SDL3)}) only if that target already exists by the time this
+project's own \texttt{CMakeLists.txt} runs.
