@@ -234,6 +234,7 @@ backend; check whether the preceding sprite pass covered the full backbuffer bef
 the blend-state fix above has regressed.
 
 \section{SpriteFont}
+\label{sec:spritefont-measure}
 
 \cnaclass{SpriteFont} is deliberately not a \cnaclass{GraphicsResource} --- a texture atlas,
 glyph bounds, cropping data, a character set, line spacing, character spacing, kerning data,
@@ -384,6 +385,64 @@ surviving across a \texttt{SpriteBatch} pass in either direction is relying on r
 verified-current XNA/FNA-faithful behavior for \texttt{BlendState}, and real, now-fixed
 CNA-specific correctness for \texttt{DepthStencilState} --- not a coincidence of implementation
 detail in either case.
+
+\section{A worked example: the real per-glyph advance math behind DrawString}
+\label{sec:spritebatch-drawstring-advance}
+
+\S\ref{sec:spritefont-measure} above already named the raw ingredients --- \texttt{kerning\_},
+a \cnaclass{Vector3} per glyph packing \texttt{(leftBearing, width, rightBearing)} --- but
+\texttt{MeasureString} and \texttt{DrawString} are two independent implementations of the
+identical walk, in two different files (\texttt{SpriteFont.cpp} and \texttt{SpriteBatch.cpp}
+respectively), and it is worth confirming directly, rather than assuming, that they agree.
+Reading \texttt{SpriteBatch::DrawString} shows the same three-line shape, glyph by glyph:
+
+\begin{lstlisting}
+const Vector3& cKern = spriteFont.kerning_[index];
+if (firstInLine)
+{
+    curOffset.X += std::abs(cKern.X);   // first glyph: ABS of left bearing
+    firstInLine = false;
+}
+else
+{
+    curOffset.X += spacing_ + cKern.X;  // later glyphs: inter-char spacing + left bearing, no abs
+}
+curOffset.X += cKern.Y + cKern.Z;       // every glyph: width + right bearing
+\end{lstlisting}
+
+The \texttt{std::abs()} on the very first glyph's left bearing --- and only the first --- is the
+detail easiest to miss reading this quickly, and it is not a typo: a font whose first glyph
+happens to have a \emph{negative} left bearing (the glyph's own ink starts left of its nominal
+advance origin, a real, common shape for italic or swash characters) must not have that negative
+value shift the whole string's start position backward off of \texttt{position}, but a
+\emph{later} glyph's negative left bearing legitimately tucks it closer to the previous
+character --- exactly the kerning behavior italic fonts rely on. Confirming \texttt{MeasureString}
+(\S\ref{sec:spritefont-measure}) applies the identical \texttt{abs()}-only-for-the-first-glyph
+rule is what makes a caller's own centering math (measure, then draw at the measured offset)
+trustworthy: if the two implementations disagreed on this one case, text would measure as one
+width and render at another.
+
+\texttt{examples/easygl\_spritefont\_multiglyph\_spacing\_test.cpp} (Task~425) is a real,
+minimal fixture built specifically to prove the non-first-glyph branch is genuinely exercised,
+not merely present in the source. Its two-glyph font --- \texttt{'A'} and \texttt{'B'}, both
+$8\times8$, both with zero-valued kerning \texttt{(0, 8, 0)} --- and a \texttt{spacing} of
+\texttt{4.0f} let the whole placement be hand-verified in whole pixels:
+
+\begin{lstlisting}
+// 'A' (first in line): curOffset.X = abs(0) = 0        -> glyph drawn at dest x = 2 + 0 = 2
+// after 'A':           curOffset.X += 8 + 0 = 8         (width + rightBearing)
+// 'B' (not first):     curOffset.X += 4 + 0 = 12        -> glyph drawn at dest x = 2 + 12 = 14
+\end{lstlisting}
+
+Drawing \texttt{"AB"} at \texttt{position = (2, 2)} therefore places \texttt{'A'} at screen
+$x \in [2, 10)$ and \texttt{'B'} at $x \in [14, 22)$ --- an exact 4-pixel gap at $x \in [10, 14)$
+that must stay background-colored for the test to pass. The real test's own check set is worth
+noting for what it rules out beyond simple placement: sampling a point \emph{inside} the gap
+confirms \texttt{spacing} was genuinely applied (not silently zero, and not some other stray
+value), while sampling each glyph's own distinct fill color (white for \texttt{'A'}, green for
+\texttt{'B'}) at its expected position rules out an index mix-up between the two glyphs ---
+a bug shape that a single-glyph test, no matter how many pixels it samples, structurally cannot
+detect at all, since there would be no second glyph to place at the wrong index.
 
 \section{Where this leaves a porting engineer}
 
