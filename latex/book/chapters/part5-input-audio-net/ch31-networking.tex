@@ -270,6 +270,74 @@ while (localGamer->ReceiveData(reader, sender) > 0)
 }
 \end{lstlisting}
 
+\section{\cnaclass{SendDataOptions}: four values, three real delivery guarantees}
+
+The Color-asymmetry worked example above uses \texttt{SendDataOptions::Reliable} without
+explaining what that value actually buys over the other three --- worth doing directly, since
+\cnans{Microsoft::Xna::Framework::Net}'s own \cnaclass{SendDataOptions} enum has four values but
+\texttt{ENetBackend} genuinely only has three distinct delivery behaviors underneath them, for a
+real, documented reason rooted in what ENet itself can express. Reading
+\texttt{NetPacketCodec::SendDataOptionsToEnetFlags()} directly, and the doc comment right above
+it in \texttt{NetPacketCodec.hpp}, shows the exact mapping:
+
+\begin{lstlisting}
+uint32_t NetPacketCodec::SendDataOptionsToEnetFlags(SendDataOptions options)
+{
+    switch (options)
+    {
+        case SendDataOptions::None:
+            return ENET_PACKET_FLAG_UNSEQUENCED;
+        case SendDataOptions::InOrder:
+            return 0;
+        case SendDataOptions::Reliable:
+        case SendDataOptions::ReliableInOrder:
+        case SendDataOptions::Chat:
+            return ENET_PACKET_FLAG_RELIABLE;
+    }
+    return ENET_PACKET_FLAG_RELIABLE;
+}
+\end{lstlisting}
+
+\texttt{None} requests ENet's \texttt{UNSEQUENCED} flag explicitly --- true best-effort, packets
+may be dropped or arrive out of order, the only \cnaclass{SendDataOptions} value that does.
+\texttt{InOrder} maps to a bare \texttt{0}: ENet's plain unreliable send is already sequenced
+per-channel and never delivered out of order on its own, so the empty flag set is an exact match
+for ``in order, but not guaranteed to arrive'' rather than an oversight. The interesting case is
+the other three: \texttt{Reliable}, \texttt{ReliableInOrder}, and \texttt{Chat} all collapse onto
+the identical \texttt{ENET\_PACKET\_FLAG\_RELIABLE} flag, because ENet's reliable delivery
+channel is \emph{inherently} ordered --- there is no ENet primitive for ``guaranteed to arrive,
+but not necessarily in order,'' the specific combination real XNA's own \texttt{Reliable} (as
+opposed to \texttt{ReliableInOrder}) documents. Rather than fake an unordered-reliable mode with
+extra bookkeeping ENet does not need, the mapping accepts the collapse: any game that requests
+plain \texttt{Reliable} gets \texttt{ReliableInOrder}'s exact behavior for free, a strictly
+stronger guarantee than what it asked for, never a weaker one. \texttt{Chat} is a separate,
+explicit judgment call rather than a parity match --- FNA itself never implements real delivery
+for this value at all, so there is no existing behavior to preserve; routing it onto
+\texttt{RELIABLE} instead of silently dropping chat text was a deliberate choice, confirmed by a
+real, dedicated test:
+
+\begin{lstlisting}
+// From the real test suite (NetPacketCodecTests.cpp) -- confirms all five
+// mappings directly, including the three-way collapse onto RELIABLE.
+EXPECT_EQ(SendDataOptionsToEnetFlags(SendDataOptions::None),
+          static_cast<uint32_t>(ENET_PACKET_FLAG_UNSEQUENCED));
+EXPECT_EQ(SendDataOptionsToEnetFlags(SendDataOptions::InOrder), 0u);
+EXPECT_EQ(SendDataOptionsToEnetFlags(SendDataOptions::Reliable),
+          static_cast<uint32_t>(ENET_PACKET_FLAG_RELIABLE));
+EXPECT_EQ(SendDataOptionsToEnetFlags(SendDataOptions::ReliableInOrder),
+          static_cast<uint32_t>(ENET_PACKET_FLAG_RELIABLE));
+EXPECT_EQ(SendDataOptionsToEnetFlags(SendDataOptions::Chat),
+          static_cast<uint32_t>(ENET_PACKET_FLAG_RELIABLE));
+\end{lstlisting}
+
+The practical upshot for a game being ported: choosing between \texttt{Reliable} and
+\texttt{ReliableInOrder} on this backend is purely a documentation choice about intent, not a
+performance or behavior trade-off the way it would be on a transport that actually offers both
+independently --- pick whichever name more accurately describes what the calling code needs, since
+both compile down to identical wire behavior today. A future backend swap (a raw UDP
+implementation, say, that genuinely can deliver reliable-but-unordered) is the only scenario where
+the distinction would start to matter again.
+
 \section{Status}
 
 The namespace's own primary hardening plan is fully checked off. Three independent
