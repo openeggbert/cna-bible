@@ -179,19 +179,19 @@ System::Text::UTF8Encoding utf8;
 
 // Well-formed: a real 3-byte sequence for U+20AC (EURO SIGN).
 const SharpRuntime::bytecs euroSign[] = {0xE2, 0x82, 0xAC};
-std::string ok = utf8.GetString(euroSign, 0, 3);          // "€", unchanged
+std::string ok = utf8.GetString(euroSign, 0, 3);          // EURO SIGN, unchanged
 
 // Overlong encoding of U+002F ('/') using the 2-byte form -- structurally
 // valid continuation-byte shape, but wellFormedUtf8Length() rejects it
 // because cp (0x2F) is below the 2-byte form's own 0x80 minimum.
 const SharpRuntime::bytecs overlongSlash[] = {0xC0, 0xAF};
-std::string rejected = utf8.GetString(overlongSlash, 0, 2);  // "��"
+std::string rejected = utf8.GetString(overlongSlash, 0, 2);  // two U+FFFD
 
 // A lone continuation byte with no lead byte before it -- fails every one
 // of wellFormedUtf8Length()'s four branches, falls through to the final
 // "return 0" unconditionally.
 const SharpRuntime::bytecs loneContinuation[] = {0x80};
-std::string alsoRejected = utf8.GetString(loneContinuation, 0, 1);  // "�"
+std::string alsoRejected = utf8.GetString(loneContinuation, 0, 1);  // one U+FFFD
 \end{lstlisting}
 
 The overlong and lone-continuation cases each substitute one \texttt{U+FFFD} per invalid
