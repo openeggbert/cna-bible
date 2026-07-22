@@ -2016,3 +2016,40 @@ stays frozen by explicit author decision, not left incomplete.
   checks clean, every one of the 6 newly-touched chapters confirmed clean post-fix. Running
   session total: thirteen real, log-invisible overflow defects found and fixed across six
   consecutive batch-verification passes; 371 -> 438 pages (+67) across the whole session.
+
+- **2026-07-22, same session, continued — a seventh batch (Ch.18/19/31/10, second passes on
+  the four lowest-percentage chapters in the book), executed directly by the coordinating
+  session after `Agent(fork)` dispatch resolved into synchronous inline execution for the
+  first item and reliably did the same for the rest, exactly as this session's own
+  documented finding predicted.** Rather than fight the mode, executed all four remaining
+  batch items sequentially in the same turn: Ch.18's `GetData` correction (the "not
+  implemented at all" claim overstated a real gap — both `VertexBuffer`/`IndexBuffer` have a
+  working CPU-shadow-backed `GetData`, narrowed to a real, surviving gap only in the
+  `SetDataRaw` custom-layout path); Ch.19's real 512-descriptor-set ceiling shared between
+  `Texture2D`/`RenderTarget2D`; Ch.31's expansion of the flagged-but-unresolved
+  `NetworkSession::BeginCreate` leak into a fuller, honestly-scoped account (plus a genuine
+  design surprise: `activeAction_` is a class-`static`, one slot process-wide, not
+  per-instance); and Ch.10's real exception-type gap (`Begin()`/`End()` misuse throws
+  `std::runtime_error`, not real XNA's `InvalidOperationException`, confirmed via both
+  hierarchies' real headers).
+
+  While this work was in flight, concurrent background activity independently: fixed two more
+  running-header/folio collisions (Ch.17, Ch.19 — same defect class as Ch.12/Ch.23 earlier),
+  and caught **this session's first genuinely fatal build break** — raw multi-byte UTF-8
+  characters embedded directly inside an `lstlisting` block in Ch.35 aborted `pdflatex`
+  outright with no PDF produced at all, silently manifesting downstream as what looked like
+  unrelated "undefined reference" warnings (the build never got far enough to resolve labels).
+  Fixed by describing the characters in plain ASCII instead. This is a new defect class for
+  this session's own running list — previous overflow-only find failures never previously
+  broke the build outright.
+
+  The consolidated verification pass (forced `latexmk -g` rebuild, both greps, all touched
+  pages across Ch.10/17/18/19/31/35 rendered to PNG and read directly) found the batch clean,
+  confirming the fatal-error fix actually resolved the break and none of the four depth-pass
+  additions introduced any new overflow. A direct `wc -l` check against PLAN.md's own claimed
+  line counts found all six touched files accurate (no stale rows this batch).
+
+  Final state: `make book` (forced rebuild) succeeded (**452 pages**, up from 438), both grep
+  checks clean, every touched page confirmed clean. Session total: fourteen real defects found
+  and fixed across seven batches (thirteen log-invisible overflows plus one fatal UTF-8 build
+  break); 371 -> 452 pages (+81) across the whole session.
