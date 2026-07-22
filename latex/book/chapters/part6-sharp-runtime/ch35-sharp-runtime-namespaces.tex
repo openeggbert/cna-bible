@@ -220,6 +220,90 @@ TValue GetOrAdd(const TKey& key, std::function<TValue(const TKey&)> factory)
 }
 \end{lstlisting}
 
+\section{A systemic finding revisited: fail-fast enumeration, fixed in ten of eleven collections}
+
+One finding from the same first audit round deserves its own treatment separately from the two
+above, because of its scope: \texttt{POST\_STABILIZATION\_AUDIT.md} flagged that \emph{every}
+\cnans{System.Collections.Generic} mutable collection --- eleven files,
+\cnaclass{List}\allowbreak{}\texttt{<T>} through \cnaclass{PriorityQueue} --- lacked the
+version-counter fail-fast check real .NET's own generic collections all share: mutate a
+collection while an enumerator from it is still live, and the very next \texttt{MoveNext()}
+should throw \texttt{InvalidOperationException} (``Collection was modified; enumeration
+operation may not execute'') rather than silently skipping elements or, worse, dereferencing a
+dangling iterator into a reallocated buffer. The audit noted the fix pattern already existed
+elsewhere in this same codebase (the legacy, non-generic \texttt{Hashtable} / \texttt{ArrayList}
+/ \texttt{Queue} / \texttt{Stack} types all had it) --- it had simply never been extended to the
+far more heavily used generic collections, and its own scope note predicted a real fix would
+need per-type application across all eleven files.
+
+Reading the current headers directly rather than trusting either the audit's own snapshot or a
+completion claim shows the fix landed, and landed almost completely: \cnaclass{List}\allowbreak{}
+\texttt{<T>}'s own \texttt{Enumerator} now captures \texttt{version\_} at construction and checks
+it on every \texttt{MoveNext()} / \texttt{Reset()}, throwing exactly the real .NET message:
+
+\begin{lstlisting}
+class Enumerator : public IEnumerator<T>
+{
+    const List<T>* list_;
+    intcs version_;
+    intcs index_ = -1;
+public:
+    explicit Enumerator(const List<T>* list) : list_(list), version_(list->version_) {}
+    bool MoveNext() override {
+        if (version_ != list_->version_)
+            throw System::InvalidOperationException(
+                "Collection was modified; enumeration operation may not execute.");
+        return ++index_ < static_cast<intcs>(list_->items_.size());
+    }
+    // ...
+};
+\end{lstlisting}
+
+Grepping every one of the audit's own eleven named files for a real \texttt{version\_} field
+confirms the same pattern is now present in ten of them ---
+\cnaclass{List}\allowbreak{}\texttt{<T>}, \cnaclass{Dictionary}\allowbreak{}\texttt{<K,V>},
+\cnaclass{HashSet}\allowbreak{}\texttt{<T>}, \cnaclass{LinkedList}\allowbreak{}\texttt{<T>},
+\cnaclass{Queue}\allowbreak{}\texttt{<T>}, \cnaclass{Stack}\allowbreak{}\texttt{<T>},
+\cnaclass{SortedDictionary}\allowbreak{}\texttt{<K,V>},
+\cnaclass{SortedList}\allowbreak{}\texttt{<K,V>}, \cnaclass{SortedSet}\allowbreak{}\texttt{<T>},
+and \cnaclass{OrderedDictionary} --- not a partial or cosmetic fix, a real, independently
+verified per-type application matching exactly what the audit's own scope note anticipated
+would be needed.
+
+\cnaclass{List}\allowbreak{}\texttt{<T>}'s own class doc-comment is honest about one narrow gap
+the fix does \emph{not} close, worth quoting directly rather than glossing over: real .NET's
+index-assignment setter (\texttt{list[i] = value}) also bumps its internal version, but this
+port's \texttt{operator[]} returns a plain \texttt{T\&} for C++ ergonomics, so there is no hook
+point to intercept a later \texttt{list[i] = value;} assignment made through that reference ---
+value-only index writes do not trigger fail-fast detection here. The comment explicitly weighs
+and rejects the fix (widening \texttt{operator[]} into a proxy-object return, the same technique
+already used to fix \cnaclass{Dictionary}\allowbreak{}\texttt{<K,V>}'s own indexer bug earlier in
+this chapter) as too large and risky a change to the single most call-site-heavy method in the
+codebase to make unilaterally --- a deliberately deferred, not overlooked, gap.
+
+\cnaclass{PriorityQueue}\allowbreak{}\texttt{<TElement,TPriority>} is the one file of the eleven
+with zero \texttt{version\_} occurrences, and it is worth checking \emph{why} before assuming the
+fix was simply skipped there too. Reading the header directly shows a different, more fundamental
+reason: this port's \cnaclass{PriorityQueue} does not implement any enumerable interface at all
+--- no \texttt{GetEnumerator()}, no \texttt{begin()} / \texttt{end()}, and no equivalent of real
+.NET's own \texttt{UnorderedItems} property, which is exactly what \texttt{PriorityQueue<TElement,
+TPriority>} in real .NET exposes for enumeration. There is no enumerator here for a mutation to
+invalidate, so the fail-fast pattern genuinely does not apply --- not a missed eleventh
+application of finding \#4, but a separate, real gap of its own (no enumeration support at all),
+one this chapter's own source-grounding discipline requires stating precisely rather than folding
+into the version-tracking story just because both would show up in the same file-by-file grep.
+
+Two smaller items from the identical audit round are worth a one-line confirmation each, both
+independently re-verified against current source: \cnaclass{MemoryStream}\allowbreak{}
+\texttt{::Write} previously validated only \texttt{buffer == nullptr} and \texttt{count <= 0},
+letting a negative \texttt{offset} reach an unchecked \texttt{std::copy} and read one byte before
+the caller's own array --- confirmed via a real ASan repro, per the fix's own code comment, and
+now closed with explicit \texttt{ArgumentNullException} / \texttt{ArgumentOutOfRangeException}
+checks matching \texttt{Read()}'s own validation in the same class. And
+\cnaclass{List}\allowbreak{}\texttt{<T>}'s doc-comment claim of ``full \texttt{IList<T>}
+compliance'' while \texttt{CopyTo} was entirely missing --- also fixed, with the exact two
+overloads real .NET's own \texttt{ICollection<T>} contract specifies.
+
 \section[A second audit, and what sanitizers found that reasoning alone did not]{A second, independent audit, and what sanitizers found that reasoning alone did not}
 
 A further, separate audit produced seven more findings, six fixed in the same session ---
