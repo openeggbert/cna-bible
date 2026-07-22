@@ -57,8 +57,7 @@ path); \texttt{Texture3D} / \texttt{TextureCube} both ignoring their requested
 \cnaclass{SurfaceFormat} (always RGBA8) and their \texttt{mipMap} request; neither type being
 registered with the GL-context-loss recovery mechanism the way ordinary 2D textures are;
 \texttt{EasyGLEffectBackend::Unbind()} being a pure no-op; \texttt{ApplyBlendState} never
-calling \texttt{glColorMask}, so \cnaclass{ColorWriteChannels} has no effect at all; two-sided
-stencil incorrectly reusing the front-face read mask for the back face too; and
+calling \texttt{glColorMask}, so \cnaclass{ColorWriteChannels} has no effect at all; and
 \cnaclass{SpriteBatch} carrying a 65{,}535-index limit from its \texttt{uint16\_t} index
 type, silently wrapping or corrupting any batch exceeding roughly 16{,}383 quads.
 \texttt{VertexBuffer::GetData} / \texttt{IndexBuffer::GetData} are not implemented at all on
@@ -174,6 +173,56 @@ Chapter~\ref{ch:backend-architecture} already introduced in the abstract: two ba
 implementing the identical interface method can genuinely differ in how completely they can
 honor it, for reasons rooted in each backend's own underlying execution model rather than in
 how carefully either one was built.
+
+\subsection{A claim this chapter itself got wrong: two-sided stencil's shared mask is correct, not a bug}
+
+An earlier pass of this chapter listed ``two-sided stencil incorrectly reusing the front-face
+read mask for the back face too'' among this backend's confirmed gaps. Reading
+\texttt{ApplyDepthStencilState()} in \texttt{EasyGLGraphicsBackend.cpp} directly shows exactly
+that: its \texttt{Back}-face call to \texttt{set\_stencil\_func\_separate()} is passed the same
+\texttt{stencilMask} local variable as the \texttt{Front}-face call, with no separate
+back-face mask value anywhere in the function:
+
+\begin{lstlisting}
+device.set_stencil_func_separate(::easygl::CullFace::Front,
+    ToEasyGLCompareFunc(stencilFunc),
+    referenceStencil, static_cast<unsigned int>(stencilMask));
+// ...
+device.set_stencil_func_separate(::easygl::CullFace::Back,
+    ToEasyGLCompareFunc(ccwStencilFunc),
+    referenceStencil, static_cast<unsigned int>(stencilMask));  // same stencilMask, not a
+                                                                  // separate ccw one
+\end{lstlisting}
+
+The claim that this is \emph{incorrect} does not survive checking real XNA's own documented
+contract before assuming CNA's own code is at fault --- exactly the discipline
+Chapter~\ref{ch:what-is-cna} asks every claim in this book to meet. \texttt{xna4-spec}'s own
+\texttt{DepthStencilState.xml} defines four separate \cnaclass{CounterClockwiseStencil}*
+properties (\texttt{Function}, \texttt{Fail}, \texttt{DepthBufferFail}, \texttt{Pass} --- all
+four genuinely \emph{operations}) but exactly one \texttt{StencilMask} property, with no
+\texttt{CounterClockwiseStencilMask} anywhere in the type at all. Real XNA 4.0 itself has no API
+surface for a separate back-face stencil mask to begin with --- a game targeting real XNA cannot
+set one, so a backend cannot fail to honor a value that was never settable in the first place.
+Reusing \texttt{stencilMask} for both faces is not a shortcut standing in for a missing feature;
+it is the \emph{only} behavior consistent with the real, documented API this class faithfully
+reproduces, confirmed by the same pattern for \texttt{stencilWriteMask} a few lines later in the
+identical function (also passed unchanged to both \texttt{Front} and \texttt{Back}, and also
+correctly so --- real XNA's \texttt{StencilWriteMask} is likewise a single, non-per-face
+property).
+
+What genuinely \emph{is} per-face, and what this same function gets right, is worth stating
+precisely rather than lumping the whole feature together as either ``correct'' or ``buggy'':
+the four \cnaclass{CounterClockwiseStencil}* \emph{operation} properties are threaded through
+as \texttt{ccwStencilFunc} / \texttt{ccwStencilFail} / \texttt{ccwStencilDepthFail}/%
+\texttt{ccwStencilPass}, distinct parameters from their clockwise counterparts, and applied to
+\texttt{CullFace::Back} via a genuinely separate \texttt{set\_stencil\_op\_separate()} call ---
+real per-face divergent behavior, exactly where real XNA's own API allows it to diverge. A
+mirror-reflection technique relying on \texttt{TwoSidedStencilMode} (the same worked example
+Chapter~\ref{ch:state-objects} builds around \cnaclass{DepthStencilState}) can safely assume
+different \emph{stencil operations} for front- and back-facing geometry on this backend, but
+must not assume a different \emph{stencil mask} is possible for either face --- not a
+limitation of this backend specifically, but of the real XNA type every backend implements
+identically.
 
 \section{Test baseline}
 

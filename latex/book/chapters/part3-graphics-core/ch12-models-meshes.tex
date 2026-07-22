@@ -260,6 +260,75 @@ const auto weights = EvaluateMorphWeightsEXT(morph.WeightTrack, animationTimeSec
 SetMorphWeightsEXT(part, weights);
 \end{lstlisting}
 
+\section{A worked example: naming an arbitrary root bone, and how the fix was proven to work}
+
+\cnaclass{Model}'s hand-build constructor had a real, previously-undocumented gap versus FNA,
+confirmed by reading FNA's own \texttt{Model.cs} directly: FNA's constructor never sets
+\texttt{Root} at all --- it is real XNA's own \texttt{ModelReader} that assigns
+\texttt{model.Root = bones[rootBoneIndex]} \emph{afterward}, where \texttt{rootBoneIndex} can
+name any bone in the model, not necessarily the first one. CNA's original 4-argument
+constructor (the one that also accepts \texttt{meshParentBones}) had no equivalent parameter at
+all, silently defaulting \texttt{Root} to \texttt{bones[0]} unconditionally --- correct for the
+common case, but unable to represent a hand-built model whose true root bone is not the first
+entry in its own \texttt{bones} vector.
+
+The fix is a fifth, defaulted constructor parameter, additive-only so no existing call site's
+behavior changes:
+
+\begin{lstlisting}
+Model(GraphicsDevice* graphicsDevice,
+      std::vector<ModelBone*> bones,
+      std::vector<ModelMesh*> meshes,
+      std::vector<ModelBone*> meshParentBones,
+      std::size_t rootBoneIndex = 0);   // NOXNA -- FNA's ModelReader assigns this
+                                         // externally; this is the public equivalent
+                                         // for a hand-built Model.
+\end{lstlisting}
+
+One edge case is worth reasoning through explicitly, because a naive implementation gets it
+wrong: an empty \texttt{bones} vector must leave \texttt{Root} as \texttt{nullptr} regardless of
+the requested index, rather than throwing on the harmless default value \texttt{0} --- the real
+constructor body checks emptiness first, matching the existing 3-argument constructor's own
+leniency, and only bounds-checks \texttt{rootBoneIndex} against a genuinely non-empty
+\texttt{bones} vector:
+
+\begin{lstlisting}
+if (!bones_.bones_.empty())
+{
+    if (rootBoneIndex >= bones_.bones_.size())
+        throw std::out_of_range("rootBoneIndex");
+    root_ = bones_.bones_[rootBoneIndex];
+}
+// bones_ empty: root_ stays nullptr regardless of rootBoneIndex, matching the
+// 3-argument constructor's own existing behavior for this case.
+\end{lstlisting}
+
+The real regression tests earned by this fix (\texttt{ModelTests.cpp}) are worth naming for the
+verification technique they demonstrate, not just their existence:
+\texttt{FiveArgConstructorDefaultRootBoneIndexMatchesFourArgBehavior},
+\texttt{FiveArgConstructorHonorsNonZeroRootBoneIndex} (a three-bone hierarchy, index~2 selected,
+checked both for equality against the expected bone \emph{and} inequality against bone~0 --- a
+test that only checked equality could pass even if the parameter were silently ignored and the
+implementation happened to default to the requested bone by coincidence),
+\texttt{FiveArgConstructorThrowsWhenRootBoneIndexOutOfRange}, and
+\texttt{FiveArgConstructorEmptyBonesLeavesRootNullEvenWithDefaultIndex}. The fix's own commit
+history records a real sabotage-and-revert check applied to confirm these tests actually
+exercise what they claim to: with the constructor temporarily edited to ignore
+\texttt{rootBoneIndex} entirely (falling back to the old, hardcoded \texttt{bones[0]}), exactly
+the two tests that depend on honoring a non-default index failed as predicted, while the other
+24 \texttt{ModelTest.*} cases were unaffected --- the same discriminating-power methodology this
+book applies throughout (a test suite's own \emph{ability} to catch a real regression is itself
+worth verifying, not assumed from the fact that it currently passes).
+
+This fix closes the runtime-API side of the gap only. The separate \texttt{.model.json} content
+loader (\S\ref{sec:model-loading} above) still never calls this five-argument constructor at
+all --- moot in practice today, since that loader currently synthesizes exactly one bone per
+model regardless of what a source JSON's own \texttt{"bones"} array lists, so there is no
+second bone a non-default \texttt{rootBoneIndex} could name yet. The gap is closed at the
+runtime-API layer, honestly still open one layer further out at the content-loading layer, and
+\texttt{docs/model-content-pipeline-support.md} tracks the distinction between the two
+precisely rather than treating the runtime fix as though it also closed the loader-side one.
+
 \section{Collections, uniformly}
 
 \cnaclass{ModelBoneCollection}, \cnaclass{ModelMeshCollection},

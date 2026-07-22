@@ -122,6 +122,30 @@ public API surface (\texttt{easygl::Device}, \texttt{easygl::Shader}, \texttt{ea
 \texttt{easygl::Buffer}, \texttt{easygl::VertexArray}, \texttt{easygl::Texture},
 \texttt{easygl::Feature}) in full.
 
+\begin{sourcenote}
+\textbf{A live instance of this book's own recurring pattern, caught in a sibling repo rather
+than in CNA itself.} \texttt{easy-gl} carries its own \texttt{MIGRATION.md} (added 2026-07-19,
+alongside a new 845-line \texttt{PLAN.md}), a nine-row ``breaking change summary'' table framed
+entirely in future tense --- \texttt{Framebuffer::attach\_texture\_2d} ``now takes
+\texttt{const~Texture\&}'', \texttt{Program::uniform\_block\_index} ``returns
+\texttt{std::optional<unsigned~int>}'', and six more signature changes, each described as
+``planned for the next release''. Reading the real, current headers directly instead of
+trusting that framing shows every single one of the nine has already landed: checking a sample
+of five directly against \texttt{include/easygl/\{Framebuffer,Program,ProgramPipeline,
+TransformFeedback,Sync\}.hpp} finds \texttt{attach\_texture\_2d} already taking
+\texttt{const~Texture\&}, \texttt{uniform\_block\_index} already returning the
+\texttt{optional}, and the remaining three checked signatures (\texttt{ProgramPipeline}'s two
+\texttt{Program}-typed parameters, \texttt{TransformFeedback::set\_varyings},
+\texttt{Sync::native\_handle()}'s \texttt{GLsync} return type) all already in their described
+post-migration form. \texttt{MIGRATION.md} is not wrong about what changed --- it is simply
+stale about \emph{when}, describing already-shipped API surface as still upcoming. This is the
+identical shape of finding this book has made repeatedly about CNA's own tracked documents
+(a snapshot that outlived the moment it was accurate), just observed here in a sibling
+repository this book does not otherwise audit --- worth naming because it is independent
+confirmation that the failure mode is a property of fast-moving source-controlled documentation
+generally, not something specific to this project's own writing habits.
+\end{sourcenote}
+
 \section{free-direct: a narrow DirectX 3 for real legacy games}
 
 Where \texttt{easy-gl} is a general-purpose OpenGL wrapper, \texttt{free-direct} is the
