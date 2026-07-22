@@ -197,8 +197,60 @@ existing tests had never actually exercised, since every prior test disposed an 
 then called \texttt{getCurrent()}, never \texttt{MoveNext()}, on the disposed instance.
 
 One bug remains explicitly open at the time of writing rather than silently dropped: a real,
-confirmed leak in \texttt{NetworkSession::BeginCreate}, flagged directly and not yet
-resolved.
+confirmed leak flagged against \texttt{NetworkSession::BeginCreate}, not yet resolved --- worth
+a fuller worked account than the one-line flag it originally got, including a genuinely
+surprising real architectural fact uncovered while tracing it.
+
+\subsection{A real design surprise found while tracing the flagged leak: one \texttt{Begin*} / \texttt{End*} slot, process-wide}
+
+\texttt{activeAction\_}, the internal object every \texttt{BeginCreate} / \texttt{BeginFind} /
+\texttt{BeginJoin} overload allocates to carry state across to its matching \texttt{End*} call,
+is declared \texttt{static} on the class --- not a per-instance member:
+
+\begin{lstlisting}
+NetworkSession::NetworkSessionAction* NetworkSession::activeAction_ = nullptr;
+\end{lstlisting}
+
+This means exactly one asynchronous session-lifecycle operation may be in flight at a time,
+\emph{across the entire process}, regardless of how many \cnaclass{NetworkSession} instances a
+game happens to be juggling --- not one slot per session. Every \texttt{Begin*} overload
+enforces this directly, throwing rather than silently queuing or overwriting a still-pending
+action:
+
+\begin{lstlisting}
+if (activeAction_ != nullptr || activeSession_ != nullptr)
+    throw /* ... */;
+activeAction_ = new NetworkSessionAction( /* ... */ );
+\end{lstlisting}
+
+Under the ordinary, correctly-paired usage every synchronous \texttt{Create()} /
+\texttt{Find()} / \texttt{Join()} convenience wrapper already follows --- call the matching
+\texttt{End*} once the operation completes --- this is not a leak at all:
+\texttt{EndCreate} / \texttt{EndFind} / \texttt{EndJoin} each call \texttt{delete activeAction\_;
+activeAction\_ = nullptr;} exactly once, real and verified by reading each \texttt{End*}
+directly. The single-slot design is a real, deliberate constraint worth knowing on its own
+terms even apart from the leak question: a game that tries to \texttt{BeginFind} a second
+session discovery while an earlier \texttt{BeginCreate} on a \emph{different}
+\cnaclass{NetworkSession} object has not yet been matched with its own \texttt{EndCreate} will
+hit this same guard and throw, a real cross-instance interaction a reader might not expect from
+an API that otherwise treats each \cnaclass{NetworkSession} as independent.
+
+The specific leak this section opened with is flagged in this project's own cross-module audit
+trail (\texttt{NEXTaudio.md}, dated 2026-07-06) as ``a confirmed real leak in
+\texttt{NetworkSession::BeginCreate}, out of this branch's scope,'' surfaced by
+\texttt{NetworkSessionTest.UpdateAfterDisposeThrows} failing to clean up under
+LeakSanitizer. Read plainly rather than assumed further than it actually says: the flag names
+the failing test and the suspected function, but the audit that found it was scoped to an
+unrelated Audio-module pass and explicitly did not re-diagnose the Net-module internals further
+--- and a separate, earlier note in \texttt{plan\_net.md} independently observes that
+\emph{most} of this project's own \texttt{NetworkSession}-related LeakSanitizer noise traces to
+an ordinary test-code convention (a test calling \texttt{Dispose()} on a session but never
+\texttt{delete}-ing the pointer \texttt{Create()} returned), not a library-internal leak. Both
+of these real, source-grounded accounts are reproduced here rather than silently reconciled into
+one, because this book's own account of them should not claim more certainty about which one
+explains \emph{this specific} flagged test than the project's own audit trail currently
+establishes --- an honest ``flagged, not yet independently re-diagnosed'' is the accurate
+status, not a confident root-cause claim this pass did not actually verify.
 
 \subsection{A worked example: the double-\texttt{Dispose()} use-after-free, traced in full}
 
