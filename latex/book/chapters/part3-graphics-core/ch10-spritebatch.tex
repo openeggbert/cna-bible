@@ -444,6 +444,65 @@ value), while sampling each glyph's own distinct fill color (white for \texttt{'
 a bug shape that a single-glyph test, no matter how many pixels it samples, structurally cannot
 detect at all, since there would be no second glyph to place at the wrong index.
 
+\section{A real exception-type gap: nested \texttt{Begin()} throws the wrong type entirely}
+\label{sec:spritebatch-wrong-exception-type}
+
+Calling \texttt{Begin()} a second time without an intervening \texttt{End()} --- or calling
+\texttt{End()} before any \texttt{Begin()} at all --- is a real, commonly-hit misuse case (a
+forgotten \texttt{End()} inside an early-return branch, most often), and CNA does throw for it.
+Reading the real implementation shows exactly what it throws, though, and it is not the type a
+reader would reasonably expect from real XNA:
+
+\begin{lstlisting}
+if (begun)
+    throw std::runtime_error("Begin has been called before calling End.");
+// ...
+if (!begun)
+    throw std::runtime_error("End was called, but Begin has not yet been called.");
+\end{lstlisting}
+
+Real XNA's own \texttt{SpriteBatch.Begin()} throws \texttt{InvalidOperationException} for the
+identical misuse, and \cnans{System}'s own \cnaclass{InvalidOperationException} type exists in
+this codebase, real and used elsewhere (Chapter~\ref{ch:state-objects} and others cite it
+directly) --- but \cnaclass{SpriteBatch} itself throws a plain \texttt{std::runtime\_error}
+here instead, confirmed by reading both guard sites directly rather than assumed from the
+message text alone. The two exception hierarchies do not meet until \texttt{std::exception}
+itself: \cnaclass{InvalidOperationException} derives from \cnaclass{SystemException}, which
+derives from \cnaclass{System::Exception} --- a hierarchy entirely separate from
+\texttt{std::runtime\_error}'s own \texttt{std::exception} lineage, confirmed by reading
+\texttt{InvalidOperationException.hpp} / \texttt{SystemException.hpp} directly.
+
+\begin{lstlisting}
+// Worked example: a porting engineer's reasonable, XNA-faithful guard --
+// this catch block never fires against SpriteBatch's own Begin()/End()
+// misuse, even though it would fire against the identical misuse on many
+// other CNA classes that do throw the real InvalidOperationException.
+try
+{
+    spriteBatch_->Begin();
+    spriteBatch_->Begin();  // forgot the End() above -- a real, easy mistake
+}
+catch (const System::InvalidOperationException& ex)
+{
+    // Never reached: SpriteBatch::Begin() throws std::runtime_error here,
+    // which this catch clause's type does not match at all.
+    LogAndRecoverGracefully(ex);
+}
+// The exception propagates past this handler entirely, caught only by a
+// broader catch (const std::exception&) further up the call stack, if one
+// exists -- or terminates the program if it does not.
+\end{lstlisting}
+
+This is a narrower, more precisely scoped gap than ``wrong error message'' or ``doesn't throw at
+all'': the throw itself is correct and reliable (a real, hittable misuse genuinely does
+terminate the batch and report a real diagnostic message), and any code written against a
+generic \texttt{catch (const std::exception\&)} handler --- the common, safe default in
+ordinary C\texttt{++} --- catches it exactly as expected, message text and all. The gap only
+bites a porting engineer who specifically wrote a typed \cnaclass{InvalidOperationException}
+catch clause around \cnaclass{SpriteBatch} usage, reasonably expecting the same exception
+hierarchy this book's other chapters confirm many other CNA classes do use faithfully for the
+identical real-XNA exception type.
+
 \section{Where this leaves a porting engineer}
 
 \cnaclass{SpriteBatch} is, by a wide margin, the most exhaustively cross-backend-verified
