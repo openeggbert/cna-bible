@@ -3,12 +3,13 @@
 
 This chapter is the one in Part~III where the gap between ``the API exists'' and ``the API
 does what it says on every backend'' is widest. \cnaclass{Texture2D} is close to fully
-faithful; \cnaclass{Texture3D} and \cnaclass{TextureCube} carry a real, load-bearing
-structural deviation from FNA; and render targets --- once the sharpest per-backend divergence
-in the whole Graphics namespace, before a wave of later fixes closed most of it, covered in
-full below --- still carry two genuinely open gaps of their own. All three are covered here
-together, with the specific per-backend facts intact rather than smoothed into ``mostly
-works.''
+faithful; \cnaclass{Texture3D} and \cnaclass{TextureCube} carried a real, load-bearing
+structural deviation from FNA for a stretch of this project's history, closed since (see
+\S\ref{sec:texture3d-inheritance}) but worth the full account of what changed and what did
+not; and render targets --- once the sharpest per-backend divergence in the whole Graphics
+namespace, before a wave of later fixes closed most of it, covered in full below --- still
+carry two genuinely open gaps of their own. All three are covered here together, with the
+specific per-backend facts intact rather than smoothed into ``mostly works.''
 
 \section{Texture: the base, and one format that actually works}
 
@@ -29,21 +30,38 @@ through the \texttt{.dds} loading path in \texttt{Texture2D::FromStream}
 compressed texture --- an eight-times VRAM overhead, and no native GPU compressed path exists
 anywhere in the project.
 
-\section{A structural deviation worth knowing before anything else in this chapter}
+\section{A structural deviation that closed since this chapter's own first pass}
+\label{sec:texture3d-inheritance}
 
 Real XNA's \texttt{Texture3D} and \texttt{TextureCube} both inherit \texttt{Texture}, which
 is what lets any of them sit in \texttt{GraphicsDevice.Textures[slot]} and be bound to a
-custom shader like an ordinary 2D texture. CNA's \cnaclass{Texture3D} and
-\cnaclass{TextureCube} \textbf{do not inherit} \cnaclass{Texture} and do not participate in
-the generic texture-slot binding mechanism at all --- tracked internally as Task~863. The
-practical consequence: a custom \cnaclass{ShaderEffect} (Chapter~\ref{ch:shader-fx-gap}) has
-no way to bind a \cnaclass{Texture3D} or \cnaclass{TextureCube}. Only the two stock effects
-with a dedicated field for one --- \cnaclass{EnvironmentMapEffect}'s
-\texttt{EnvironmentMap} --- can actually use a cube texture today, and only via a bypass
-mechanism (a dedicated \texttt{GpuDrawParams::envMap} field, not the generic texture-slot
-path). Keep this in mind whenever a later chapter says a stock effect ``uses a
-\cnaclass{TextureCube}'' --- it is using a special case, not the general texture-binding
-mechanism every other texture type goes through.
+custom shader like an ordinary 2D texture. An earlier pass of this chapter reported that
+CNA's \cnaclass{Texture3D} and \cnaclass{TextureCube} did \textbf{not} inherit
+\cnaclass{Texture} at all, tracked as Task~863 --- reading the real headers directly today
+shows that claim is stale: \texttt{Texture3D.hpp} and \texttt{TextureCube.hpp} both now
+declare \texttt{class Texture3D : public Texture} / \texttt{class TextureCube : public
+Texture}, matching real XNA exactly. \texttt{Texture3DTests.cpp}'s own regression coverage
+names precisely what this fix restores --- assignment into a \cnaclass{TextureCollection}
+(\texttt{GraphicsDevice.Textures[slot] = texture3D}), a real compile-time impossibility
+before Task~863 closed, plus a correctness follow-on: \texttt{Texture3D::Dispose(bool)} now
+calls through to \texttt{Texture::Dispose(bool)} after releasing its own backend handle, so
+disposing a bound \cnaclass{Texture3D} correctly unbinds it from
+\texttt{GraphicsDevice.Textures} / \texttt{VertexTextures}, the same unbind-on-dispose contract
+\cnaclass{Texture2D} already honored and \cnaclass{Texture3D} previously skipped entirely.
+
+The practical consequence this earlier pass described --- ``a custom
+\cnaclass{ShaderEffect} has no way to bind a \cnaclass{Texture3D} or \cnaclass{TextureCube}''
+--- is also closed, and by a more direct route than the generic texture-slot mechanism the
+class-hierarchy fix alone would suggest: \cnaclass{ShaderEffect} gained dedicated
+\texttt{SetTexture(int, TextureCube\&)} (Task~1081) and \texttt{SetTexture(int, Texture3D\&)}
+(Task~863) overloads, each binding straight to the matching GL texture target
+(\texttt{glBindTexture(GL\_TEXTURE\_CUBE\_MAP, ...)} / \texttt{GL\_TEXTURE\_3D}) rather than
+routing through the ordinary 2D texture-slot path. This is EasyGL-only as of this writing ---
+the other nine backends were explicitly deferred, per the same task's own scope note --- so
+``a custom shader can sample a volume or cube texture'' is currently a real, tested EasyGL
+capability, not yet a cross-backend one. \cnaclass{EnvironmentMapEffect}'s own
+\texttt{EnvironmentMap} field, mentioned in an earlier pass as the \emph{only} way any effect
+could reach a cube texture, is now one of two paths rather than the sole exception.
 
 \section{Texture2D}
 
@@ -168,16 +186,52 @@ for (int i = 0; i < 6; ++i) {
 }
 \end{lstlisting}
 
-Two of this chapter's own already-stated facts constrain what this loop can safely do next.
+One of this chapter's own already-stated facts constrains what this loop can safely do next.
 \texttt{GetData} on any of these six faces is a genuine no-op on Vulkan and BGFX (silently
 leaves the caller's buffer untouched) --- so a readback-based unit test of this exact loop can
 only run meaningfully on EasyGL, which is exactly why \texttt{docs/texture3d-texturecube-support.md}
-scopes its own \texttt{GetData} verification to that one backend. And because
-\cnaclass{TextureCube} does not inherit \cnaclass{Texture} (the structural deviation noted at
-the top of this chapter), \texttt{skybox} cannot be bound to a custom \cnaclass{ShaderEffect}'s
-texture slot --- only \cnaclass{EnvironmentMapEffect}'s dedicated \texttt{EnvironmentMap} field
-can actually sample it, via that effect's bypass mechanism, not the generic binding path every
-other texture in this chapter goes through.
+scopes its own \texttt{GetData} verification to that one backend. \texttt{skybox} \emph{can}
+now be bound to a custom \cnaclass{ShaderEffect} on EasyGL, per
+\S\ref{sec:texture3d-inheritance} above --- either through \texttt{SetTexture(int,
+TextureCube\&)} directly, or, since \cnaclass{TextureCube} now inherits \cnaclass{Texture},
+through the ordinary \texttt{GraphicsDevice.Textures[slot]} assignment every 2D texture in
+this chapter already uses.
+
+\subsection{A worked example: sampling a volume texture from a custom shader}
+\label{sec:texture3d-shader-example}
+
+\texttt{examples/easygl\_shadereffect\_texture3d\_test.cpp} is the real, EasyGL-only test
+that proves \texttt{ShaderEffect::SetTexture(int, Texture3D\&)} genuinely reaches a
+\texttt{sampler3D} uniform, not just that the call compiles. The volume is deliberately
+tiny --- a $1\times1\times2$ texture, one texel per Z-slice --- so the whole capability proof
+reduces to two texel reads instead of a real ray-marching setup:
+
+\begin{lstlisting}
+Texture3D volumeTex(device, 1, 1, 2, /*mipMap=*/false, SurfaceFormat::Color);
+const Color slices[2] = {
+    Color(255, 0, 0, 255), // Z=0
+    Color(0, 0, 255, 255), // Z=1
+};
+volumeTex.SetData(slices, 2);
+
+auto* fx = dynamic_cast<ShaderEffect*>(fxBase.get());
+fx->Apply();
+fx->SetTexture(0, volumeTex);
+fx->SetUniformInt("VolumeSampler", 0);
+fx->SetUniformVec3("coord", 0.5f, 0.5f, 0.25f); // samples Z-slice 0's texel centre
+\end{lstlisting}
+
+Sampling at $Z=0.25$ and $Z=0.75$ --- each slice's own texel centre, per
+$(\text{sliceIndex} + 0.5) / \text{depth}$ --- reads back \texttt{(255,0,0,255)} and
+\texttt{(0,0,255,255)} respectively, even with GL\_LINEAR filtering on both axes: linear
+interpolation sampled exactly at a texel centre puts its full weight on that one texel, so
+there is no blending artifact to account for. The real test's own false-positive guard is
+worth naming as a technique in its own right, since it recurs throughout this book's worked
+examples: a second, all-black ``decoy'' \cnaclass{Texture3D} is created and uploaded
+\emph{after} the real one, so an unmutated \texttt{SetTexture()} call would leave GL's
+texture-unit-0/\texttt{GL\_TEXTURE\_3D} binding pointing at the decoy rather than the
+intended volume --- the two-slice colour check only passes for the right reason (a genuine,
+per-call rebind) if disabling the \texttt{SetTexture()} call would make it fail.
 
 \subsection{A worked example: rendering into one RenderTargetCube face}
 
