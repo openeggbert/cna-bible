@@ -317,3 +317,69 @@ promise: shared bytecode and state-mapping tables, not identical implementation 
 every individual feature, and a reader porting code that depends on either backend's own timing
 or cost characteristics for this specific operation should not assume the other backend behaves
 the same way underneath.
+
+\section{\texttt{HeadlessEXT}: the NOXNA property that let three D3D12 tests join the routine suite}
+
+Three specific gaps --- D3D12's own \cnaclass{SpriteFont} rendering, its \cnaclass{Model} runtime
+orchestration, and half of \texttt{Texture2D.FromStream} / \texttt{SaveAsPng} --- stayed open
+noticeably longer than every comparable D3D11 row, and a later planning pass traced all three to
+one shared architectural root cause rather than three unrelated gaps: each needs a real
+\cnaclass{GraphicsDevice}, and \cnaclass{GraphicsDevice}'s own constructor unconditionally
+initialized SDL video and created a real window for every backend except \texttt{HEADLESS}/%
+\texttt{SOFTWARE}. For \texttt{D3D12} specifically, a real window means a real swap chain, which
+on this project's own Linux dev loop only works through the heavy, Proton-managed launcher
+Section~\ref{sec:d3d11-lifetime-groups}'s sibling section above already introduced --- not the
+plain Wine the routine \texttt{ctest} run uses. Three tests genuinely needing a
+\cnaclass{GraphicsDevice} at all, on a backend whose only route to one was a launcher too slow for
+routine CI, is a real architectural dead end, not a missing-test-case gap ordinary engineering
+effort could close directly.
+
+The fix actually shipped, rather than merely proposed: \cnaclass{PresentationParameters} gained a
+NOXNA \texttt{HeadlessEXT} property, read directly from the real header:
+
+\begin{lstlisting}
+// CNA extension. When true, GraphicsDevice creates no SDL window and never
+// initialises SDL's video subsystem, so it can run with no display server at
+// all -- the same thing the Headless and Software backends do
+// unconditionally, but as an opt-in for a backend that normally does want a
+// window. Only backends that can genuinely operate without a swap chain
+// support this. Today that means D3D12 ... Present() is not meaningful
+// without a swap chain; an off-screen device is for rendering into render
+// targets and reading the result back (tests, server-side rendering,
+// thumbnail generation), not for putting frames on screen.
+NOXNA bool getHeadlessEXTProperty() const;
+NOXNA void setHeadlessEXTProperty(bool value);
+\end{lstlisting}
+
+Defaulting to \texttt{false} keeps production behavior byte-identical for every existing backend
+and caller; only \texttt{D3D12} honors it today, since its own backend already treated a null
+window as a real off-screen mode internally, while \texttt{D3D11}'s constructor always creates a
+swap chain unconditionally and \texttt{EasyGL}'s GL context is inseparable from a window --- both
+throw if a caller sets \texttt{HeadlessEXT} against them. With the property in place, all three
+previously-stuck rows landed in the \emph{routine}, plain-Wine \texttt{D3D12} \texttt{ctest} run
+like every other check, no Proton launcher required. \texttt{HeadlessEXT} is deliberately framed
+in its own header comment as more than a test convenience: an off-screen \cnaclass{GraphicsDevice}
+is a real, general capability --- server-side rendering and thumbnail generation being the two
+named examples --- that happens to have been motivated by closing a testing gap first.
+
+\subsection{Four real bugs a headless \texttt{GraphicsDevice} immediately found on D3D12}
+
+Landing that first real, routine \cnaclass{GraphicsDevice}-driven test coverage on \texttt{D3D12}
+did what this book has found repeatedly elsewhere: it surfaced bugs no amount of reasoning about
+the code in isolation had caught, because nothing had ever driven the shared
+\cnaclass{GraphicsDevice} path against this specific backend before. \cnaclass{SpriteBatch}
+silently ignored \texttt{SetSamplerFilter} / \texttt{SetSamplerAddressMode} entirely, drawing with
+whatever sampler state an unrelated, prior 3D draw happened to leave bound rather than the one the
+caller actually requested. Render targets never bound their own depth-stencil view at all, so a
+render target constructed \emph{with} a depth buffer silently behaved as though it had none ---
+every depth test against it was inert, and a depth/stencil \texttt{Clear} had nothing real to
+write to. All six combo \texttt{Clear*} variants (color-plus-depth, color-plus-stencil, and so on)
+were still unimplemented throws. Most strikingly, \texttt{SetDepthTestEnabled} /
+\texttt{SetDepthWriteEnabled} / \texttt{SetBlendEnabled} were also still unimplemented throws on
+this backend --- meaning any real game calling any of these three ordinary, load-bearing
+\cnaclass{GraphicsDevice} methods against \texttt{D3D12} did not render incorrectly, it
+\emph{crashed} outright, found only because the \cnaclass{Model} test was the first thing in the
+project ever to drive that specific call path against this backend. All four are now fixed; the
+shape of the finding is the more durable lesson than any one bug: a genuinely new, real caller of
+an already-``complete''-looking code path is one of this project's most reliable bug-finding
+techniques, confirmed again here.
