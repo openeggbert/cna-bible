@@ -7,55 +7,61 @@ the session that just finished — it gets overwritten each session, not appende
 
 ## Where things stand (end of session, 2026-07-22)
 
-**432 pages, 49 chapters + 6 appendices, 0 undefined references, 0 duplicate-label warnings —
+**438 pages, 49 chapters + 6 appendices, 0 undefined references, 0 duplicate-label warnings —
 independently re-verified via a forced rebuild (`latexmk -g`) against a clean `git status`
 immediately before this file was written.** Re-verify before trusting this in a future session;
 use `grep -i "Warning.*undefined\|undefined reference\|undefined control"`, not a plain
 `grep -i undefined`.
 
 This was an unusually long, multi-batch session (author unavailable for many hours, explicit
-"continue autonomously" instruction given partway through, repeated more than once). Five full
-batches landed in total (371 → 432 pages, +61), on top of the earlier SDL_GPU chapter insertion
+"continue autonomously" instruction given partway through, repeated several times). Six full
+batches landed in total (371 → 438 pages, +67), on top of the earlier SDL_GPU chapter insertion
 and Ch.17/Ch.18 real-screenshot work:
 
 - **Batch A** (10): Ch.10, 19, 20, 23, 32, 37, 40, 41, 43, 44, plus Appendix B.
 - **Batch B** (8): Ch.8, 22, 30, 31, 35, 39, 46, 48.
 - **Batch C** (6): Ch.2, 5, 12, 18, 20 (2nd pass), 23 (2nd pass).
 - **Batch D** (6): Ch.11, 13, 33, 34, Appendix A, Appendix D.
+- **Batch E** (6, most recent): Ch.6, 21, 24 (3rd pass), 25 (3rd pass), 28, 47.
 
-Every touched file across all batches was individually rendered to PNG and read directly after
-its own batch's consolidated `make book` pass — not just log-checked. **Twelve real page-edge/
-box/running-header overflows were found and fixed across the first five of six batch-verification
-passes, and not one of them produced a logged `Overfull \hbox` warning.** Batch D (the most
-recent) was the first batch all session with **zero** overflow defects and **zero** stale
-`PLAN.md` rows found — worth knowing as a positive data point, not just a list of failures.
+Every touched file across all six batches was individually rendered to PNG and read directly
+after its own batch's consolidated `make book` pass — not just log-checked. **Thirteen real
+page-edge/box/running-header overflows were found and fixed across six batch-verification
+passes, and not one of them produced a logged `Overfull \hbox` warning.**
 
-Highlights from Batch D (Ch.11/13/33/34, Appendix A/D — the most recent work):
+Highlights from Batch E (the most recent work — chosen for breadth, favoring chapters not yet
+touched this session over further passes on already-touched ones):
 
-- **Ch.11 (Textures and Render Targets)**: found and fixed a real stale claim — the chapter's
-  own headline claim that `Texture3D`/`TextureCube` don't inherit `Texture` (Task 863) is stale;
-  both now do. Added a worked volume-texture (`Texture3D`) shader-sampling example grounded in
-  a real EasyGL-only test.
-- **Ch.13 (Stock Effects)**: `plan_graphics.md`'s Task 890 (`EnvironmentMapEffect`'s
-  `DirectionalLight1`/`DirectionalLight2` forwarding) is marked open in the tracker but is
-  actually already fixed on every backend — added a discriminating three-light worked example,
-  since a single-light test can't tell "one light forwarded, two dropped" from the real fix.
-- **Ch.33 (Storage)**: the real four-tier `EnsureStorageRoot()` platform-resolution chain
-  (`SDL_GetPrefPath` → `XDG_DATA_HOME` → `HOME/.local/share` → cwd), plus a genuinely new,
-  previously-undocumented gap: `OpenFile`'s `FileShare` parameter cannot be honored at all,
-  structurally — `sharp-runtime`'s `FileStream` has no constructor overload that accepts one.
-- **Ch.34 (Sharp Runtime Overview)**: the permanent scope-boundary taxonomy (Reflection is a
-  deliberate stub with internally-inconsistent-by-design predicates; GC calls are real no-ops;
-  Serialization/P-Invoke/Cryptography are explicitly out of scope, each with its own dated
-  reason) and the real vendored-dependency/build-structure account.
-- **Appendix A**: new `SpriteFont` and `Model`/`ModelMesh`/`ModelBone`/five-stock-effects
-  quick-reference sections, closing two of the appendix's more glaring remaining gaps.
-- **Appendix D**: an org-wide, `cloc`-measured line-count comparison across all 18 real
-  repositories (`cna` itself is ~181.2k lines, ~40% of the whole ecosystem's ~444.6k total),
-  sourced from the `openeggbert/openeggbert` index repo's own README — not previously used as a
-  source anywhere in this book. Also corrected `mobile-eggbert-legacy`'s description (a genuine
-  ILSpy-decompiled preservation archive, not a working reimplementation) and confirmed
-  `youtube-frontend` as a real, unrelated repo in the same org.
+- **Ch.6 (Game Loop)**: the real five-tick `IsRunningSlowly` hysteresis in `Game::Tick()` (a
+  single 50ms stutter never sets it — several consecutive lagging ticks are required, and it
+  takes several good frames to clear), with **zero dedicated test coverage for the mechanism
+  itself** (`GameTimeTests.cpp` only tests `GameTime`'s plain getters/setters). Also:
+  `ResetElapsedTime()` is a silent no-op whenever `IsFixedTimeStep` is left at its default
+  `true` — matches real XNA's documented behavior, but easy to call defensively and assume it
+  did something.
+- **Ch.21 (WebGPU)**: `IWebGPUCubeSamplable`, a real shared-interface fix for a bug where
+  `EnvironmentMapEffect` silently fell back to a 1×1 white default whenever a `RenderTargetCube`
+  (rather than an upload-only `TextureCube`) was bound as its environment map, because the old
+  code cast to one hardcoded concrete type.
+- **Ch.24 (Canvas/ASCII)**: the "separate backend, not a toggle" architectural decision,
+  reproduced honestly including `plan_ascii.md`'s own hedged framing — the plan document itself
+  flags the simpler toggle-on-`SDL_RENDERER` alternative as "worth revisiting," not a settled
+  choice with the benefit of hindsight.
+- **Ch.25 (DX3/free-direct)**: design-decision-4 (32bpp-only, no 8-bit palette path) shown to
+  structurally sidestep two real, independently-documented `free-direct` gaps — the discarded
+  `dwBPP` parameter and `BlitFrom`'s mixed-depth silent no-op — because a backend faithfully
+  targeting XNA's own `SurfaceFormat` enum (which has no 8-bit indexed member) never triggers
+  either one.
+- **Ch.28 (Media)**: `MediaPlayer::Volume`/`IsMuted` are genuinely independent state (muting
+  never overwrites the stored volume), and `MediaStateChanged`/`ActiveSongChanged` don't fire
+  immediately — both are dispatched later, from `FrameworkDispatcher::Update()`, matching real
+  XNA's own documented per-frame dispatch API.
+- **Ch.47 (Project Practice)**: queried `sharp-runtime`'s real `plan.sqlite3` task-tracking
+  database directly for the first time in this book — its two-table schema (`task`/`ticket`), a
+  full real ticket quoted verbatim (including its `validation_command` field), and a genuinely
+  new statistic: of 16,201 classified .NET BCL types/members, only 1,041 (6.4%) are actually
+  `ported` — the honest denominator behind every "sharp-runtime implements X" claim this book
+  makes.
 
 ## Fork dispatch in this environment — the fullest picture yet, read before dispatching more
 
@@ -79,8 +85,7 @@ race) happened repeatedly this session — always resolved cleanly by re-checkin
 `git show --stat` before committing rather than assuming your own in-progress edit is the only
 one in flight. Dispatching 6-10 forks per batch and waiting for them to settle (1-5 hours of
 real wall-clock time per batch, not fighting the extra unsupervised work) has now worked
-cleanly across five consecutive batches — a proven, repeatable rhythm for this project, not a
-one-off experiment.
+cleanly across six consecutive batches — a proven, repeatable rhythm for this project.
 
 ## What is NOT yet done — the natural next body of work
 
@@ -89,10 +94,10 @@ list and PLAN.md ever disagree):
 
 - Ch.23 Direct3D Backends — even after two passes this session, still the largest absolute page
   gap in the book (target 85, still well under half). Worth a dedicated multi-pass focus.
-- Ch.19 Vulkan Backend, Ch.10 SpriteBatch, Ch.17 SDL_Renderer Backend, Ch.31 Networking,
-  Ch.35 Sharp Runtime Namespaces (~10-16% of target each, none touched in Batch D)
-- Ch.25 DX3/free-direct Backend, Ch.24 Canvas/ASCII Backends (~17-18% of target)
-- Appendices C, E, F — untouched this session, all still comfortably under target
+- Ch.18 EasyGL Backend, Ch.19 Vulkan Backend, Ch.10 SpriteBatch, Ch.17 SDL_Renderer Backend
+  (all ~14-16% of target, none touched in Batch E specifically, though several got passes
+  earlier in the session)
+- Appendices C, E, F — untouched all session, all still comfortably under target
 - Ch.7 Math remains the largest chapter by far and may be genuinely saturated (four-plus prior
   sessions' worth of depth passes) — read its own `PLAN.md` row before adding more.
 - Screenshot infrastructure: `ASCII` and `CANVAS` backends remain untried for real screenshot
@@ -104,12 +109,12 @@ it was checked; work is tracked purely via `PLAN.md`/`NEXT.md` rows and commit m
 ## Reusable technical/mechanical findings (still true, carried forward)
 
 - **PNG-rendering every touched page is the only reliable overflow check — full stop, no
-  exceptions for what the log says.** Twelve separate real overflows across this session's
-  first five verification passes produced zero logged `Overfull \hbox` warnings between them,
-  across at least three distinct visual shapes: plain page-edge text, a `longtable` cell
+  exceptions for what the log says.** Thirteen separate real overflows across this session's six
+  verification passes produced zero logged `Overfull \hbox` warnings between them, across at
+  least three distinct visual shapes: plain page-edge text (most common — often two long
+  identifiers/class names landing consecutively at a line-end position), a `longtable` cell
   overlapping its neighbor column, and a `\section{}` title colliding with its own running
-  header/folio. A sixth verification pass found zero — the check is still worth running every
-  time regardless, since a clean result isn't knowable in advance.
+  header/folio.
 - **A suspected fix must be pixel-verified, not assumed.** If a before/after PNG crop of the
   same region looks identical, the fix did not work. Bump `-r` to 250 and crop with PIL for a
   close look whenever a line looks like it might be touching a page/box edge.
@@ -123,9 +128,9 @@ it was checked; work is tracked purely via `PLAN.md`/`NEXT.md` rows and commit m
   plain, `\allowbreak{}`-able `\texttt{}` — verify that precondition first.
 - **Overflow-fix technique, in order of what actually worked:** (1) `\allowbreak{}` at
   camelCase/`::`/`_`/`.` boundaries — verify it actually changed the render, don't assume; (2)
-  restructure the sentence into shorter independent clauses, or move the long token off the
+  restructure the sentence into shorter independent clauses, or move the long token(s) off the
   line-end position entirely, when `\allowbreak{}` alone doesn't move the needle (needed far
-  more often than `\allowbreak{}` alone succeeding, this session); (3) split a combined
+  more often than `\allowbreak{}` alone succeeding, all session); (3) split a combined
   `\description` `\item[...]` label into two items; (4) restructure code itself inside
   `lstlisting`, including moving a trailing inline comment to its own line above the code (an
   inline trailing comment on a long code line can wrap catastrophically, one word per line,
