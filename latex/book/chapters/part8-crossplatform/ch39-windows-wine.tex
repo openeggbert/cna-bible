@@ -81,6 +81,7 @@ CNA_D3D11_SKIP_DXVK_GATE=1 scripts/run-wine-dxvk.sh build-windows/D3DCommonMappi
 \end{lstlisting}
 
 \section{D3D12's extra wrinkle: Proton, not plain Wine}
+\label{sec:proton-wrinkle}
 
 Chapter~\ref{ch:direct3d-backends} already described the real, root-caused
 architecture mismatch behind D3D12's swap-chain crash under plain Wine: Debian's own system
@@ -166,6 +167,51 @@ explicitly deferred as a substantially larger undertaking, left for the D3D9 ora
 instead. One real, if narrow, divergence this tool did catch: \cnaclass{IndexElementSize}'s
 \texttt{SixteenBits} / \texttt{ThirtyTwoBits} values did not match FNA's own \texttt{0} / \texttt{1}
 numbering at all --- confirmed and fixed once this comparison surfaced it.
+
+\section{The real GPU behind every result in this chapter, and a caveat that doesn't apply
+uniformly}
+
+Every DXVK/vkd3d-proton log line quoted so far in this chapter, and every one behind the
+oracle's own pixel-exact results, comes from one real, named piece of hardware: an
+\texttt{AMD Radeon 780M} integrated GPU, driven by Mesa's open-source \texttt{RADV} Vulkan
+driver (\texttt{RADV PHOENIX}). Naming it concretely matters for a reason beyond mere
+completeness --- \texttt{llvmpipe}, Mesa's own CPU software rasterizer, is present on this
+machine too and is explicitly skipped every time (\texttt{"warn: Skipping CPU adapter:
+llvmpipe"} in DXVK's own log), so every hardware-dependent capability figure this chapter
+cites reflects a genuine GPU's real limits, not a software fallback silently standing in for
+one.
+
+That matters concretely for the caveat the next section states in full, because the caveat
+does \emph{not} apply uniformly to every capability figure this dev loop produces. D3D9's own
+\texttt{D3DCAPS9} structure --- \texttt{VertexShaderVersion}, \texttt{TextureCaps} NPOT bits,
+and the rest --- is XNA-era-specific and, under DXVK, genuinely \emph{synthesized}: DXVK maps
+its own modern understanding of the underlying Vulkan device onto that legacy structure's
+fields, which is exactly why \texttt{TextureCaps} reports unconditional full NPOT support
+(\texttt{POW2=0}, \texttt{NONPOW2CONDITIONAL=0}) where real XNA-era hardware commonly had a
+POW2 or NPOT-conditional restriction --- a plausible but not authentic-period value. D3D11 and
+D3D12, by contrast, query capability structures a real, modern game targeting those APIs
+natively would also query, with no XNA-era translation step in between. \texttt{CheckMultisampleQualityLevels()}
+is the concrete instance already covered above (\S\ref{sec:d3d9-oracle} discusses the sibling
+D3D9 case): \texttt{D3D11RenderTargetBackend} never assumes a requested MSAA sample count is
+honored, calls this real device API, and \texttt{ClampMultiSampleCount()} would fall back to
+0 (no MSAA) if the device ever reported zero quality levels for the requested count --- on
+this real RADV device it does not fall back, because the hardware genuinely grants a real,
+device-confirmed 4x (the smoke suite's own log line records it plainly: \texttt{"MSAA:
+requested 4x, device-applied 4x"}). The D3D12 spike that resolved this chapter's own Proton
+wrinkle (\S\ref{sec:proton-wrinkle}) found the identical pattern one level further: feature
+level negotiation reached \texttt{D3D\_FEATURE\_LEVEL\_12\_1} (not merely the \texttt{12\_0}
+floor), with DXR~1.1 ray-tracing support and Shader Model~6.8 both genuinely negotiated against
+this same real GPU --- a strictly \emph{more} capable result than D3D11's own DXVK path
+reported on the identical hardware, not a coincidence but the same real device answering a
+newer, more capable query surface.
+
+The distinction worth carrying forward precisely: ``this dev loop's capability numbers are not
+authentic'' is true and important for D3D9's own XNA-era-specific \texttt{D3DCAPS9} structure
+specifically, where DXVK stands between the query and a real answer by design. It is not
+equally true of D3D11/D3D12's own capability queries, which reach the same real hardware a
+native modern application would --- the caveat the next section states project-wide is
+deliberately scoped to what it can honestly cover, not blurred into every number this chapter
+has cited.
 
 \section{The one caveat every result in this chapter inherits}
 

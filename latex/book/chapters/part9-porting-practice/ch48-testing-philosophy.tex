@@ -145,6 +145,81 @@ plainly in its own README --- and it is the reason this book has consistently di
 ``verified locally, by a specific mechanism, on a specific date'' from ``covered by CI,''
 rather than treating the two as interchangeable.
 
+\section{The golden-image workflow: regenerate, review, commit}
+
+\texttt{CompareGoldenImage()} (\texttt{examples/common/PixelTestGame.hpp}), the shared helper
+behind every golden-image test this book has cited, is worth reading for its own workflow
+philosophy, not just its comparison logic. Its own header comment states the intended process
+directly, and it is a real, three-step discipline rather than an implementation detail:
+
+\begin{lstlisting}
+// Set the CNA_UPDATE_GOLDEN environment variable to any non-empty value to
+// instead (re)write goldenPath from the current live render and report
+// [UPDATE] -- the intended workflow for an intentional rendering change: run
+// once with CNA_UPDATE_GOLDEN=1 to regenerate the reference, review the new
+// file with `git diff`/an image viewer, then commit it; every subsequent run
+// without the env var compares against it normally.
+\end{lstlisting}
+
+The order matters as much as the mechanism: regenerate, \emph{then look at what changed}, then
+commit --- never regenerate-and-commit in one motion, since that would silently launder a real
+regression into the reference itself, permanently hiding it from every future comparison. A
+golden-image diff failing is deliberately ambiguous by design between two very different
+outcomes (an intentional rendering change the reference hasn't caught up to yet, or a real
+regression), and this workflow's whole point is forcing a human decision at exactly that
+ambiguity rather than automating past it in either direction.
+
+The same helper's own comment on \texttt{tolerance} is worth citing directly too, because it
+is a concrete, numbered finding rather than a general caveat: ``Exact pixel-perfect reproduction
+across this project's 4 backends/drivers is already known unreliable (Task 462's own 98-file
+tolerance survey) --- pass a non-zero tolerance for any golden image that isn't a single flat,
+unblended colour.'' This is the same underlying fact Chapter~\ref{ch:verification-methodology}'s
+own D3D9 oracle corpus treats as a hard boundary in the opposite direction: the oracle's
+zero-tolerance comparison is defensible specifically \emph{because} both sides of it run through
+the identical Wine+DXVK stack, eliminating the driver-level noise a tolerance value exists to
+absorb everywhere else. A tolerance of zero is not a stricter version of a nonzero tolerance in
+this project --- it is a claim about the comparison's own architecture, only true where that
+architecture actually holds.
+
+\section{A CI-only test class: skipping itself honestly instead of being silently excluded}
+
+Chapter~\ref{ch:building-cna} and the section above already named CI's own real, partial scope.
+Reading \texttt{.github/workflows/devices-tests.yml} directly shows a smaller, worth-naming
+design choice inside that scope: two tests genuinely need real accelerometer/gyroscope hardware
+neither this project's CI runners nor most developer machines have --- and rather than
+excluding them from the CI test filter (the more common approach, and the one that makes a
+hardware-only test invisible in a CI run's own output), the workflow's own header comment
+states the alternative directly:
+
+\begin{lstlisting}
+// The two tests that genuinely require real hardware
+// (AccelerometerTests.GetCurrentValuePropertyDoesNotThrowWhenSupported,
+// GyroscopeTests.GetCurrentValuePropertyDoesNotThrowWhenSupported) are not
+// excluded from the filter; they are written to self-skip via GTEST_SKIP()
+// when getIsSupportedProperty() is false, which is always the case on a CI
+// runner with no accelerometer/gyroscope, so they show up as "SKIPPED"
+// rather than needing a separate hardware-only filter.
+\end{lstlisting}
+
+The distinction is small mechanically but real in what it communicates: a test filtered out of
+a CI run leaves no trace in that run's own results at all, while a test that reaches
+\texttt{GTEST\_SKIP()} appears explicitly, every run, as skipped --- a standing, visible
+reminder that a hardware-dependent check exists and genuinely was not run here, rather than a
+silent gap a future reader of CI output would have no way to notice. The same two tests would
+run for real, not skip, on a developer's own machine with the relevant sensor physically
+present --- the \texttt{GTEST\_SKIP()} branches on \texttt{getIsSupportedProperty()}, the
+platform's own real capability query, not on a hardcoded CI-only flag.
+
+Input CI (\texttt{.github/workflows/input-ci.yml}) shows the same "state real coverage
+honestly" instinct from a different angle: its own matrix runs the backend-agnostic input
+suite headless across four graphics backends (\texttt{EASYGL}, \texttt{SDL\_RENDERER},
+\texttt{VULKAN}, \texttt{BGFX}), plus a dedicated AddressSanitizer+UndefinedBehaviorSanitizer
+configuration on \texttt{EASYGL} specifically --- a concrete instance of this chapter's own
+earlier claim that sanitizer coverage in this project is targeted, not blanket: one backend
+carries the sanitizer burden for the whole input subsystem, chosen rather than applied
+everywhere, exactly the deliberate-not-universal posture this chapter's own sanitizer section
+already established for \texttt{free-direct} and \cnans{Microsoft::Devices::Sensors}.
+
 \section{The throughline}
 
 Every mechanism in this chapter answers the same underlying question from a different angle:
