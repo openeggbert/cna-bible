@@ -2053,3 +2053,37 @@ stays frozen by explicit author decision, not left incomplete.
   checks clean, every touched page confirmed clean. Session total: fourteen real defects found
   and fixed across seven batches (thirteen log-invisible overflows plus one fatal UTF-8 build
   break); 371 -> 452 pages (+81) across the whole session.
+
+- **2026-07-22, same session, continued — a seventh batch (Ch.10/17/18/19/31/35), targeting
+  the six mathematically furthest-below-target chapters in the whole book (all 14-17%), plus
+  the session's first fatal build break.** Dispatched 6 forks against Ch.18 (EasyGL, 14%),
+  Ch.19 (Vulkan, 15%), Ch.31 (Networking, 16%), Ch.10 (SpriteBatch, 16%), Ch.17 (SDL_Renderer,
+  16%), and Ch.35 (Sharp Runtime Namespaces, 17%). All landed real, well-grounded content, and
+  several forks continued working after their first commit and added a second real finding
+  each (Ch.19 got both a frames-in-flight/deferred-present section and, separately, a real
+  512-descriptor-set ceiling; Ch.10 and Ch.31 each got a second real bug beyond their first
+  commit) --- consistent with this session's now-established pattern of forks continuing past
+  a single directive.
+
+  **The consolidated verification pass caught a genuine fatal build break for the first time
+  this session**, not just a layout overflow: Ch.35's worked `UTF8Encoding` example embedded
+  literal multi-byte UTF-8 characters (a Euro sign, two replacement-character glyphs) directly
+  inside `lstlisting` code comments, which the `listings` package's own font handling cannot
+  process --- `pdflatex` aborted with "Invalid UTF-8 byte sequence," producing no PDF at all,
+  and downstream causing three unrelated-looking "undefined reference" warnings (compilation
+  never got far enough to resolve labels). Fixed immediately by describing the characters in
+  plain ASCII (`EURO SIGN`, `U+FFFD`) instead of embedding the raw bytes, committed
+  standalone before any further verification continued, given the severity. **Two more running-
+  header/folio collisions** (Ch.17, Ch.19 --- the same defect class as the earlier Ch.12/Ch.23
+  fixes) were also found and fixed via `\section[short]{long}`, one of them independently
+  converged-on by a concurrent background process with an identical fix.
+
+  A direct `wc -l` check of all six touched files against PLAN.md's own claimed line counts
+  found zero stale rows this time.
+
+  Final state: `make book` (forced rebuild) succeeded (**452 pages**, up from 438), both grep
+  checks clean, every one of the 6 chapters (plus the extra Ch.10/19/31 second-pass content)
+  confirmed clean post-fix. Running session total: fifteen real defects found and fixed across
+  seven consecutive batch-verification passes (thirteen log-invisible layout overflows plus
+  one fatal UTF-8 build break plus, within that count, the two running-header collisions just
+  listed); 371 -> 452 pages (+81) across the whole session.
