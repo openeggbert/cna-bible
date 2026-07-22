@@ -131,6 +131,36 @@ table transparently, without needing to repeat it. The one partial exception:
 buffer rather than the literal window backbuffer, ``so the game can never accidentally draw
 straight onto the real window.''
 
+\subsection{A separate backend, not a toggle --- and why that was a genuinely close call}
+
+\texttt{plan\_ascii.md}'s own design-decisions section records an alternative that was seriously
+considered and explicitly not dismissed out of hand: implementing this entire feature as a
+runtime toggle or \texttt{NOXNA} extension directly on \texttt{SDL\_RENDERER}, instead of a
+separate, selectable \texttt{CNA\_GRAPHICS\_BACKEND} value. The architectural case for the
+toggle is real, not a straw man --- \texttt{ASCII} \emph{is}, structurally, ``\texttt{SDL\_RENDERER}
+plus a present-time filter,'' per the same document's own framing: every draw call a game issues
+forwards to a live \texttt{SdlGraphicsBackend} instance unmodified, and the only genuinely new
+code this backend contributes at all is a replacement \texttt{Present()}. A single boolean flag
+on the existing backend could, in principle, have delivered the identical behavior with strictly
+less code --- no new CMake option, no new entry in \texttt{BackendSelection.cmake}'s
+\texttt{STRINGS} list, no fourteenth value for a reader of Chapter~\ref{ch:backend-architecture}
+to learn.
+
+The plan's own recorded reasoning for choosing the heavier option anyway is worth stating
+precisely, since it is a judgment call about discoverability rather than a technical constraint:
+``discoverability and consistency with how this project already exposes backend choice.'' A
+\texttt{CNA\_GRAPHICS\_BACKEND=ASCII} build is a single, obvious CMake flag any reader of this
+book's own Chapter~\ref{ch:building-cna} already knows to look for; a correct-but-buried
+\texttt{SDL\_RENDERER}-plus-an-environment-variable combination is not discoverable the same
+way, and would have made this backend read as an undocumented mode of another backend rather
+than a first-class, named part of the project's own twelve-backend catalog. The plan document
+does not present this as a closed question, either --- it explicitly flags the toggle as ``a
+real, low-cost alternative worth revisiting if a toggle turns out to be more convenient in
+practice,'' rather than retroactively justifying the decision actually shipped as though it were
+the only reasonable one. Treating a design document's own hedged uncertainty honestly, rather
+than smoothing it into false confidence after the fact, is the same discipline
+Chapter~\ref{ch:project-practice} asks of every dated claim this book reproduces.
+
 \subsection{The quantizer, and a deliberately hand-authored font}
 
 Glyph selection works by standard luminance ranking (the usual $0.299R + 0.587G + 0.114B$
