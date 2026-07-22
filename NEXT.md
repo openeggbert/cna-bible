@@ -7,86 +7,80 @@ the session that just finished — it gets overwritten each session, not appende
 
 ## Where things stand (end of session, 2026-07-22)
 
-**424 pages, 49 chapters + 6 appendices, 0 undefined references, 0 duplicate-label warnings —
+**432 pages, 49 chapters + 6 appendices, 0 undefined references, 0 duplicate-label warnings —
 independently re-verified via a forced rebuild (`latexmk -g`) against a clean `git status`
 immediately before this file was written.** Re-verify before trusting this in a future session;
 use `grep -i "Warning.*undefined\|undefined reference\|undefined control"`, not a plain
 `grep -i undefined`.
 
 This was an unusually long, multi-batch session (author unavailable for many hours, explicit
-"continue autonomously" instruction given partway through). Four batches landed in total, on
-top of the earlier SDL_GPU chapter insertion and Ch.17/Ch.18 real-screenshot work:
+"continue autonomously" instruction given partway through, repeated more than once). Five full
+batches landed in total (371 → 432 pages, +61), on top of the earlier SDL_GPU chapter insertion
+and Ch.17/Ch.18 real-screenshot work:
 
 - **Batch A** (10): Ch.10, 19, 20, 23, 32, 37, 40, 41, 43, 44, plus Appendix B.
 - **Batch B** (8): Ch.8, 22, 30, 31, 35, 39, 46, 48.
-- **Batch C/D** (6, dispatched together and landed as one verification wave): Ch.2, 5, 12, 18,
-  20 (a second pass), 23 (a second pass).
+- **Batch C** (6): Ch.2, 5, 12, 18, 20 (2nd pass), 23 (2nd pass).
+- **Batch D** (6): Ch.11, 13, 33, 34, Appendix A, Appendix D.
 
-Every touched file across all four batches was individually rendered to PNG and read directly
-after its own batch's consolidated `make book` pass — not just log-checked. **Twelve real
-page-edge/box/running-header overflows were found and fixed across the whole session, and not
-one of them produced a logged `Overfull \hbox` warning.** This is now an extremely
-well-established structural property of this defect class (12-for-12 silent), not a coincidence
-— see "Reusable findings" below. Two NEW overflow sub-classes were found this session, beyond
-plain page-edge text: a `longtable` cell overlapping its neighbor column (Appendix B), and a
-`\section{...}` title long enough to collide with its own running header/folio (Ch.12, Ch.23) —
-both fixed with `\section[short]{long}`.
+Every touched file across all batches was individually rendered to PNG and read directly after
+its own batch's consolidated `make book` pass — not just log-checked. **Twelve real page-edge/
+box/running-header overflows were found and fixed across the first five of six batch-verification
+passes, and not one of them produced a logged `Overfull \hbox` warning.** Batch D (the most
+recent) was the first batch all session with **zero** overflow defects and **zero** stale
+`PLAN.md` rows found — worth knowing as a positive data point, not just a list of failures.
 
-Highlights from the last batch (Ch.2/5/12/18/20/23):
+Highlights from Batch D (Ch.11/13/33/34, Appendix A/D — the most recent work):
 
-- **Ch.2 (Ecosystem Map)**: found a live instance of this book's own recurring "stale snapshot,
-  live source disagrees" pattern in a *sibling repo* rather than in CNA itself — easy-gl's own
-  `MIGRATION.md` frames nine already-shipped API changes as "planned for the next release."
-- **Ch.5 (First Game)**: a fourth worked program (sprite-vs-sprite collision via
-  `Rectangle::Intersects`), plus a real touching-is-not-overlapping edge case verified against
-  `RectangleTests.cpp`.
-- **Ch.12 (Models and Meshes)**: `Model`'s hand-build constructor gains a real, previously-
-  undocumented `rootBoneIndex` parameter matching FNA's own `ModelReader` behavior (any bone can
-  be the root, not just index 0), with a real sabotage-and-revert check confirming the new
-  regression tests actually exercise what they claim to.
-- **Ch.18 (EasyGL)**: a real self-correction — an earlier pass of this same chapter claimed
-  two-sided stencil's shared mask was a bug; re-checking `xna4-spec`'s own `DepthStencilState.xml`
-  shows real XNA never had a per-face stencil *mask* API to begin with, so reusing one mask for
-  both faces is the only behavior consistent with the real spec, not a shortcut.
-- **Ch.20 (BGFX), second pass**: `DrawInstancedPrimitivesEx` is a real, fully-wired ~70-line
-  instancing implementation with **no dedicated test of its own**, unlike D3D9/EasyGL/Vulkan/
-  WebGPU which each have one — plus two real silent-no-draw failure paths (missing
-  `InstanceFrequency` binding; insufficient `bgfx::getAvailInstanceDataBuffer()` capacity), both
-  indistinguishable from the caller's side.
-- **Ch.23 (Direct3D), second pass**: `PresentationParameters::HeadlessEXT`, a real NOXNA
-  property that let three previously-architecturally-stuck D3D12 tests join the routine
-  (non-Proton) `ctest` suite, plus four real bugs (`SetSamplerFilter`/`SetSamplerAddressMode`
-  ignored, render targets never binding a depth/stencil view, six `Clear*` combo variants
-  throwing, `SetDepthTestEnabled`/`SetDepthWriteEnabled`/`SetBlendEnabled` crashing outright)
-  that a genuinely new `GraphicsDevice`-driven caller immediately found.
+- **Ch.11 (Textures and Render Targets)**: found and fixed a real stale claim — the chapter's
+  own headline claim that `Texture3D`/`TextureCube` don't inherit `Texture` (Task 863) is stale;
+  both now do. Added a worked volume-texture (`Texture3D`) shader-sampling example grounded in
+  a real EasyGL-only test.
+- **Ch.13 (Stock Effects)**: `plan_graphics.md`'s Task 890 (`EnvironmentMapEffect`'s
+  `DirectionalLight1`/`DirectionalLight2` forwarding) is marked open in the tracker but is
+  actually already fixed on every backend — added a discriminating three-light worked example,
+  since a single-light test can't tell "one light forwarded, two dropped" from the real fix.
+- **Ch.33 (Storage)**: the real four-tier `EnsureStorageRoot()` platform-resolution chain
+  (`SDL_GetPrefPath` → `XDG_DATA_HOME` → `HOME/.local/share` → cwd), plus a genuinely new,
+  previously-undocumented gap: `OpenFile`'s `FileShare` parameter cannot be honored at all,
+  structurally — `sharp-runtime`'s `FileStream` has no constructor overload that accepts one.
+- **Ch.34 (Sharp Runtime Overview)**: the permanent scope-boundary taxonomy (Reflection is a
+  deliberate stub with internally-inconsistent-by-design predicates; GC calls are real no-ops;
+  Serialization/P-Invoke/Cryptography are explicitly out of scope, each with its own dated
+  reason) and the real vendored-dependency/build-structure account.
+- **Appendix A**: new `SpriteFont` and `Model`/`ModelMesh`/`ModelBone`/five-stock-effects
+  quick-reference sections, closing two of the appendix's more glaring remaining gaps.
+- **Appendix D**: an org-wide, `cloc`-measured line-count comparison across all 18 real
+  repositories (`cna` itself is ~181.2k lines, ~40% of the whole ecosystem's ~444.6k total),
+  sourced from the `openeggbert/openeggbert` index repo's own README — not previously used as a
+  source anywhere in this book. Also corrected `mobile-eggbert-legacy`'s description (a genuine
+  ILSpy-decompiled preservation archive, not a working reimplementation) and confirmed
+  `youtube-frontend` as a real, unrelated repo in the same org.
 
 ## Fork dispatch in this environment — the fullest picture yet, read before dispatching more
 
-Everything from prior sessions' notes still holds (forks keep working/committing past their
-assigned task; commit messages can mismatch their actual diff; `latexmk` needs `-g` to force a
-rebuild; always independently re-render before trusting any "clean" claim). **New this
-session:** an `Agent(subagent_type: "fork")` call can resolve in three different ways, not two:
+Everything from prior notes still holds (forks keep working/committing past their assigned
+task; commit messages can mismatch their actual diff; `latexmk` needs `-g` to force a rebuild;
+always independently re-render before trusting any "clean" claim; after every batch, diff
+`PLAN.md`'s claimed line count against `wc -l` on the real file). **Confirmed this session:** an
+`Agent(subagent_type: "fork")` call can resolve three different ways, not two:
 
-1. A genuine background task (the common case) — you get an async handle and a later
-   `<task-notification>`.
-2. An immediate `"Fork is not available inside a forked worker"` **error** — but the dispatch
-   may still have launched in the true background regardless; check `git log` before assuming
-   it failed.
-3. **Synchronous inline execution in the current turn** — the tool result is a `<fork-boilerplate>`
-   block telling you "you are a worker fork, execute this directive directly," and you (the
-   calling session) must complete the task yourself, in-line, right now, using your own tools —
-   no separate agent is spawned at all. Once this has happened once in a conversation, every
-   subsequent `Agent(fork)` call in that same conversation reliably errors with "Fork is not
-   available inside a forked worker" (mode 2 above) — i.e., a session that has been asked to
-   act as a worker fork once seemingly cannot dispatch further nested forks of its own for the
-   rest of that conversation. If you hit this, stop trying to dispatch and just execute the
-   remaining batch items yourself, sequentially, in the current turn.
+1. A genuine background task (the common case) — an async handle and a later `<task-notification>`.
+2. An immediate `"Fork is not available inside a forked worker"` **error** — the dispatch may
+   still launch in the true background regardless; check `git log` before assuming it failed.
+3. **Synchronous inline execution in the current turn** — the calling session itself must
+   complete the task directly, in-line, using its own tools; no separate agent is spawned. Once
+   this happens once in a conversation, subsequent `Agent(fork)` calls reliably error with mode
+   2 for the rest of that conversation.
 
-This session hit real, convergent multi-agent collisions on the exact same fixes multiple
-times (independently discovering and fixing the identical Ch.2/Ch.20/Ch.12/Ch.18/Ch.23
-overflows via different concrete edits that happened to converge) — always resolved cleanly by
-re-checking `git diff`/`git show --stat` before committing rather than assuming your own
-in-progress edit was the only one in flight.
+Multiple agents independently discovering and fixing the *identical* overflow/stale-claim issue
+via different concrete edits (that then converge, collide, or get bundled together by a git
+race) happened repeatedly this session — always resolved cleanly by re-checking `git diff`/
+`git show --stat` before committing rather than assuming your own in-progress edit is the only
+one in flight. Dispatching 6-10 forks per batch and waiting for them to settle (1-5 hours of
+real wall-clock time per batch, not fighting the extra unsupervised work) has now worked
+cleanly across five consecutive batches — a proven, repeatable rhythm for this project, not a
+one-off experiment.
 
 ## What is NOT yet done — the natural next body of work
 
@@ -94,9 +88,11 @@ Furthest-below-target as of this session's end (recompute from `PLAN.md`'s own t
 list and PLAN.md ever disagree):
 
 - Ch.23 Direct3D Backends — even after two passes this session, still the largest absolute page
-  gap in the book (target 85, nowhere close yet). Worth a dedicated multi-pass focus.
-- Ch.31 Networking, Ch.35 Sharp Runtime Namespaces (~11 of ~70 each)
-- Appendices A/D/E/F — all still comfortably under target, none touched this session
+  gap in the book (target 85, still well under half). Worth a dedicated multi-pass focus.
+- Ch.19 Vulkan Backend, Ch.10 SpriteBatch, Ch.17 SDL_Renderer Backend, Ch.31 Networking,
+  Ch.35 Sharp Runtime Namespaces (~10-16% of target each, none touched in Batch D)
+- Ch.25 DX3/free-direct Backend, Ch.24 Canvas/ASCII Backends (~17-18% of target)
+- Appendices C, E, F — untouched this session, all still comfortably under target
 - Ch.7 Math remains the largest chapter by far and may be genuinely saturated (four-plus prior
   sessions' worth of depth passes) — read its own `PLAN.md` row before adding more.
 - Screenshot infrastructure: `ASCII` and `CANVAS` backends remain untried for real screenshot
@@ -108,13 +104,15 @@ it was checked; work is tracked purely via `PLAN.md`/`NEXT.md` rows and commit m
 ## Reusable technical/mechanical findings (still true, carried forward)
 
 - **PNG-rendering every touched page is the only reliable overflow check — full stop, no
-  exceptions for what the log says.** Twelve separate real overflows across this session
-  produced zero logged `Overfull \hbox` warnings between them, across at least three distinct
-  visual shapes: plain page-edge text, a `longtable` cell overlapping its neighbor column, and
-  a `\section{}` title colliding with its own running header/folio.
+  exceptions for what the log says.** Twelve separate real overflows across this session's
+  first five verification passes produced zero logged `Overfull \hbox` warnings between them,
+  across at least three distinct visual shapes: plain page-edge text, a `longtable` cell
+  overlapping its neighbor column, and a `\section{}` title colliding with its own running
+  header/folio. A sixth verification pass found zero — the check is still worth running every
+  time regardless, since a clean result isn't knowable in advance.
 - **A suspected fix must be pixel-verified, not assumed.** If a before/after PNG crop of the
   same region looks identical, the fix did not work. Bump `-r` to 250 and crop with PIL for a
-  close look whenever a line looks like it might be touching a page or box edge.
+  close look whenever a line looks like it might be touching a page/box edge.
 - **After any batch, diff `PLAN.md`'s claimed line count against the real file's line count**
   (`wc -l`) for every touched chapter before trusting any "PDF-verified clean" label.
 - **`grep -i undefined main.log` can false-positive** on ordinary prose containing the word
@@ -126,16 +124,16 @@ it was checked; work is tracked purely via `PLAN.md`/`NEXT.md` rows and commit m
 - **Overflow-fix technique, in order of what actually worked:** (1) `\allowbreak{}` at
   camelCase/`::`/`_`/`.` boundaries — verify it actually changed the render, don't assume; (2)
   restructure the sentence into shorter independent clauses, or move the long token off the
-  line-end position entirely, when `\allowbreak{}` alone doesn't move the needle (this was
-  needed far more often than `\allowbreak{}` alone succeeding, this session); (3) split a
-  combined `\description` `\item[...]` label into two items; (4) restructure code itself inside
-  `lstlisting`, including moving a trailing inline comment to its own line above the code
-  (an inline trailing comment on a long code line can wrap catastrophically, one word per line,
+  line-end position entirely, when `\allowbreak{}` alone doesn't move the needle (needed far
+  more often than `\allowbreak{}` alone succeeding, this session); (3) split a combined
+  `\description` `\item[...]` label into two items; (4) restructure code itself inside
+  `lstlisting`, including moving a trailing inline comment to its own line above the code (an
+  inline trailing comment on a long code line can wrap catastrophically, one word per line,
   cascading off the right edge of the box); (5) `\section[short]{long}` for a running-header/
-  folio collision — confirmed needed twice this session (Ch.12, Ch.23), not just a theoretical
-  case; (6) for a wide `longtable`, narrowing one column's `p{}` width while widening another,
-  plus `\allowbreak{}` at `::`/`.` boundaries inside the widened column, can resolve a cell
-  overlap without touching any cell's actual text content.
+  folio collision — confirmed needed twice this session (Ch.12, Ch.23); (6) for a wide
+  `longtable`, narrowing one column's `p{}` width while widening another, plus `\allowbreak{}`
+  at `::`/`.` boundaries inside the widened column, can resolve a cell overlap without touching
+  any cell's actual text content.
 - **`\times`, and other math-mode-only commands, will fatally break the build inside
   `\texttt{}`** — use a plain ASCII operator (`*`) for arithmetic inside `\texttt{}`.
 - **`\checkmark` and other amssymb/amsfonts-only commands are undefined** in this project's
