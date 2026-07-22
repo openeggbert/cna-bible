@@ -150,6 +150,48 @@ of scope for this backend by the project owner's own instruction --- CNA's own a
 networking go through the ordinary backend-agnostic paths from Chapter~\ref{ch:audio-system}
 and Chapter~\ref{ch:networking} of this book, not through \texttt{free-direct} at all.
 
+\section{Design decision 4, and the two real free-direct gaps it sidesteps entirely}
+
+\texttt{Dx3GraphicsBackend.cpp}'s own comments name it plainly: ``design decision 4 --- 32bpp
+\texttt{DDSCAPS\_OFFSCREENPLAIN} only, no palette/8-bit path.'' Every surface this backend ever
+creates --- the primary (via \texttt{SetDisplayMode(width, height, 32)}), the shadow backbuffer,
+every render-target surface, every \cnaclass{Texture2D} backing surface --- is hardcoded to
+32 bits per pixel, with no code path anywhere in the backend that could request an 8-bit
+palette surface instead. This single decision is not merely a simplification; read alongside
+\texttt{free-direct}'s own \texttt{docs/directdraw-limitations.md}, it turns out to sidestep
+two real, independently-documented gaps in the library underneath it, neither one by luck:
+
+\begin{description}
+  \item[The discarded \texttt{dwBPP} parameter.] \texttt{IDirectDraw::SetDisplayMode(width,
+        height, dwBPP)} stores \texttt{width} / \texttt{height} but silently discards
+        \texttt{dwBPP} --- \texttt{free-direct}'s own \texttt{CreateSurface} always allocates a
+        32bpp primary regardless of what bit depth was actually requested. This is a real,
+        currently-open gap for a caller that genuinely needs an 8-bit primary --- but this
+        backend's own \texttt{CreateSurfaces()} always passes the literal constant \texttt{32}
+        as \texttt{dwBPP}, so the value that would expose the gap and the value \texttt{free-direct}
+        always produces anyway are identical by construction. There is no request/response
+        mismatch to observe here, ever, because this backend never makes the request the gap
+        would affect.
+  \item[The mixed-depth \texttt{BlitFrom} silent-no-op.] \texttt{DirectDrawSurfaceImpl::BlitFrom}
+        has real fast/slow paths only for same-depth 8-on-8 and 32-on-32 blits; a mismatched pair
+        falls through both checks and silently copies nothing. Since every surface this backend
+        creates is 32bpp, every \texttt{Blt} / \texttt{BltFast} call this backend issues is
+        necessarily a 32-on-32 case --- the mismatched-depth branch is not just rare here, it is
+        structurally unreachable, for the identical reason \texttt{free-direct}'s own
+        \texttt{docs/directdraw-limitations.md} documents it as unreachable for both of its own
+        two target games (neither ever requests an 8-bit \texttt{CreateSurface} either).
+\end{description}
+
+The throughline is worth stating precisely rather than as a vague reassurance: XNA's own
+\cnaclass{SurfaceFormat} enum has no 8-bit indexed-color member at all --- every concrete format
+XNA exposes is a direct or block-compressed RGBA shape. A backend faithfully targeting XNA's own
+texture model therefore never has a reason to request anything but a direct-color surface from
+\texttt{free-direct} in the first place; design decision~4 is this backend's own explicit
+acknowledgment of that fact, not a workaround bolted on after discovering the gaps above. The two
+gaps remain real and worth knowing about for anyone embedding \texttt{free-direct} directly
+(outside CNA, targeting original DirectDraw code that does request 8-bit surfaces) --- they are
+simply gaps this specific backend's own architecture can never trigger.
+
 \subsection{A worked example: why matching raw factors is not enough to detect a preset}
 
 The blend-preset misdetection bug above is worth working through with real factor values,
