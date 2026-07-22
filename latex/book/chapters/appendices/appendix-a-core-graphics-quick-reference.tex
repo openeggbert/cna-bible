@@ -170,6 +170,23 @@ rotation/origin/effects/depth signature, and three \cnaclass{Vector2}-position o
 a \cnaclass{System::Text::StringBuilder} --- mirroring real XNA's own string/\texttt{StringBuilder}
 overload duplication exactly.
 
+\cnaclass{SpriteFont} is the class \texttt{DrawString} above actually draws through, and it is
+narrower than its central role suggests: a glyph atlas \cnaclass{Texture2D} plus four
+same-length parallel arrays --- per-glyph \texttt{glyphBounds} (source rectangle within the
+atlas), \texttt{cropping} (per-glyph offset/trim rectangle), the sorted \texttt{characters}
+list itself, and \texttt{kerningData} (a \cnaclass{Vector3} per glyph: left bearing, width,
+right bearing) --- plus two scalar layout properties, \texttt{LineSpacing} and \texttt{Spacing}
+(extra inter-character horizontal padding), and an optional \texttt{DefaultCharacter}
+(\texttt{std::nullopt} means an unmapped character throws rather than silently substituting).
+Two \texttt{MeasureString} overloads (\texttt{std::string} and
+\cnaclass{System::Text::StringBuilder}, mirroring \texttt{DrawString}'s own duplication) return
+a \cnaclass{Vector2} of the rendered text's pixel width/height without drawing it. The
+constructor itself is \texttt{NOXNA}: real XNA only ever builds a \cnaclass{SpriteFont} through
+the content pipeline's internal \texttt{SpriteFontReader}, never as public application code, so
+CNA exposing it directly is a genuine capability addition for any code (a content reader, or a
+game) that wants to assemble a glyph atlas at runtime rather than through \texttt{.xnb} / \texttt{.cnj}
+loading.
+
 \section{Model: Model, ModelMesh, ModelBone, and the Five Stock Effects}
 \label{sec:api-model-effects}
 
