@@ -155,6 +155,90 @@ until this is fixed: avoid drawing \cnaclass{SpriteBatch} content into a render 
 dimensions differ from the back buffer's own on this specific backend, or verify the result
 with an actual pixel readback rather than trusting the call to behave as documented.
 
+\subsection{A worked example: \texttt{RenderTargetCube}, and the cast that used to silently
+fail}
+
+\cnaclass{RenderTargetCube} support (Task WEBGPU-114) landed after the plain
+\cnaclass{RenderTarget2D} path above, and reused most of its design directly: one shared
+6-array-layer \texttt{WGPUTexture} (the same layout \texttt{WebGPUTextureCubeBackend} already
+uses for an upload-only \cnaclass{TextureCube}), one shared \texttt{size}$\times$\texttt{size}
+depth/stencil texture reused across all six faces (only one face is ever bound at a time, the
+same choice Vulkan's own \cnaclass{RenderTargetCube} backend makes), and a
+\texttt{WGPUTextureViewDimension\_2D} view per face for the render-pass color attachment
+alongside one \texttt{WGPUTextureViewDimension\_Cube} view spanning all six layers for sampling
+the whole thing back later.
+
+That whole-cube sampling view is where a real, previously-invisible bug lived. Before this
+task, \cnaclass{EnvironmentMapEffect}'s \texttt{envMap} field on this backend was hardcoded to
+the concrete type \texttt{const WebGPUTextureCubeBackend*} --- so binding an ordinary,
+upload-only \cnaclass{TextureCube} as \texttt{EnvironmentMapEffect.EnvironmentMap} worked, but
+binding a \cnaclass{RenderTargetCube} (a different concrete class implementing the same
+\cnaclass{ITextureCubeBackend} interface) did not: the hardcoded-type cast failed silently,
+and the effect fell back to its own 1$\times$1 white cube default instead of throwing or
+producing an obviously wrong image. The fix is a small shared interface, read directly from
+the real header:
+
+\begin{lstlisting}
+// WEBGPU-114: the cube-map sibling of IWebGPUSamplable -- lets both
+// WebGPUTextureCubeBackend (upload-only) and WebGPURenderTargetCubeBackend
+// (render-into) resolve safely to their own whole-cube view wherever a
+// GpuDrawParams::envMap needs to be sampled, via a dynamic_cast that
+// degrades to nullptr for a null or incompatible-type input.
+class IWebGPUCubeSamplable
+{
+public:
+    virtual ~IWebGPUCubeSamplable() = default;
+    [[nodiscard]] virtual WGPUTextureView CubeView() const = 0;
+};
+\end{lstlisting}
+
+Both \texttt{WebGPUTextureCubeBackend} and \texttt{WebGPURenderTargetCubeBackend} now implement
+\texttt{IWebGPUCubeSamplable} alongside their own primary interface, and the draw-dispatch code
+resolves through it with a single \texttt{dynamic\_cast} rather than the old hardcoded
+concrete-type cast:
+
+\begin{lstlisting}
+[[nodiscard]] const IWebGPUCubeSamplable* ResolveCubeSamplable(const ITextureCubeBackend* tex)
+{
+    return tex != nullptr ? dynamic_cast<const IWebGPUCubeSamplable*>(tex) : nullptr;
+}
+// ...
+command.envMap = ResolveCubeSamplable(params.envMap);
+\end{lstlisting}
+
+\texttt{examples/webgpu\_rendertargetcube\_test.cpp}'s own Check C is built specifically to
+prove this fix rather than merely exercise the feature: it clears all six faces of a real
+\cnaclass{RenderTargetCube} to blue, binds it as \texttt{EnvironmentMapEffect.EnvironmentMap},
+draws a full-screen reflective quad, and asserts the center pixel is genuinely blue --- a check
+that could not have passed under the old hardcoded-type cast no matter how correctly the rest
+of the render-target machinery worked, since the cast itself was the failure point.
+
+The same test file's Check D is worth walking through on its own, because it targets a
+different, easy-to-get-wrong question: does switching \emph{into} a cube face and back
+correctly restore the backbuffer's own render pass, with nothing leaking either direction?
+
+\begin{lstlisting}
+device.SetRenderTarget(nullptr);              // targeting the backbuffer
+device.Clear(Color::Blue);
+device.SetRenderTarget(&cubeTarget, CubeMapFace::PositiveZ);
+device.Clear(Color::Red);                     // targets the cube face, not the backbuffer
+device.SetRenderTarget(nullptr);              // back to the backbuffer
+
+// The backbuffer's own centre pixel must STILL be Blue -- the intervening
+// cube-face Clear(Red) must not have leaked into it -- and the cube face
+// itself must genuinely have received Red, not been silently skipped.
+\end{lstlisting}
+
+This mirrors the identical architecture check Task WEBGPU-53/54 already established for plain
+\cnaclass{RenderTarget2D} in the section above, extended to confirm the same "eager flush on
+target switch" design generalizes correctly to a third target kind rather than being
+coincidentally correct for the two it was originally built against. Two scope cuts are
+documented honestly rather than silently: mip-chain regeneration throws for
+\cnaclass{RenderTargetCube} (\texttt{mipMap=true} is rejected, matching plain
+\cnaclass{RenderTarget2D}'s own precedent on this backend), and MSAA is not implemented ---
+\texttt{MultiSampleCount} is accepted and ignored, always reporting \texttt{0} honestly rather
+than silently pretending to honor a request it cannot fulfil.
+
 \subsection{Why block-compressed texture upload stays open: a real investigation, not a shrug}
 
 The ``no backend anywhere in the project does real block-compressed texture upload'' gap named

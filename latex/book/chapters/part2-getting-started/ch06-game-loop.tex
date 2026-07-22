@@ -81,6 +81,103 @@ Two \texttt{NOXNA}-tagged additions live directly on \cnaclass{Game}: a public
 ``existing CNA examples'' already depend on an FPS-based way to talk about frame timing,
 alongside the real XNA \texttt{TargetElapsedTime} \texttt{TimeSpan}.
 
+\subsection{A worked example: what actually happens when a frame runs long}
+
+The timing loop described above is a real, working catch-up mechanism, not just a sleep/measure
+pair — and its concrete behavior under load is worth tracing through with real numbers rather
+than left as an abstract description, since it directly determines how many times a game's own
+\texttt{Update()} override runs per displayed frame. \texttt{Game::Tick()}, read directly from
+\texttt{Game.cpp}, accumulates real elapsed wall-clock time into \texttt{accumulatedElapsedTime\_}
+every call, then --- under \texttt{IsFixedTimeStep} (the default) --- drains that accumulator in
+whole \texttt{TargetElapsedTime\_} steps, calling \texttt{Update()} once per step, \emph{before}
+a single \texttt{Draw()} for the frame:
+
+\begin{lstlisting}
+gameTime_.setElapsedGameTimeProperty(TargetElapsedTime_);
+int stepCount = 0;
+while (TimeSpanGreaterOrEqual(accumulatedElapsedTime_, TargetElapsedTime_))
+{
+    gameTime_.setTotalGameTimeProperty(gameTime_.getTotalGameTimeProperty() + TargetElapsedTime_);
+    accumulatedElapsedTime_ = accumulatedElapsedTime_ - TargetElapsedTime_;
+    ++stepCount;
+    Update(gameTime_);
+}
+\end{lstlisting}
+
+With the real default \texttt{TargetElapsedTime} of 166667 ticks (16.6667ms, i.e.\ 60Hz) and a
+single real frame that happens to take 50ms --- a stutter from, say, a garbage-collector-free but
+still real hitch: a texture streaming in, a burst of physics work, an OS scheduling gap --- the
+accumulator holds roughly three whole steps' worth of time. \texttt{Tick()} therefore calls
+\texttt{Update()} three times in a row, each with \texttt{gameTime.ElapsedGameTime} pinned to
+exactly one \texttt{TargetElapsedTime} (16.6667ms), \emph{before} \texttt{Draw()} runs once for
+that call to \texttt{Tick()}. This is the mechanism, not an edge case: a game's \texttt{Update()}
+must be safe to call multiple times between draws, and must never assume ``one \texttt{Update()}
+call happened since the last \texttt{Draw()}'' --- exactly the invariant
+Chapter~\ref{ch:first-game}'s own \texttt{Update} / \texttt{Draw} split already depends on
+without stating it this precisely.
+
+\subsection{IsRunningSlowly: a real five-tick hysteresis, not a one-frame flag}
+
+\texttt{GameTime::IsRunningSlowly} looks, from its own name and Chapter~\ref{ch:first-game}'s
+brief mention, like it might flip true the instant a single \texttt{Tick()} needed more than one
+\texttt{Update()} step. Reading \texttt{Game::Tick()} directly shows real, deliberate hysteresis
+instead, tracked by a private \texttt{updateFrameLag\_} counter that persists across calls:
+
+\begin{lstlisting}
+updateFrameLag_ += std::max(0, stepCount - 1);   // this Tick()'s own lag contribution
+
+if (gameTime_.getIsRunningSlowlyProperty()) {
+    if (updateFrameLag_ == 0) gameTime_.setIsRunningSlowlyProperty(false);
+} else if (updateFrameLag_ >= 5) {
+    gameTime_.setIsRunningSlowlyProperty(true);
+}
+
+if (stepCount == 1 && updateFrameLag_ > 0) --updateFrameLag_;  // recover by one, one step at a time
+\end{lstlisting}
+
+Every \texttt{stepCount} beyond the first adds to \texttt{updateFrameLag\_}; the earlier
+three-\texttt{Update()} frame above contributes~2. \texttt{IsRunningSlowly} only turns
+\texttt{true} once \texttt{updateFrameLag\_} reaches~5 --- several consecutive lagging ticks, not
+one --- and, once \texttt{true}, only clears once \texttt{updateFrameLag\_} returns all the way
+to~0, one unit per ordinary (\texttt{stepCount == 1}) tick. A single 50ms stutter followed
+immediately by normal frame times never sets \texttt{IsRunningSlowly} at all; a genuinely
+sustained slowdown does, and takes several good frames afterward to clear rather than resetting
+instantly on the first frame that recovers. A game using \texttt{IsRunningSlowly} to decide
+whether to skip an optional visual effect this frame is reading a smoothed, several-tick signal,
+not a single-frame one --- worth knowing before assuming it reacts as fast as the frame time
+itself does. This specific hysteresis mechanism has no dedicated regression test anywhere in the
+project (\texttt{GameTimeTests.cpp} only exercises \cnaclass{GameTime}'s own plain
+getter/setter, never \texttt{Game::Tick()}'s multi-tick accumulation), so its correctness rests
+entirely on this direct reading of \texttt{Game.cpp} matching FNA's own algorithm, not on a
+passing test asserting it.
+
+\subsection{A real gotcha: ResetElapsedTime() is a no-op under fixed timestep}
+
+\texttt{Game::ResetElapsedTime()} exists, per its own XNA-inherited contract, to discard a
+large, misleading elapsed-time spike --- the classic case being right after a blocking load
+screen, where the next \texttt{Update()} would otherwise see an artificially huge
+\texttt{ElapsedGameTime} covering the entire load. Reading its real implementation shows a
+one-line guard easy to miss:
+
+\begin{lstlisting}
+void Game::ResetElapsedTime()
+{
+    if (!IsFixedTimeStep_)
+    {
+        forceElapsedTimeToZero_ = true;
+    }
+}
+\end{lstlisting}
+
+Under the default \texttt{IsFixedTimeStep = true}, calling \texttt{ResetElapsedTime()} does
+nothing at all --- no field is set, no flag is consulted anywhere in \texttt{Tick()}'s
+fixed-step branch. This is not a CNA gap; it matches real XNA's own documented behavior (a
+fixed-timestep game's \texttt{ElapsedGameTime} is always exactly \texttt{TargetElapsedTime} by
+construction, so there is no spike for \texttt{ResetElapsedTime()} to discard in the first
+place), but it is easy to call defensively after a load screen and assume it did something,
+when --- for the large majority of CNA games, which leave \texttt{IsFixedTimeStep} at its
+default --- it silently did not.
+
 \section{GameTime: three fields, one privileged writer}
 
 \cnaclass{GameTime} is deliberately small: \texttt{TotalGameTime} and
