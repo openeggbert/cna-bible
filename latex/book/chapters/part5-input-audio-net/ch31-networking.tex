@@ -200,6 +200,89 @@ One bug remains explicitly open at the time of writing rather than silently drop
 confirmed leak in \texttt{NetworkSession::BeginCreate}, flagged directly and not yet
 resolved.
 
+\subsection{A worked example: the double-\texttt{Dispose()} use-after-free, traced in full}
+
+The one-sentence summary above --- ``\texttt{Dispose()} could be called twice and use-after-free
+as a result'' --- undersells a genuinely instructive root-cause chain, found by an
+AddressSanitizer run that had nothing to do with networking at all (it was closing out an
+unrelated content-pipeline fuzz-testing task; this was simply the first time the whole suite had
+ever run under \texttt{-DCNA\_SANITIZE=address,undefined}). \texttt{ASan} reported a real
+\texttt{heap-buffer-overflow} inside \texttt{NetworkSession::Dispose()}'s own
+\texttt{ClearPacketQueue()} loop, surfaced by a real test
+(\texttt{ENetBackendTest.DisposeDisconnectsConnectedPeersPromptlyInsteadOfWaitingForTimeout})
+that was not written to test this bug at all --- it existed to confirm prompt disconnect
+behavior, and triggered the crash purely as a side effect of its own fixture's cleanup:
+
+\begin{lstlisting}
+// Simplified from the real repro, tests/CNA/Internal/Net/ENetBackendTests.cpp:
+{
+    SystemLinkSessionFixture host;               // constructs a real NetworkSession
+    host.session->Dispose();                     // (1) explicit Dispose(), by the test itself
+}   // (2) fixture destructor unconditionally calls session->Dispose() AGAIN, no guard
+\end{lstlisting}
+
+Tracing exactly what the first \texttt{Dispose()} call does explains why the second one
+crashes rather than being a harmless no-op. \texttt{Dispose()} clears each local gamer's packet
+queue (fine --- the gamer object is still alive at this point), tears down the transport, then
+calls \texttt{ownedGamers\_.clear()} --- which, since \cnaclass{NetworkSession} is the sole owner
+of every gamer it created (the chapter's own ownership split, above), genuinely
+\emph{destroys} the local \texttt{LocalNetworkGamer} object right there. Nothing at that point
+prunes the now-dangling raw pointer out of \texttt{localGamers\_} / \texttt{allGamers\_} ---
+only \texttt{RemoveGamer()} does that pruning, and \texttt{Dispose()} never calls it. The first
+call finishes by setting \texttt{isDisposed\_ = true}, but by then the damage is already
+structural: the collections still list a pointer to an object that no longer exists. The second
+\texttt{Dispose()} call --- triggered by the fixture's own destructor, with no
+\texttt{isDisposed\_} check of its own --- re-enters \texttt{ClearPacketQueue()}'s loop over
+\texttt{localGamers\_}, dereferences that same dangling pointer, and \texttt{ASan} catches the
+read.
+
+This is a genuine API-contract violation, not merely a test-fixture quirk worth special-casing
+away: real XNA's own \texttt{IDisposable} contract requires \texttt{Dispose()} itself to
+tolerate being called more than once, and any real caller pairing an explicit
+\texttt{Dispose()} call with a second, RAII-driven cleanup path --- exactly this fixture's own
+shape, and a perfectly ordinary one --- would hit the identical crash outside of a test binary.
+A follow-up, independent audit (\texttt{audit\_net.md}'s own Critical finding~1) went further
+and found the bug was not even confined to the double-call case: after \emph{only one}
+\texttt{Dispose()} call, a caller could already obtain a gamer collection containing the same
+kind of dangling pointer, simply by reading \texttt{PreviousGamers} (which
+\texttt{RemoveGamer()} populates with a departing --- possibly locally-owned --- gamer's raw
+pointer rather than dropping it) or \texttt{Host} (a raw \cnaclass{NetworkGamer} pointer with the
+identical exposure).
+
+The fix closes both the double-call guard and the single-call exposure together, deliberately
+placed inside \texttt{Dispose()} itself rather than pushed onto every caller to remember:
+
+\begin{lstlisting}
+void NetworkSession::Dispose()
+{
+    if (isDisposed_) return;   // the guard the destructor already had; Dispose() lacked it
+    // ... existing teardown ...
+    ownedGamers_.clear();
+    // Defense-in-depth (audit_net.md Critical finding 1): a *single* Dispose() call
+    // already left dangling pointers reachable through public collection properties.
+    localGamers_.Clear();
+    remoteGamers_.Clear();
+    allGamers_.Clear();
+    previousGamers_.Clear();   // RemoveGamer() populates this with raw pointers too
+    host_ = nullptr;
+    isDisposed_ = true;
+}
+\end{lstlisting}
+
+Three new regression tests close the gap the original crash slipped through (every prior test
+disposed an enumerator or session and then called a getter, never re-entered
+\texttt{MoveNext()} / \texttt{Dispose()} on an already-disposed instance):
+\texttt{DisposeCalledTwiceDirectlyIsSafeAndIdempotent} asserts \texttt{EXPECT\_NO\_THROW} on both
+calls with every gamer count still reading zero afterward; the aptly-named
+\texttt{DisposeClearsPreviousGamersSoNoDanglingPointerIsObservable} removes an owned local gamer
+first (so it genuinely migrates into \texttt{PreviousGamers}), then disposes \emph{once}, and
+confirms all four gamer-collection properties read back empty rather than exposing the dangling
+pointer; and \texttt{DisposeClearsHostProperty} confirms \texttt{Host} reads back
+\texttt{nullptr}. The original ASan repro test needed no changes at all --- it already exercised
+exactly this path, and now serves permanently as the regression guard: a full
+\texttt{-fsanitize=address} rerun of the exact same test reports zero heap-buffer-overflow or
+use-after-free errors.
+
 \section{A worked example: the \texttt{maxGamers} argument that this chapter's own opening example silently ignores}
 
 The very first worked example in this chapter, at the top, passes \texttt{maxGamers = 8} to
