@@ -258,6 +258,101 @@ runnable way to answer ``which of my compiled XNA content's readers does CNA not
 without reading a single byte of any individual \texttt{.xnb} file by hand.
 \end{sourcenote}
 
+\subsection{Audio and video: the \cnaclass{SoundEffect} / \cnaclass{Song} / \cnaclass{Video} readers}
+\label{sec:xnb-audio}
+
+The hardening pass above covers the texture side of the reader set; the audio side has its own
+real story, worth a worked example in its own right. \texttt{SoundEffectReader} is a
+line-by-line port of FNA's own \texttt{SoundEffectReader.cs}, but CNA's own support surface is
+narrower and stated as a concrete matrix rather than an all-or-nothing claim, read directly from
+the reader's own header comment:
+
+\begin{description}
+  \item[16-bit PCM.] The fast path --- CNA's \cnaclass{SoundEffect} raw-buffer constructor
+        already speaks \texttt{SDL\_AUDIO\_S16LE} natively, so a 16-bit PCM \texttt{.xnb} needs
+        no conversion at all.
+  \item[8-bit PCM, 32-bit IEEE float, MS-ADPCM, IMA-ADPCM.] Wrapped in a minimal, synthetic
+        in-memory WAV file (\texttt{CNA::Internal::Audio::BuildWavFromWaveFormatEx}, forwarding
+        the real captured \texttt{WAVEFORMATEX} extension bytes verbatim) and decoded through
+        \cnaclass{SoundEffect}\allowbreak{}\texttt{::FromStream}, reaching SDL3's own native
+        WAV/ADPCM decoder --- CNA never had to implement a float or ADPCM decoder of its own.
+  \item[XMA2.] Rejected outright with a documented \texttt{ContentLoadException} naming the
+        format --- SDL3 has no XMA2 decoder either, so there is no decode path anywhere in this
+        stack, and the reader says so rather than silently constructing a
+        \cnaclass{SoundEffect} that would play back as noise.
+\end{description}
+
+\paragraph{A worked example: a real fixture with no coefficient table at all.}
+Widening MS-ADPCM support past the original PCM16-only baseline surfaced a real, XNA-specific
+gap rather than a clean conversion. A hex dump of a real MonoGame-produced
+\texttt{tone\_mono\_44khz\_msadpcm.xnb} fixture shows its \texttt{cbSize} field (the format
+extension's declared byte length) is \texttt{0} --- no \texttt{wSamplesPerBlock}, no coefficient
+table, nothing --- matching FNA's own reader, which never captures this extension for any
+non-XMA2 format either. IMA-ADPCM tolerates this: SDL3's own decoder can derive
+\texttt{wSamplesPerBlock} from \texttt{nBlockAlign} when it is missing. MS-ADPCM cannot ---
+SDL3's decoder (\texttt{SDL\_wave.c}'s \texttt{MS\_ADPCM\_Init}) requires an explicit,
+valid coefficient table or it fails outright. The fix synthesizes one, using the same standard
+preset coefficients \cnaclass{WaveBank}'s own ADPCM path already relies on, plus a
+\texttt{samplesPerBlock} value computed directly from \texttt{nBlockAlign} via the MS-ADPCM
+``Standards Update'' formula every encoder (XNA's own included) follows:
+
+\begin{lstlisting}
+uint16_t ComputeMsAdpcmSamplesPerBlock(uint16_t blockAlign, uint16_t channels) {
+    const uint32_t ch = channels == 0 ? 1u : channels;
+    const uint32_t blockHeaderBits = ch * 7u * 8u;
+    const uint32_t blockBits = static_cast<uint32_t>(blockAlign) * 8u;
+    const uint32_t availableBits = blockBits > blockHeaderBits ? blockBits - blockHeaderBits : 0u;
+    const uint32_t blockDataSamples = availableBits / (4u * ch);
+    return static_cast<uint16_t>(blockDataSamples + 2u);   // +2: the block's own two header samples
+}
+\end{lstlisting}
+
+This only ever runs when the \texttt{.xnb} genuinely supplied no usable extension of its own
+(\texttt{cbSize} below the real 32-byte minimum a coefficient table needs) --- an XNB that
+\emph{does} carry a real extension is forwarded verbatim, unmodified.
+
+\paragraph{A C\texttt{++}-specific architectural gap this widening exposed.}
+Reading \cnaclass{SoundEffect} through the generic reader machinery hit a real language-level
+wall the texture readers never do. \texttt{ContentTypeReader<T>::ReadUntyped()}'s own job is
+FNA's object-boxing glue --- box a typed \texttt{Read()} result into the type-erased
+\texttt{std::any} every reader returns through --- but \texttt{std::any} requires its held type
+to be \texttt{CopyConstructible}, unconditionally. \cnaclass{SoundEffect} is deliberately
+move-only (its per-owner \texttt{Dispose()}-cascade tracking needs a single unambiguous owner),
+so a literal \texttt{std::any(std::move(result))} for a \cnaclass{SoundEffect} result simply does
+not compile. The fix branches at compile time, in the one shared base-class method every reader
+already goes through, so no individual reader --- including \texttt{SoundEffectReader} itself ---
+needs to know this branch exists:
+
+\begin{lstlisting}
+std::any ReadUntyped(ContentReader& input, std::any existingInstance) override {
+    if constexpr (std::is_copy_constructible_v<T>) {
+        // ...box/unbox T directly, exactly as every ordinary reader already does...
+    } else {
+        // T is move-only (e.g. SoundEffect): box/unbox as std::shared_ptr<T> instead,
+        // unwrapped back out symmetrically by InnerReadObject<T>().
+        std::optional<T> existing = existingInstance.has_value()
+            ? std::optional<T>(std::move(*std::any_cast<std::shared_ptr<T>>(std::move(existingInstance))))
+            : std::nullopt;
+        T result = Read(input, std::move(existing));
+        return std::any(std::make_shared<T>(std::move(result)));
+    }
+}
+\end{lstlisting}
+
+Every other reader in this chapter's own reader set is an ordinary, copy-constructible \texttt{T}
+and never touches the \texttt{else} branch at all --- \cnaclass{SoundEffect} is, at the time of
+writing, the one type in the whole reader set that needs it, but the branch exists at the shared
+base-class level specifically so a future move-only reader would not need to rediscover this
+same wall.
+
+\texttt{SongReader} and \texttt{VideoReader} both follow a simpler, sibling shape: neither reads
+an embedded media payload at all, since real XNA \cnaclass{Song} / \cnaclass{Video} assets are
+always external files (\texttt{.ogg} / \texttt{.oga} / \texttt{.qoa} for \cnaclass{Song},
+\texttt{.ogv} / \texttt{.ogg} for \cnaclass{Video}) referenced by name --- both are ports of FNA's
+own strip-last-four-characters-then-reprobe extension-normalization logic, verified against a
+real MonoGame-produced \texttt{.xnb} together with its real vendored companion media file so the
+extension probing has something genuine to find on disk.
+
 \section{What this means for porting}
 
 Chapter~\ref{ch:migration-guide}'s migration guide covers this in full practical detail, but the
