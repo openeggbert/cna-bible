@@ -1987,3 +1987,32 @@ stays frozen by explicit author decision, not left incomplete.
   total across all five batches: 424 -> 432 pages this batch alone; 371 -> 432 pages (+61)
   across the whole session; twelve real, log-invisible overflow defects found and fixed in
   total across the first five batches, none in the sixth.
+
+- **2026-07-22, same session, continued — a sixth batch (Ch.6/21/24/25/28/47), prioritizing
+  chapters not yet touched this session for breadth over depth.** Dispatched 6 forks; all
+  landed real, source-grounded content: Ch.6's real five-tick `IsRunningSlowly` hysteresis
+  (zero dedicated test coverage for the mechanism itself, confirmed by checking
+  `GameTimeTests.cpp`) and the `ResetElapsedTime()`-is-a-no-op-under-fixed-timestep gotcha;
+  Ch.21's real `IWebGPUCubeSamplable` interface fix for a `RenderTargetCube`-vs-`TextureCube`
+  hardcoded-type-cast bug; Ch.24's "separate backend, not a toggle" architectural decision,
+  reproduced honestly from `plan_ascii.md`'s own hedged, not-retroactively-justified reasoning;
+  Ch.25's design-decision-4 analysis showing how a 32bpp-only DX3 backend structurally
+  sidesteps two real, independently-documented `free-direct` gaps; Ch.28's `MediaPlayer`
+  volume/mute independent-state finding and the deferred-event-dispatch-via-
+  `FrameworkDispatcher` mechanism; and Ch.47's genuinely new source --- `sharp-runtime`'s real
+  `plan.sqlite3` task-tracking database, queried directly, yielding a real statistic never
+  before stated in this book (16,201 classified .NET BCL types/members, only 1,041 --- 6.4% ---
+  actually ported).
+
+  The consolidated verification pass (forced `latexmk -g` rebuild, both greps, all fourteen
+  touched pages across the six files rendered to PNG and read directly) found **one more real,
+  log-invisible overflow** --- Ch.21's `IWebGPUCubeSamplable` line, two long class names landing
+  consecutively at the line-end position --- fixed by restructuring the sentence and verified
+  by re-rendering at 250dpi. Every other page across the batch rendered clean. A direct `wc -l`
+  check of all six touched files against PLAN.md's own claimed line counts found zero stale
+  rows.
+
+  Final state: `make book` (forced rebuild) succeeded (**438 pages**, up from 432), both grep
+  checks clean, every one of the 6 newly-touched chapters confirmed clean post-fix. Running
+  session total: thirteen real, log-invisible overflow defects found and fixed across six
+  consecutive batch-verification passes; 371 -> 438 pages (+67) across the whole session.
