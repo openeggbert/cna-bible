@@ -281,6 +281,112 @@ Relaxed's own, different throughput/latency tradeoff instead, worth checking exp
 a real target frame-rate requirement before assuming interval semantics carried over unchanged
 from a Direct3D background.
 
+\section{Two frames in flight, and the deferred-present trick that makes readback pixel-safe}
+\label{sec:vulkan-frames-in-flight}
+
+Everything in \S\ref{sec:vulkan-swapchain} covers how the swapchain itself gets built; this
+section covers what actually happens every frame once it exists. This backend double-buffers
+its own CPU-side work against the GPU --- \texttt{MaxFramesInFlight} is a real, fixed
+\texttt{constexpr int} value of~\texttt{2}, read directly from
+\texttt{VulkanGraphicsBackend.hpp} --- with one \texttt{VkFence}, one pair of
+\texttt{VkSemaphore}s (image-available, render-finished), and one command buffer per
+in-flight frame, indexed by a wrapping \texttt{currentFrame\_} counter.
+
+\subsection{The ordinary present path}
+
+\texttt{Present()} calls the backend's real \texttt{SubmitFrame(bool deferSwap)} with
+\texttt{deferSwap=false}. Reading it directly shows five sequential steps, each with a real
+purpose rather than boilerplate:
+
+\begin{lstlisting}
+vkWaitForFences(device_, 1, &inFlightFences_[currentFrame_], VK_TRUE, UINT64_MAX);
+// ... vkAcquireNextImageKHR, vkResetFences, RecordCommandBuffer ...
+vkQueueSubmit(graphicsQueue_, 1, &si, inFlightFences_[currentFrame_]);
+// deferSwap == false: present immediately
+vkQueuePresentKHR(presentQueue_, &pi);
+currentFrame_ = (currentFrame_ + 1) % MaxFramesInFlight;
+\end{lstlisting}
+
+The opening \texttt{vkWaitForFences} is the throttle that makes double-buffering safe at all:
+before this frame's slot can be reused, the GPU must have finished the \emph{previous} frame
+that used the same slot two frames ago, or the CPU would start overwriting a command buffer
+the GPU might still be reading. \texttt{vkAcquireNextImageKHR} signals
+\texttt{imageAvailableSemaphores\_[currentFrame\_]} when the swapchain image is actually ready
+to be written to (not necessarily immediately --- the presentation engine may still be
+displaying it); \texttt{vkQueueSubmit} makes the GPU work wait on that same semaphore before
+touching the image, and signals \texttt{renderFinishedSemaphores\_[currentFrame\_]} when done;
+and \texttt{vkQueuePresentKHR} waits on that render-finished semaphore before handing the image
+to the presentation engine. Three separate synchronization primitives, three separate
+questions each one alone answers: is the CPU allowed to reuse this frame slot yet (fence), is
+the GPU allowed to start rendering into this image yet (image-available semaphore), and is the
+presentation engine allowed to display it yet (render-finished semaphore).
+
+\subsection{The deferred path: why \texttt{GetBackBufferData} cannot simply call \texttt{Present}}
+
+\cnaclass{GraphicsDevice}\texttt{::GetBackBufferData} (Chapter~\ref{ch:graphicsdevice}) needs a
+real answer to a question the ordinary present path never has to ask: are the exact pixels the
+GPU just rendered still readable, or has the presentation engine already taken ownership of
+the image and possibly begun compositing it to the screen? Reading
+\texttt{ReadBackbuffer()}'s own code comment states the race directly: \emph{``SubmitFrame(true)
+renders and waits for the GPU but HOLDS the present, so we read the staging buffer below
+BEFORE the image is handed to the presentation engine --- no race possible.''} The mechanism is
+the same \texttt{SubmitFrame()} used for ordinary presentation, called with
+\texttt{deferSwap=true} instead:
+
+\begin{lstlisting}
+if (deferSwap) {
+    // Wait for render + readback copy to complete, but hold the image. The caller
+    // (ReadBackbuffer) reads the staging buffer before the image is presented, so
+    // presentation-engine timing can never corrupt the captured pixels.
+    vkWaitForFences(device_, 1, &inFlightFences_[currentFrame_], VK_TRUE, UINT64_MAX);
+    deferredPresentImageIndex_ = imageIndex;
+    hasDeferredPresent_        = true;
+    return true;
+}
+\end{lstlisting}
+
+\texttt{RecordCommandBuffer} has already copied the whole swapchain image into a real staging
+buffer (\texttt{readbackStagingBuf\_}) as part of the same command buffer the ordinary render
+work goes into --- so this second \texttt{vkWaitForFences} call (on top of the one at the very
+start of \texttt{SubmitFrame}) blocks until that copy is guaranteed complete on the GPU side,
+before \texttt{ReadBackbuffer} maps \texttt{readbackStagingMem\_} and reads it directly.
+\emph{Only after} the CPU has finished reading does \texttt{ReadBackbuffer} call
+\texttt{FinishDeferredPresent()}, which performs the \texttt{vkQueuePresentKHR} call that
+\texttt{SubmitFrame(true)} deliberately skipped --- late, but still exactly once, so no frame
+is silently dropped from the screen because it was read back.
+
+\subsection{Two further real findings from the same read path}
+
+Reading \texttt{ReadBackbuffer()}'s own surrounding logic in full surfaces two further details
+worth knowing, neither one hypothetical:
+
+\begin{description}
+  \item[A real read cache, not a re-render-every-call assumption.] A naive readback
+        implementation might call \texttt{SubmitFrame(true)} unconditionally on every
+        \texttt{GetBackBufferData} call --- but the real code guards it behind
+        \texttt{hasNewWork \textbar\textbar{} !readbackStagingValid\_}, where
+        \texttt{hasNewWork} checks whether any pending 3D or batched 2D draws actually exist
+        since the last present. The code's own comment states why this matters concretely:
+        re-presenting an already-rendered, empty-queue frame would re-render whatever
+        \texttt{Clear} color is currently set and silently destroy the content every read
+        after the first one would have returned, for any caller reading the same frame's
+        backbuffer more than once (a golden-image test that reads several sub-regions of one
+        frame, for instance).
+  \item[\texttt{vkAcquireNextImageKHR} can genuinely fail on the very first frame.] A real,
+        environment-specific comment in the same function notes that swapchain-out-of-date is
+        \emph{``common on first frame under Wayland/RADV''} --- handled by zeroing the output
+        buffer and returning, rather than throwing, so a caller can detect a blank frame and
+        retry instead of crashing outright on a platform combination this specific to trigger.
+\end{description}
+
+A genuinely small but real detail rounds out the picture: swapchain images are frequently
+\texttt{VK\_FORMAT\_B8G8R8A8\_UNORM} (per the color-space decision in
+\S\ref{sec:vulkan-swapchain}), which stores channels in the opposite byte order from the RGBA
+layout every other backend and \cnaclass{Color} itself use --- \texttt{ReadBackbuffer} checks
+\texttt{swapchainFormat\_} directly and performs a real per-pixel \texttt{B} / \texttt{R} channel
+swap only when the format is actually BGRA, rather than assuming one fixed byte order across
+every device this backend might run on.
+
 \section{A documented, not a hidden, coverage gap}
 
 One honest gap in \emph{testing}, not rendering: at the time of writing there is no dedicated
