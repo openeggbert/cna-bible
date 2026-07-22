@@ -1925,3 +1925,37 @@ stays frozen by explicit author decision, not left incomplete.
   checks clean, every one of the 8 newly-touched chapters individually re-rendered and
   confirmed clean post-fix. `NEXT.md` refreshed with a condensed account of both of this
   session's batches and the now-twice-confirmed parallel-fork coordination lessons.
+
+- **2026-07-22, same session, continued a fourth time — Ch.2/5/12/18/20/23, plus the fullest
+  picture yet of how `Agent(fork)` dispatch actually behaves in this environment.** After the
+  third batch (Ch.8/22/30/31/35/39/46/48) landed, the author explicitly asked to continue.
+  Dispatched Ch.20 (a second pass) as a fork; the call resolved into **synchronous inline
+  execution in the coordinating session's own turn** rather than launching a background task —
+  a third resolution mode beyond "genuine background task" and "immediate error," not
+  previously documented. Executed that directive directly, then found every subsequent
+  `Agent(fork)` call in the same turn immediately errored with "Fork is not available inside a
+  forked worker" — so the remaining planned items (Ch.18, Ch.12, Ch.2) were executed directly
+  in sequence as well, discovering along the way that a separate, still-active fork from an
+  earlier dispatch had independently already covered the same three chapters in one commit
+  (`1edb339`), confirmed via direct diff inspection rather than assumed from its commit
+  message. A fourth item, Ch.5, and a second pass of Ch.23, were also found already in progress
+  by other concurrent agents.
+
+  The consolidated verification pass (forced `latexmk -g` rebuild, both greps, every touched
+  page rendered to PNG and read directly) found the six-chapter batch clean except for **four
+  more real overflows, two of them new visual shapes not seen earlier this session**: a
+  `\texttt{}`-wrapped brace-expansion file-glob overflowing a `sourcenote` box (Ch.2, fixed by
+  restructuring away from the brace-expansion syntax entirely rather than just adding
+  `\allowbreak{}`, which needed two iterations to actually move the render); an `lstlisting`
+  trailing inline comment wrapping catastrophically down the right margin one word per line
+  (Ch.18, fixed by moving the comment to its own line above the code rather than trailing the
+  code line); and two running-header/folio collisions from an overlong `\section{}` title
+  (Ch.12, Ch.23), both fixed with `\section[short]{long}`. A concurrent agent independently
+  found and fixed the identical Ch.12/Ch.18/Ch.23 defects at essentially the same time,
+  confirmed via `git show --stat` against the real diff (not the commit message) before
+  accepting the convergence rather than duplicating the fix.
+
+  Final state: `make book` (forced rebuild) succeeded (**424 pages**, up from 416), both grep
+  checks clean, all six newly-touched chapters individually re-rendered and confirmed clean
+  post-fix. `NEXT.md` refreshed with the full three-mode fork-dispatch account and the twelfth
+  confirmed instance of the log-invisible-overflow defect class.
