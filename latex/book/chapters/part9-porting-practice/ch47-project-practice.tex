@@ -177,6 +177,59 @@ concurrency, and porting-tooling code, each tracked in its own separate document
 separate history, is itself evidence this is a real property of how software drifts out from
 under its own status labels generally --- not a quirk specific to any one of these subsystems.
 
+\section{Inside \texttt{plan.sqlite3}: the database behind the Doxygen tags}
+
+The previous section named \texttt{plan.sqlite3} as the authoritative record the
+\texttt{sharp-runtime} Doxygen \texttt{@note Status:} tags defer to, without showing what is
+actually inside it. Reading the real database directly turns that claim into something
+concrete rather than a name dropped in passing.
+
+Its schema is two tables. \texttt{task} is the coarse-grained one --- one row per real .NET
+BCL type or member the project has ever classified, keyed by \texttt{(namespace, name, type)},
+with a single \texttt{status} column and an \texttt{outofscope} flag. \texttt{ticket} is the
+fine-grained one: one row per concrete unit of work, carrying a title, a free-text description,
+explicit \texttt{acceptance\_criteria}, an optional \texttt{validation\_command} a reviewer can
+literally run, a priority (\texttt{P0}--\texttt{Pn}), an estimated size, and a status. A real
+row from \texttt{ticket}, quoted in full, shows the shape every one of the 1{,}728 rows in the
+table follows:
+
+\begin{quote}
+\small
+\textbf{Ticket~29} --- \emph{Audit all \texttt{NotImplementedException} call sites} ---
+\textbf{priority P0}, \textbf{status done} --- \emph{description:} ``Classify every
+\texttt{NotImplementedException} as permanent deviation, real bug, or test-only expectation.
+Real bugs become implementation tickets.'' --- \emph{acceptance criteria:} ``The change is
+reviewed, documented where appropriate, builds cleanly with zero warnings, tests pass or the
+ticket records a precise blocker.'' --- \emph{validation command:} \texttt{cmake --build build
+--parallel 4 \&\& ./build/SharpRuntimeTests}
+\end{quote}
+
+The \texttt{validation\_command} field is the detail worth dwelling on: a ticket does not just
+assert it is done, it names the exact command that proves it, the same discipline this book's
+own \texttt{Task~N} citations aspire to by naming a real test file rather than describing a fix
+in prose alone.
+
+\subsection{A real number worth knowing: how much of .NET this project actually tracks}
+
+Querying \texttt{task} directly (\texttt{SELECT status, COUNT(*) FROM task GROUP BY status})
+answers a question this book has referenced obliquely --- how large is the real .NET BCL
+surface \texttt{sharp-runtime} keeps a classification for at all --- with an exact, checkable
+number rather than an impression: \textbf{16{,}201} total classified types and members, of
+which only \textbf{1{,}041} (6.4\%) carry status \texttt{ported} (a real, working C\texttt{++}
+implementation exists); the remaining 93.6\% are split between \texttt{ignored} (15{,}023 rows
+--- classified and deliberately left unimplemented, the large majority of the whole table) and
+\texttt{ignore} (137 rows, a distinct status from a slightly different classification pass) ---
+plus a further 117 rows separately flagged \texttt{outofscope=1} regardless of their own status
+value. This is the honest denominator behind every ``sharp-runtime implements X'' claim this
+book makes: the project's own explicit position is that the overwhelming majority of the real
+.NET Base Class Library --- everything from \cnans{System.Xml.Schema} (300 tracked members, 0
+ported) to \cnans{System.Numerics.Tensors} (350 tracked, 0 ported) --- was never a goal to port
+at all, only to \emph{classify}, so that a reader encountering an unported .NET type can find a
+recorded, deliberate decision rather than an unexplained gap. \cnans{System} itself, the
+BCL's own root namespace, is the most heavily ported by count (492 tracked, 216 ported,
+44\%) --- unsurprising, since it is exactly the namespace Chapter~\ref{ch:sharp-runtime-overview}
+and Chapter~\ref{ch:sharp-runtime-namespaces} already cover in the most narrative depth.
+
 \section{Why this layer is worth knowing, not just tolerating}
 
 None of this is unusual in isolation --- plenty of large projects keep a TODO file and a set

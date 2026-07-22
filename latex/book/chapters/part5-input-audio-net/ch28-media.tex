@@ -199,6 +199,61 @@ footprint; and \cnaclass{Song}\texttt{::Duration} is deliberately overwritten wi
 duration read back from the decoded audio asset once playback actually starts, regardless of
 whatever value --- including zero --- the \cnaclass{Song} was constructed with.
 
+\subsection{Volume and mute are independent state, and events fire late on purpose}
+
+\cnaclass{MediaPlayer}\texttt{::Volume} and \texttt{IsMuted} read as if muting might simply
+force the volume to zero, but reading \texttt{setVolumeProperty()} /
+\texttt{setIsMutedProperty()} directly in \texttt{MediaPlayer.cpp} shows they are genuinely
+independent state, both funneled through the same private \texttt{ApplyMusicVolume(volume,
+muted)} helper:
+
+\begin{lstlisting}
+void MediaPlayer::setVolumeProperty(float value)
+{
+    volume_ = MathHelper::Clamp(value, 0.0f, 1.0f);
+    ApplyMusicVolume(volume_, isMuted_);   // muted flag re-applied, volume_ untouched
+}
+
+void MediaPlayer::setIsMutedProperty(bool value)
+{
+    isMuted_ = value;
+    ApplyMusicVolume(volume_, isMuted_);   // volume_ re-applied, isMuted_ untouched
+}
+
+// Inside ApplyMusicVolume: MIX_SetTrackGain(track, muted ? 0.0f : vol);
+\end{lstlisting}
+
+\texttt{volume\_} is never overwritten by muting, and \texttt{isMuted\_} is never cleared by
+changing the volume --- only the actual SDL3\_mixer gain call, \texttt{MIX\_SetTrackGain()},
+substitutes \texttt{0.0f} for the real value while muted. A game that calls
+\texttt{setVolumeProperty(0.3f)} while already muted, then later calls
+\texttt{setIsMutedProperty(false)}, hears \texttt{0.3f} immediately --- the volume set while
+silent was never lost, and unmuting does not require the caller to remember and re-apply it.
+
+A second, easy-to-miss design decision: \texttt{MediaStateChanged} and \texttt{ActiveSongChanged}
+do not fire the instant \texttt{setStateProperty()} or a queue-advance actually changes
+something. Both setters only flip a static flag on \cnaclass{FrameworkDispatcher}
+(\texttt{FrameworkDispatcher::MediaStateChanged = true;}); the events themselves are raised
+later, from \texttt{FrameworkDispatcher::Update()}, which checks the flag, calls
+\texttt{MediaPlayer::OnMediaStateChanged()} if it is set, and clears it again. This is not a
+CNA-specific quirk --- real XNA's own \cnaclass{FrameworkDispatcher}\texttt{.Update()} is a
+documented API a game must call once per frame, and CNA's \cnaclass{Game} base class already
+calls it automatically as part of its own update cycle, so an ordinary game observes no
+difference from immediate dispatch. The real, checkable consequence is that changing
+\texttt{MediaPlayer} state and then reading the event's own fired-or-not status \emph{before}
+the next \texttt{FrameworkDispatcher::Update()} call would see it not yet fired --- exactly
+what the real regression test for this confirms, by driving the check through the actual
+dispatcher call chain rather than invoking \texttt{OnMediaStateChanged()} directly:
+
+\begin{lstlisting}
+Song song(kFixtureA, "A");
+MediaPlayer::Play(&song);  // flips both flags: new active song + Stopped -> Playing
+
+Microsoft::Xna::Framework::FrameworkDispatcher::Update();  // events actually fire HERE
+
+// Only after Update() do the ActiveSongChanged/MediaStateChanged subscribers see anything.
+\end{lstlisting}
+
 \section{Video and VideoPlayer}
 
 \cnaclass{Video} / \texttt{VideoPlayer} are real, backed by genuine FFmpeg decoding, CNA's own
