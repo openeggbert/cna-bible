@@ -54,6 +54,7 @@ if (device.SupportsCapability(GraphicsCapability::ThreeD)) {
 \end{lstlisting}
 
 \section{The Phase 70 audit: fifteen real bugs, two still open}
+\label{sec:phase70-audit-bugs}
 
 The single most thorough backend audit in the project (Tasks~666--731, 65 tasks total)
 found and fixed fifteen real bugs, spanning almost every area \cnaclass{SpriteBatch}
@@ -236,3 +237,88 @@ golden test itself already relies on (Chapter~\ref{ch:spritebatch}). This closes
 remaining ``untested, not confirmed feasible'' item this book's own screenshot-infrastructure
 notes had left open for the two backends needing a virtual display rather than a headless
 software rasterizer.
+
+\section{Why every pixel-verification test on this backend needs one specific presentation mode}
+
+A detail silently underlies every worked example so far in this chapter, and every one of the
+Phase~70 audit's own regression tests: read the real source comment on any of them ---
+\texttt{sdlrenderer\_blendstate\_opaque\_test.cpp}, \texttt{sdlrenderer\_sample\_bouncing\_}
+\texttt{sprite\_test.cpp}, dozens more --- and each carries an identical one-line dependency,
+credited back to a single real finding:
+
+\begin{quote}
+\emph{Requires \texttt{PresentationMode::NativeBackBuffer} (Task~915 finding):
+\texttt{SDL\_RenderReadPixels} operates in physical output coordinates, while this backend's
+default presentation mode (\texttt{FixedHeightDynamicWidth}) does not map logical pixels 1:1
+to physical ones.}
+\end{quote}
+
+\texttt{GetBackBufferData()} on this backend is, underneath, a call to SDL3's own
+\texttt{SDL\_RenderReadPixels} --- and that function has no concept of CNA's own logical/virtual
+resolution scaling at all; it reads back whatever the OS-level render target's physical pixel
+grid actually contains. Chapter~\ref{ch:graphicsdevice}'s own \cnaclass{PresentationMode}
+coverage already establishes why \texttt{FixedHeightDynamicWidth} exists (letterboxing a fixed
+logical resolution into whatever physical window size is actually available) --- but that exact
+letterboxing is precisely what breaks a naive pixel readback: a logical coordinate a test
+computed against the game's own virtual resolution does not correspond to the same physical
+pixel offset once scaling and letterboxing have been applied. \texttt{NativeBackBuffer}
+sidesteps the whole problem by disabling the logical/physical distinction entirely --- the
+backbuffer's physical size \emph{is} the logical size, one to one, so a coordinate computed
+either way lands on the identical pixel. This is why every pixel-precision worked example this
+chapter has shown so far quietly works: each one was built on a test harness that already sets
+this mode, not because logical/physical scaling happens not to matter on this backend.
+
+\subsection{A worked example: animated spritesheet frame selection}
+
+\texttt{examples/sdlrenderer\_sample\_animated\_spritesheet\_test.cpp} (Task~730, sample~5 of a
+5-sample real-XNA-idiom compatibility suite --- Section~\ref{sec:phase70-audit-bugs} above
+covers Phase~70's own single-frame API checks; these five samples are deliberately
+multi-\texttt{Update()} instead) exercises a different code path than any single-frame pixel
+check: \texttt{SpriteBatch::Draw}'s \texttt{sourceRectangle} parameter, re-selected every
+\texttt{Update()} call to animate through a spritesheet, the classic 2D XNA idiom for
+walk-cycle/effect-frame animation. The sheet is deliberately tiny and deterministic --- an
+$8\times4$ texture, left $4\times4$ solid red (frame~0), right $4\times4$ solid green
+(frame~1) --- with a fixed per-\texttt{Update()} frame-index increment rather than real
+elapsed-time-based timing, so the outcome never depends on wall-clock frame speed:
+
+\begin{lstlisting}
+void Update(GameTime&) override
+{
+    if (done_) return;
+    ++frameCounter_;
+    ++updatesRun_;
+}
+
+void Draw(const GameTime&) override
+{
+    // ...
+    const int frameIndex = frameCounter_ % 2;
+    const Rectangle srcRect(frameIndex * kFrameSize, 0, kFrameSize, kFrameSize);
+    const Rectangle destRect(2, 2, kFrameSize, kFrameSize);
+
+    sb_->Begin();
+    sb_->Draw(*sheet_, destRect, srcRect, Color::White);
+    sb_->End();
+    // ...
+}
+\end{lstlisting}
+
+After exactly three \texttt{Update()} calls, \texttt{frameCounter\_ \% 2} evaluates to
+\texttt{1}, so the animation should have settled on the green frame. The test's own check does
+not stop at asserting that arithmetic fact in isolation --- it reads back the actual drawn
+pixel and confirms the color genuinely reaching the screen is green, not merely that the frame
+index variable computed the expected value:
+
+\begin{lstlisting}
+Color px(0, 0, 0, 0);
+Rectangle region(3, 3, 1, 1);
+dev.GetBackBufferData(&region, &px, 0, 1);
+check(px.getRProperty() <= 15 && px.getGProperty() >= 240 && px.getBProperty() <= 15,
+      "genuinely shows frame 1 (green) -- sourceRectangle selection reached the real Draw call");
+\end{lstlisting}
+
+That distinction matters precisely because of the presentation-mode dependency above: a version
+of this test built without \texttt{PresentationMode::NativeBackBuffer} could compute the
+correct frame index every time and still fail the pixel check, for a reason that has nothing to
+do with the animation logic under test at all --- the classic shape of a flaky-looking test
+whose real root cause is a setup precondition, not the feature it claims to exercise.
