@@ -242,6 +242,89 @@ is the actual entry point creating and freeing the local, stub-style
 other class in this namespace relies on for its synchronously-completing
 \texttt{Begin} / \texttt{End} pairs.
 
+\subsection{A worked example: a real cross-namespace hang, and how it was actually fixed}
+\label{sec:gamerservices-hang}
+
+\cnaclass{GamerServicesDispatcher}\texttt{::Update()} is a permanently empty no-op --- verified
+directly against the real \texttt{.cpp}, an empty function body with nothing inside it at all.
+This is not a CNA shortcut: FNA's own reference source has the identical empty body, confirmed
+against the real upstream project, so this is a faithfully-reproduced real XNA/FNA
+characteristic, not a porting gap. On its own, an empty \texttt{Update()} is harmless, since
+nothing in this namespace's own classes actually depends on it doing anything. The real trouble
+starts one level up, in \texttt{UpdateAsync()}:
+
+\begin{lstlisting}
+bool GamerServicesDispatcher::UpdateAsync()
+{
+    if (isInitialized_)
+    {
+        Update();   // permanently empty
+    }
+    return isInitialized_;   // never goes back to false, once true
+}
+\end{lstlisting}
+
+\texttt{isInitialized\_} is set \texttt{true} once, permanently, by \texttt{Initialize()} ---
+which every real XNA sample's own \cnaclass{GamerServicesComponent} constructor calls
+immediately. So in any game that actually adds this component (which the requirement above says
+every game using this namespace must), \texttt{UpdateAsync()} unconditionally returns
+\texttt{true} forever, starting from the very first frame. FNA's own
+\cnaclass{NetworkSession} relies on \texttt{UpdateAsync()} eventually returning \texttt{false}
+to know a pending \texttt{NetworkSessionAction} is safe to complete --- a real, independently
+confirmed bug in \emph{FNA itself}, not something this port introduced: calling
+\cnaclass{NetworkSession}\texttt{::Create()} / \texttt{Find()} / \texttt{Join()} after
+\cnaclass{GamerServicesDispatcher}\texttt{::Initialize()} has already run spins forever in a
+tight busy-loop, confirmed to reproduce identically against real FNA reference source. This was
+not found by unit-testing either namespace in isolation --- it surfaced while porting a real
+sample (\texttt{ClientServerSample}, whose own constructor adds a
+\cnaclass{GamerServicesComponent} alongside networking, exactly the combination that triggers
+it), and is tracked as \texttt{DEFERRED.md} item~\#19 in the sibling \texttt{cna-samples}
+repository. An independent second instance of the identical failure shape was found in
+\cnaclass{SignedInGamer}\texttt{::BeginGetAchievements}, whose own polling loop has the same
+``wait for \texttt{UpdateAsync()} to return \texttt{false}'' dependency.
+
+The fix does not touch \cnaclass{GamerServicesDispatcher} at all --- \texttt{Update()} stays a
+faithful no-op, matching real XNA. Instead, \texttt{NetworkSessionAction}'s own constructor was
+changed to mark every action complete \emph{immediately}, at construction, rather than
+\texttt{false} the way FNA's own reference does:
+
+\begin{lstlisting}
+// Real fix, from NetworkSessionAction's own constructor:
+, isCompleted_(true)   // was: false, relying on GamerServicesDispatcher::Update()
+                       //      to eventually complete it (never happens)
+\end{lstlisting}
+
+This is a correctness fix, not merely a workaround, for a reason specific to this port: CNA's
+\texttt{Create} / \texttt{Find} / \texttt{Join} / \texttt{JoinInvited} already perform all of
+their real work synchronously inside the matching \texttt{End*} method --- constructing the
+\cnaclass{NetworkSession} outright, or calling directly into \texttt{ENetBackend} /
+\texttt{ENetDiscoveryService} --- with no multi-frame deferred I/O anywhere in the call chain.
+There is no real pending operation for a polling loop to ever be legitimately waiting on, so
+marking the action complete immediately does not skip real work; it stops the code from waiting
+on a completion signal that FNA's own architecture was already relying on a permanently-broken
+mechanism to send.
+
+\subsubsection{The regression coverage this bug earned}
+
+Because both \texttt{isInitialized\_} and the dispatcher's stub-gamer population are
+process-lifetime statics with no reset hook, the real regression tests for this bug family
+cannot run as ordinary \texttt{TEST()} bodies sharing a test binary with anything else --- doing
+so would let one test's call to \texttt{Initialize()} silently change
+\texttt{UpdateAsync()}'s behavior for every other test in the same process. Each one instead
+spawns \texttt{tools/net/gamerservices\_dispatcher\_harness.cpp} as a genuinely separate OS
+process, watched by a 10-second watchdog that \texttt{SIGKILL}s and fails the test if the harness
+does not exit on its own --- exactly what happens if either hang above regresses. The same
+harness and isolation technique cover three real, independently-discovered bugs in
+\texttt{Initialize()} found along the way: a permanent 4-\cnaclass{SignedInGamer} memory leak on
+any \emph{second} \texttt{Initialize()} call (\cnaclass{GamerCollection}\texttt{<T>} holds
+non-owning raw pointers, and the property setter that replaces the collection only freed the
+wrapper, not its contents --- fixed by an explicit free-then-recreate loop, verified via a real
+\texttt{GetFreedGamerCountForTesting()} counter); and a full end-to-end check of
+\texttt{Initialize()}'s own stub-gamer population (exact names, \cnaclass{PlayerIndex}
+assignment, and that \cnaclass{SignedInGamer}\texttt{::OnSignIn} fires exactly once per gamer),
+run in the same isolated process as the \texttt{GetAchievements()} fix so the fix is exercised
+against a real, fully-initialized dispatcher state rather than a bare mock.
+
 \section{Summary table}
 
 \begin{center}
