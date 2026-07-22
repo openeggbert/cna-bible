@@ -120,9 +120,61 @@ now keeps its pending content alive long enough to render correctly and remain s
 elsewhere the same frame. The bug was confirmed via a real segfault in
 \texttt{sdlgpu\_mrt\_test.cpp} before the fix landed, not merely reasoned about in the abstract.
 
-\section{What remains open}
+\subsection{A worked example: \cnaclass{Texture3D}'s own \texttt{cycle=true} orphaned-write bug}
 
-Two gaps are worth stating precisely rather than glossing over. First, occlusion queries are a
+\cnaclass{Texture3D} support on this backend --- sub-volume upload/readback via
+\texttt{SDL\_UploadToGPUTexture}, plus mipmap generation --- surfaced a real data-corruption
+bug of exactly the kind this book keeps returning to: code that compiles cleanly, throws
+nothing, and produces a wrong answer silently. \texttt{SDL\_UploadToGPUTexture}'s own
+\texttt{cycle} parameter offers a real performance trade-off SDL3's own documentation states
+plainly: \texttt{cycle=true} swaps the texture to a fresh, separate underlying GPU resource on
+each call, avoiding a stall if the GPU is still reading the previous resource's content ---
+correct and desirable for \cnaclass{Texture2D}'s own single-full-texture-replace
+\texttt{SetData()} pattern (\cnaclass{SdlGpuTextureBackend::UpdatePixels}), which this backend's
+own code copied \texttt{cycle=true} from when \cnaclass{Texture3D} support was first written.
+The assumption breaks for \cnaclass{Texture3D} specifically, because its content is built up
+through \emph{multiple independent} sub-volume and per-level \texttt{SetData()} calls that all
+need to land on the \emph{same} underlying resource --- with \texttt{cycle=true}, an earlier
+partial write (say, a sub-volume at $z=0$) silently orphaned itself onto an abandoned GPU
+resource the moment a second, later write (a sub-volume at $z=1$) followed it, reading back as
+zero/uninitialized rather than the real content actually uploaded.
+
+The real regression test that caught this (\texttt{examples/sdlgpu\_texture3d\_test.cpp})
+is deliberately shaped to make the bug unmissable rather than merely possible to catch:
+
+\begin{lstlisting}
+Texture3D tex(dev, 4, 4, 2, false, SurfaceFormat::Color);
+// A 2x2x2 sub-volume at offset (1,1,0) -- red at z=0, green at z=1 -- deliberately
+// off-center within the full 4x4x2 volume, and two SEPARATE SetData() calls, one per Z slice.
+tex.SetData(0, /*x=*/1, /*y=*/1, /*z=*/0, 2, 2, 1, redPixels.data(), redPixels.size());
+tex.SetData(0, /*x=*/1, /*y=*/1, /*z=*/1, 2, 2, 1, greenPixels.data(), greenPixels.size());
+// With cycle=true, the z=0 write above would already be silently orphaned by the time this
+// GetData() runs, reading back zero instead of red.
+std::vector<Color> gotRed(4), gotGreen(4);
+tex.GetData(0, 1, 1, 0, 2, 2, 1, gotRed.data(), gotRed.size() * sizeof(Color));
+tex.GetData(0, 1, 1, 1, 2, 2, 1, gotGreen.data(), gotGreen.size() * sizeof(Color));
+\end{lstlisting}
+
+Two design choices make this test genuinely discriminating rather than accidentally passing
+either way: the sub-volume is off-center (a bug that only corrupted, say, the texture's
+origin corner would still show up), and each Z slice gets its own distinct solid color rather
+than reusing one color for the whole volume --- a uniform-color test cannot tell correctly
+-downsampled or correctly-retained content apart from an out-of-range read that happens to
+land on more of that same color, the identical discriminating-test principle
+Section~\ref{sec:sdlgpu-what-remains-open}'s own generated-mipmap gap needs applied to close it.
+The fix, confirmed against the real \texttt{SdlGpuTexture3DBackend::SetData} implementation
+directly, is a one-word change: pass \texttt{cycle=false} for every \cnaclass{Texture3D}
+upload, leaving \cnaclass{Texture2D}'s own \texttt{cycle=true} single-replace path untouched
+and correct as-is. The identical fix (and the identical reasoning, cited by name in that
+backend class's own source comment) was applied proactively to
+\cnaclass{TextureCube}'s per-face uploads too, since a cube map is built up through six
+separate per-face \texttt{SetData()} calls that must all land on the same underlying resource --- caught
+and fixed before shipping rather than found by reproducing the same bug a second time.
+
+\section{What remains open}
+\label{sec:sdlgpu-what-remains-open}
+
+Three gaps are worth stating precisely rather than glossing over. First, occlusion queries are a
 \emph{permanent} limitation of the underlying API, not a task gap: the vendored
 \texttt{SDL\_gpu.h} has no query-pool or occlusion-query type anywhere in it (only
 \texttt{SDL\_GPUFence} for CPU/GPU synchronization), so \texttt{CreateOcclusionQuery()}
@@ -132,10 +184,27 @@ future SDL3 release adds real query support, not before. Second, one genuine, un
 remains at the time of writing: a real segfault in the swapchain-acquisition leg of
 \texttt{RenderTarget2D} / \texttt{RenderTargetCube} handling, tracked openly in
 \texttt{plan\_sdlgpu.md} rather than hidden behind the render-target work that is otherwise
-complete. Beyond these two, Windows (D3D12 driver) and macOS/iOS (Metal driver) remain code
-paths only, not validation claims, until run on real (or Wine/DXVK-class) hardware --- the same
-phased-claim discipline this book already applies to \texttt{D3D11} / \texttt{D3D12}
-(Chapter~\ref{ch:direct3d-backends}) and \texttt{WebGPU} (Chapter~\ref{ch:webgpu-backend}).
+complete. Third, a real \emph{possible} gap that is explicitly, honestly unresolved rather than
+either claimed fixed or claimed broken: \texttt{plan\_sdlgpu.md} records real Vulkan validation
+errors (\texttt{vkCmdBlitImage} / \texttt{vkCreateImageView} range violations along the depth
+dimension) surfacing from \cnaclass{Texture3D}'s own generated-mipmap path once debug validation
+was genuinely enabled for the first time --- the likely cause named directly in that plan
+document is that \texttt{SDL\_gpu}'s blit-based mip generator assumes the ordinary 3D-texture
+convention of halving depth at every mip level, which does not hold for this project's own
+FNA/XNA-matching convention of keeping depth constant across all levels. Critically, the
+existing regression check for this exact path (the mipmap Check~C above) uses a
+\emph{uniform} test color across the whole volume, which --- per the same discriminating-test
+principle the sub-volume bug above already demonstrates --- cannot actually distinguish
+correctly-downsampled content from corrupted content that happens to land on more of the same
+uniform color. This means the generated-mipmap case's own existing ``passing'' status may be
+resting on a test that structurally cannot catch this specific failure mode; a genuine fix
+needs a non-uniform per-level test (a distinct solid color per mip level, mirroring the
+sub-volume worked example's own per-Z-slice colors) before this can honestly be called
+resolved either way. Beyond these three, Windows (D3D12 driver) and macOS/iOS (Metal driver)
+remain code paths only, not validation claims, until run on real (or Wine/DXVK-class) hardware
+--- the same phased-claim discipline this book already applies to \texttt{D3D11} /
+\texttt{D3D12} (Chapter~\ref{ch:direct3d-backends}) and \texttt{WebGPU}
+(Chapter~\ref{ch:webgpu-backend}).
 
 \section{Verification methodology}
 
