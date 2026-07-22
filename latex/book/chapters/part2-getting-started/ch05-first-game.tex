@@ -274,6 +274,95 @@ that wants to vary bounce loudness by impact speed would reach for the three-arg
 \texttt{Play(volume, pitch, pan)} overload instead --- covered in full in this book's audio
 chapter.
 
+\section{A fourth program: a real collision check}
+
+The third program reacted to the screen's own edges; this section adds the other kind of
+reaction a first game almost always needs next --- two sprites reacting to \emph{each other}.
+A second, static texture (a coin) sits on screen; when the moving logo's own bounding rectangle
+overlaps it, the coin is collected and a counter increments. One more real, grounded addition
+on top of the same running example:
+
+\begin{lstlisting}
+class MyGame final : public Game {
+    // ... constructor unchanged ...
+
+    void LoadContent() override
+    {
+        spriteBatch_ = std::make_unique<SpriteBatch>(getGraphicsDeviceProperty());
+        logo_ = std::make_unique<Texture2D>("assets/logo.png", getGraphicsDeviceProperty());
+        bounceSound_ = std::make_unique<SoundEffect>("assets/bounce.wav");
+        coin_ = std::make_unique<Texture2D>("assets/coin.png", getGraphicsDeviceProperty());
+    }
+
+    void Update(GameTime& gameTime) override
+    {
+        // ... movement and edge-clamping from the third program, unchanged ...
+
+        if (!collected_)
+        {
+            const Rectangle logoBounds(static_cast<int>(position_.X),
+                                        static_cast<int>(position_.Y),
+                                        logo_->getWidthProperty(),
+                                        logo_->getHeightProperty());
+            const Rectangle coinBounds(static_cast<int>(coinPosition_.X),
+                                        static_cast<int>(coinPosition_.Y),
+                                        coin_->getWidthProperty(),
+                                        coin_->getHeightProperty());
+            if (logoBounds.Intersects(coinBounds))
+            {
+                collected_ = true;
+                ++score_;
+                bounceSound_->Play();
+            }
+        }
+    }
+
+    void Draw(const GameTime& gameTime) override
+    {
+        (void)gameTime;
+        auto& device = getGraphicsDeviceProperty();
+        device.Clear(CornflowerBlue);
+
+        spriteBatch_->Begin();
+        spriteBatch_->Draw(*logo_, position_, Color::White);
+        if (!collected_) spriteBatch_->Draw(*coin_, coinPosition_, Color::White);
+        spriteBatch_->End();
+
+        device.Present();
+    }
+
+private:
+    // ... other members unchanged ...
+    std::unique_ptr<Texture2D> coin_;
+    Vector2 coinPosition_{300.0f, 200.0f};
+    bool collected_ = false;
+    int score_ = 0;
+};
+\end{lstlisting}
+
+\textbf{The bounding rectangles are built fresh every frame, from the same position/size data
+already driving movement and drawing --- not stored and kept in sync by hand.}
+\cnaclass{Rectangle}'s constructor (Chapter~\ref{ch:math-core-types}) takes an integer
+\texttt{x} / \texttt{y} / \texttt{width} / \texttt{height}, so \texttt{position\_}'s float
+components need an explicit \texttt{static\_cast<int>} --- the same pattern
+\cnaclass{Texture2D::Width} / \texttt{Height} already supply directly for the size half of each
+rectangle. Building both rectangles inline in \texttt{Update()}, from the exact position
+fields \texttt{Draw()} also reads, is what keeps the collision check and the visible sprites
+from ever silently disagreeing about where anything actually is.
+
+\begin{sourcenote}
+\textbf{A real, test-verified edge case worth knowing before relying on
+\texttt{Intersects()}: touching is not overlapping.} \cnaclass{Rectangle}'s own real test
+suite (\texttt{RectangleTests.cpp}) checks this precisely: two $100\times100$ rectangles
+placed at $(0,0)$ and $(100,0)$ --- sharing an edge exactly, with zero pixels of true overlap
+--- return \texttt{false} from \texttt{Intersects()}, the same as two rectangles with real
+space between them. Only genuine, non-zero-area overlap counts. A first game that places a
+coin exactly at the logo's own width, expecting the two to register as ``touching'' the
+instant they meet, will see the check silently never fire; leaving at least a few pixels of
+deliberate overlap margin between two sprites meant to collide avoids this class of bug
+entirely.
+\end{sourcenote}
+
 \section{What happens if you change the backend}
 
 Nothing in the file above mentions a graphics backend at all --- that is the entire point of
