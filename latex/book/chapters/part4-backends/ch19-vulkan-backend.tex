@@ -387,6 +387,59 @@ layout every other backend and \cnaclass{Color} itself use --- \texttt{ReadBackb
 swap only when the format is actually BGRA, rather than assuming one fixed byte order across
 every device this backend might run on.
 
+\section{A real, hittable ceiling: 512 live descriptor sets, shared across two resource types}
+\label{sec:vulkan-descriptor-ceiling}
+
+Every \cnaclass{Texture2D} and every \cnaclass{RenderTarget2D} constructed on this backend
+allocates one \texttt{VkDescriptorSet} from a single shared pool, sized at construction time
+and never grown:
+
+\begin{lstlisting}
+static constexpr uint32_t MaxDescriptorSets = 512;
+// ...
+VkDescriptorPoolSize ps{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MaxDescriptorSets };
+VkDescriptorPoolCreateInfo ci{};
+ci.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+ci.maxSets = MaxDescriptorSets;
+ci.poolSizeCount = 1;
+ci.pPoolSizes = &ps;
+vkCreateDescriptorPool(device_, &ci, nullptr, &descriptorPool_);
+\end{lstlisting}
+
+\cnaclass{VulkanTextureBackend}'s own constructor and \cnaclass{VulkanRenderTargetBackend}'s
+own constructor both allocate from this identical \texttt{descriptorPool\_} --- confirmed by
+reading both call sites directly, not just the pool's own creation code --- so the real budget
+a game actually has is 512 \emph{simultaneously live} \cnaclass{Texture2D} plus
+\cnaclass{RenderTarget2D} instances combined on this backend, not 512 of each independently.
+The \texttt{VK\_DESCRIPTOR\_POOL\_CREATE\_FREE\_DESCRIPTOR\_SET\_BIT} flag means this is a real
+budget of \emph{concurrently undisposed} resources, not a lifetime total: each backend's own
+\texttt{ReleaseVulkanResources()} calls \texttt{vkFreeDescriptorSets} on \texttt{Dispose()},
+returning its slot to the pool for reuse. A game that creates and disposes textures across many
+frames --- streaming a level's assets in and out, for instance --- never accumulates toward the
+ceiling as long as disposal genuinely keeps pace with creation.
+
+The failure mode itself is a clean, loud exception rather than a silent cap or a corrupted
+allocation, confirmed by reading the allocation call site directly:
+
+\begin{lstlisting}
+if (vkAllocateDescriptorSets(dev, &dsInfo, &descriptorSet_) != VK_SUCCESS)
+    throw std::runtime_error("vkAllocateDescriptorSets (texture) failed");
+\end{lstlisting}
+
+A 513th simultaneously-live \cnaclass{Texture2D} or \cnaclass{RenderTarget2D} throws at
+construction time, on this backend specifically --- not a per-frame budget, and not shared with
+any other backend's own resource limits (EasyGL and BGFX have no equivalent fixed-pool
+ceiling at all; each stock effect type on this same Vulkan backend additionally has its own,
+separately-sized dedicated pool --- \texttt{descriptorPoolEnvMap\_},
+\texttt{descriptorPoolSkinned\_}, \texttt{descriptorPoolPbr\_}, and others --- so this specific
+512-set ceiling applies only to plain \cnaclass{Texture2D} / \cnaclass{RenderTarget2D}
+allocation, not to how many objects can simultaneously use a given stock effect). A game
+targeting Vulkan specifically with a very large, non-atlased texture library, or one that
+creates many short-lived render targets without disposing the previous batch first, is the
+realistic way to reach this ceiling in practice --- worth knowing as a real, backend-specific
+constraint before assuming texture/render-target counts that work fine on EasyGL port
+unchanged to Vulkan.
+
 \section{A documented, not a hidden, coverage gap}
 
 One honest gap in \emph{testing}, not rendering: at the time of writing there is no dedicated
