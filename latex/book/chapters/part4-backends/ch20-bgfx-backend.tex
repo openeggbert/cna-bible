@@ -261,6 +261,65 @@ buffer; CNA's current fix instead shares whichever view the game's own 3D draw a
 targets --- a real, acknowledged architecture gap against true scene-depth query correctness,
 not yet attempted.
 
+\section{Instancing: a real, working implementation with no dedicated test of its own}
+\label{sec:bgfx-instancing}
+
+\cnaclass{GraphicsDevice}\allowbreak{}\texttt{::DrawInstancedPrimitives()} is real and fully
+wired on this backend --- \texttt{BgfxGraphicsBackend::DrawInstancedPrimitivesEx()} is a
+genuine, roughly seventy-line implementation, not a stub --- but grepping
+\texttt{cmake/Tests/BgfxTests.cmake} directly for anything instancing-related finds nothing at
+all, in contrast to \texttt{D3D9}, \texttt{EASYGL}, \texttt{Vulkan}, and \texttt{WebGPU}, each
+of which has its own dedicated instancing test (\texttt{d3d9\_instanced\_test.cpp},
+\texttt{easygl\_instancedmodel\_shader\_test.cpp}, \texttt{vulkan\_instanced\_test.cpp},
+\texttt{webgpu\_instanced3d\_test.cpp}). This backend is the one real gap in that otherwise
+complete cross-backend picture --- implemented, never independently pixel-verified.
+
+The real mechanism, read directly from \texttt{GraphicsDevice.cpp}: a game marks one bound
+\cnaclass{VertexBuffer} as the per-instance data source by giving its
+\cnaclass{VertexBufferBinding} an \texttt{InstanceFrequency} greater than zero when calling
+\texttt{SetVertexBuffers()}; \texttt{DrawInstancedPrimitives()} then scans every currently
+bound binding, takes the \emph{first} one whose \texttt{InstanceFrequency} is positive, and
+passes only that one buffer's backend pointer through as \texttt{GpuDrawParams::instanceVb}:
+
+\begin{lstlisting}
+for (const auto& binding : currentVertexBuffers_) {
+    if (binding.getInstanceFrequencyProperty() > 0) {
+        if (auto* vb = binding.getVertexBufferProperty()) {
+            p.instanceVb = &vb->GetBackend();
+            break;
+        }
+    }
+}
+\end{lstlisting}
+
+Two real, silent-failure paths follow directly from this backend's own implementation of the
+receiving end, worth naming precisely rather than assuming instancing either works or throws:
+if no bound \cnaclass{VertexBufferBinding} has a positive \texttt{InstanceFrequency} at all
+(an easy mistake --- \texttt{SetVertexBuffers()} still succeeds with an ordinary,
+zero-frequency binding), \texttt{p.instanceVb} stays \texttt{nullptr}, and
+\texttt{DrawInstancedPrimitivesEx()}'s own first line, \texttt{if (params.instanceVb ==
+nullptr) return;}, draws nothing at all --- no exception, no logged warning, just an
+instanced draw call that silently does not happen. Separately, even with a correctly-marked
+instance buffer, \texttt{bgfx::getAvailInstanceDataBuffer()} is checked against the requested
+instance count \emph{before} any data is copied or submitted, and an insufficient result
+(this specific renderer or driver genuinely cannot supply enough transient instance-buffer
+capacity for the requested count) takes the identical silent early return --- a real, correct
+response to a real bgfx-level capacity ceiling, but indistinguishable, from the caller's own
+point of view, from the missing-\texttt{InstanceFrequency} mistake above. A game relying on
+GPU instancing on this backend --- a large tiled foliage field, a particle system driven
+through the instanced path rather than \cnaclass{SpriteBatch} --- that silently renders
+nothing should check both of these specific conditions before assuming a deeper rendering
+bug.
+
+One further real detail is worth stating precisely because it is easy to assume otherwise:
+the draw call's own \texttt{world} matrix parameter is explicitly unused on this path (a
+commented-out parameter name in the real signature, \texttt{const Matrix\&
+/*world*/}), because per-instance world transforms are expected to arrive already baked into
+each instance's own per-instance vertex data, not supplied once as a shared uniform the way a
+single, non-instanced draw's \texttt{World} property works --- only \texttt{view} and
+\texttt{projection} are combined into the one \texttt{vp} uniform every instance in the batch
+shares.
+
 \section{Where this leaves the backend}
 
 The project's own closing assessment for this backend is unusually clean: ``BGFX's only
