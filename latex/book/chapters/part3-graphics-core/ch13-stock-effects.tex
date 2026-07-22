@@ -291,6 +291,62 @@ world-space normal transform on EasyGL and BGFX would have visibly warped the re
 apparent shape, because both backends transformed normals with the raw world matrix instead of
 its transpose-inverse.
 
+\subsection{A stale tracked task, and a worked three-light example}
+
+\texttt{plan\_graphics.md}'s own Task~890 --- ``Forward \texttt{DirectionalLight1}/%
+\texttt{DirectionalLight2} on \cnaclass{EnvironmentMapEffect} (all 3 backends)'' --- is still
+marked open, unchecked, in the plan document at the time of this writing, opened by an earlier
+audit that deliberately scoped it out as ``the same architectural shape'' as the identical gap
+\cnaclass{BasicEffect} once had. Reading
+\texttt{EnvironmentMapEffect.cpp} directly instead of trusting that status box shows the fix has
+in fact already landed, in full: \texttt{FillGpuDrawParams()} populates real
+\texttt{light1Dir} / \texttt{light1Diffuse} / \texttt{light2Dir} / \texttt{light2Diffuse} fields
+from \texttt{DirectionalLight1} / \texttt{DirectionalLight2} directly (gated on each light's own
+\texttt{Enabled} property, matching \texttt{DirectionalLight0}'s existing pattern from the
+\texttt{preferPerPixelLighting} fix above), and every backend's own \texttt{.cpp} references
+those fields at the shader-uniform call site --- \texttt{EasyGLGraphicsBackend.cpp}'s own code
+comment names the task directly: ``\texttt{Task 890}: \cnaclass{EnvironmentMapEffect}'s own
+\texttt{DirectionalLight1} / \texttt{2} forwarding (same generic path light0 already uses).''
+Real FNA's own \texttt{shaderIndex += 8} one-light shader-variant optimization is present too,
+computed from a genuine \texttt{oneLight\_} flag toggled whenever both \texttt{DirectionalLight1}
+and \texttt{DirectionalLight2} are disabled --- not merely plumbed through unused, but wired into
+the same shader-selection mechanism \texttt{fogEnabled\_} / \texttt{fresnelEnabled\_} /
+\texttt{specularEnabled\_} already use for \texttt{shaderIndex}. This chapter's own earlier,
+now-corrected \texttt{preferPerPixelLighting} finding is a reminder worth applying to its own
+sibling task, not just to itself.
+
+A three-light scene is the only way to actually see the difference between ``one light forwarded,
+two silently dropped'' and the real fix, since a single-light test cannot distinguish the two:
+
+\begin{lstlisting}
+EnvironmentMapEffect effect(getGraphicsDeviceProperty());
+effect.setWorldProperty(carBodyWorld);
+effect.setViewProperty(camera.View());
+effect.setProjectionProperty(camera.Projection());
+effect.setTextureProperty(&carBodyPaint);
+effect.setEnvironmentMapProperty(&skybox);
+effect.setLightingEnabledProperty(true);
+
+effect.DirectionalLight0.setEnabledProperty(true);           // key light, warm
+effect.DirectionalLight0.setDiffuseColorProperty(Vector3(1.0f, 0.85f, 0.7f));
+effect.DirectionalLight1.setEnabledProperty(true);            // fill light, cool
+effect.DirectionalLight1.setDiffuseColorProperty(Vector3(0.2f, 0.3f, 0.5f));
+effect.DirectionalLight2.setEnabledProperty(true);            // rim light, from behind
+effect.DirectionalLight2.setDiffuseColorProperty(Vector3(0.6f, 0.6f, 0.6f));
+
+for (EffectPass& pass : effect.getCurrentTechniqueProperty()->getPassesProperty()) {
+    pass.Apply();
+    getGraphicsDeviceProperty().DrawIndexedPrimitives(/* ... */);
+}
+\end{lstlisting}
+
+Before the fix this chapter's own reading of the source confirms already landed, this scene
+would have rendered as though \texttt{DirectionalLight1} and \texttt{DirectionalLight2} were
+never enabled at all --- a real, silent difference between the model's own stated lighting setup
+and what actually reached the GPU, indistinguishable from a caller's own mistake unless the
+person debugging it already knew to suspect the effect's own forwarding rather than their own
+scene code.
+
 \section{SkinnedEffect}
 
 \cnaclass{SkinnedEffect} caps its bone palette at \texttt{MaxBones = 72} (a static constant

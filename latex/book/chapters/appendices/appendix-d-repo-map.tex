@@ -178,11 +178,68 @@ encounter them, since a worktree is purely a local filesystem construct with not
 own ever pushed anywhere --- noted here only so this appendix's own careful naming isn't
 mistaken as having missed them by accident.
 
+\section{The ecosystem's own scale, measured in real lines of code}
+
+Every repository description in this appendix so far has been qualitative --- what a
+repository is, and how it depends on or relates to the others. The organization's own root
+\texttt{README.md} (the \texttt{openeggbert} / \texttt{openeggbert} repository itself, a
+project-index repository rather than a code repository) adds a dimension none of that prose
+conveys: a real, \texttt{cloc}-measured line count for every C\texttt{++} project in the
+ecosystem, dated July 2026 and scoped precisely (\texttt{src/} / \texttt{include/} only,
+excluding tests and vendored/third-party code). The organization totals \emph{\textasciitilde}%
+444.6k lines of C\texttt{++} this way. A representative sample, smallest to largest: \texttt{easy-3d}
+(\textasciitilde{}1.0k), \texttt{sprite-utils} (\textasciitilde{}2.2k), \texttt{youtube-frontend}
+(\textasciitilde{}2.3k, a project unrelated to CNA --- see the note below), \texttt{easy-gl}
+(\textasciitilde{}3.6k), \texttt{free-direct} (\textasciitilde{}4.3k), \texttt{free-api}
+(\textasciitilde{}4.5k), \texttt{cna-craft} (\textasciitilde{}6.3k), \texttt{meta-gl}
+(\textasciitilde{}8.3k), \texttt{mesh-world} (\textasciitilde{}16.9k), \texttt{mobile-eggbert}
+(\textasciitilde{}20.5k), \texttt{free-eggbert} (\textasciitilde{}28.1k), \texttt{mesh-craft}
+(\textasciitilde{}29.4k), \texttt{sharp-runtime} (\textasciitilde{}70.7k), \texttt{cna-samples}
+(\textasciitilde{}48.0k), and \texttt{cna} itself at \textasciitilde{}181.2k --- by a wide
+margin the largest single codebase in the organization, roughly 2.5\texttimes{} the size of
+\texttt{sharp-runtime}, the next-largest, and over 40\% of the entire ecosystem's combined
+line count. The same source document's own dependency diagram is worth reproducing verbatim
+for how compactly it matches every relationship this appendix has described in prose across
+its own several sections:
+
+\begin{lstlisting}
+mesh-world   (procedural 3D worlds)
+  |-- mesh-craft   (3D scene editor, MC3 format)
+        |-- CNA   (XNA-style cross-platform framework)   <- cna-samples, cna-craft, easy-3d
+              |-- easy-gl -> meta-gl   (OpenGL layers)
+              |-- sharp-runtime   (.NET-style foundation)
+
+free-eggbert   (Speedy Eggbert 2 reconstruction)
+  |-- free-direct   (DirectX 3 subset)
+        |-- free-api   (Win32 subset)   -- both on SDL3
+
+games: mobile-eggbert (C++/CNA), galaxy-eggbert (3D), cna-craft (voxel prototype),
+       legacy C# / Java ports
+\end{lstlisting}
+
+\texttt{mobile-eggbert-legacy}, mentioned only in passing earlier in this appendix, is worth
+its own precise description now that its real \texttt{README.md} has been read directly rather
+than assumed: a genuine \emph{preservation} archive, not a working alternative implementation
+--- ILSpy-decompiled C\# source recovered from the original 2013 Windows Phone XNA~4.0 binary,
+migrated once from XNA~4.0 to MonoGame, with several related historical repositories merged in
+via \texttt{git subtree} so the full migration lineage stays together in one place. Its own
+README states its scope with unusual honesty for a repository listing: ``a legacy project''
+whose code ``may require additional fixes, older dependencies, or platform-specific
+adjustments before it builds or runs correctly on a modern system,'' explicitly \emph{not} a
+clean modern rewrite. It exists to let a researcher study or compare the original Windows
+Phone/XNA~4.0 game structure directly, one step upstream of both real reimplementations this
+book already covers --- \texttt{mobile-eggbert} on CNA (Chapter~\ref{ch:webgpu-backend}) and
+\texttt{mobile-eggbert-libgdx} on Java/LibGDX (earlier in this appendix) --- rather than being
+a third reimplementation itself.
+
 \section{A note on repositories unrelated to CNA}
 
 Several repositories in the same organization --- \texttt{speedyblupi.com},
-\texttt{BlupiEdit}, \texttt{tiled-blupi}, and a handful of forked repositories --- relate to
-the Blupi game franchise's own history independent of CNA/\texttt{free-direct}, or are forks
-maintained for unrelated reasons. They are outside this book's scope entirely and are noted
-here only so a reader browsing the organization's repository list is not left wondering
-whether an omission was accidental.
+\texttt{BlupiEdit}, \texttt{tiled-blupi}, \texttt{youtube-frontend} (a real, otherwise
+unremarked-on C\texttt{++}23 tool that generates static HTML indexes for ArchiveBox video
+archives via OpenCV and FFmpeg --- confirmed unrelated to CNA by reading its own
+\texttt{README.md} directly, not merely absent from the dependency diagram above), and a
+handful of forked repositories --- relate to the Blupi game franchise's own history
+independent of CNA/\texttt{free-direct}, or serve a genuinely separate purpose entirely. They
+are outside this book's scope entirely and are noted here only so a reader browsing the
+organization's repository list is not left wondering whether an omission was accidental.
