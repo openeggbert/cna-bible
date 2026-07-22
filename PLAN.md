@@ -1959,3 +1959,31 @@ stays frozen by explicit author decision, not left incomplete.
   checks clean, all six newly-touched chapters individually re-rendered and confirmed clean
   post-fix. `NEXT.md` refreshed with the full three-mode fork-dispatch account and the twelfth
   confirmed instance of the log-invisible-overflow defect class.
+
+- **2026-07-22, same session, continued — a fifth batch (Ch.11/13/33/34, App A/D), the first
+  batch this session with zero overflow defects found on the consolidated verification pass.**
+  Dispatched 6 forks; all landed real, source-grounded content (Ch.11's `Texture3D`/`TextureCube`
+  inheritance stale-claim correction plus a volume-texture worked example; Ch.13's real-but-
+  stale-tracked `EnvironmentMapEffect` `DirectionalLight1`/`DirectionalLight2` forwarding task
+  with a discriminating three-light worked example; Ch.33's full `EnsureStorageRoot()`
+  four-tier platform-resolution chain and a genuinely new, previously-undocumented gap
+  --- `OpenFile`'s `FileShare` parameter cannot be honored at all, since `sharp-runtime`'s
+  `FileStream` has no constructor overload that accepts one; Ch.34's permanent scope-boundary
+  taxonomy (Reflection/GC/Serialization/P-Invoke/Cryptography, each with its own stated reason)
+  and the real vendored-dependency/build-structure account; Appendix A's new `SpriteFont` and
+  `Model`/`ModelMesh`/`ModelBone` quick-reference sections; Appendix D's org-wide `cloc`-measured
+  line-count comparison across all 18 real repositories, sourced from the `openeggbert/openeggbert`
+  index repo's own README --- not previously used as a source anywhere in this book).
+
+  The consolidated verification pass (forced `latexmk -g` rebuild, both greps, all twelve
+  touched pages across the six files rendered to PNG and read directly) found the batch
+  **completely clean** --- the first batch this entire session with zero real overflow defects,
+  after five consecutive batches that each found between one and four. A direct `wc -l` check
+  of all six touched files against PLAN.md's own claimed line counts also found zero stale rows,
+  the first batch where every fork's own line-count update was already accurate at commit time.
+
+  Final state: `make book` (forced rebuild) succeeded (**432 pages**, up from 424), both grep
+  checks clean, every one of the 6 newly-touched chapters/appendices confirmed clean. Session
+  total across all five batches: 424 -> 432 pages this batch alone; 371 -> 432 pages (+61)
+  across the whole session; twelve real, log-invisible overflow defects found and fixed in
+  total across the first five batches, none in the sixth.
