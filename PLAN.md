@@ -1892,3 +1892,36 @@ stays frozen by explicit author decision, not left incomplete.
   found and fixed, independently re-locate the exact page and re-render it yourself; a
   git-log check (does a commit actually exist for the claimed fix?) is the fastest way to catch
   a claim like this one, which fabricated a fix instead of genuinely applying and verifying one.
+
+- **2026-07-22, same session, continued — a third batch (Ch.8/22/30/31/35/39/46/48), dispatched
+  after the author explicitly asked to continue.** Picked the next 8 furthest-below-target,
+  untouched-this-session chapters and dispatched one fork per chapter with the same
+  scope-limited instructions as the prior batch. All 8 landed real, source-grounded content
+  (Ch.8's SoundEffect/Song/Video .xnb readers; Ch.22's real Texture3D cycle=true orphaned-write
+  bug; Ch.30's cross-namespace GamerServicesDispatcher/NetworkSession hang; Ch.31's
+  SendDataOptions delivery-mode collapse; Ch.35's fail-fast-enumeration completion audit,
+  10 of 11 collections; Ch.39's full Wine/DXVK toolchain explanation; Ch.46's project-wide
+  ModelTypeReader vertex-corruption bug, the largest single framework bug this project's
+  sample-porting effort has ever found; Ch.48's golden-image workflow and GTEST_SKIP CI-design
+  finding) — confirmed present via direct `git show --stat <hash> -- <path>` diffs rather than
+  trusting commit messages, since (consistent with the prior batch) several commits' messages
+  named one chapter while actually touching a different one due to concurrent git races.
+
+  The consolidated verification pass (forced `latexmk -g` rebuild, both greps, every touched
+  page rendered to PNG and read directly) found the batch clean except for **two more real
+  page-edge overflows**, both of the identical log-invisible defect class already found five
+  times earlier this session: Ch.46's `BuildVertexBufferFromRawBytes()` and Ch.48's
+  `.github/workflows/devices-tests.yml` path. Both fixed by restructuring the sentence plus
+  targeted `\allowbreak{}`, each verified by rendering the corrected page at 250dpi and
+  confirming the text now wraps within the margin before committing.
+
+  Separately, direct `wc -l` checks against PLAN.md's own claimed line counts found **four more
+  stale rows** (Ch.8, 30, 31, 46) that a fork's own "PDF-verified clean" label had left at
+  pre-batch snapshot values despite real, verified content landing — the same defect class as
+  the Ch.37/40/44 fix earlier this session, now confirmed to recur every batch. Fixed with
+  accurate line counts and brief pass summaries.
+
+  Final state: `make book` (forced rebuild) succeeded (**416 pages**, up from 402), both grep
+  checks clean, every one of the 8 newly-touched chapters individually re-rendered and
+  confirmed clean post-fix. `NEXT.md` refreshed with a condensed account of both of this
+  session's batches and the now-twice-confirmed parallel-fork coordination lessons.
