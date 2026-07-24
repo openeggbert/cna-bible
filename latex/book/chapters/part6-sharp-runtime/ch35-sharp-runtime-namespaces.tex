@@ -123,6 +123,50 @@ succeeded. A caller that genuinely wants a writable copy of existing buffer cont
 construct an empty \cnaclass{MemoryStream} and \texttt{Write} the source bytes into it
 explicitly, rather than relying on this specific constructor's own writability default.
 
+\subsection{Closing a memory stream closes operations, not the bytes it already owns}
+
+The constructor difference above should not be confused with this class's much more carefully
+matched close/dispose behavior.  \texttt{MemoryStream::Close()} changes only its
+\texttt{isOpen\_} state; it deliberately retains both the vector of bytes and the current
+position.  After close, \texttt{Read}, \texttt{Write}, \texttt{WriteByte}, \texttt{Seek},
+\texttt{Length}, and \texttt{Position} correctly reject use with
+\cnaclass{ObjectDisposedException}, while \texttt{CanSeek} returns false.  In deliberate
+contrast, \texttt{ToArray()} and \texttt{GetBuffer()} remain usable:
+
+\begin{lstlisting}
+System::IO::MemoryStream stream;
+const SharpRuntime::bytecs payload[] = {1, 2, 3, 4};
+stream.Write(payload, 0, 4);
+stream.Close();
+
+std::vector<SharpRuntime::bytecs> saved = stream.ToArray();  // still {1,2,3,4}
+// stream.getLengthProperty();  // throws ObjectDisposedException
+// stream.Read(buffer, 0, 1);   // throws ObjectDisposedException
+\end{lstlisting}
+
+That asymmetry is intentional, not a use-after-dispose loophole.  Real .NET's own
+\texttt{MemoryStream.Dispose(bool)} explicitly preserves its buffer so post-disposal
+\texttt{TryGetBuffer}, \texttt{GetBuffer}, and \texttt{ToArray} can still retrieve data; the
+runtime's \texttt{ensureNotClosed()} guard follows the same rule by guarding operations but not
+the two extraction methods.  CNA callers can therefore finish producing an in-memory content
+blob, close the stream to catch accidental later I/O, and still hand a stable copy to a consumer.
+The distinction between the methods matters: \texttt{ToArray()} returns an independent vector,
+safe across later stream writes, whereas \texttt{GetBuffer()} is a reference to the live vector
+and may be invalidated by a reallocation.
+
+The same implementation also has two less obvious safety properties whose tests prevent a
+``memory only'' stream from becoming an unchecked byte container.  Null buffers and negative
+offsets/counts are rejected with the real \cnaclass{ArgumentNullException} or
+\cnaclass{ArgumentOutOfRangeException} rather than being mistaken for an EOF return of zero.
+And a caller may legally set \texttt{Position} past the current end, but a later write computes
+\texttt{position + count} in \texttt{int64\_t} before resizing.  If that sum exceeds the
+runtime's signed \texttt{intcs} range it throws \cnaclass{IO::IOException} (``Stream was too
+long.'') instead of wrapping negative and writing beyond the vector.  This was not defensive
+theorizing: the former narrow-integer calculation had the same signed-overflow shape already
+reproduced under UBSan in a related slicing path, and \texttt{StreamTests.cpp} now exercises
+\texttt{Position = 2147483647} followed by a ten-byte write specifically to require the
+exception rather than an allocation or memory corruption.
+
 \section{\cnaclass{UTF8Encoding}: real conformance validation, an untested fallback path}
 
 \cnaclass{Text::UTF8Encoding}'s own class comment states a real, specific guarantee that is
