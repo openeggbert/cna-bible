@@ -24,6 +24,11 @@
 \item[D3D12] CNA's Direct3D~12 graphics backend; unlike D3D11 it has no native convenience call
   for mipmap generation and instead implements it as an explicit, face-scoped CPU
   readback/downsample/upload loop. See Chapter~23.
+\item[Descriptor heap] A Direct3D~12-owned table of resource-view descriptions rather than the
+  resources themselves. CNA's D3D12 backend keeps separate RTV, DSV, CBV/SRV/UAV, and sampler
+  heaps, currently using fixed-capacity bump allocation with no slot reclamation during a device
+  lifetime; exhaustion is therefore a CNA implementation limit, not a Direct3D~12 resource-memory
+  limit. See Chapter~23.
 \item[DX3] CNA's graphics backend fronting the sibling \texttt{free-direct} project; a 2D-only
   backend, in the same spirit as \texttt{SDL\_RENDERER}. See Chapter~25.
 \item[EASYGL] CNA's OpenGL/OpenGLES graphics backend, built on the sibling \texttt{easy-gl}
@@ -46,6 +51,11 @@
   own differential-testing infrastructure --- not the same thing as the real Microsoft
   XNA~4.0 specification, a distinction this book returns to repeatedly (most sharply in the
   Media chapter's \cnaclass{Song} finding, Chapter~28).
+\item[Fence (D3D12)] A GPU-completion counter used to tell when submitted Direct3D~12 command
+  work has finished. CNA records one previous fence value for each of its two command-allocator
+  slots and waits before reusing that slot, rather than waiting for the newly submitted frame
+  itself; its simpler off-screen draw helpers intentionally wait synchronously for deterministic
+  readback. See Chapter~23.
 \item[GamerServices] The XNA namespace covering Xbox-Live-era player profile, achievement,
   leaderboard, and system-UI concepts. CNA implements it with real local persistence where
   FNA does not implement it at all. See Chapter~30.
@@ -78,6 +88,12 @@
 \item[MojoShader] The bytecode-to-GLSL cross-compiler FNA uses to run compiled Direct3D~9
   shader bytecode. CNA has no equivalent, which is the root cause of the shader/.fx bytecode
   gap covered in Chapter~15.
+\item[MemoryStream] sharp-runtime's in-memory \cnaclass{IO::Stream} implementation, used where
+  a real file path is unavailable (for example content loaded from Android assets). Closing it
+  makes I/O operations throw \cnaclass{ObjectDisposedException}, but deliberately preserves the
+  bytes for post-close \texttt{ToArray()} / \texttt{GetBuffer()} extraction. Its raw-buffer
+  constructor is a known divergence: it creates a read-only stream where real .NET defaults to
+  writable. See Chapter~35.
 \item[NOXNA] CNA's marker convention (a macro, and a matching compile-time build option) for
   any declaration inside the XNA namespace tree that is not part of the real XNA~4.0 API. See
   Chapter~3.
@@ -123,6 +139,10 @@
   small, XNA namespace for user-data persistence (\cnaclass{StorageDevice},
   \cnaclass{StorageContainer}), backed by a straightforward local-filesystem implementation
   underneath a faithfully-preserved fake-async API shape. See Chapter~33.
+\item[VertexDeclaration] The backend-independent description of a vertex layout: a stride plus
+  \cnaclass{VertexElement} records naming offsets, formats, and usages. It is pure data and can
+  be constructed on CNA's 2D-only SDL\_Renderer backend; an actual 3D draw that uses it is where
+  that backend correctly throws. See Chapters~7, 15, and~17.
 \item[VULKAN] One of CNA's twelve graphics backends, targeting the Vulkan API directly. See
   Chapter~19.
 \item[WEBGPU] CNA's experimental fifth graphics backend, targeting native \texttt{wgpu-native}.
