@@ -35,12 +35,13 @@ PLAN rows are now honestly marked **PDF-verified clean**. The four content commi
 pushed to `develop`; the continuity update is also committed and pushed as `87fb144`.
 
 **New in-progress work, not yet verified:** Appendix E has a source-verified fourth pass on
-`SkinnedPbrEffect` and its `AnimationPlayer`/`SkinningData` relation. Its status is deliberately
-**pending batch verification**, not clean: a clean rebuild was started after its generated
-auxiliaries were cleared, but this environment terminated each individual compiler process before
-it reached the end of the 454-page document. This is an execution-time limitation, not a source
-diagnostic; do not claim a 454-page PDF or clean reference state again until a complete rebuild
-finishes. The last fully verified baseline remains commit `87fb144` (454 pages).
+`SkinnedPbrEffect` and its `AnimationPlayer`/`SkinningData` relation; Appendix F has a matching
+source-verified `MemoryStream` quick-reference entry. Their status is deliberately **pending
+batch verification**, not clean: a clean rebuild was started after its generated auxiliaries were
+cleared, but this environment terminated each individual compiler process before it reached the
+end of the 454-page document. This is an execution-time limitation, not a source diagnostic; do
+not claim a 454-page PDF or clean reference state again until a complete rebuild finishes. The
+last fully verified baseline remains commit `87fb144` (454 pages).
 
 This was an unusually long, multi-batch session (author unavailable for many hours, explicit
 "continue autonomously" instruction given partway through, repeated several times). Seven full

@@ -224,6 +224,18 @@ stream and available to override where writing or seeking is genuinely supported
 class every concrete stream this book names (\cnaclass{MemoryStream}, and the real filesystem
 streams \cnaclass{StorageContainer::OpenFile} in Chapter~33 returns) derives from.
 
+\cnaclass{MemoryStream} is the concrete in-memory \cnaclass{Stream} this ecosystem uses when
+there is no meaningful file path (notably loaded Android content). Its default constructor makes
+an empty writable byte vector. The raw-buffer constructor deliberately differs from .NET:
+it defaults to read-only, where real \texttt{MemoryStream(byte[])} defaults to writable. Calling
+\texttt{Close()} rejects subsequent normal stream operations (including \texttt{Read},
+\texttt{Write}, \texttt{Seek}, \texttt{Length}, and \texttt{Position}), but intentionally leaves
+\texttt{ToArray()} and \texttt{GetBuffer()} available for post-close extraction. The former
+returns an independent vector; the latter exposes the live backing vector and so cannot be held
+across a write that may reallocate it. Argument validation rejects null buffers and negative
+offsets/counts, while a write whose \texttt{Position + count} overflows the runtime's signed
+integer range throws \cnaclass{System::IO::IOException} rather than corrupting memory --- Ch.35.
+
 \section{Reading this appendix safely}
 
 The same caution Appendix~\ref{ch:api-quick-reference} states applies here without
