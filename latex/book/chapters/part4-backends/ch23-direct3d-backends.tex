@@ -236,6 +236,57 @@ a live window are proven, but only through a separate, manual diagnostic tool ru
 Proton-managed launch --- never through the routine, automated CTest run, because a full
 Proton bootstrap was judged too heavy and slow for a normal test run in this dev loop.
 
+\subsection{Two frames in flight is a real primitive, not a promise that every call site is non-blocking}
+
+Unlike the driver-managed D3D11 model, D3D12 makes the command allocator lifetime explicit.
+CNA therefore creates exactly two \texttt{ID3D12CommandAllocator} objects
+(\texttt{kFramesInFlight = 2}), one reusable graphics command list, one shared
+\texttt{ID3D12Fence}, and one remembered fence value per allocator slot.  The essential
+operation, \texttt{SignalAndWaitForFrameEXT(frameIndex)}, deliberately has a slightly
+counter-intuitive ordering: it signals a \emph{new}, monotonically increasing value for the
+frame just submitted, then waits only for the \emph{previous} value recorded for that same
+slot before allowing its allocator to be reused.  Thus a call for slot~0 may submit value
+\texttt{v2} while waiting for older \texttt{v0}; it must not wait for \texttt{v2} itself,
+because doing so would erase the overlap the two slots exist to permit.
+
+The backend's real smoke test makes that contract observable rather than treating fence
+arithmetic as self-evident.  It invokes the primitive for slots 0, 1, and 0 again, verifies
+that \texttt{v0 < v1 < v2}, and, on the second use of slot~0, requires
+\texttt{GetCompletedValue()} to have reached \texttt{v0}.  It intentionally does \emph{not}
+assert that \texttt{v2} has completed on return: \texttt{ID3D12CommandQueue::Signal()} is
+asynchronous, so that would be a race, not a correctness condition.  A separate explicit
+event wait proves eventual completion.  The test goes one step further by placing 48 real
+64-MiB GPU copies ahead of the old fence and comparing that wait with an already-complete
+control wait; the loaded wait is measurably slower, establishing that the
+\texttt{WaitForSingleObject()} branch genuinely supplies back-pressure rather than merely
+passing an already-satisfied condition.
+
+There is an important present-tense limitation in the distinction.  The reusable
+two-slot primitive is real and directly tested, but the current ordinary clear/draw helper
+uses \texttt{ExecuteCommandListAndWaitEXT()}, its intentionally simpler synchronous sibling:
+it submits a closed list, signals a fresh fence value, and waits for \emph{that} value before
+returning.  \texttt{Present()} likewise uses that synchronous helper for its explicit
+back-buffer transition before calling \texttt{IDXGISwapChain3::Present()}.  Consequently a
+reader should understand ``two frames in flight'' here as tested infrastructure and the
+correct allocator-reuse rule, not as a performance claim that all current CNA D3D12 drawing
+automatically overlaps two CPU frames.  This is an honest staging choice: the off-screen
+test paths prioritize a deterministic readback boundary, while the primitive preserves the
+non-stalling policy a batched production present loop needs when that path is used.
+
+The descriptor lifetime model has the same deliberately explicit character.  Render-target,
+depth-stencil, shader-resource, and sampler descriptors come from four separate heaps; their
+current allocators are fixed-capacity, monotonically advancing bump allocators, not a general
+free-list.  A destroyed resource does not return its descriptor slot during the device's
+lifetime, and exhaustion throws a named \texttt{std::runtime\_error} instead of silently
+aliasing another resource's view.  The capacities in the live backend --- 64 RTV, 8 DSV,
+64 CBV/SRV/UAV, and 16 sampler descriptors --- are therefore engineering limits of this
+implementation, not Direct3D~12 limits.  The RTV heap has already been raised several times
+when genuine smoke-test render targets, including a six-face cube target, consumed its earlier
+budget.  That history is a useful warning for code that creates and destroys a large number
+of transient CNA render targets: it should not mistake the absence of a descriptor free-list
+for a GPU-memory leak, but it also cannot assume unlimited descriptor churn in one device
+instance.
+
 \subsection{A genuine architecture mismatch, not a CNA bug}
 
 Swap-chain creation under \emph{plain} Wine (as opposed to a Proton-managed launch) crashes
