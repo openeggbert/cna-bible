@@ -5,13 +5,34 @@ the permanent session log.** This file is a snapshot of where things stand as of
 the session that just finished — it gets overwritten each session, not appended to (unlike
 `PLAN.md`'s own internal session log, a permanent history).
 
-## Where things stand (end of session, 2026-07-22)
+## Where things stand (updated 2026-07-24)
 
-**452 pages, 49 chapters + 6 appendices, 0 undefined references, 0 duplicate-label warnings —
-independently re-verified via a forced rebuild (`latexmk -g`) against a clean `git status`
-immediately before this file was written.** Re-verify before trusting this in a future session;
+**454 pages, 49 chapters + 6 appendices, 0 undefined references, 0 duplicate-label warnings —
+independently re-verified via a forced rebuild (`latexmk -g`) after the latest documentation
+batch.** Re-verify before trusting this in a future session;
 use `grep -i "Warning.*undefined\|undefined reference\|undefined control"`, not a plain
 `grep -i undefined`.
+
+The 2026-07-24 continuation completed and pixel-verified a focused four-file batch:
+
+- **Ch.23 (Direct3D)** now distinguishes the real two-slot fence/allocator reuse contract from
+  a claim that every path is non-blocking: its ordinary clear/draw and present-transition
+  helpers deliberately wait synchronously. It also records the fixed no-reclamation descriptor
+  heaps as per-device CNA engineering budgets, not Direct3D 12 resource limits.
+- **Ch.17 (SDL_Renderer)** documents the precise 2D/3D execution boundary: vertex declarations,
+  stock-effect construction/application and state assignment work as data operations, while a
+  3D draw (and buffer construction) is the intentional runtime boundary.
+- **Ch.35 (Sharp Runtime)** documents `MemoryStream`'s post-close split: normal stream
+  operations reject use, while `ToArray()` and `GetBuffer()` retain deliberate extraction
+  access, including independent-copy versus live-buffer lifetime.
+- **Appendix C** gained four alphabetized source-grounded glossary entries for the above
+  D3D12, MemoryStream and vertex-declaration terms.
+
+Validation for this batch: forced `latexmk -g` succeeded; the targeted undefined-reference and
+duplicate-label greps were empty; all affected physical PDF pages were rendered to PNG and read
+directly (Ch.17: 179--186; Ch.23: 225--234; Ch.35: 326--334; Appendix C: 429--432). All four
+PLAN rows are now honestly marked **PDF-verified clean**. The four content commits are already
+pushed to `develop`; commit this continuity update with the plan-state change before handoff.
 
 This was an unusually long, multi-batch session (author unavailable for many hours, explicit
 "continue autonomously" instruction given partway through, repeated several times). Seven full
@@ -101,11 +122,13 @@ own in-progress edit is the only one in flight.
 Furthest-below-target as of this session's end (recompute from `PLAN.md`'s own table if this
 list and PLAN.md ever disagree):
 
-- Ch.23 Direct3D Backends — even after two passes this session, still the largest absolute page
-  gap in the book (target 85, still well under half). Worth a dedicated multi-pass focus.
-- Ch.17 SDL_Renderer Backend, Ch.35 Sharp Runtime Namespaces (both touched only incidentally
-  this batch — a header fix and a fatal-error fix respectively, not a real depth pass)
-- Appendices C, E, F — untouched all session, all still comfortably under target
+- Ch.23 Direct3D Backends remains the largest absolute page gap (about 17 of 85 pages), despite
+  a now-completed eighth source-driven pass. Continue there if selecting a body chapter.
+- Ch.17 SDL_Renderer (about 13 of 55) and Ch.35 Sharp Runtime Namespaces (about 17 of 70) have
+  each received a seventh real depth pass and are verified clean, but remain substantially below
+  their targets.
+- Appendices E and F remain at about 5 of 20 and 5 of 25 pages. Appendix C is now about 6 of
+  15 and was just verified; these appendices are good independent next tasks.
 - Ch.7 Math remains the largest chapter by far and may be genuinely saturated (four-plus prior
   sessions' worth of depth passes) — read its own `PLAN.md` row before adding more.
 - Screenshot infrastructure: `ASCII` and `CANVAS` backends remain untried for real screenshot
