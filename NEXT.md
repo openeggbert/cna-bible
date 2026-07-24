@@ -32,7 +32,15 @@ Validation for this batch: forced `latexmk -g` succeeded; the targeted undefined
 duplicate-label greps were empty; all affected physical PDF pages were rendered to PNG and read
 directly (Ch.17: 179--186; Ch.23: 225--234; Ch.35: 326--334; Appendix C: 429--432). All four
 PLAN rows are now honestly marked **PDF-verified clean**. The four content commits are already
-pushed to `develop`; commit this continuity update with the plan-state change before handoff.
+pushed to `develop`; the continuity update is also committed and pushed as `87fb144`.
+
+**New in-progress work, not yet verified:** Appendix E has a source-verified fourth pass on
+`SkinnedPbrEffect` and its `AnimationPlayer`/`SkinningData` relation. Its status is deliberately
+**pending batch verification**, not clean: a clean rebuild was started after its generated
+auxiliaries were cleared, but this environment terminated each individual compiler process before
+it reached the end of the 454-page document. This is an execution-time limitation, not a source
+diagnostic; do not claim a 454-page PDF or clean reference state again until a complete rebuild
+finishes. The last fully verified baseline remains commit `87fb144` (454 pages).
 
 This was an unusually long, multi-batch session (author unavailable for many hours, explicit
 "continue autonomously" instruction given partway through, repeated several times). Seven full
