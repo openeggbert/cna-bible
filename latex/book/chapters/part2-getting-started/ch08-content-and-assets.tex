@@ -375,6 +375,70 @@ registration and direct throw, plus healthy custom registration and selected col
 none exercises incorrect \texttt{any} boxing, the move-only direct-overload trap, target-name
 disagreement, initializer lifetime, or the global registry's null-returning factory.
 
+\subsection{An XNB header chooses a decoder; it is not yet a complete input-admission firewall}
+\label{sec:xnb-container-boundary}
+
+The ten-byte XNB header is parsed as three literal magic bytes, one of FNA's sixteen accepted
+platform bytes, version 4 or 5, one flags byte, and a signed little-endian \texttt{totalLength}.
+Bad magic/platform/version becomes \cnaclass{ContentLoadException}; a physically truncated header
+instead retains \cnaclass{BinaryReader}'s end-of-stream exception. CNA distinguishes the real
+\texttt{0x80} LZX and \texttt{0x40} MonoGame LZ4 bits, rejects the combination of both, and gives
+LZ4 a clear unsupported-compression error. The other flag bits are not validated: a flag such as
+\texttt{0x01} has neither compression bit and follows the uncompressed route. This is intentionally
+FNA-shaped platform/version compatibility, including old identifiers, rather than a promise to
+accept every later MonoGame platform or flag convention.
+
+\texttt{totalLength} is not validated by \texttt{ParseXnbHeader()} itself. Normal
+\cnaclass{ContentManager} loading first reads the \emph{entire} filesystem file into a
+\texttt{std::string}, then rejects only a declared length below ten or above the bytes actually
+read. That fixed the historical over-read when a corrupted LZX header claimed more bytes than its
+file contains, and the focused test proves that direction. It is deliberately not equality:
+a smaller declared length and trailing physical bytes are accepted. The uncompressed path then
+hands every byte after the ten-byte header to \cnaclass{ContentReader}, not only the declared
+range, and no later end-of-asset check rejects unused trailing data. The LZX path instead computes
+its compressed span from the smaller declared length and ignores physical trailing bytes. Thus the
+same malformed under-declaration has two different payload boundaries; a header length is not a
+file-integrity assertion on current \texttt{develop}.
+
+The LZX route needs an additional four-byte decompressed-size field after the container header.
+The current preflight accepts a compressed \texttt{totalLength} from ten through thirteen, then
+constructs and reads that four-byte field before any check that fourteen physical bytes exist.
+With a file that really ends in that range this is outside the established safe parsing contract;
+with extra physical bytes it reaches the later negative-compressed-size rejection instead. No
+located header, manager, container-fuzz, or LZX test exercises this short-compressed-prefix case.
+The decompressed-size value is required to be nonnegative and at most
+\texttt{maxDecompressedSize}; compressed bytes are separately limited by \texttt{maxFileSize}.
+
+Those two LZX checks are useful but do not bound what the decoder writes. Each block declares a
+frame size (normally 32 KiB), and \texttt{LzxDecoder::Decompress()} writes that full frame to a
+growing \cnaclass{MemoryStream}. Only after all frames does the wrapper compare its accumulated
+position with the declared decompressed size. A malicious compressed stream can therefore cause
+the buffer to grow past the declared and configured decompressed limit before that final mismatch
+is noticed; the stream's own signed maximum eventually yields a different allocation/stream
+failure, not the promised content-limit error. The deterministic LZX fuzz test mutates two small
+real payloads and is valuable crash coverage, but it does not construct an overproducing
+multi-block stream or assert a cumulative output budget.
+
+The name \texttt{maxFileSize} is therefore narrower than its declaration suggests. It constrains
+only the declared compressed LZX payload after \cnaclass{ContentManager} has already materialized
+the whole file; uncompressed XNBs and an LZX file padded after a small declared length have no
+file-size gate at all. The public manager offers no limits parameter or setter, so ordinary
+\texttt{Load<T>()} always uses the global defaults; only a standalone \cnaclass{ContentReader} or
+direct decompression caller can provide a custom limit record. Current FNA is less defensive still:
+it trusts its header lengths, treats the LZX bit as a boolean compression choice, preallocates the
+declared decompressed buffer, and has no corresponding configurable ceilings. CNA's existing
+checks are still worthwhile, but they do not justify treating untrusted containers as bounded.
+
+The manifest scanner is intentionally weaker again. It reads every candidate file whole, parses
+only an uncompressed header/table, does not compare its declared length with the bytes read, and
+catches every failure into an indistinguishable empty reader-name list. That is acceptable for its
+best-effort diagnostics role, but it must not be reused as validation. A source-level corrective
+pass should make the physical and declared length exact, reject a compressed header shorter than
+fourteen bytes before pointer arithmetic, stream or pre-limit input before allocation, and enforce
+a cumulative LZX output ceiling during decoding. Those are CNA implementation decisions; this
+book documents the present boundary rather than claiming that the independent
+\texttt{feature/audit} branch has already supplied them.
+
 \section{The resolution order, precisely}
 
 The earlier short three-way description is useful, but it hides two consequential facts: a

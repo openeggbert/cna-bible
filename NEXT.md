@@ -6,8 +6,8 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **539 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by twenty-one documentation commits: `944fa54`
+- Book: **541 physical PDF pages, 49 chapters, 6 appendices**.
+- The local branch is ahead of `origin/develop` by twenty-two documentation commits: `944fa54`
   (render-target binding/usage contracts), the Reset-order contracts batch, the resource-lifecycle
   audit, the construction/SDL-ownership audit, the multisample-backend-rebuild audit, and the
   Game/GraphicsDeviceManager lifecycle and callback/disposal audits, plus the Game
@@ -15,14 +15,54 @@ session log; this file is the concise live handoff.
   copy/replacement, service-provider/device-resolution, reader-registration, root/path, and
   Load-failure/type/cache-mutation, concurrency/reentrancy, content-manifest introspection,
   format-selection/fallback, ResourceContentManager/OpenStream, TitleContainer/TitleLocation,
-  ContentReader, and ContentTypeReader audits below. The previous twenty-commit count was accurate
-  before this local batch and is retained only in the historical session log.
+  ContentReader, ContentTypeReader, and XNB header/decompression audits below. The previous
+  twenty-one-commit count was accurate before this local batch and is retained only in the
+  historical session log.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
   reviewing `git push`. Its response explicitly rejected the request rather than granting
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: ContentTypeReader erased-value and collection boundary
+## Latest completed batch: XNB container header, LZX handoff, and input-limit boundary
+
+No CNA source changes were made; the sibling repository remained a read-only authority. The
+header, default limits, LZX wrapper/decoder, ContentManager load and manifest paths, all focused
+header/manager/LZX/fuzz tests, hardening history, sharp-runtime stream behavior, and current FNA
+loader establish:
+
+- Header parsing validates XNB magic, the FNA-compatible platform set, versions 4/5, and the
+  LZX/LZ4/both compression-bit cases. It does not validate the other flags. Its signed
+  totalLength is only checked by normal loading, after the whole physical file is already read,
+  and only for 10 <= declared <= physical; equality is not required.
+- A smaller declared length and physical trailing data are accepted. Uncompressed loading gives
+  every byte after the header to ContentReader and never verifies end-of-asset; LZX instead uses
+  only the declared compressed span. Header length is therefore not an integrity assertion.
+- LZX needs four bytes after the header for the decompressed size, but a declared compressed
+  totalLength from 10 through 13 reaches that field before a 14-byte physical minimum is checked.
+  This is outside the established safe parsing contract and has no focused test.
+- The declared compressed/decompressed sizes have useful checks, but the decoder writes each
+  frame to a growing MemoryStream and only compares accumulated output with the declared size at
+  the end. A crafted multi-block stream can exceed maxDecompressedSize before that mismatch
+  fails. maxFileSize only constrains declared LZX bytes after full-file materialization; it does
+  not bound uncompressed input or padded physical files. ContentManager exposes no limit
+  configuration.
+- The manifest scanner is deliberately weaker: whole-file, uncompressed-only, and catch-all
+  best effort, without a declared-length check. FNA trusts its XNB header lengths even more, so
+  its behavior is not a safety guarantee for CNA.
+
+Ch.8 now records the exact flag, length, prefix, allocation-budget, configuration, manifest, FNA,
+and test boundary. Full latexmk succeeded at **541 pages**; targeted undefined-reference and
+duplicate-label checks are empty; makeindex accepted **2,200** entries with zero rejected and zero
+warnings; git diff --check passes. Rendered physical pages **107--108** are clean. Ch.8 is
+**1,261** lines and Ch.6 is **621** lines. The plan-consistency validator remains absent from this
+checkout.
+
+Next recommended start: retain the XNB scope and audit XnbTypeName/XnbTypeReaderTable canonical
+name normalization, nested-generic parsing, version/name admission, and error behavior. Treat the
+already documented inactive string/nesting limits as current develop facts, not as implemented
+hardening.
+
+## Previous completed batch: ContentTypeReader erased-value and collection boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. The
 generic/base/manager API, all focused registration/custom/collection/unsupported-reader tests,
@@ -64,10 +104,8 @@ with zero rejected and zero warnings; git diff --check passes. Rendered physical
 **106--107** are clean. Ch.8 is **1,197** lines and Ch.6 is **621** lines. The
 plan-consistency validator remains absent from this checkout.
 
-Next recommended start: retain the XNB scope and audit the XNB header/decompression handoff and
-its cross-layer size/length limits. Separate validated compressed LZX input from the unbounded
-uncompressed whole-file path already documented in the reader contract; do not treat the
-non-integrated feature/audit hardening commit as current develop behavior.
+The next recommended audit at this checkpoint was the XNB header/decompression handoff. It was
+completed in the newer batch above.
 
 ## Previous completed batch: ContentReader XNB object-graph session boundary
 
