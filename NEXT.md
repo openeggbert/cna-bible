@@ -7,8 +7,9 @@ session log; this file is the concise live handoff.
 
 - Branch: `develop`.
 - Book: **519 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by two documentation commits:
-  `944fa54` (render-target binding/usage contracts) and this Reset-order contracts batch.
+- The local branch is ahead of `origin/develop` by three documentation commits: `944fa54`
+  (render-target binding/usage contracts), the Reset-order contracts batch, and the current
+  resource-lifecycle audit.
   The previous seventeen-commit count was accurate before the remote advanced and is retained
   only in the historical session log.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
@@ -16,7 +17,50 @@ session log; this file is the concise live handoff.
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: `GraphicsDevice::Reset()` event order
+## Latest completed batch: resource registration, events, and disposal
+
+No CNA source changes were made; the sibling repository remained a read-only authority.
+The implementation, focused examples/CMake registration, and current FNA source establish:
+
+- `ResourceCreated` is raised from the `GraphicsResource` base constructor, before a derived
+  texture, buffer, or effect has constructed its backend handle. `ResourceDestroyed` follows
+  a derived `Dispose(bool)` handle release but precedes base `IsDisposed` and raw-pointer
+  deregistration; it carries a `Name`/`Tag` snapshot, not a resource pointer. Event handlers
+  must therefore record lifecycle facts rather than inspect a usable backend.
+- For ordinary, unbound resources, device disposal moves and clears the tracking vector,
+  disposes the resources, then destroys the native context. The earlier book wording and the
+  sibling `docs/graphics-resource-lifetime.md` were wrong about the destructor route:
+  `Dispose(false)` suppresses only the resource's own `Disposing` event; it still emits the
+  device `ResourceDestroyed` event and removes the resource pointer.
+- Two untested public-state failures break that ordinary-order guarantee. A bound
+  `RenderTarget2D` throws during device disposal after the tracking vector was moved/cleared,
+  so the exception aborts backend teardown and a retry no longer tracks that target. Separately,
+  `GraphicsDevice::IsDisposed` remains false while its `Disposing` handlers run, so a handler
+  which calls `Dispose()` re-enters rather than being idempotently rejected. Current FNA sets
+  the flag before its notification; no CNA test covers this re-entrant case.
+- Default C++ move construction transfers a registered resource's backend without replacing
+  the raw entry in the device vector. The existing EasyGL move test proves only backend-handle
+  transfer with a live device, not device-first destruction or tracking/event correctness. Do
+  not move an already registered resource; construct it in place or move it before registration.
+- The existing event test proves explicit created/destroyed counts, `Name`/`Tag`, and
+  double-dispose suppression. The device-order test owns only buffers and an ordinary texture;
+  it does not exercise a bound render target. These boundaries are stated explicitly instead
+  of being elevated into runtime proof.
+- Ch.9 now carries the constructor/destructor timing, corrected finalizer behavior, the two
+  teardown holes, and the precise move outcome. Its historical FNA-audit note now separates the
+  stale “no tracking” claim from the still-true absence of a CNA per-resource reset callback;
+  FNA's corresponding reset loop is itself currently commented out.
+- Validation: incremental `latexmk` succeeded at **519 pages**; targeted undefined-reference
+  and duplicate-label checks are empty; makeindex accepted **2,123** entries with zero rejected
+  and zero warnings; `git diff --check` passes. The four overfull boxes introduced while
+  drafting were removed. Rendered printed pages 103--104 are clean. Ch.9 is now **1,338** lines.
+
+Next recommended start: reassess the remaining construction/failure paths of the public
+`GraphicsDevice` lifecycle, beginning with SDL video-subsystem ownership and exception safety
+between backend creation and a fully usable device. Keep resource-event conclusions limited to
+the source/test evidence above.
+
+## Previous completed batch: `GraphicsDevice::Reset()` event order
 
 No CNA source changes were made; the sibling repository remained a read-only authority.
 The implementation, focused examples/CMake registration, and current FNA source establish:

@@ -928,29 +928,68 @@ yet all four inherit the same \texttt{true} capability answer.
 \texttt{std::vector<GraphicsResource*> resources\_}, mutated only through
 \texttt{AddResourceReference} / \texttt{RemoveResourceReference} (\S\ref{sec:noxna-helpers} above)
 --- both existing purely so the device can guarantee a specific disposal order.
-\texttt{ResourceCreated} fires immediately after registration; \texttt{ResourceDestroyed} fires
-\emph{before} de-registration, carrying a \texttt{Name} / \texttt{Tag} snapshot captured while the
-resource is still valid. Removal is swap-and-pop (O(1), order not preserved) --- deliberate,
-since nothing about resource tracking depends on iteration order.
+\texttt{ResourceCreated} fires immediately after registration, from the
+\emph{base-class constructor}; a handler receives the resource pointer before the derived
+\texttt{Texture2D}, buffer, or effect constructor has created its backend handle. Conversely,
+\texttt{ResourceDestroyed} fires after a derived \texttt{Dispose(bool)} has released that handle,
+but before the base class removes the pointer or sets \texttt{IsDisposed}. It carries only a
+\texttt{Name} / \texttt{Tag} snapshot, not the resource pointer. Removal is swap-and-pop (O(1),
+order not preserved) --- deliberate, since nothing about resource tracking depends on iteration
+order.
 
-The disposal sequence this buys is the single most important invariant in this chapter: calling
-\texttt{GraphicsDevice::Dispose()} copies and clears \texttt{resources\_}, disposes every
-tracked resource \emph{first}, and only then tears down the native backend context
-(SDL/Vulkan/GL). No graphics-API call can ever be issued against an already-destroyed context,
-because every resource that might issue one is disposed strictly before the context that would
-receive it.
+For ordinary, unbound resources, the disposal sequence is the key invariant: calling
+the device's \texttt{Dispose()} copies and clears \texttt{resources\_}, disposes every tracked
+resource \emph{first}, and only then tears down the native backend context (SDL/Vulkan/GL). That
+ordering is what prevents a normal resource destructor from calling an already-destroyed context.
+It is not, however, an exception-safe universal guarantee; the next subsection records the
+two current public-state paths that break it.
 
 \begin{sourcenote}
-\textbf{A documentation trap worth naming explicitly.} \texttt{docs/graphicsresource-fna-audit.md}
-states, as an open gap, that ``device resource tracking: not implemented'' and that a
-\texttt{GraphicsDeviceResetting()} callback is missing. Both claims are stale --- the resource
-tracking mechanism described in this section, and the \texttt{DeviceResetting} event on
-\cnaclass{GraphicsDevice} itself, both demonstrably exist in the current header. This looks
-like exactly the kind of documentation drift Chapter~\ref{ch:what-is-cna} warned about: treat a
-specific, checkable claim in \texttt{docs/} with the same ``verify against current source, not
-memory'' discipline the project asks of itself, even when the claim comes from the project's
-own documentation.
+\textbf{A documentation trap worth naming explicitly.} \texttt{docs/\allowbreak{}graphicsresource-fna-audit.md}
+still states that device resource tracking is not implemented; that specific claim is stale, as
+the live vector and its focused tests demonstrate. Its separate
+\cnaclass{GraphicsResource}\allowbreak\texttt{::GraphicsDeviceResetting()} gap remains technically accurate:
+\cnaclass{GraphicsDevice}'s public \texttt{DeviceResetting} event is not a per-resource
+callback. It also is not a live FNA reset requirement today, because FNA's corresponding
+resource-notification loop is commented out in its current \texttt{Reset()} implementation.
+The useful lesson is narrower than the audit's old conclusion: check each checkable claim in
+\texttt{docs/} against current source rather than accepting a whole historical gap list as one
+atomic fact.
 \end{sourcenote}
+
+\subsection{Constructor events, finalizers, and two teardown holes}
+
+The event names should not be read as a safe resource-inspection protocol. The created event runs
+while only the \cnaclass{GraphicsResource} base is constructed; the destroyed event runs after
+the usual derived classes have reset their native \texttt{unique\_ptr}. A handler can reliably
+record creation or the final \texttt{Name}/\texttt{Tag}, but must not infer a usable backend from
+either event. The registered EasyGL event test proves counts, double-dispose suppression, and
+\texttt{Name}/\texttt{Tag}; its callback only counts or copies arguments, so it does not test
+calling back into a half-built or half-disposed resource.
+
+An important correction to both this chapter's former wording and the older sibling
+\texttt{docs/\allowbreak{}graphics-resource-lifetime.md} follows directly from
+\cnaclass{GraphicsResource}\allowbreak\texttt{::Dispose(bool)}: \texttt{Dispose(false)} still calls
+\texttt{OnResource\allowbreak{}Destroyed()} and removes the raw tracking pointer. Thus a C\texttt{++}
+destructor suppresses the resource's own \texttt{Disposing} event, but it does \emph{not}
+suppress \cnaclass{GraphicsDevice}\allowbreak\texttt{::ResourceDestroyed}. The explicit-Dispose tests never observe
+that route, because they dispose each object before its scope ends.
+
+Two untested paths are more serious. First, \cnaclass{RenderTarget2D}'s disposal guard throws if
+the target is still bound. If that target is encountered during
+\texttt{GraphicsDevice::Dispose()}, the device has already moved and cleared its tracking vector;
+the exception prevents backend teardown, and a later retry no longer has that resource in the
+list. The bound-resource test proves that the direct throw is deliberate, while the device-order
+test creates only buffers and an ordinary texture; no located test combines a bound target with
+device disposal. Code which explicitly owns a device must unbind its targets before disposal.
+
+Second, \texttt{GraphicsDevice} leaves \texttt{IsDisposed} false until after it raises
+\texttt{Disposing}, destroys native resources, and quits SDL video. A handler which calls
+\texttt{Dispose()} again re-enters and raises \texttt{Disposing} again rather than seeing an
+idempotent completed device. Current FNA sets \texttt{IsDisposed} before it notifies handlers
+(the reference source is linked in \S\ref{sec:graphicsdevice-reset-order}). No CNA test locates
+a re-entrant device-\texttt{Disposing} handler, so this is source-established rather than a
+runtime-verified compatibility result.
 
 \subsection{Per-backend disposal caveats}
 
@@ -979,15 +1018,20 @@ static preset instances (\cnaclass{BlendState::Opaque}, \cnaclass{RasterizerStat
 and so on) that exist before any real device does, and those presets simply skip
 tracking/registration/events entirely.
 
-A subtlety worth internalizing: GPU handles are freed on \texttt{Dispose()}, not on the
-C\texttt{++} destructor. The destructor does call \texttt{Dispose(false)} as a safety net, but
-that path deliberately skips the \texttt{Disposing} / \texttt{ResourceDestroyed} events ---
-matching the standard C\# \texttt{IDisposable} finalizer-vs-explicit-dispose distinction, now
-expressed in C\texttt{++} terms. Move semantics transfer \texttt{unique\_ptr}-owned GPU state
-correctly but do \emph{not} update the device's tracking-list pointer entry, which means moving
-a resource that is currently tracked by a live \cnaclass{GraphicsDevice} to a new memory
-address is unsafe and unsupported --- construct in place, or move before the resource is ever
-registered.
+A subtlety worth internalizing: GPU handles are freed by \texttt{Dispose(bool)} on both the
+explicit and C\texttt{++}-destructor routes. The latter passes \texttt{false}, so it skips the
+resource's own \texttt{Disposing} event but still emits \texttt{ResourceDestroyed} to an attached
+device and unregisters itself. Explicit disposal is still the only practical rule: it releases
+the backend at a known point, before the derived object's members begin destruction.
+
+Move semantics transfer \texttt{unique\_ptr}-owned GPU state correctly but do \emph{not} update
+the device's tracking-list pointer entry. After move construction, the list retains the
+moved-from address (whose backend is null), not the destination that owns the GPU handle. If the
+device is disposed before both objects leave scope, it disposes that empty source and then tears
+the context down while the destination remains live. The EasyGL move test only proves that both
+objects can leave scope while their device is still alive; it neither checks tracking/events nor
+disposes the device in between. Moving a currently tracked resource is therefore not merely
+unsupported but unsafe --- construct in place, or move before the resource is ever registered.
 
 \section{GraphicsAdapter, DisplayMode, and the exception types}
 \label{sec:adapter-displaymode}
