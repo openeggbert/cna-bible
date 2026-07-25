@@ -7,11 +7,11 @@ session log; this file is the concise live handoff.
 
 - Branch: `develop`.
 - Book: **525 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by eight documentation commits: `944fa54`
+- The local branch is ahead of `origin/develop` by nine documentation commits: `944fa54`
   (render-target binding/usage contracts), the Reset-order contracts batch, the resource-lifecycle
   audit, the construction/SDL-ownership audit, the multisample-backend-rebuild audit, and the
   Game/GraphicsDeviceManager lifecycle and callback/disposal audits, plus the Game
-  exit/destruction/component-lifetime audit below.
+  exit/destruction/component-lifetime and ContentManager cache/disposal audits below.
   The previous seventeen-commit count was accurate before the remote advanced and is retained
   only in the historical session log.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
@@ -19,7 +19,44 @@ session log; this file is the concise live handoff.
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: Game exit, disposal, destructor, and component lifetime
+## Latest completed batch: ContentManager cache ownership and disposal boundary
+
+No CNA source changes were made; the sibling repository remained a read-only authority. The live
+ContentManager header/source, its Texture2D/SoundEffect/TextureCube specializations, focused
+tests, and the real avatar wardrobe-hotswap example establish:
+
+- `Unload()` has exactly two actions: clear the generic `std::any` asset cache and the Texture2D
+  weak-reference cache. It does not call a common Dispose method on returned assets and leaves
+  reader registrations, root/device pointers, and the independent manifest snapshot intact.
+  It is cache eviction, not universal invalidation of already returned values.
+- The generic key is `(typeid(T), normalized logical name)`. Clearing it drops only the manager's
+  stored copy, so an external shared_ptr keeps a shared model/effect alive. The hotswap demo uses
+  this safely: it keeps its current model/renderer, evicts the lookup, and loads a fresh base
+  model. `Texture2D` is distinct: its cache is weak from the beginning; retained copies keep the
+  backend alive, but a post-Unload load creates a new backend. The focused real-XNB test proves
+  exactly that.
+- Move-only `SoundEffect` and `TextureCube` are never in either cache and every Load decodes an
+  independent instance. SoundEffect's branch prevents a disposal cascade from one caller
+  affecting another caller's playback.
+- `Dispose()` calls `Unload()` then makes future `Load<T>()` calls throw; another `Unload()` does
+  not clear that guard. The C++ destructor is defaulted rather than an implicit public Dispose.
+  `GetContentManifest()` and `RefreshContentManifest()` are independent diagnostics: an unload
+  leaves the old scan intact, and neither checks the disposed flag in current source.
+- The tests prove generic-XNB reload after cache eviction and weak-Texture2D eviction with the
+  first texture retained. They do not cover manager destruction, post-disposal Load, or a general
+  cross-type shutdown protocol. Ch.8 corrects its formerly over-broad Unload comment and adds the
+  exact cache/lifetime contract.
+- Validation: incremental `latexmk` succeeded at **525 pages**; target undefined-reference and
+  duplicate-label checks are empty; makeindex accepted **2,140** entries with zero rejected and
+  zero warnings; `git diff --check` passes. Rendered physical pages **105--106** are clean. Ch.8
+  is now **433** lines. The plan-consistency validator remains absent from this checkout.
+
+Next recommended start: retain the ContentManager scope and audit its implicit copy/assignment
+semantics, especially `Game::setContentProperty(const ContentManager&)`. It publicly copies a
+manager containing raw device/service pointers and cached values; determine the live behavior,
+call sites, test coverage, and FNA/API compatibility before documenting or changing anything.
+
+## Previous completed batch: Game exit, disposal, destructor, and component lifetime
 
 No CNA source changes were made; the sibling repository remained a read-only authority. The live
 `Game`, component/collection, SDL gamepad, and focused test sources, the current FNA `Game`, and

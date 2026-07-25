@@ -210,7 +210,7 @@ content.setRootDirectoryProperty("Content");
 auto logo = content.Load<Texture2D>("sprites/logo");   // no extension in the name
 auto font = content.Load<SpriteFont>("fonts/hud");
 
-content.Unload();  // releases every asset this manager has loaded
+content.Unload();  // evicts this manager's caches; retained asset values remain valid
 \end{lstlisting}
 
 \texttt{Load<T>(const std::string\& assetName) -> T} is a template, not a virtual dispatch ---
@@ -223,6 +223,60 @@ loose-file type, and \texttt{RegisterCnjLoader<T>(name, CnjLoaderFn<T>)} for a n
 \texttt{.cnj} ``type'' string resolving to an existing C\texttt{++} type --- the mechanism
 \S\ref{sec:cnj} already named as the reason a game never needs to invent its own ad-hoc JSON
 format for a custom asset type.
+
+\subsection{\texttt{Unload()} evicts manager caches; it is not a universal asset destructor}
+
+The shortened comment in many XNA examples --- ``unload the content'' --- is useful only if its
+ownership boundary is kept explicit. CNA's live \texttt{ContentManager::Unload()} has exactly two
+operations: it clears the generic \texttt{loadedAssets\_} map and the special
+\texttt{textureCache\_} map. It does not walk the returned objects and call a common
+\texttt{Dispose()} method, because the map holds type-erased C\texttt{++} values rather than one
+uniform managed-object base. Nor does it clear reader registrations, the root directory, graphics
+device pointer, or the separately maintained content-manifest snapshot. It is an eviction of this
+manager's lookup state, not an instruction to invalidate every value a game has already received.
+
+For ordinary copyable \texttt{T}, the generic cache key is the pair of \texttt{typeid(T)} and the
+normalized logical asset name. A second matching \texttt{Load<T>()} returns the stored
+\texttt{std::any} value; clearing the map drops only the manager's copy. A caller-held
+\texttt{std::shared\_ptr} consequently keeps its model, effect, or other shared object alive after
+\texttt{Unload()}. The real avatar wardrobe-hotswap example depends on precisely this rule: it
+keeps its current \texttt{SkinnedModelEXT} in a member, calls \texttt{Unload()} to evict the old
+base-avatar lookup, then loads a fresh base asset without dangling the model/renderer it is still
+using during the transition.
+
+Three specializations are deliberately different from that generic strong cache:
+
+\begin{description}
+  \item[\cnaclass{Texture2D}.] Its table contains only weak references to the GPU backend and
+    optional CPU pixel shadow. Keeping a returned \texttt{Texture2D} value alive keeps that
+    backend alive; dropping all such values lets it free even if the content manager itself is
+    still alive. \texttt{Unload()} removes the weak lookup entry as well. The focused real-XNB
+    test intentionally retains its first texture through \texttt{Unload()}, then proves the
+    next load builds a \emph{different} backend; it does not assert that the retained first
+    texture became invalid, because it did not.
+  \item[\cnaclass{SoundEffect} and \cnaclass{TextureCube}.] Both types are move-only, so neither
+    can enter the generic \texttt{std::any} cache. Every \texttt{Load} decodes a fresh,
+    independently owned instance; \texttt{Unload()} has no manager cache entry through which to
+    release either one. For \cnaclass{SoundEffect}, this avoids one caller's disposal cascade
+    silently affecting another caller's playback.
+\end{description}
+
+The cache tests establish two concrete, bounded facts: overwriting a generic XNB on disk is
+invisible to a second load until \texttt{Unload()} clears its cache, while a retained
+\texttt{Texture2D} gets a newly constructed backend on the post-unload load. They do not test a
+complete cross-type shutdown protocol, and no located test exercises content-manager destruction
+or a load attempted after disposal.
+
+\texttt{Dispose()} itself simply calls \texttt{Unload()} once and then makes later
+\texttt{Load<T>()} calls throw \texttt{std::runtime\_error}; a later \texttt{Unload()} does not
+clear that disposed guard or make the manager reusable. The C\texttt{++} destructor is defaulted,
+not an implicit call to this public method. This is why an application needing the explicit cache
+eviction point should call \texttt{Unload()} deliberately, and why a game which wants the
+post-disposal contract described in Chapter~\ref{ch:game-loop} must call \texttt{Game::Dispose()}
+rather than rely solely on scope exit. The manifest is intentionally independent again:
+\texttt{GetContentManifest()} returns its old point-in-time scan after an unload until
+\texttt{RefreshContentManifest()} is requested; neither method checks the disposed flag in the
+current source. Treat those \texttt{NOXNA} methods as diagnostics, not as a cache-lifetime API.
 
 \begin{sourcenote}
 \textbf{A worked example: asking the content root what it would actually resolve.} Rather than
