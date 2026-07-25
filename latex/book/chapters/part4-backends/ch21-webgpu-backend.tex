@@ -155,8 +155,7 @@ until this is fixed: avoid drawing \cnaclass{SpriteBatch} content into a render 
 dimensions differ from the back buffer's own on this specific backend, or verify the result
 with an actual pixel readback rather than trusting the call to behave as documented.
 
-\subsection{A worked example: \texttt{RenderTargetCube}, and the cast that used to silently
-fail}
+\subsection{A worked example: \texttt{RenderTargetCube} and its former silent cast failure}
 
 \cnaclass{RenderTargetCube} support (Task WEBGPU-114) landed after the plain
 \cnaclass{RenderTarget2D} path above, and reused most of its design directly: one shared
@@ -266,19 +265,54 @@ plus a matching \texttt{Texture2D.cpp} change to stop always-decompressing DXT s
 deliberately scoped out of any single backend's own task list, tracked as a dedicated follow-up
 instead.
 
+\section{Three former limitations that are no longer true}
+
+The WebGPU plan moved quickly after this chapter's first draft, so three earlier shorthand
+limitations need a precise correction rather than being allowed to turn into folklore. First,
+an arbitrary plain \cnaclass{Texture2D} now has a real backend-level \texttt{GetData()} path.
+That method on \texttt{WebGPUTextureBackend} copies the requested mip level into a temporary
+\texttt{MAP\_READ} buffer with WebGPU's required row alignment, waits through the asynchronous
+map callback, and then extracts the requested $x,y,w,h$ rectangle. The dedicated
+\texttt{WebGPU\_Texture2D\_GetData} test proves three independently useful cases: an exact
+full-gradient round trip, a non-origin $2\times2$ sub-rectangle, and a distinct level-one mip
+round trip. That is deliberately tested through \texttt{IGraphicsBackend}, not merely through
+the public \cnaclass{Texture2D}: the latter normally returns its shared CPU pixel shadow for a
+plain texture, so an XNA-layer round trip alone could pass while this GPU copy path remained a
+silent base-class no-op.
+
+Second, culling, scissor, and viewport state are no longer merely stored values. Culling is
+baked into the WebGPU 3D pipeline key and mapped to \texttt{WGPUCullMode}; a differential
+pixel test proves that a deliberately chosen winding disappears under one XNA cull mode and
+remains visible under the other. Scissor and viewport are genuine dynamic render-pass state via
+\texttt{wgpuRenderPassEncoderSetScissorRect} and
+\texttt{wgpuRenderPassEncoderSetViewport}. Wiring the latter exposed an otherwise-hidden
+logical-versus-physical-size hazard: CNA's stored logical viewport can exceed the real
+swapchain dimensions. The backend therefore clamps it at application time, which is both a
+WebGPU API requirement and what restored the pre-existing 2D and 3D regression tests.
+
+Third, this is not a claim that every state object is complete. \cnaclass{FillMode}'s
+\texttt{WireFrame} value is stored but has no effect because the pinned WebGPU API offers no
+polygon-mode switch; full \cnaclass{BlendState} mapping remains incomplete; and the backend
+stores the complete stencil configuration but has deliberately not yet baked stencil operations
+into its many pipeline families. The last deferral is evidence-based rather than cosmetic:
+the cull-mode mapping itself required a pixel test to correct an initially plausible but wrong
+winding interpretation, so copying a stencil front/back mapping without an equivalent
+differential stencil test would risk making an invisible wrongness look ``implemented.''
+
 \section{What remains open}
 
 Several gaps are shared with every other CNA backend rather than unique to this one: no
 backend anywhere in the project does real block-compressed texture upload (the paragraph above
 covers exactly why, and why it is a shared architectural gap rather than a per-backend one),
-and
-\texttt{Texture2D::GetData()} readback from an arbitrary texture remains unimplemented here
-too. Specific to this backend: multiple simultaneous render targets, the stencil half of
-\cnaclass{DepthStencilState} (the depth half is done), full \cnaclass{BlendState}/%
-\cnaclass{RasterizerState} culling and wireframe mapping, viewport/scissor state, custom
-\cnaclass{SpriteBatch} effects, and custom WGSL effects authored outside the stock-effect
-set. Browser/Emscripten WebGPU is entirely out of scope so far --- this backend is native
-\texttt{wgpu-native} only.
+and the cross-backend design change that would make it reachable from a real game remains
+larger than any one backend task. Specific to this backend: multiple simultaneous render
+targets, actual stencil-operation mapping (not merely the already-stored state and dynamic
+reference value), complete \cnaclass{BlendState} mapping, \texttt{WireFrame} rendering,
+custom \cnaclass{SpriteBatch} effects, and custom WGSL effects authored outside the stock-effect
+set. The two \cnaclass{RenderTargetCube} scope cuts also remain honest: mipmapped cube targets
+throw at construction, and their per-target MSAA request is accepted but reports zero rather
+than claiming an unimplemented multisampled array-texture resolve. Browser/Emscripten WebGPU is
+entirely out of scope so far --- this backend is native \texttt{wgpu-native} only.
 
 \section{Verification methodology, and how it differs from D3D9's}
 

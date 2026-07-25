@@ -5,7 +5,7 @@ the permanent session log.** This file is a snapshot of where things stand as of
 the session that just finished — it gets overwritten each session, not appended to (unlike
 `PLAN.md`'s own internal session log, a permanent history).
 
-## Where things stand (updated 2026-07-24)
+## Where things stand (updated 2026-07-25)
 
 **454 pages, 49 chapters + 6 appendices, 0 undefined references, 0 duplicate-label warnings —
 independently re-verified via a forced rebuild (`latexmk -g`) after the latest documentation
@@ -53,6 +53,17 @@ Ch.35 then gained an eighth pass documenting the real, deliberate `TaskT<TResult
 gap: non-generic `Task` continuation machinery is live and tested, but generic tasks have only
 the synchronization needed by `WhenAny` and no callback list or public continuation method. Its
 minimal chapter document compiles cleanly; the full-book rebuild remains the outstanding check.
+
+**Latest isolated continuation:** Ch.21 (WebGPU) was audited against the live WebGPU plan,
+backend code, CMake test registration, and its focused test sources. The chapter now corrects
+three stale limitations: arbitrary plain-texture backend readback is real and has a three-case
+discriminating test; 3D culling is pixel-verified; and scissor/viewport are actual dynamic
+render-pass state (including the necessary logical-to-physical viewport clamp). It retains the
+real open limits: MRT, stencil operations, complete blend mapping, wireframe, custom effects,
+compressed upload, browser scope, and the `RenderTargetCube` mip/MSAA cuts. The minimal Ch.21
+document compiled and its changed physical pages were rendered and inspected cleanly. Its PLAN
+row is therefore **isolated LaTeX/PDF-verified clean; full-book rebuild pending**, not full-book
+clean.
 
 This was an unusually long, multi-batch session (author unavailable for many hours, explicit
 "continue autonomously" instruction given partway through, repeated several times). Seven full
