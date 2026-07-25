@@ -912,8 +912,35 @@ shapes above, and \texttt{OcclusionQuery} has the four null/throw false positive
 identified. \texttt{WireFrame}, by contrast, has a real, dedicated \texttt{case} on both
 EasyGL and Vulkan --- a hardcoded \texttt{false} on EasyGL, since GLES3 has no wireframe fill
 mode at all, and a genuine runtime driver-feature check on Vulkan. The remaining entries
-(\texttt{MultiSampleAntiAliasing} and \texttt{AnisotropicFiltering}) were not exhaustively
-re-audited in this pass and should not be assumed either way without the same direct check.
+complete the same pattern rather than escaping it.
+
+\texttt{MultiSampleAntiAliasing} is definitely false-positive on ASCII and Software. ASCII
+forwards the request to SDL renderer, whose explicit implementation always returns zero;
+Software allocates one ordinary CPU framebuffer and merely stores/reports a render target's
+requested count. Vulkan, WebGPU, SDL GPU, and D3D9 all perform real device/format support
+queries when a count is applied or a render target is created, and each can clamp the result
+back to one sample (reported as zero), but none consults that result from
+\texttt{SupportsCapability}: all four inherit unconditional \texttt{true}. BGFX is likewise
+unconditional, and its default legacy-OpenGL renderer has a separately pixel-proven MSAA
+resolve failure even when BGFX's format capability bit claims support. EasyGL is the one
+device-dependent implementation whose capability answer performs the same live
+\texttt{GL\_MAX\_SAMPLES} check as its application path. D3D11 and D3D12 can safely return
+true because both reject devices below feature level~11.0, whose required RGBA8 format support
+includes multisample rendering.
+
+\texttt{Anisotropic}\allowbreak\texttt{Filtering} has three definite false positives. ASCII
+never forwards \texttt{ApplySampler}\allowbreak\texttt{State} to its inner renderer; SDL GPU stores
+\texttt{maxAnisotropy} but omits it from every queued command and sampler-cache key, and
+Software discards every sampler parameter after validating the slot. D3D9 does issue real
+anisotropic sampler states, but its capability answer never checks
+\texttt{D3DCAPS9::MaxAnisotropy} (nor clamps a requested value to that cap), so its inherited
+\texttt{true} is not a current-device result. EasyGL and Vulkan query their live extension or
+device-feature bit; WebGPU creates a real anisotropic sampler; BGFX provides a real on/off flag
+but still ignores the requested maximum; D3D11 and D3D12's accepted feature-level floor
+guarantees the mapped anisotropic filter. The internal Headless backend inherits true for both
+entries too, but only records the calls: it is a logic-test contract, never evidence that a
+pixel-rendering implementation supports either feature. Chapter~\ref{ch:backend-architecture}
+tabulates these results and the caller-side implication.
 
 \section{Worked example: a raw two-triangle scene, no SpriteBatch}
 \label{sec:worked-drawprimitives}

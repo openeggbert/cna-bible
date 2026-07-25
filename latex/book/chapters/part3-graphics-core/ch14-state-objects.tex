@@ -273,10 +273,19 @@ EasyGL's \texttt{GL\_TEXTURE\_MAX\_LEVEL} incompleteness bug is fixed alongside 
 Anisotropic filtering itself: correct on Vulkan (queries the real device capability and
 clamps the requested level); EasyGL was silently falling back to plain trilinear filtering
 regardless of the requested anisotropy level until a fix wired real
-\texttt{GL\_EXT\_texture\_filter\_anisotropic} support, clamped to the driver's own
-capability; BGFX remains partially fixed --- it enables the anisotropic sampling flag but
+OpenGL anisotropic-filtering-extension support, clamped to the driver's own capability;
+BGFX remains partially fixed --- it enables the anisotropic sampling flag but
 never communicates the actual requested level, an on/off switch rather than a graduated one,
-still open.
+still open. The newer backends widen that matrix: WebGPU and D3D11/D3D12 create real
+anisotropic samplers (the Direct3D pair accept only feature level~11.0 or newer, whose maximum
+anisotropy is 16); D3D9 maps the filter and maximum but neither capability-checks nor clamps
+against \texttt{D3DCAPS9::MaxAnisotropy}; SDL GPU stores the requested maximum but never puts it
+in a queued command or sampler-cache key; and Software ignores every sampler value after the
+slot-range check. ASCII does not even forward \texttt{ApplySamplerState} to the SDL renderer it
+wraps. The last three therefore also make
+\texttt{SupportsCapability(AnisotropicFiltering)} definite false positives, since they inherit
+the interface's default \texttt{true}; D3D9's answer is conditionally unreliable on the current
+device. See Chapter~\ref{ch:backend-architecture}'s complete capability table.
 
 \subsection{A worked example: crisp pixel art versus a minified, mipmapped floor}
 

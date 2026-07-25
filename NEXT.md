@@ -6,10 +6,11 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **474 physical PDF pages, 49 chapters, 6 appendices**.
+- Book: **478 physical PDF pages, 49 chapters, 6 appendices**.
 - The book repository started this autonomous session clean. The local branch is now ahead of
-  `origin/develop` by three coherent documentation commits: the roadmap correction, the
-  ShaderEffect/D3D ABI correction, and the capability/feature-matrix correction.
+  `origin/develop` by four coherent documentation commits: the roadmap correction, the
+  ShaderEffect/D3D ABI correction, the general capability/feature-matrix correction, and the
+  MSAA/anisotropy capability audit.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
   reviewing `git push`. Its response explicitly rejected the request rather than granting
   permission. Do not bypass that control; retry only when approval is available or the user
@@ -17,29 +18,41 @@ session log; this file is the concise live handoff.
 
 ## Latest completed batch
 
-A source audit following the ShaderEffect batch found a broader
-`GraphicsCapability`/cross-backend-summary drift. Ch.9, Ch.11, Ch.16, Ch.24, Appendix B, and
-Appendix C now agree with the live implementations:
+The two device-dependent `GraphicsCapability` entries are now audited across every live
+backend and synchronized through Ch.9, Ch.14, Ch.16, Ch.22, Ch.23, Ch.24, and Appendix C:
 
-- ASCII is 2D-only but inherits `IGraphicsBackend::SupportsCapability()`'s default-true answer,
-  so `ThreeD`, `CustomEffects`, and `OcclusionQuery` are confirmed false positives.
-- `CustomEffects` also overclaims BGFX, WebGPU, and Software for four distinct failure shapes;
-  Ch.9 and Ch.16 now enumerate them rather than calling the capability system uniformly
-  reliable.
-- `OcclusionQuery` overclaims WebGPU, SDL GPU, and Software (null factory) plus ASCII
-  (SDL renderer's throwing factory). Both capability worked examples now guard the known
-  false positives explicitly.
-- Ch.16 now records the actual per-backend `IEffectBackend` setter boundary rather than
-  claiming every working backend overrides every hook.
-- Ch.11 and Appendix B no longer present BGFX's fixed `RenderTargetCube` wrong-handle cast as
-  current.
-- Appendix B corrects its stale BGFX custom-effect `OK` cell and reclassifies SDL_Renderer's
-  intentional no-shader-stage result from `BLK` to `N/A`.
-- Appendix B's top summary is now a page-breaking `longtable`, not a clipped `tabular`; its
-  status grid uses documented `P` cells for `PARTIAL`, eliminating visible column collisions.
-  Ch.24's pre-existing page-edge spills were also removed while validating its new ASCII text.
+- `MultiSampleAntiAliasing` is definitely false-positive on ASCII and Software. Vulkan,
+  WebGPU, SDL GPU, and D3D9 can negotiate back to one sample while their public query remains
+  true. BGFX also overclaims the default legacy-OpenGL path despite its pixel-proven resolve
+  failure. EasyGL performs a real live limit check; D3D11/D3D12's feature-level 11.0 floor
+  makes their RGBA8 answer sound.
+- `AnisotropicFiltering` is definitely false-positive on ASCII, SDL GPU, and Software. D3D9's
+  query and setter do not consult `D3DCAPS9::MaxAnisotropy`; BGFX exposes only an on/off flag
+  and ignores the requested maximum. EasyGL/Vulkan use live checks, WebGPU creates a real
+  sampler, and D3D11/D3D12 have the required feature-level support.
+- Headless records both requests for logic tests but rasterizes no pixel; its inherited
+  `true` answers are not rendering evidence.
+- Ch.16 now contains the complete 11-row comparison and the practical rule: after reset, read
+  the applied `PresentationParameters.MultiSampleCount`, or a render target's own applied
+  count. Do not infer the negotiated count from the capability boolean.
+- Ch.22 explicitly connects SDL GPU's stored-but-unused anisotropy to the false public answer;
+  Ch.23 distinguishes D3D9's internal sample check from the public capability query; Ch.24
+  records all five ASCII false positives.
 
 ## Previous completed batch
+
+The preceding source audit corrected the broader `GraphicsCapability` and cross-backend
+summary drift:
+
+- ASCII overclaims `ThreeD`, `CustomEffects`, and `OcclusionQuery`; `CustomEffects` also
+  overclaims BGFX, WebGPU, and Software; `OcclusionQuery` also overclaims WebGPU, SDL GPU, and
+  Software.
+- Ch.16 now records the real per-backend `IEffectBackend` setter boundary.
+- Ch.11 and Appendix B no longer present BGFX's fixed `RenderTargetCube` cast as current.
+- Appendix B corrects its BGFX custom-effect and SDL_Renderer cells and now uses pageable,
+  collision-free tables.
+
+## Earlier completed batch
 
 ### Ch.15: correct the real ShaderEffect backend boundary
 
@@ -92,37 +105,38 @@ latexmk -pdf -interaction=nonstopmode -halt-on-error -file-line-error -g main.te
 
 Results:
 
-- `main.pdf`: 474 pages.
+- `main.pdf`: 478 pages.
 - Targeted undefined-reference check: no matches.
 - Duplicate-label check: no matches.
-- `makeindex`: 1,973 accepted, 0 rejected, 0 warnings.
-- Rendered and inspected the final affected pages: Ch.9 physical 117--118 and 123; Ch.11
-  page 141; Ch.16 pages 179--181; Ch.24 pages 253--254; Appendix B pages 443--446; Appendix C
-  page 448.
-- No clipping, column collision, page-edge spill, malformed table, listing spill,
-  running-header collision, or folio defect was found. Ch.24 and Appendix B emit zero local
-  overfull warnings. Older warnings elsewhere in Ch.9/11/16/C remain outside the changed text;
-  every changed final page was inspected directly.
+- `makeindex`: 1,978 accepted, 0 rejected, 0 warnings.
+- Rendered and inspected Ch.9 physical pages 122--124, Ch.14 pages 166--168, Ch.16 pages
+  182--186, Ch.22 pages 231--233, Ch.23 pages 239--241, Ch.24 pages 257--259, and Appendix C
+  pages 451--453.
+- No clipping, column collision, page-edge spill, malformed table, running-header collision,
+  or folio defect was found. The new Ch.16 longtable repeats its header correctly. The changed
+  Ch.14 and Ch.24 paragraphs emit no local overfull warning; older warnings elsewhere remain
+  outside this batch's changed ranges.
 - `git diff --check`: pass.
 
 Useful verification commands:
 
 ```bash
 wc -l latex/book/chapters/part3-graphics-core/ch09-graphicsdevice.tex \
-      latex/book/chapters/part3-graphics-core/ch11-textures-rendertargets.tex \
+      latex/book/chapters/part3-graphics-core/ch14-state-objects.tex \
       latex/book/chapters/part4-backends/ch16-backend-architecture.tex \
+      latex/book/chapters/part4-backends/ch22-sdlgpu-backend.tex \
+      latex/book/chapters/part4-backends/ch23-direct3d-backends.tex \
       latex/book/chapters/part4-backends/ch24-canvas-ascii-backends.tex \
-      latex/book/chapters/appendices/appendix-b-feature-matrix.tex \
       latex/book/chapters/appendices/appendix-c-glossary.tex
 git diff --check
 ```
 
 ## Documentation synchronized
 
-- `PLAN.md` now records 474 total pages and exact line counts: Ch.9 1,002; Ch.11 391; Ch.16
-  290; Ch.24 340; Appendix B 164; Appendix C 159.
-- The durable session log records the capability false positives, feature-matrix corrections,
-  Appendix B pagination fix, and exact final validation.
+- `PLAN.md` records 478 total pages and exact current line counts: Ch.9 1,029; Ch.14 341;
+  Ch.16 359; Ch.22 492; Ch.23 703; Ch.24 347; Appendix C 162.
+- The durable session log records both capability-audit batches, their exact per-backend
+  conclusions, and final PDF validation.
 - Ch.49 describes the real Phase-G-complete XNB read pipeline, current Texture hierarchy, and
   typed EasyGL custom-effect texture support.
 - `README.md` has build/navigation guidance; `CLAUDE.md` says 49 chapters.
@@ -148,8 +162,9 @@ Sibling repositories remain read-only source authorities for ordinary book work.
 
 ## Recommended next starting point
 
-If continuing the capability audit, directly verify the two remaining entries not exhaustively
-covered in this pass: `MultiSampleAntiAliasing` and `AnisotropicFiltering`, including
-device-dependent answers on backends that inherit the default `true`. Otherwise resume the
-highest-value source-grounded chapter expansion in the active graphics/backend area; all
-ShaderEffect and capability-summary consumers identified in this pass are now synchronized.
+The eight-entry `GraphicsCapability` audit is complete and its known consumers are
+synchronized. Resume the highest-value source-grounded chapter expansion in the active
+graphics/backend area. A good first candidate is Ch.16's remaining backend-interface defaults:
+enumerate unreviewed permissive defaults, trace whether each has a reachable call path, and
+document only source-proven gaps. Do not attempt to fix CNA itself from this book repository;
+sibling repositories remain read-only source authorities.

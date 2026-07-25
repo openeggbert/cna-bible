@@ -85,6 +85,13 @@ MSAA is capability-gated by \texttt{IDirect3D9::CheckDeviceMultiSampleType()}, n
 the requested count. When 4x is available, a multisampled target is cleared and unbound; D3D9's
 \texttt{StretchRect()} resolve must make its separate sampleable texture read exactly
 \((200,210,220,255)\). The test proves the resolved result, not merely the multisample surface.
+One naming trap matters here: this is an internal device-capability check in the creation path,
+not \cnaclass{GraphicsDevice}\texttt{::SupportsCapability}. D3D9 never overrides that public
+method, so \texttt{MultiSampleAntiAliasing} still reports true even when
+\texttt{CheckDeviceMultiSampleType()} rejects every count above one. The same mismatch affects
+\texttt{AnisotropicFiltering}: sampler creation uses \texttt{D3DTEXF\_ANISOTROPIC} and
+\texttt{D3DSAMP\_MAXANISOTROPY}, but neither the public query nor the setter consults and clamps
+to \texttt{D3DCAPS9::MaxAnisotropy}.
 
 Multiple render targets are also bounded by the real \texttt{D3DCAPS9::NumSimultaneousRTs}: two
 targets receive one exact-color clear, unbinding restores the back buffer, and requesting one

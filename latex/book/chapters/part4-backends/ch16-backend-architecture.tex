@@ -232,6 +232,75 @@ A caller targeting one of these known exceptions needs the explicit guards above
 custom effects, the backend-specific boundary documented in
 Chapter~\ref{ch:shader-fx-gap}.
 
+\subsection{The two device-dependent entries, audited end to end}
+
+The remaining two enum values expose why ``inherits \texttt{true}'' and ``has some
+implementation code'' are not equivalent to a current-device answer. In the table,
+\emph{live} means that \texttt{SupportsCapability()} itself performs a runtime query;
+\emph{true} means the backend simply inherits or returns an unconditional answer.
+
+\begingroup
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{@{}p{0.16\textwidth}p{0.13\textwidth}p{0.15\textwidth}p{0.48\textwidth}@{}}
+\toprule
+\textbf{Backend} & \textbf{MSAA report} & \textbf{Anisotropy report} & \textbf{What the live implementation actually establishes} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Backend} & \textbf{MSAA report} & \textbf{Anisotropy report} & \textbf{What the live implementation actually establishes} \\
+\midrule
+\endhead
+\texttt{SDL\_RENDERER}, \texttt{CANVAS}, \texttt{DX3}
+  & false & false & Honest: none of the three implements either feature. \\
+\texttt{EASYGL}
+  & live & live & Honest live GL checks: maximum samples must exceed one, and
+    \texttt{GL\_EXT\_texture\_filter\_anisotropic} must exist. Both paths clamp to the driver. \\
+\texttt{VULKAN}
+  & true & live & Anisotropy is honestly gated by the enabled device feature. MSAA is real, but
+    \texttt{PickSampleCount()} can return one; the capability query never asks it. \\
+\texttt{BGFX}
+  & true & true & MSAA flags and anisotropic on/off flags are real. The requested anisotropy
+    level is ignored, and the default legacy-GL renderer has a pixel-proven MSAA resolve failure
+    despite its format-support bit. The query distinguishes neither boundary. \\
+\texttt{WEBGPU}
+  & true & true & Anisotropic sampler descriptors are real. MSAA performs a scratch 4x texture
+    probe and can fall back to one, but the capability query does not consult the probe. \\
+\texttt{SDL\_GPU}
+  & true & true & Render-target MSAA asks
+    \texttt{SDL\_GPUTextureSupportsSampleCount()} and can clamp to one. Anisotropy is stored but
+    omitted from commands and sampler creation, so that answer is definitely false. \\
+\texttt{D3D9}
+  & true & true & Real MSAA and anisotropy calls exist, but both depend on
+    \texttt{CheckDeviceMultiSampleType()} / \texttt{D3DCAPS9::MaxAnisotropy}; the capability query
+    consults neither, and the anisotropy request is not clamped. \\
+\texttt{D3D11}, \texttt{D3D12}
+  & true & true & Honest for the devices CNA accepts: both enforce a feature-level~11.0 floor,
+    then use the required RGBA8 multisample support and real anisotropic sampler mapping. \\
+\texttt{SOFTWARE}
+  & true & true & Both false: one CPU sample per pixel; every sampler value is discarded. \\
+\texttt{ASCII}
+  & true & true & Both false: MSAA forwards to SDL renderer's always-zero path, while sampler
+    state is not forwarded at all. \\
+\texttt{HEADLESS}
+  & true & true & Record-only test semantics: requested values enter traces/state, but no pixel
+    is rasterized. These answers cannot establish rendering support. \\
+\bottomrule
+\end{longtable}
+\endgroup
+
+Thus the absolute new false positives are ASCII/Software for MSAA and
+ASCII/SDL GPU/Software for anisotropy. Vulkan, WebGPU, SDL GPU, and D3D9 add a subtler MSAA
+contract failure: their real application/creation paths can say ``this device has no usable
+count above one,'' while the public capability query still says true. D3D9 has the analogous
+anisotropy problem. For MSAA, the reliable public evidence after a reset is the
+device-clamped value written back into
+\texttt{GraphicsDevice.PresentationParameters.MultiSampleCount}, not the capability boolean.
+For a \cnaclass{RenderTarget2D} or \cnaclass{RenderTargetCube}, read that target's own
+\texttt{MultiSampleCount}; its backend getter reports the applied value (zero means disabled)
+on the implementations that genuinely negotiate it.
+
 \section{Build-time selection}
 
 \texttt{cmake/BackendSelection.cmake} is where the backend list from

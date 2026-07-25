@@ -286,12 +286,19 @@ behavior the base class already provides for free.
 There is one important exception to that otherwise honest query behavior:
 \texttt{AsciiGraphics}\allowbreak\texttt{Backend} also never overrides the public
 \texttt{SupportsCapability(GraphicsCapability)} method, whose shared default returns
-\texttt{true}. It therefore reports \texttt{ThreeD=true}, \texttt{CustomEffects=true}, and
-\texttt{OcclusionQuery=true} even though the calls above prove that 3D operations throw, the
-custom-effect factory returns \texttt{nullptr}, and the query factory forwards to SDL
-renderer's throw. The internal
+\texttt{true}. It therefore reports \texttt{true} for five unsupported entries.
+\texttt{ThreeD}, \texttt{CustomEffects}, and \texttt{OcclusionQuery} are three.
+The two state entries --- \texttt{MultiSample}\allowbreak\texttt{AntiAliasing} and
+\texttt{Anisotropic}\allowbreak\texttt{Filtering} --- are the other two.
+The calls above prove that 3D operations throw, the custom-effect
+factory returns \texttt{nullptr}, and the query factory forwards to SDL renderer's throw.
+The two state paths are equally concrete.
+\texttt{ApplyMultiSample}\allowbreak\texttt{Count} forwards to SDL renderer's explicitly
+always-zero implementation. ASCII has no
+\texttt{ApplySampler}\allowbreak\texttt{State} override at all, so it inherits the base no-op
+instead of forwarding sampler state to its inner renderer. The internal
 \texttt{SupportsDepthStencil()} check in the test is truthful; the public capability enum
-currently is not for these three entries. Chapters~\ref{ch:graphicsdevice}
+currently is not for these five entries. Chapters~\ref{ch:graphicsdevice}
 and~\ref{ch:backend-architecture} show the required caller-side guard.
 
 The test deliberately does \emph{not} exercise three further methods:
