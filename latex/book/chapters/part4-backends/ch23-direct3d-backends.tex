@@ -215,6 +215,35 @@ exploiting CMake's own documented support for a static-library link cycle --- an
 confirmed genuinely pre-existing (via \texttt{git stash}, it reproduced identically on the
 base commit), not something the D3D11 work itself introduced.
 
+\subsection{A proof ladder for real D3D11 3D draws, not a blanket ``3D works'' claim}
+
+The D3D11 plan's own 3D work is unusually useful as a verification example because it did not
+stop at compiling a shader or observing that a draw call returned successfully.  It built a
+small ladder of increasingly discriminating GPU-readback checks.  The first rung used only the
+stride-16 \cnaclass{VertexPositionColor} path: a known blue clear was read back, an NDC-space
+opaque-red triangle was then drawn through both indexed and non-indexed calls, and the same
+region had to become red.  That proves the input layout, shaders, constant buffer, primitive
+topology, rasterization, and readback path together; a stale clear or an unbound shader cannot
+pass it accidentally.
+
+The next rung separated texture sampling from vertex-color modulation.  A stride-20 textured
+draw sampled a known texel exactly, through both indexed forms, while the stride-24 variant
+multiplied a known vertex color through a white texture and read back that exact color.  The
+stride-32 lighting path then exercised the real per-light constant buffer: its unlit control is
+byte-exact, while its lit control must differ from both the unlit result and the clear color.
+That deliberately avoids pretending a hand-derived GPU floating-point result is more stable
+than it is, yet still proves that the lighting branch actually executed.
+
+Later tests applied the same discipline to features whose happy paths look deceptively similar.
+Fog draws the same geometry with the flag off (exact vertex red) and on at the exact end distance
+(exact fog green); an environment-map fixture constrains the reflection to the cube's \texttt{-Z}
+face and reads its unique color; and a skinned fixture supplies a genuine identity bone rather
+than relying on an all-zero default matrix.  These are deliberately different falsification
+cases, not redundant screenshots.  By the end of that series the D3D11 smoke executable had
+147 checks, each exercised through real Wine plus DXVK GPU execution.  The result supports the
+specific paths named here; it is not a license to extrapolate that any arbitrary, untested
+D3D11 state combination must therefore be correct.
+
 \section{D3D12: built on D3D11's own foundation, and an honest split verification story}
 
 \texttt{D3D12} deliberately reuses \texttt{D3D11}'s own HLSL/DXBC bytecode, format and state

@@ -44,6 +44,11 @@ before it reached the end of the 454-page document after generated auxiliaries w
 not claim a new full-book page count or clean-reference state until that rebuild finishes. The
 last fully verified full-book baseline remains commit `87fb144` (454 pages).
 
+**Later continuation, also isolated-verified:** Ch.23 gained a ninth, source-grounded D3D11
+verification-ladder subsection. Its minimal document compiled successfully and the affected page
+was rendered and read after a right-edge audit; it is therefore marked isolated LaTeX/PDF clean,
+not full-book clean, until the complete rebuild can run to completion.
+
 This was an unusually long, multi-batch session (author unavailable for many hours, explicit
 "continue autonomously" instruction given partway through, repeated several times). Seven full
 batches landed in total (371 → 452 pages, +81), on top of the earlier SDL_GPU chapter insertion
