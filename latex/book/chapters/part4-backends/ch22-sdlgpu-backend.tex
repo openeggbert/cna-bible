@@ -137,6 +137,37 @@ and the second is a real shader-translation layer. The chapter therefore records
 honest current contract: custom effects work when authored for SDL\_GPU's binding dialect, while
 the generic \texttt{.cnj} fixture is not yet cross-backend portable to it.
 
+\section{Pipeline state is snapshotted at draw time, except where it is deliberately not}
+
+SDL\_gpu graphics pipelines are immutable enough that CNA cannot simply bind an XNA state object
+at the end of a deferred frame and hope it represents every earlier draw. Each queued sprite or
+3D draw therefore captures a \texttt{RenderStateSnapshot}: blend factors/functions, cull and
+fill mode, stencil operations/masks/reference, and the ordinary depth-test fields travel with
+the command that was issued under them. Pipeline lookup folds the pipeline-relevant portion into
+a \texttt{size\_t} hash together with primitive topology, target color format, and sample count.
+This replaced an earlier hand-packed integer key, whose fixed bit budget would have become
+silently collision-prone as state dimensions were added.
+
+The detail that keeps the cache both correct and finite is conditional hashing. Disabled blend
+does not hash its six blend factors/functions; disabled stencil does not hash operations or masks;
+and disabled two-sided stencil does not hash the counter-clockwise fields. Two commands that
+produce the same pipeline consequently share it even if their irrelevant XNA state-object fields
+differ, while a meaningful state change cannot reuse a pipeline with stale SDL\_gpu descriptors.
+Stencil reference itself is intentionally \emph{not} pipeline state: the captured value is sent
+per draw through \texttt{SDL\_SetGPUStencilReference()}, the missing call that an adversarial
+pixel test once exposed. A left-half stencil write followed by an Equal-reference reveal now
+proves that this dynamic value reaches the GPU rather than merely being stored in CNA.
+
+There are two explicit boundaries to that otherwise draw-time rule. Scissor is applied once for
+each render pass from the live state at \texttt{Present()}-time, not independently re-snapshotted
+for every queued command; changing the scissor rectangle repeatedly between draws targeting one
+pass is therefore a documented simplification. More importantly, \cnaclass{RasterizerState}'s
+\texttt{DepthBias} and \texttt{SlopeScaleDepthBias} are captured but currently have no effect.
+SDL\_gpu lacks a Vulkan-style dynamic depth-bias call, so honoring them would require carrying
+the float values in the pipeline-cache key and baking them into each pipeline. The backend does
+not silently pretend otherwise: culling, fill mode, stencil, blend, and scissor have targeted
+pixel proofs, whereas depth bias remains an open state-mapping gap.
+
 \section{Present timing belongs to the device manager, not a test-only backend poke}
 
 The SDL\_GPU tests establish a small but important rule about CNA's initialization lifecycle.
@@ -328,7 +359,7 @@ separate, write-only swapchain readback limitation described below.
 \section{What remains open}
 \label{sec:sdlgpu-what-remains-open}
 
-Four limits are worth stating precisely rather than glossing over. First, occlusion queries are a
+Five limits are worth stating precisely rather than glossing over. First, occlusion queries are a
 \emph{permanent} limitation of the underlying API, not a task gap: the vendored
 \texttt{SDL\_gpu.h} has no query-pool or occlusion-query type anywhere in it (only
 \texttt{SDL\_GPUFence} for CPU/GPU synchronization), so \texttt{CreateOcclusionQuery()}
@@ -363,7 +394,9 @@ cross-backend portability gap: its loose GLSL ES 3.00 declarations are not accep
 backend's explicit-location, uniform-block binding contract, even though the dedicated
 \texttt{\#version 450} effect regression is pixel-verified. That choice is deliberately left
 open pending either a shared content-dialect migration or a real shader-translation layer.
-Beyond these four, Windows (D3D12 driver) and macOS/iOS (Metal driver)
+Fifth, \cnaclass{RasterizerState}'s depth-bias values remain captured-but-unapplied because
+SDL\_gpu has no dynamic depth-bias command and CNA does not yet bake the float values into its
+pipeline cache. Beyond these five, Windows (D3D12 driver) and macOS/iOS (Metal driver)
 remain code paths only, not validation claims, until run on real (or Wine/DXVK-class) hardware
 --- the same phased-claim discipline this book already applies to \texttt{D3D11} /
 \texttt{D3D12} (Chapter~\ref{ch:direct3d-backends}) and \texttt{WebGPU}

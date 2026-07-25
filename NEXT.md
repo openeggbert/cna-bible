@@ -132,11 +132,20 @@ that current count.
 portability. The live CnjEffect fixture uses GLSL ES 3.00 with loose uniforms and unqualified
 stage I/O, which fails under SDL_GPU; the passing dedicated regression instead uses version 450,
 explicit locations, fixed set/binding spaces, and named uniform blocks. It pixel-verifies an
-effect-specific tint and a no-effect white control. The 389-line chapter compiled twice as an
+effect-specific tint and a no-effect white control. The initial 389-line chapter compiled twice as an
 eight-page isolated PDF with zero overfull boxes; the new material was rendered and inspected.
 The fixture remains an intentional, separately-scoped compatibility gap rather than a claim
 that custom effects are unsupported, and is now named consistently as the fourth item in the
 chapter's closing open-limits list.
+
+**Ch.22 cache follow-up:** queued draws snapshot their blend/cull/fill/stencil/depth state, and
+pipeline lookup conditionally hashes only state dimensions which actually affect descriptors.
+Stencil reference is correctly dynamic per draw; scissor is deliberately live once per render
+pass. The source audit also confirmed the remaining RasterizerState depth-bias gap: its float
+values are captured but not applied, because SDL_GPU has no dynamic depth-bias call and CNA does
+not yet put them in a pipeline key. The chapter now names this as its fifth open limitation. The
+422-line, eight-page isolated PDF compiled twice with zero overfull boxes; the cache section was
+rendered and inspected.
 
 **Latest continuation: Ch.25 (DX3/free-direct) received a source-grounded fifth pass.** Its
 fixed-output letterbox limitation does not make input mapping ambiguous: the backend's real
