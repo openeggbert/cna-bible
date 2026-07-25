@@ -148,24 +148,75 @@ pass. All three were confirmed fixed under a real AddressSanitizer/UndefinedBeha
 build, the same standard this book's own earlier chapters hold every other sanitizer finding
 to.
 
-\subsection{Custom readers: a real extension point, verified against an independent third-party reader}
+\subsection{Custom \texttt{.xnb} readers use a process-wide registry; loose and \texttt{.cnj} readers do not}
 
-The \texttt{RegisterTypeReader<T>} extension point this chapter already named is not merely
-declared to exist --- it was verified against a real custom reader this project did not write,
-specifically to confirm the mechanism generalizes past CNA's own built-in reader set.
-\texttt{prime31/Nez} (a real, independent, MIT-licensed C\# game framework) ships its own
-custom \texttt{BitmapFontReader} for a bitmap-font \texttt{.xnb} type no built-in CNA reader
-understands; loading one of its real, unmodified \texttt{.xnb} assets without registering an
-equivalent C\texttt{++} reader correctly fails with the pipeline's own consistent
-\texttt{ContentLoadException}, exactly the documented, honest failure mode for an unregistered
-custom type, rather than a crash or a silently wrong result. This is also where the project
-made an explicit, permanent scope decision worth knowing before porting any XNA content built
-against a generalized C\# reflection-driven \texttt{ReflectiveReader<T>}: CNA supports only
-manually registered, explicit C\texttt{++} \cnaclass{ContentTypeReader}s, with no equivalent to
-.NET's own reflection-based automatic reader generation --- a game whose original content was
-built with an implicit \texttt{ReflectiveReader<T>} needs its content rebuilt with an explicit
-\texttt{ContentTypeWriter}/reader pair first, then a matching C\texttt{++} reader registered
-through this same mechanism, not a workaround inside CNA itself.
+An earlier shorthand in this chapter needs a correction: \texttt{RegisterTypeReader<T>} is
+\emph{not} the extension point for a custom \texttt{.xnb}. \texttt{Load<T>()} checks for an
+\texttt{.xnb} before consulting its per-manager loose-reader table, and
+\texttt{LoadXnbAsset()} gives the binary file's own reader table to the static
+\cnaclass{ContentTypeReaderManager}. A custom binary reader instead registers a canonical
+reader-name factory in that global registry. CNA has no reflection fallback, whereas FNA first
+tries its factory map and can otherwise reflect the named managed type, so this registration is
+public and \texttt{NOXNA}-tagged in CNA rather than FNA's internal AOT fallback.
+
+The registry starts empty on purpose. \texttt{ContentManager}'s constructor does \emph{not}
+populate it, and neither does \cnaclass{Game}; otherwise a test that clears the global state could
+not exercise the genuine ``unregistered reader'' failure path. A real application must register
+the reader families it intends to use before any \texttt{.xnb} load. CNA supplies one explicit,
+idempotent umbrella call for every implemented built-in family (but deliberately not arbitrary
+closed generic collection readers):
+
+\begin{lstlisting}
+#include "CNA/Internal/Xnb/XnbBuiltInReaders.hpp"
+
+CNA::Internal::Xnb::RegisterAllBuiltInXnbReaders(); // once, before any .xnb load
+
+ContentTypeReaderManager::AddTypeCreator(
+    "MyGame.Content.GameLevelDataReader",
+    [] { return std::make_unique<GameLevelDataReader>(); });
+
+ContentManager content(nullptr, "Content");
+GameLevelData level = content.Load<GameLevelData>("level1");
+\end{lstlisting}
+
+The custom-reader integration test really writes that minimal \texttt{level1.xnb}, registers the
+factory, and loads it through \texttt{ContentManager}; omitting the registration yields the
+named \texttt{ContentLoadException}. This is the route a port of
+\texttt{prime31/Nez}'s independent \texttt{BitmapFontReader} must take. CNA deliberately has no
+equivalent to .NET's reflection-generated \texttt{ReflectiveReader<T>}: content built around one
+must be rebuilt with an explicit writer/reader pair, then supplied through a matching C\texttt{++}
+factory.
+
+This global registry has deliberately different replacement and lifetime rules from the
+per-manager tables. \texttt{AddTypeCreator()} keeps the \emph{first} factory for an exact name
+and silently ignores later registrations; \texttt{CreateReader()} calls the retained factory for
+one fresh reader per \texttt{.xnb} file, owned by that file's \texttt{ContentReader}.
+\texttt{ClearTypeCreators()} removes every family for every manager and is consequently a test
+isolation tool, not a runtime reload API. Registration and clearing have no synchronization in
+the current C\texttt{++} map, so finish them before concurrent asset loads. There is also no
+empty-name or empty-factory validation: the manifest test deliberately stores a null factory and
+then observes \texttt{IsRegistered()} report true; attempting to create through that entry would
+invoke an empty \texttt{std::function} rather than yield a normal missing-reader diagnostic.
+
+\texttt{RegisterTypeReader<T>}, by contrast, changes only one \texttt{ContentManager}'s
+loose-file/\texttt{.cnj} reader map. It owns the supplied \texttt{unique\_ptr} as a
+\texttt{shared\_ptr} and silently overwrites an existing reader for the same C\texttt{++} type;
+it accepts a null pointer, which later reaches the map's explicit ``reader is null'' load error.
+It neither changes the global \texttt{.xnb} registry nor evicts an asset already cached under
+that type/name, so call \texttt{Unload()} before expecting a replacement reader to affect a
+previously loaded generic asset. No located test directly registers and replaces a loose reader.
+
+\texttt{RegisterCnjLoader<T>(typeName, factory)} is safer but has its own narrower contract. On
+its first successful call for a type with no reader, it creates the one generic \texttt{.cnj}
+reader; later distinct names select separate factories inside that same reader. Empty names,
+empty factories, a pre-existing non-generic reader, and an exact duplicate name all fail fast,
+and the focused tests cover those cases plus recursive texture loading. Do not subsequently
+replace that generated reader with \texttt{RegisterTypeReader<T>}: current CNA leaves the named
+factory table behind, so already registered and even later accepted names become unreachable
+through the replacement reader. This is an untested implementation boundary, not a supported
+way to layer two loose-reader mechanisms. Copying a \texttt{ContentManager} shares its current
+loose-reader pointers but copies its named \texttt{.cnj} factories, as the later
+\texttt{Game::Content} section explains.
 
 \section{The resolution order, precisely}
 

@@ -6,13 +6,13 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **527 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by eleven documentation commits: `944fa54`
+- Book: **529 physical PDF pages, 49 chapters, 6 appendices**.
+- The local branch is ahead of `origin/develop` by twelve documentation commits: `944fa54`
   (render-target binding/usage contracts), the Reset-order contracts batch, the resource-lifecycle
   audit, the construction/SDL-ownership audit, the multisample-backend-rebuild audit, and the
   Game/GraphicsDeviceManager lifecycle and callback/disposal audits, plus the Game
   exit/destruction/component-lifetime and ContentManager cache/disposal and
-  copy/replacement and service-provider/device-resolution audits below.
+  copy/replacement, service-provider/device-resolution, and reader-registration audits below.
   The previous seventeen-commit count was accurate before the remote advanced and is retained
   only in the historical session log.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
@@ -20,7 +20,47 @@ session log; this file is the concise live handoff.
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: ContentManager service-provider and graphics-device resolution
+## Latest completed batch: ContentManager reader-registration ownership and scope
+
+No CNA source changes were made; the sibling repository remained a read-only authority. The live
+ContentManager registration templates, builtin loaders, XNB reader dispatch and static registry,
+the startup helper, custom/CNJ/registry tests, copy/cache behavior, history, and current FNA
+manager establish:
+
+- Corrected a prior Ch.8 error: `RegisterTypeReader<T>()` is a per-ContentManager loose-file/CNJ
+  table and cannot register an XNB reader. XNB wins before that table is examined; its reader names
+  dispatch through the process-wide `ContentTypeReaderManager`. Since CNA lacks FNA's reflection
+  fallback, an application must explicitly call
+  `CNA::Internal::Xnb::RegisterAllBuiltInXnbReaders()` before XNB loads, plus global
+  `AddTypeCreator()` registrations for its own canonical reader names. Neither ContentManager nor
+  Game calls the umbrella helper. Its built-in family set deliberately excludes arbitrary closed
+  generic collection readers.
+- The global creator map keeps the first factory for a name, makes a fresh reader per XNB file,
+  and `ClearTypeCreators()` erases every family process-wide. It has no synchronization or
+  validation for empty inputs: the manifest test registers a null factory and observes
+  `IsRegistered()` true, but `CreateReader()` would invoke the empty `std::function`. Tests cover
+  fresh creations, first-wins registration, clear, builtin umbrella completeness, and a fully
+  custom XNB round trip, but not this bad-factory execution or concurrency.
+- Per-manager `RegisterTypeReader<T>()` silently overwrites an existing reader pointer, accepts
+  null, and does not evict a matching generic asset cache entry. `RegisterCnjLoader<T>()` instead
+  makes its generic reader once and rejects empty/duplicate names, empty factories, and an already
+  non-generic reader. If a later RegisterTypeReader override replaces its generated reader, CNA
+  retains named factories that are now unreachable and can accept more unreachable names; no
+  located test covers this unsupported layering. ContentManager copies share loose-reader pointers
+  and copy named-CNJ factories.
+- Ch.8 now gives the actual startup/custom-XNB code pattern and distinguishes these registration
+  planes from FNA's reflection-capable manager. Validation: incremental `latexmk` succeeded at
+  **529 pages**; targeted undefined-reference and duplicate-label checks are empty; makeindex
+  accepted **2,142** entries with zero rejected and zero warnings; `git diff --check` passes.
+  Rendered physical pages **103--105** are clean. Ch.8 is now **576** lines. The plan-consistency
+  validator remains absent from this checkout.
+
+Next recommended start: retain the ContentManager scope and audit asset path/root confinement.
+Trace `BuildAssetPath`, `NormalizeKey`, `ResolveAssetPath`, absolute and `..` paths, symlinks,
+cache aliasing, XNB/external-reference paths, existing source-file safety checks, test coverage,
+and XNA/FNA compatibility before changing the chapter's resolution/security wording.
+
+## Previous completed batch: ContentManager service-provider and graphics-device resolution
 
 No CNA source changes were made; the sibling repository remained a read-only authority. The live
 ContentManager constructors and all provider/device uses, GPU/no-device tests, Game's default
@@ -52,10 +92,8 @@ source establish:
   zero warnings; `git diff --check` passes. Rendered physical pages **105--107** are clean. Ch.8
   is now **525** lines. The plan-consistency validator remains absent from this checkout.
 
-Next recommended start: retain the ContentManager scope and audit reader-registration ownership.
-Trace `RegisterTypeReader<T>()`, `RegisterCnjLoader<T>()`, the per-manager `std::any` tables, the
-global XNB `ContentTypeReaderManager`, replacement/duplicate/null behavior, cache/copy
-interactions, tests, and FNA/XNA compatibility before expanding the extension-point guidance.
+The reader-registration recommendation from this batch has been completed by the newer audit
+above.
 
 ## Previous completed batch: ContentManager copy assignment and `Game::Content` replacement
 
