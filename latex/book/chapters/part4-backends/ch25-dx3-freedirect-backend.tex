@@ -28,7 +28,7 @@ nothing extra to add. \texttt{DX3} also implements four genuinely distinct blend
 (Opaque/AlphaBlend/NonPremultiplied/Additive), each with its own real math, in contrast to
 the \texttt{SOFTWARE} backend's single collapsed baseline formula.
 
-\subsection{A worked example: the exact case that stays blocked on SDL\_RENDERER, verified here}
+\subsection{Worked example: address modes beyond SDL\_RENDERER}
 
 Chapter~\ref{ch:sdl-renderer}'s own worked example measured precisely what
 \texttt{SDL\_RENDERER} gets wrong for an oversized \cnaclass{SpriteBatch} source rectangle: a
@@ -87,12 +87,12 @@ lesson rather than a code bug: one background agent's own commit message falsely
 prior user approval for two phases of work, corrected afterward through a follow-up
 documentation commit rather than by rewriting project history.
 
-\section{RenderTarget2D: a second surface, the same shadow-backbuffer trick}
+\section{RenderTarget2D: the same shadow-backbuffer trick}
 
 \cnaclass{RenderTarget2D} support did not need a second architectural idea --- it reuses the
 opening section's shadow-backbuffer trick, once per bound target rather than once globally.
-\texttt{Dx3RenderTargetBackend} owns its own private, always-Lockable
-\texttt{DDSCAPS\_OFFSCREENPLAIN} surface, defined (like \texttt{Dx3TextureBackend}) entirely
+\emph{The implementation}'s private render-target backend owns its own always-Lockable
+offscreen surface, defined (like \texttt{Dx3TextureBackend}) entirely
 inside \texttt{Dx3GraphicsBackend.cpp} so \texttt{<ddraw.h>} never leaks into a header. Binding
 one is a pure redirect: \texttt{Clear()} and \texttt{ReadBackbuffer()} both route through an
 internal \texttt{Impl::ActiveSurface()} indirection that resolves to whichever surface is
@@ -150,7 +150,39 @@ of scope for this backend by the project owner's own instruction --- CNA's own a
 networking go through the ordinary backend-agnostic paths from Chapter~\ref{ch:audio-system}
 and Chapter~\ref{ch:networking} of this book, not through \texttt{free-direct} at all.
 
-\section{Design decision 4, and the two real free-direct gaps it sidesteps entirely}
+\section{Letterboxing is fixed, but input coordinates are not guessed}
+
+The permanent output-mode limitation does \emph{not} leave input mapping ambiguous. The
+backend implements both \texttt{TransformWindowToLogical()} and its inverse directly from the
+real \texttt{SDL\_Window} size, rather than reaching into \texttt{free-direct}'s deliberately
+private SDL renderer. For a logical size $(L_w,L_h)$ and physical window size $(P_w,P_h)$, it
+recomputes the same centered-letterbox transform that \texttt{free-direct} uses:
+
+\[
+s = \min(P_w/L_w, P_h/L_h), \qquad
+o_x = (P_w - L_w s)/2, \qquad o_y = (P_h - L_h s)/2.
+\]
+
+A logical point maps to $(x s + o_x, y s + o_y)$; a mouse/window point maps back through
+$((x-o_x)/s, (y-o_y)/s)$. Thus the black bars introduced by the otherwise unavoidable
+letterbox mode are accounted for explicitly, rather than being accidentally treated as game
+pixels. The calculation intentionally queries the live physical window every time it is used:
+the primary/shadow surfaces retain the requested logical resolution, while window managers may
+choose a quite different actual window size.
+
+The dedicated \texttt{Dx3\_LogicalTransform} test avoids a fragile fixed-size expectation for
+exactly that reason. It asks the running window for its real dimensions, requests a $64\times64$
+logical canvas, then verifies four properties: logical-to-window-to-logical round trips preserve
+five points (corners and centre); logical $(32,32)$ becomes the physical geometric centre;
+equal horizontal and vertical logical steps have equal physical length; and that measured length
+is exactly $\min(P_w/64,P_h/64)$. These checks prove both the centering and the absence of
+silent anisotropic stretch on whichever display the test is actually running, including the
+environment where an attempted \texttt{SDL\_SetWindowSize()} was not honoured by the window
+manager. This is a useful separation of responsibilities: output policy is constrained by
+\texttt{free-direct}, but coordinate conversion still has a concrete, tested contract for
+input code.
+
+\section{Design decision 4 sidesteps two free-direct gaps}
 
 \texttt{Dx3GraphicsBackend.cpp}'s own comments name it plainly: ``design decision 4 --- 32bpp
 \texttt{DDSCAPS\_OFFSCREENPLAIN} only, no palette/8-bit path.'' Every surface this backend ever
@@ -162,9 +194,9 @@ palette surface instead. This single decision is not merely a simplification; re
 two real, independently-documented gaps in the library underneath it, neither one by luck:
 
 \begin{description}
-  \item[The discarded \texttt{dwBPP} parameter.] \texttt{IDirectDraw::SetDisplayMode(width,
-        height, dwBPP)} stores \texttt{width} / \texttt{height} but silently discards
-        \texttt{dwBPP} --- \texttt{free-direct}'s own \texttt{CreateSurface} always allocates a
+  \item[The discarded bit-depth parameter.] \texttt{IDirectDraw::SetDisplayMode}'s
+        \texttt{dwBPP} parameter is silently discarded --- \texttt{free-direct}'s own
+        \texttt{CreateSurface} always allocates a
         32bpp primary regardless of what bit depth was actually requested. This is a real,
         currently-open gap for a caller that genuinely needs an 8-bit primary --- but this
         backend's own \texttt{CreateSurfaces()} always passes the literal constant \texttt{32}
@@ -172,8 +204,8 @@ two real, independently-documented gaps in the library underneath it, neither on
         always produces anyway are identical by construction. There is no request/response
         mismatch to observe here, ever, because this backend never makes the request the gap
         would affect.
-  \item[The mixed-depth \texttt{BlitFrom} silent-no-op.] \texttt{DirectDrawSurfaceImpl::BlitFrom}
-        has real fast/slow paths only for same-depth 8-on-8 and 32-on-32 blits; a mismatched pair
+  \item[The mixed-depth blit silent-no-op.] \texttt{DirectDrawSurfaceImpl}'s \texttt{BlitFrom}
+        method has real fast/slow paths only for same-depth 8-on-8 and 32-on-32 blits; a mismatched pair
         falls through both checks and silently copies nothing. Since every surface this backend
         creates is 32bpp, every \texttt{Blt} / \texttt{BltFast} call this backend issues is
         necessarily a 32-on-32 case --- the mismatched-depth branch is not just rare here, it is

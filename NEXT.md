@@ -126,8 +126,20 @@ The live SDL_GPU contract proves instead that acquired swapchain textures are wr
 chapter now identifies the only viable `GetBackBufferData` design (always render into and read a
 self-owned proxy, then blit to the swapchain) and records why it remains deliberately unchosen:
 its extra texture and blit would cost every frame. The corrected page 6 was rendered and inspected
-after a zero-overfull isolated compile. The chapter is 354 lines; propagate that count to PLAN
-before committing this correction.
+after a zero-overfull isolated compile. The chapter is 354 lines, and the PLAN matrix records
+that current count.
+
+**Latest continuation: Ch.25 (DX3/free-direct) received a source-grounded fifth pass.** Its
+fixed-output letterbox limitation does not make input mapping ambiguous: the backend's real
+`TransformWindowToLogical()` and inverse query the live SDL window, recompute
+`min(physical/logical)` scale plus centered offsets, and correctly map through the bars without
+reaching into free-direct's private renderer. The dedicated `Dx3_LogicalTransform` test checks
+round trips, geometric centering, equal horizontal/vertical scale, and the fit-largest formula
+against whatever physical size the environment actually provides. The updated 251-line chapter
+compiled twice as a minimal five-page PDF; its new page was rendered and inspected, and all seven
+pre-existing isolated-Ch.25 `Overfull \hbox` warnings were resolved. This is isolated
+LaTeX/PDF verification only; a fresh full-book rebuild remains pending for the same environment
+constraint recorded above.
 
 This was an unusually long, multi-batch session (author unavailable for many hours, explicit
 "continue autonomously" instruction given partway through, repeated several times). Seven full
