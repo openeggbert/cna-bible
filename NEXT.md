@@ -65,6 +65,14 @@ document compiled and its changed physical pages were rendered and inspected cle
 row is therefore **isolated LaTeX/PDF-verified clean; full-book rebuild pending**, not full-book
 clean.
 
+**Then Ch.20 (BGFX) received a source-grounded seventh pass.** It now covers Task 914's real
+`Texture3D`/`TextureCube` GPU readback design: copy the requested region into a short-lived
+blit/readback texture, wait for bgfx's asynchronous returned frame, then destroy that transfer
+resource. The same work made true 3D/cube mip allocation testable and is covered by four shared
+round-trip/mip tests. The new page compiled and rendered cleanly. The isolated whole chapter
+still reports pre-existing layout warnings in unchanged material, so its PLAN row says exactly
+that; full-book validation remains pending.
+
 This was an unusually long, multi-batch session (author unavailable for many hours, explicit
 "continue autonomously" instruction given partway through, repeated several times). Seven full
 batches landed in total (371 → 452 pages, +81), on top of the earlier SDL_GPU chapter insertion

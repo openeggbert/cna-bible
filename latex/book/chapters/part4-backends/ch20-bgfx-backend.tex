@@ -320,12 +320,45 @@ single, non-instanced draw's \texttt{World} property works --- only \texttt{view
 \texttt{projection} are combined into the one \texttt{vp} uniform every instance in the batch
 shares.
 
+\section{Texture3D and TextureCube readback: copy first, then read}
+
+For a long time, \cnaclass{Texture3D} and \cnaclass{TextureCube} had a more serious
+limitation on BGFX than an absent convenience overload: their shared backend interfaces'
+default \texttt{GetData()} implementation was a silent no-op. Task~914 closes that gap without
+making ordinary sampled textures pay for a readback-only usage flag. BGFX documents
+\texttt{BGFX\_TEXTURE\_READ\_BACK} as incompatible with a texture that is also a normal GPU
+resource, so marking the game texture itself readback-capable would undermine the very texture
+that an effect needs to sample.
+
+Instead, each \texttt{GetData()} call creates a short-lived transfer texture exactly matching
+the requested region. For a cube source it is a 2D RGBA8 destination; \texttt{bgfx::blit()}
+selects the requested cube face through the source Z coordinate. For a volume source it is a
+matching 3D destination, so the requested $x,y,z,w,h,depth$ sub-volume remains explicit on
+both sides of the copy. A temporary destination is marked for a blit destination and for
+readback; the ordinary source texture keeps its normal sampled form.
+
+This is not synchronous memory access. \texttt{bgfx::readTexture()} returns the frame at which
+its bytes become available. The shared \texttt{AdvanceFramesUntil()} helper advances up to four
+BGFX frames before the transfer texture is destroyed, so the caller's buffer is not handed back
+before the asynchronous copy completes.
+If a selected BGFX renderer cannot create the temporary transfer texture, CNA now logs the
+missing \texttt{BGFX\_CAPS\_TEXTURE\_BLIT}/\texttt{READ\_BACK} capability instead of reverting
+to the old indistinguishable no-op. The project's Xvfb/llvmpipe OpenGL environment was checked
+to support both capabilities before this path was adopted.
+
+The same change also finally made mip allocation testable: \texttt{mipMap} is now passed through
+to BGFX's \texttt{createTexture3D} and \texttt{createTextureCube} calls instead of being silently
+hardcoded false. Four already-backend-agnostic programs are registered for BGFX rather than being
+reimplemented as cosmetic duplicates: a distinct-slice volume round trip, a non-origin cube
+partial rectangle, a three-level volume mip round trip, and a per-face cube mip round trip.
+Together they distinguish a correct transfer from reading level zero, the wrong cube face, or a
+CPU buffer left untouched by the former interface default.
+
 \section{Where this leaves the backend}
 
-The project's own closing assessment for this backend is unusually clean: ``BGFX's only
-remaining code-level gap is [the depth-bias item], already flagged for a project-owner
-decision; the other two items are sandbox/environment ceilings\ldots not further BGFX
-backend code work.'' Read alongside Chapter~\ref{ch:easygl-backend} and
-Chapter~\ref{ch:vulkan-backend}, BGFX is the backend whose remaining open items are most
-cleanly separated into ``needs a decision'' and ``needs a different test environment,'' rather
-than ``needs more engineering.''
+The original Phase~72 closure is a useful historical snapshot, but not a freeze-frame: the
+later readback and mip work above is one example of a real capability that would be invisible if
+the old ``only depth bias remains'' shorthand were repeated literally. The still-deliberate
+\texttt{SlopeScaleDepthBias} omission and the two environment-bound render-target checks remain
+important limitations, while later feature work should be evaluated from the current backend
+plan and its registered tests rather than from that earlier closure slogan alone.
