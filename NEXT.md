@@ -1,390 +1,106 @@
 # Next session — start here
 
-**Read this file first, then `PLAN.md` for the full task list, per-chapter page targets, and
-the permanent session log.** This file is a snapshot of where things stand as of the end of
-the session that just finished — it gets overwritten each session, not appended to (unlike
-`PLAN.md`'s own internal session log, a permanent history).
+Read this file first, then `PLAN.md`. `PLAN.md` is the durable expansion plan and historical
+session log; this file is the concise, current handoff and is rewritten as the state changes.
 
-## Where things stand (updated 2026-07-25)
+## Current state (2026-07-25)
 
-**454 pages, 49 chapters + 6 appendices, 0 undefined references, 0 duplicate-label warnings —
-independently re-verified via a forced rebuild (`latexmk -g`) after the latest documentation
-batch.** Re-verify before trusting this in a future session;
-use `grep -i "Warning.*undefined\|undefined reference\|undefined control"`, not a plain
-`grep -i undefined`.
+- Branch: `develop`, based on `c714cc4` when this autonomous session started. The tree was clean
+  and synchronized with `origin/develop`.
+- Book: **468 physical PDF pages, 49 chapters, 6 appendices**.
+- Full validation: a forced full-book rebuild completed successfully with:
 
-The 2026-07-24 continuation completed and pixel-verified a focused four-file batch:
+  ```bash
+  cd latex/book
+  latexmk -pdf -interaction=nonstopmode -halt-on-error -file-line-error -g main.tex
+  ```
 
-- **Ch.23 (Direct3D)** now distinguishes the real two-slot fence/allocator reuse contract from
-  a claim that every path is non-blocking: its ordinary clear/draw and present-transition
-  helpers deliberately wait synchronously. It also records the fixed no-reclamation descriptor
-  heaps as per-device CNA engineering budgets, not Direct3D 12 resource limits.
-- **Ch.17 (SDL_Renderer)** documents the precise 2D/3D execution boundary: vertex declarations,
-  stock-effect construction/application and state assignment work as data operations, while a
-  3D draw (and buffer construction) is the intentional runtime boundary.
-- **Ch.35 (Sharp Runtime)** documents `MemoryStream`'s post-close split: normal stream
-  operations reject use, while `ToArray()` and `GetBuffer()` retain deliberate extraction
-  access, including independent-copy versus live-buffer lifetime.
-- **Appendix C** gained four alphabetized source-grounded glossary entries for the above
-  D3D12, MemoryStream and vertex-declaration terms.
+- The final `main.log` has no matches for either targeted check:
 
-Validation for this batch: forced `latexmk -g` succeeded; the targeted undefined-reference and
-duplicate-label greps were empty; all affected physical PDF pages were rendered to PNG and read
-directly (Ch.17: 179--186; Ch.23: 225--234; Ch.35: 326--334; Appendix C: 429--432). All four
-PLAN rows are now honestly marked **PDF-verified clean**. The four content commits are already
-pushed to `develop`; the continuity update is also committed and pushed as `87fb144`.
+  ```bash
+  grep -iE 'Warning.*undefined|undefined reference|undefined control' main.log
+  grep -iE 'multiply defined|multiply-defined' main.log
+  ```
 
-**New in-progress work, not yet verified:** Appendix E has a source-verified fourth pass on
-`SkinnedPbrEffect` and its `AnimationPlayer`/`SkinningData` relation; Appendix F has a matching
-source-verified `MemoryStream` quick-reference entry. Both compile and render cleanly in a
-minimal 11-page document that includes the two real appendix sources; that check exposed and
-then confirmed the fix for a long-type right-edge overflow in Appendix E. A full-book rebuild is
-still pending because this environment terminated each fresh full-document compiler process
-before it reached the end of the 454-page document after generated auxiliaries were cleared. Do
-not claim a new full-book page count or clean-reference state until that rebuild finishes. The
-last fully verified full-book baseline remains commit `87fb144` (454 pages).
+- `makeindex` accepted 1,956 entries, rejected 0, and reported 0 warnings.
+- This is the first successful fresh full-book build after commit `87fb144`, whose verified
+  baseline was 454 pages. The 14-page increase comes from the isolated continuation work that
+  followed that baseline.
 
-**Current autonomous continuation — Ch.22 SDL_GPU MRT audit:** The chapter now states the
-source-and-pixel-proven boundary accurately: stock shaders have one fragment output and thus draw
-only into MRT target zero, whereas one custom `#version 450` ShaderEffect invocation genuinely
-writes two simultaneous attachments. `sdlgpu_mrt_test.cpp` reads the resulting distinct values
-`(51,102,204,255)` and `(102,204,51,255)` back from the two targets. It also records the
-remaining narrow ownership exposure: the primary and render-pass siblings retain shared state,
-but `currentExtraMrtTargets_` still retains active secondary wrappers as raw pointers for later
-`Clear*()` propagation. Destroying such a wrapper before the binding changes can dangle that
-list; keep all active MRT wrappers alive until `SetRenderTargets()` changes/clears the binding.
-The 490-line chapter compiled twice as a ten-page isolated PDF with zero `Overfull \hbox`
-warnings; physical page 7 was rendered and inspected. This is isolated validation only; a fresh
-full-book rebuild remains unavailable in this environment.
+## Visual verification closed in this session
 
-**Current autonomous continuation — Ch.23 D3D11 MRT finalization audit:** The chapter now
-explains why an MRT set cannot reuse the single-target unbind path: it tracks every active target
-and flushes each one's MSAA resolve/mip-generation helper before an MRT-to-null, MRT-to-single,
-or MRT-to-MRT transition. The real two-target 4x-MSAA readback requires both resolved textures
-to contain `(200,30,40,255)` and separately proves the direct transition with `(5,6,7,255)`.
-Ordinary single-target mip generation is directly read back at levels 1 and 2; the combined
-`N > 1` MRT + `mipMap=true` path is source-wired through the same helper but not independently
-pixel-tested, and is recorded only at that scope. The 503-line chapter compiled twice as a
-ten-page isolated PDF; the new pages were rendered and checked. It introduced zero overflows;
-seven pre-existing standalone overflow warnings remain. Full-book verification remains pending.
+Every physical page in each post-`87fb144` content file was rendered from the new full PDF at
+110 dpi and inspected directly:
 
-**Current autonomous continuation — Ch.23 presentation-mode audit:** Both native Direct3D
-backends receive the public `PresentationMode` enum, but D3D11 discards it and D3D12's handler is
-empty. Their virtual-resolution values do not create a logical render surface or final scaling
-composite, so Letterbox/Overscan/Stretch/NativeBackBuffer/FixedHeightDynamicWidth make no
-presentation-geometry difference. The 522-line isolated chapter remains clean apart from its
-seven pre-existing overflow warnings; no new overflow was introduced.
+- Ch.20 BGFX: physical pages 207–214.
+- Ch.21 WebGPU: 215–222.
+- Ch.22 SDL GPU: 223–232.
+- Ch.23 Direct3D: 233–244.
+- Ch.25 DX3/free-direct: 251–256.
+- Ch.34 Sharp Runtime overview: 329–334.
+- Ch.35 Sharp Runtime namespaces: 335–346.
+- Appendix E: 451–456.
+- Appendix F: 457–462.
 
-**Current autonomous continuation — Ch.23 D3D9 Texture3D correction:** The former claim of no
-GPU round-trip coverage was stale. `D3D9_Smoke` capability-gates a 4x4x4 volume on
-`D3DCAPS9::MaxVolumeExtent`, writes 32 varying RGBA bytes to its off-origin 2x2x2 box, and
-requires exact `LockBox()` readback. Oracle-scene coverage and automatic mip generation remain
-unproven. The 527-line isolated chapter compiled twice without introducing an overflow.
+All are visually clean: no page-edge overflow, listing spill, running-header/folio collision,
+or malformed page was found. Ch.5, whose PLAN row had remained incorrectly marked “pending
+batch verification,” was also rendered in full (physical pages 49–56) and is clean.
 
-**Current autonomous continuation — Ch.23 D3D9 render-target audit:** The chapter now covers
-the real 2D/cube target readback route, capability-gated 4x MSAA `StretchRect()` resolve, and
-caps-enforced MRT clear/unbind behavior. Its boundary is explicit: this proves attachment binding,
-clear, resolve, and target-count rejection, but not a multi-output fragment-shader draw.
+## Work completed before this session, now fully verified
 
-**Later continuation, also isolated-verified:** Ch.23 gained a ninth, source-grounded D3D11
-verification-ladder subsection. Its minimal document compiled successfully and the affected page
-was rendered and read after a right-edge audit; it is therefore marked isolated LaTeX/PDF clean,
-not full-book clean, until the complete rebuild can run to completion.
+- Ch.20 documents BGFX Texture3D/TextureCube readback and mip allocation.
+- Ch.21 corrects stale WebGPU readback, culling, scissor, and viewport limitations.
+- Ch.22 covers SDL GPU lifetime, present timing, validation, swapchain recovery/readback,
+  custom shaders, pipeline/sampler state, draw ordering, MRT, and remaining limits.
+- Ch.23 covers the D3D11 verification ladder and MRT finalization, the D3D11/D3D12
+  PresentationMode limitation, and corrected D3D9 Texture3D/render-target coverage.
+- Ch.25 covers the real letterbox input transform and the still-open resize/presentation
+  mismatch that requires a free-direct-side fix.
+- Ch.34 documents the real local CI gate and absent hosted CI.
+- Ch.35 documents generic-task continuation scope and MemoryStream close semantics.
+- Appendices E/F cover SkinnedPbrEffect/AnimationPlayer and MemoryStream respectively.
 
-Ch.35 then gained an eighth pass documenting the real, deliberate `TaskT<TResult>::ContinueWith`
-gap: non-generic `Task` continuation machinery is live and tested, but generic tasks have only
-the synchronization needed by `WhenAny` and no callback list or public continuation method. Its
-minimal chapter document compiles cleanly; the full-book rebuild remains the outstanding check.
+## Current focus
 
-**Latest isolated continuation:** Ch.21 (WebGPU) was audited against the live WebGPU plan,
-backend code, CMake test registration, and its focused test sources. The chapter now corrects
-three stale limitations: arbitrary plain-texture backend readback is real and has a three-case
-discriminating test; 3D culling is pixel-verified; and scissor/viewport are actual dynamic
-render-pass state (including the necessary logical-to-physical viewport clamp). It retains the
-real open limits: MRT, stencil operations, complete blend mapping, wireframe, custom effects,
-compressed upload, browser scope, and the `RenderTargetCube` mip/MSAA cuts. The minimal Ch.21
-document compiled and its changed physical pages were rendered and inspected cleanly. Its PLAN
-row is therefore **isolated LaTeX/PDF-verified clean; full-book rebuild pending**, not full-book
-clean.
+1. Reconcile stale project bookkeeping exposed by the full build:
+   - several PLAN line counts differ from `wc -l`;
+   - the PLAN subtotal still says the book is 266 pages;
+   - `CLAUDE.md` still says 48 chapters;
+   - `README.md` is empty;
+   - Ch.49 still repeats the obsolete claim that Texture3D/TextureCube do not inherit
+     `Texture`, contradicting current CNA source and the corrected Ch.11.
+2. Rebuild and visually verify the documentation corrections.
+3. Continue the highest-value source-grounded expansion work in logical dependency order,
+   starting from the active graphics/backend area unless a fresher source audit reveals a
+   more important correctness correction.
 
-**Then Ch.20 (BGFX) received a source-grounded seventh pass.** It now covers Task 914's real
-`Texture3D`/`TextureCube` GPU readback design: copy the requested region into a short-lived
-blit/readback texture, wait for bgfx's asynchronous returned frame, then destroy that transfer
-resource. The same work made true 3D/cube mip allocation testable and is covered by four shared
-round-trip/mip tests. The new page compiled and rendered cleanly. The isolated whole chapter
-still reports pre-existing layout warnings in unchanged material, so its PLAN row says exactly
-that; full-book validation remains pending.
+## Repository-safety notes
 
-**Latest continuation: Ch.34 (Sharp Runtime Overview) now distinguishes a real local quality
-gate from absent hosted CI.** It documents `scripts/local_ci_check.sh`'s strict configure/build/
-full-test behavior, explains why no GitHub Actions configuration was added (an explicitly
-declined external-resource decision), and records a source conflict: README describes earlier
-MinGW/Emscripten library builds while the newer continuation note calls both platforms
-unverified. The book therefore treats the former as historical evidence, not a current full-suite
-claim. The new page compiled and rendered cleanly; existing isolated warnings in unchanged Ch.34
-material remain recorded in the PLAN row. Full-book rebuild is still pending.
+- Existing sibling-repository changes are user-owned and must be preserved:
+  - `cna`: the reusable Xvfb screenshot registration/source changes documented under
+    `tools/cna-screenshot-infra/`;
+  - `cna-samples`: a modified `samples/SimpleAnimation/Content/tank.model.json`.
+- Do not edit sibling repositories as part of ordinary book work. Read them as authoritative
+  sources; make book changes only in this repository unless a future task explicitly expands
+  scope.
+- The active book repository itself started clean.
 
-**Latest continuation: Ch.22 (SDL_GPU) now has a source-grounded lifetime proof, not just a
-description of the fix.** The live CMake list contains 21 real `SdlGpu` CTest registrations
-(not the chapter's stale 20). Its new `RenderTargetLifetime` regression creates an 8x8 local
-render target, clears it red, queues a SpriteBatch copy into a persistent 16x16 target, and
-destroys the local wrapper before `Present()`. The first frame reads the destination centre back
-as red; a further 119 frames repeat the lifecycle to ensure deferred releases drain. The chapter
-now explains both state ownership (`shared_ptr` survives queued work) and raw-handle release only
-after a successful command-buffer submit. A minimal Ch.22 document was compiled twice and its
-new physical pages 3--4 were rendered and inspected cleanly. The isolated document retains five
-pre-existing overfull warnings elsewhere in Ch.22; none comes from the new subsection. Full-book
-regeneration remains pending regardless.
+## Blockers and `needs_human`
 
-**Ch.22 then gained its present-timing lifecycle rule.** `GraphicsDeviceManager` defaults VSync
-on, but all 22 local SDL_GPU examples/diagnostics set its public property false before
-`Game::DoInitialize()` to prevent roughly one-second virtual-display frames. A formerly direct
-private `SetSwapInterval(0)` workaround was correctly overwritten by `GraphicsDevice::Reset`
-once its missing public-interval forwarding was fixed. The chapter now documents this ordering,
-SDL_GPU's Immediate-then-Mailbox fallback for interval zero, and the fact that positive intervals
-(including XNA's `PresentInterval::Two`) select VSync. Its isolated document compiled and
-rendered pages 3--4 cleanly. A following layout pass resolved all five formerly pre-existing
-Ch.22 overfull boxes; the entire six-page isolated chapter compiled without an overfull warning
-and was rendered as a contact sheet for inspection. Full-book regeneration is still pending.
+No current book task is blocked on a human decision. The long-standing authenticity limit
+remains: Wine/DXVK provides real execution but synthesizes D3D9 capability values, so only
+real Windows/D3D9-era hardware can close that narrow claim. Keep it recorded as
+`needs_human`; it does not block independent writing or validation work.
 
-**Newest Ch.22 addition:** the chapter now distinguishes a null acquired swapchain texture
-(documented non-error, skip the minimized-window frame) from a false hard-acquisition result
-(submit the required command buffer, throw, and retain `framePending_`). The real recovery test
-unclaims its SDL window on frame 10, observes the throw, reclaims it, presents the original queued
-frame, then renders 30 further frames. The new section was isolated-compiled with zero overfull
-warnings and its page 5 was rendered and inspected. The later PLAN matrix updates record the
-then-current line count; full-book regeneration remains pending.
+## Reusable validation rules
 
-**Newest validation continuity pass in Ch.22:** the debug-build SDL_GPU validation toggle now
-documents two concrete fixes it exposed: MSAA cannot use a six-layer 2D-array attachment, and
-generated mipmaps require `SAMPLER | COLOR_TARGET` usage. It also points back to the still-open
-Texture3D depth-mipmap issue rather than treating validation as a completed binary state. The
-isolated chapter still compiles with zero overfull warnings; the added material on physical page
-4 was rendered and inspected. The later PLAN matrix updates record the then-current line count.
-
-**Newest Ch.22 correction:** the former wording called swapchain readback an unresolved segfault.
-The live SDL_GPU contract proves instead that acquired swapchain textures are write-only. The
-chapter now identifies the only viable `GetBackBufferData` design (always render into and read a
-self-owned proxy, then blit to the swapchain) and records why it remains deliberately unchosen:
-its extra texture and blit would cost every frame. The corrected page 6 was rendered and inspected
-after a zero-overfull isolated compile. The chapter is 354 lines, and the PLAN matrix records
-that current count.
-
-**Latest Ch.22 audit:** custom ShaderEffect support is real but narrower than generic GLSL
-portability. The live CnjEffect fixture uses GLSL ES 3.00 with loose uniforms and unqualified
-stage I/O, which fails under SDL_GPU; the passing dedicated regression instead uses version 450,
-explicit locations, fixed set/binding spaces, and named uniform blocks. It pixel-verifies an
-effect-specific tint and a no-effect white control. The initial 389-line chapter compiled twice as an
-eight-page isolated PDF with zero overfull boxes; the new material was rendered and inspected.
-The fixture remains an intentional, separately-scoped compatibility gap rather than a claim
-that custom effects are unsupported, and is now named consistently as the fourth item in the
-chapter's closing open-limits list.
-
-**Ch.22 cache follow-up:** queued draws snapshot their blend/cull/fill/stencil/depth state, and
-pipeline lookup conditionally hashes only state dimensions which actually affect descriptors.
-Stencil reference is correctly dynamic per draw; scissor is deliberately live once per render
-pass. The source audit also confirmed the remaining RasterizerState depth-bias gap: its float
-values are captured but not applied, because SDL_GPU has no dynamic depth-bias call and CNA does
-not yet put them in a pipeline key. The chapter now names this as its fifth open limitation. The
-422-line, eight-page isolated PDF compiled twice with zero overfull boxes; the cache section was
-rendered and inspected.
-
-**Ch.22 sampler follow-up:** the sampler audit confirms that point/linear, mipmap mode,
-Wrap/Clamp/Mirror, and dual-texture slots have pixel proofs, while MaxAnisotropy only reaches an
-internal slot field. Queued commands and sampler cache creation omit it, so no SDL_GPU sampler
-actually enables anisotropy. It is now the chapter's sixth open limitation. The 432-line
-nine-page isolated PDF compiled twice with zero overfull boxes; the changed page was rendered
-and inspected.
-
-**Ch.22 draw-order follow-up:** all queued 2D and 3D commands now replay in their real issue
-order through a kind/index reference queue; the prior fixed family order made sprites win even
-when a 3D draw was issued later. The two-case RenderTarget2D regression requires
-sprite-then-3D to read green and 3D-then-sprite to read red, exactly separating the repair from
-the old all-sprites-last behavior. The 455-line, nine-page isolated PDF compiled twice with zero
-overfull boxes.
-
-**Latest continuation: Ch.25 (DX3/free-direct) received a source-grounded fifth pass.** Its
-fixed-output letterbox limitation does not make input mapping ambiguous: the backend's real
-`TransformWindowToLogical()` and inverse query the live SDL window, recompute
-`min(physical/logical)` scale plus centered offsets, and correctly map through the bars without
-reaching into free-direct's private renderer. The dedicated `Dx3_LogicalTransform` test checks
-round trips, geometric centering, equal horizontal/vertical scale, and the fit-largest formula
-against whatever physical size the environment actually provides. The 251-line version of the chapter
-compiled twice as a minimal five-page PDF; its new page was rendered and inspected, and all seven
-pre-existing isolated-Ch.25 `Overfull \hbox` warnings were resolved. This is isolated
-LaTeX/PDF verification only; a fresh full-book rebuild remains pending for the same environment
-constraint recorded above.
-
-**Ch.25 follow-up:** the same source audit then documented the still-open virtual-resolution
-resize defect. After the first present, a resolution change rebuilds CNA's primary/shadow
-surfaces but free-direct retains its already-configured logical-presentation rectangle. Output
-can therefore use the old scale while CNA's bidirectional input transform recomputes against the
-new logical size. The 264-line chapter again compiled twice with zero overfull boxes; pages 3--4
-were rendered and inspected. This is a free-direct-side fix, not a safe unilateral CNA change.
-
-This was an unusually long, multi-batch session (author unavailable for many hours, explicit
-"continue autonomously" instruction given partway through, repeated several times). Seven full
-batches landed in total (371 → 452 pages, +81), on top of the earlier SDL_GPU chapter insertion
-and Ch.17/Ch.18 real-screenshot work:
-
-- **Batch A** (10): Ch.10, 19, 20, 23, 32, 37, 40, 41, 43, 44, plus Appendix B.
-- **Batch B** (8): Ch.8, 22, 30, 31, 35, 39, 46, 48.
-- **Batch C** (6): Ch.2, 5, 12, 18, 20 (2nd pass), 23 (2nd pass).
-- **Batch D** (6): Ch.11, 13, 33, 34, Appendix A, Appendix D.
-- **Batch E** (6): Ch.6, 21, 24 (3rd pass), 25 (3rd pass), 28, 47.
-- **Batch F** (4, executed directly by the coordinating session — see below): Ch.18 (2nd pass),
-  19 (2nd pass), 31 (2nd pass), 10 (2nd pass).
-
-Every touched file across all batches was individually rendered to PNG and read directly after
-its own batch's consolidated `make book` pass. **This session found and fixed fourteen real
-defects across seven verification passes: thirteen page-edge/box/running-header overflows, none
-of which produced a logged `Overfull \hbox` warning, plus one genuinely fatal build break** (raw
-multi-byte UTF-8 bytes embedded directly inside an `lstlisting` block in Ch.35 aborted `pdflatex`
-outright — see the dedicated section below, a new defect class for this session).
-
-Highlights from Batch F (the most recent work — all four items executed directly rather than via
-background fork, see "Fork dispatch" section below):
-
-- **Ch.18 (EasyGL)**: corrected an earlier pass's own overstated claim — `VertexBuffer`/
-  `IndexBuffer::GetData` are not "unimplemented"; both work via a real CPU-shadow cache (Task
-  930), faithful to real XNA's own no-GPU-writeback contract for these types. The genuine
-  surviving gap is narrower: the `NOXNA` `SetDataRaw()` custom-vertex-layout path doesn't
-  populate the shadow, and `GetData` has no untyped counterpart to read one back with.
-- **Ch.19 (Vulkan)**: a real, hittable resource ceiling — `Texture2D` and `RenderTarget2D`
-  share one 512-descriptor-set pool (`MaxDescriptorSets`), throwing `std::runtime_error` on a
-  513th simultaneously-live instance. A real budget of concurrently-undisposed resources
-  (`Dispose()` frees the slot), not a lifetime total, and not shared with EasyGL/BGFX.
-- **Ch.31 (Networking)**: expanded the flagged-but-unresolved `NetworkSession::BeginCreate`
-  leak into a fuller, honestly-scoped account. Found a genuine design surprise while tracing
-  it: `activeAction_` is a class-`static` member, not per-instance — only one `Begin*`/`End*`
-  action may be in flight *process-wide*, across every `NetworkSession`. The leak itself is
-  left honestly unresolved (this project's own audit trail has two not-fully-reconciled
-  accounts of it), not over-claimed with a root cause this pass didn't actually verify.
-- **Ch.10 (SpriteBatch)**: a real, previously-undocumented exception-type gap — nested
-  `Begin()`/premature `End()` throws plain `std::runtime_error`, not real XNA's
-  `InvalidOperationException`, even though `System::InvalidOperationException` exists in this
-  codebase and is used faithfully elsewhere. A typed catch clause around `SpriteBatch` usage
-  never fires; a generic `catch (const std::exception&)` still does.
-
-## A genuinely fatal build break this session — a new defect class, read this first
-
-Every prior defect class this session (thirteen of them) was a page-layout overflow — the build
-still succeeded, just with corrupted-looking pages. This one was different: **raw multi-byte
-UTF-8 characters (a Euro sign, two replacement-character glyphs) embedded directly inside code
-comments inside an `lstlisting` block caused `pdflatex` to abort outright with "Invalid UTF-8
-byte sequence" — no PDF produced at all.** The failure signature was actively misleading:
-`latexmk`'s own output showed what looked like ordinary "undefined reference" warnings, because
-the build never got far enough to resolve any labels at all. Caught only by actually running the
-consolidated verification pass and noticing the build itself had failed, not by trusting any
-fork's own "committed and pushed" report. **Lesson: never embed a literal non-ASCII byte sequence
-inside an `lstlisting` block, even inside a comment** — describe the character in plain ASCII
-(e.g. "EURO SIGN", "U+FFFD") instead. `\texttt{}` and ordinary prose handle UTF-8 fine via the
-document's font encoding; `lstlisting`'s own listings-package font handling does not.
-
-## Fork dispatch in this environment — the fullest picture yet, read before dispatching more
-
-Everything from prior notes still holds (forks keep working/committing past their assigned
-task; commit messages can mismatch their actual diff; `latexmk` needs `-g` to force a rebuild;
-always independently re-render before trusting any "clean" claim; after every batch, diff
-`PLAN.md`'s claimed line count against `wc -l` on the real file). **Confirmed and reinforced
-this session:** an `Agent(subagent_type: "fork")` call can resolve three different ways:
-
-1. A genuine background task (the common case) — an async handle and a later `<task-notification>`.
-2. An immediate `"Fork is not available inside a forked worker"` **error** — the dispatch may
-   still launch in the true background regardless; check `git log` before assuming it failed.
-3. **Synchronous inline execution in the current turn** — the calling session itself must
-   complete the task directly, in-line, using its own tools; no separate agent is spawned.
-   **Once this happens once in a conversation, it reliably happens for every subsequent
-   `Agent(fork)` call too** — confirmed this session across four consecutive dispatch attempts,
-   not just the originally-observed single instance. Don't keep re-attempting dispatch after
-   the first synchronous-execution response; just execute the remaining batch items yourself,
-   sequentially, in the same turn, exactly as this session did for Batch F.
-
-Multiple agents independently discovering and fixing the *identical* overflow/stale-claim issue
-via different concrete edits happened repeatedly across all seven batches — always resolved
-cleanly by re-checking `git diff`/`git show --stat` before committing rather than assuming your
-own in-progress edit is the only one in flight.
-
-## What is NOT yet done — the natural next body of work
-
-Furthest-below-target as of this session's end (recompute from `PLAN.md`'s own table if this
-list and PLAN.md ever disagree):
-
-- Ch.23 Direct3D Backends remains the largest absolute page gap (about 17 of 85 pages), despite
-  a now-completed eighth source-driven pass. Continue there if selecting a body chapter.
-- Ch.17 SDL_Renderer (about 13 of 55) and Ch.35 Sharp Runtime Namespaces (about 17 of 70) have
-  each received a seventh real depth pass and are verified clean, but remain substantially below
-  their targets.
-- Appendices E and F remain at about 5 of 20 and 5 of 25 pages. Appendix C is now about 6 of
-  15 and was just verified; these appendices are good independent next tasks.
-- Ch.7 Math remains the largest chapter by far and may be genuinely saturated (four-plus prior
-  sessions' worth of depth passes) — read its own `PLAN.md` row before adding more.
-- Screenshot infrastructure: `ASCII` and `CANVAS` backends remain untried for real screenshot
-  capture (`CANVAS` is Emscripten/browser-only, a materially different path than `Xvfb`).
-
-No `TaskCreate` entries exist for further work — the task-tracker MCP tool was unavailable last
-it was checked; work is tracked purely via `PLAN.md`/`NEXT.md` rows and commit messages.
-
-## Reusable technical/mechanical findings (still true, carried forward)
-
-- **PNG-rendering every touched page is the only reliable overflow check — full stop, no
-  exceptions for what the log says.** Thirteen separate real overflows across this session
-  produced zero logged `Overfull \hbox` warnings between them.
-- **A `make book` that succeeds is not the only failure mode to check for — a fatal build
-  break can also silently masquerade as unrelated "undefined reference" warnings** if the
-  build aborted before resolving labels. If the warning set looks wrong or the page count looks
-  suspiciously low/absent, check the log for an actual `pdflatex` abort, not just the two
-  standard grep patterns.
-- **A suspected fix must be pixel-verified, not assumed.** If a before/after PNG crop of the
-  same region looks identical, the fix did not work. Bump `-r` to 250 and crop with PIL for a
-  close look whenever a line looks like it might be touching a page/box edge.
-- **After any batch, diff `PLAN.md`'s claimed line count against the real file's line count**
-  (`wc -l`) for every touched chapter before trusting any "PDF-verified clean" label.
-- **`grep -i undefined main.log` can false-positive** on ordinary prose containing the word
-  "undefined." Use `grep -i "Warning.*undefined\|undefined reference\|undefined control"`.
-- **Never embed a literal non-ASCII byte sequence inside an `lstlisting` block, even inside a
-  comment** — it can abort the entire build. Describe the character in plain ASCII instead.
-- **`\allowbreak{}` cannot go inside a `\cnans{}`/`\cnaclass{}` argument** (would corrupt the
-  index). If the identical term is indexed elsewhere in the same chapter via another
-  `\cnans{}`/`\cnaclass{}` instance, it's safe to switch just the overflowing instance to a
-  plain, `\allowbreak{}`-able `\texttt{}` — verify that precondition first.
-- **Overflow-fix technique, in order of what actually worked:** (1) `\allowbreak{}` at
-  camelCase/`::`/`_`/`.` boundaries — verify it actually changed the render, don't assume; (2)
-  restructure the sentence into shorter independent clauses, or move the long token(s) off the
-  line-end position entirely, when `\allowbreak{}` alone doesn't move the needle; (3) split a
-  combined `\description` `\item[...]` label into two items; (4) restructure code itself inside
-  `lstlisting`, including moving a trailing inline comment to its own line above the code; (5)
-  `\section[short]{long}` for a running-header/folio collision — confirmed needed four times
-  this session (Ch.12, Ch.17, Ch.19, Ch.23); (6) for a wide `longtable`, narrowing one column's
-  `p{}` width while widening another can resolve a cell overlap without touching cell text.
-- **`\times`, and other math-mode-only commands, will fatally break the build inside
-  `\texttt{}`** — use a plain ASCII operator (`*`) for arithmetic inside `\texttt{}`.
-- **`\checkmark` and other amssymb/amsfonts-only commands are undefined** in this project's
-  preamble — use plain text (`OK`, `X`, etc.) for status symbols.
-- **Before asserting a specific API call in a worked example, grep the real header for it.**
-
-## Housekeeping (unchanged, still true)
-
-- Build: `cd latex && make book` → `latex/book/main.pdf`. If you suspect staleness (very likely
-  after any multi-agent batch — see above), force with `latexmk -pdf -interaction=nonstopmode
-  -halt-on-error -file-line-error -g main.tex` from inside `latex/book/`.
-- `latexmk`/`pdflatex`/`texlive-latex-extra`/`texlive-fonts-recommended`/`xvfb`/
-  `libgl1-mesa-dri`/`ccache` are all installed and confirmed working.
-- Sibling repos (`cna`, `sharp-runtime`, `easy-gl`, `free-direct`, `xna4-spec`, `cna-samples`,
-  `cna-extended`, `cna-template`, `libcna.com`, `free-api`, `free-eggbert`, `planetblupi`,
-  `sprite-utils`, `mobile-eggbert-libgdx`) live at
-  `/rv/data/development/github.com/openeggbert/<name>` in this environment — not `/workspace`.
-  `cna`'s own working tree has two reusable, ccache-enabled build directories:
-  `build-sdlrenderer/` and `build-easygl/` (see `tools/cna-screenshot-infra/README.md`).
-- Printed page numbers and physical PDF page numbers differ (front matter uses roman
-  numerals) — search by content (`pdftotext`), never assume printed page N is physical page N.
-- Prefer real `\ref{ch:label}` over a plain-text `Chapter~N` citation when a label already
-  exists and you're touching that paragraph anyway.
-- Run the project's spacing-fix regex on every touched file, even during the writing phase of a
-  batch (cheap, local, no build needed):
-  `python3 -c "import re; p='PATH'; t=open(p).read(); n=re.sub(r'\}/(\\\\texttt\{|\\\\cnaclass\{)', r'} / \1', t); open(p,'w').write(n) if n!=t else None"`
-- No task is currently blocked/`needs_human`, aside from the long-standing DXVK/`D3DCAPS9`
-  authenticity item (Ch.39/45) which genuinely needs real Windows hardware to close and is
-  already tracked as such. If a genuine new architectural ambiguity comes up, mark it clearly
-  here and in `PLAN.md`'s session log, and continue with other independent work rather than
-  stalling.
+- A successful LaTeX build is necessary but not sufficient. Render every touched physical PDF
+  page and inspect it directly.
+- Use the targeted undefined-reference expression above; a plain `grep -i undefined` can match
+  ordinary prose.
+- Printed page numbers differ from physical PDF pages because of front matter. Locate pages by
+  extracted title text.
+- Never place raw non-ASCII bytes inside an `lstlisting`.
+- Run `git diff --check` before each commit.
+- Keep content commits small and descriptive; update `PLAN.md` and this file whenever state
+  changes materially.
