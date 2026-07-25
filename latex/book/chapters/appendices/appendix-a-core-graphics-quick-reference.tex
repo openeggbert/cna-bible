@@ -168,6 +168,11 @@ implements only a level-0 CPU cube. \cnaclass{RenderTargetCube} extends
 narrower capability: only WebGPU and SDL GPU override it today. The exact null-factory,
 placeholder, and mip boundaries are tabulated in
 Chapter~\ref{ch:backend-architecture}, \S\ref{sec:texture-volume-readback-matrix}.
+Its inherited \texttt{SetData} surface is narrower again: only EasyGL changes the target;
+every other constructed backend silently discards a valid upload. Cube-target switching has
+independent backend-specific finalization gaps --- notably missing public unbind routing on
+D3D11/12 --- tabulated in
+\S\ref{sec:rendertargetcube-default-contracts}.
 
 \cnaclass{SpriteBatch} is the class Chapter~\ref{ch:spritebatch} covers end to end; this table
 is purely a shape reminder. Five \texttt{Begin} overloads escalate from a zero-argument default

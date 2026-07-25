@@ -268,6 +268,28 @@ BGFX, and D3D9/11/12 construct and sample the target but inherit the cube interf
 \texttt{GetData()}, whose public wrapper produces transparent black. The central matrix in
 \S\ref{sec:texture-volume-readback-matrix} records this otherwise easy-to-miss split.
 
+The inherited \texttt{SetData} family has narrower backend support still. It is legal at
+compile time because \cnaclass{RenderTargetCube} inherits the whole
+\cnaclass{TextureCube} upload family, exactly as it does in FNA. In current CNA, however, only
+EasyGL's render-target-cube backend implements that upload. Every other constructed target
+inherits the intentional empty \texttt{SetData()} body on the render-target backend interface;
+the public call validates and converts its input, then returns normally without changing the
+cube. This is a silent compatibility gap, not an unsupported-operation exception.
+
+There is also a caller-visible trap in the unbind line itself. Vulkan, WebGPU, SDL GPU,
+EasyGL's ordinary single-face path, BGFX's ordinary 2D-null path, and D3D9 all route it
+successfully under their respective execution models. D3D11 does not: its public cube bind is
+never entered into the backend's 2D-only current-target tracker, so the following null call
+neither invokes the cube's \texttt{UnbindAsRenderTarget()} nor restores the backbuffer.
+D3D12 does restore the backbuffer, but likewise skips that callback, so cube MSAA resolve and
+cube mip generation never run through this public sequence. Their existing exact smoke tests
+call the two backend methods directly and therefore prove the callback implementations, not
+this missing public routing. EasyGL has a narrower sibling edge case: switching directly
+between faces of the same \emph{multisampled} cube skips the outgoing face's resolve; insert a
+backbuffer unbind between faces if that combination must be used. The full transition matrix
+and BGFX's separate explicit-cube-null overload defect are recorded in
+\S\ref{sec:rendertargetcube-default-contracts}.
+
 Whether this actually produces a correct image is, per \S\ref{sec:rendertargets} below,
 backend-dependent in a way no amount of correct call-site code can work around: EasyGL renders
 this correctly; Vulkan renders black for either (or both) of two distinct, separately-tracked

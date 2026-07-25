@@ -298,6 +298,92 @@ actual assertions only prove that calls on two faces and one volume do not throw
 compare returned colors. A test title or introductory comment is not evidence when the
 assertion body establishes a weaker contract.
 
+\subsection{RenderTargetCube: one inherited upload, two independent transition traps}
+\label{sec:rendertargetcube-default-contracts}
+
+\cnaclass{RenderTargetCube} inherits \cnaclass{TextureCube}'s complete public
+\texttt{SetData()} family. FNA leaves that inherited call live and forwards it to
+\texttt{FNA3D\_SetTextureDataCube()}, including when the texture was created as a render
+target. CNA's backend contract instead redeclares \texttt{SetData()} on
+\cnaclass{IRenderTargetCubeBackend} with an empty default body and the comment ``render targets
+do not support CPU-side SetData.'' Only EasyGL overrides it. The shared public wrapper still
+performs face, rectangle, mip-level, pointer, and count validation and still converts the
+requested \cnaclass{Color} range to RGBA bytes before making that call. Consequently a valid
+upload reports success everywhere: EasyGL changes the requested face/subregion; every other
+constructed cube target silently discards the bytes. Software and the four 2D-only backends
+construct no cube target, so their public object has a null backend and discards the upload
+one layer earlier. No dedicated test calls \texttt{SetData()} on a
+\cnaclass{RenderTargetCube}; the EasyGL result and every no-op are source-proven only.
+
+Target switching is a separate default. \cnaclass{IGraphicsBackend}'s
+\texttt{SetRenderTargetCubeFace(rt, face)} calls
+\texttt{rt->BindAsRenderTargetFace(face)} when non-null, but on null merely delegates to
+\texttt{SetRenderTarget2D(nullptr)}. It never remembers or calls the outgoing cube target's
+\texttt{UnbindAsRenderTarget()}. That is harmless only when the backend either overrides the
+method, tracks cube state elsewhere, or finalizes each face without an unbind callback:
+
+\begingroup
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{@{}p{0.16\textwidth}p{0.16\textwidth}p{0.60\textwidth}@{}}
+\toprule
+\textbf{Backend} & \textbf{RT-cube SetData} & \textbf{Public cube-target transition contract} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Backend} & \textbf{RT-cube SetData} & \textbf{Public cube-target transition contract} \\
+\midrule
+\endhead
+\texttt{EASYGL}
+  & real GPU upload & Explicit tracking finalizes on cube-to-2D/backbuffer and between different
+    cube objects. Direct face-to-face switching on the \emph{same} cube skips unbind. That is
+    safe for single-sample level~0 and final whole-cube mip generation, but a shared MSAA
+    renderbuffer means only the last face is resolved unless the caller unbinds between faces. \\
+\texttt{VULKAN}
+  & no-op & The common route is sound: deferred draw commands retain their face proxy, and
+    command recording performs per-face render-pass resolve and mip generation independently
+    of the cube object's unbind callback. \\
+\texttt{BGFX}
+  & no-op & Ordinary unbind through the 2D-null overload restores view~0, and BGFX performs
+    attachment resolve/mip work. Its explicit cube-null overload is broken: the backend override
+    returns immediately on null. All six faces also share one view ID, so same-frame face
+    rendering still needs the test suite's forced frame boundary. \\
+\texttt{D3D9}
+  & no-op & An explicit override tracks the cube and unbinds it on every transition, including
+    face-to-face; resolve and backbuffer restoration therefore run. \\
+\texttt{D3D11}
+  & no-op & Broken. The common bind never populates the backend's 2D-only
+    \texttt{currentCustomRT\_}; the later 2D-null call neither invokes the cube's resolve/mip
+    callback nor restores the backbuffer. Subsequent backbuffer work can still target the cube. \\
+\texttt{D3D12}
+  & no-op & Partly broken. The 2D-null path restores the backbuffer unconditionally, but no cube
+    is tracked, so its \texttt{ResolveMsaaEXT()} and \texttt{GenerateMipsEXT()} callbacks never
+    run through the public API. Single-sample level~0 rendering survives this omission. \\
+\texttt{WEBGPU}
+  & no-op & Sound within its declared scope: binding another face or target eagerly flushes the
+    outgoing target identity. Cube-target mipmaps are rejected and cube MSAA reports zero. \\
+\texttt{SDL\_GPU}
+  & no-op & Sound: mutually exclusive 2D/cube pointers and queued per-face state preserve
+    face-to-face work; public tests prove cube MSAA resolve and generated mip content. \\
+\texttt{HEADLESS}
+  & no-op & The common route changes logical trace state only; it cannot establish pixel,
+    resolve, or mip behavior. \\
+\texttt{SOFTWARE}, \texttt{SDL\_RENDERER}, \texttt{ASCII}, \texttt{CANVAS}, \texttt{DX3}
+  & null backend & No cube render-target factory, so no native transition or upload occurs. \\
+\bottomrule
+\end{longtable}
+\endgroup
+
+The Direct3D distinction is especially easy to miss because both smoke suites prove the
+underlying algorithms with direct backend calls:
+\texttt{BindAsRenderTargetFace()} followed by \texttt{UnbindAsRenderTarget()}. Those tests
+establish that the resolve and mip implementations work \emph{when invoked}; no D3D11/12 test
+was found that routes a cube through \cnaclass{GraphicsDevice}'s public cube-target overload
+and then back through the public null-target call. They therefore cannot prove the public
+transition that currently fails to invoke them. This is the same audit lesson as the Headless
+``round-trip'' above: inspect the call layer the test exercises, not only its feature name.
+
 \subsection{IIndexBufferBackend::SetData32: a defensive throw traced out to dead code}
 
 Not every default in this file is a silent no-op. \cnaclass{IIndexBufferBackend}'s

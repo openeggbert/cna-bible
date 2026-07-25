@@ -576,7 +576,7 @@ successful compilation: the fixed input layout, automatic viewport slot, \texttt
 constant-buffer/root binding, \texttt{t0}/\texttt{s0} resource path, custom pixel shader, and
 GPU readback all participated in one observable public-API draw.
 
-\section{A reopened feature, and a real architectural divergence hiding under a shared foundation}
+\section{A reopened feature, and a public routing gap above the finished mechanisms}
 
 \texttt{D3DCommon}'s shared HLSL/DXBC and state-mapping tables, named above, make it easy to
 assume the two backends are near-identical beneath that layer. A late pair of tasks in the
@@ -584,6 +584,12 @@ Direct3D~11/12 implementation plan --- opened well after both backends were othe
 considered feature-complete, once a full feature-matrix percentage audit against \texttt{EasyGL}
 turned up a handful of remaining gaps --- shows a case where that assumption holds
 (\cnaclass{RenderTargetCube} MSAA) and one where it genuinely does not (mip-chain generation).
+The mechanisms described below are real, but a later interface-default audit found that the
+book's former conclusion was too broad: both test suites invoke the cube backend's
+\texttt{BindAsRenderTargetFace()} and \texttt{UnbindAsRenderTarget()} directly.
+\cnaclass{GraphicsDevice}'s public cube-target route invokes the first but, on D3D11/12,
+currently never invokes the second. The following subsections therefore describe working
+backend algorithms with a missing public finalization edge, not end-to-end public features.
 
 \subsection{\cnaclass{RenderTargetCube} MSAA: a deliberate exclusion, reopened on request}
 
@@ -634,6 +640,28 @@ promise: shared bytecode and state-mapping tables, not identical implementation 
 every individual feature, and a reader porting code that depends on either backend's own timing
 or cost characteristics for this specific operation should not assume the other backend behaves
 the same way underneath.
+
+\subsection{Why the direct smoke proofs do not establish the public feature}
+
+The missing edge is visible only by following the public call chain. The common cube-target
+method on \cnaclass{IGraphicsBackend} binds a non-null cube directly and delegates a null cube
+to the 2D-null path; it never calls the outgoing cube's unbind callback. Both Direct3D
+backends inherit that default and track only a current 2D target. D3D11's 2D-null branch
+assumes that target restored the backbuffer as part of its unbind, so after a public cube bind
+it does not even restore the backbuffer. D3D12 restores the backbuffer unconditionally, but
+still skips the cube's resolve/mipmap callback. Switching directly between cube faces has the
+same missing-finalization shape on both.
+
+The smoke checks cited above deliberately bypass this chain. They create a backend cube, call
+\texttt{BindAsRenderTargetFace()}, clear it, and then call
+\texttt{UnbindAsRenderTarget()} themselves before reading the resolved/mip resource. Their
+exact pixels prove that each algorithm works when called, but cannot catch an absent caller.
+No D3D11 or D3D12 example was found that performs the equivalent sequence through
+\cnaclass{GraphicsDevice}'s public cube-target overload followed by the public null-target
+overload. Until backend-level cube tracking or explicit overrides close that edge, public
+D3D11 cube rendering is unsafe even at single-sample level~0 because later backbuffer work may
+still hit the cube; public D3D12 single-sample level~0 survives, but cube MSAA resolve and
+generated mips do not.
 
 \section[\texttt{HeadlessEXT}: letting three D3D12 tests join the routine suite]{\texttt{HeadlessEXT}: the NOXNA property that let three D3D12 tests join the
 routine suite}
