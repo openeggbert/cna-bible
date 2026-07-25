@@ -672,6 +672,94 @@ test. The checked-in XNB fixture inventory contains no Curve asset; the related 
 only the \texttt{.cnj} Curve covered in Chapter~\ref{ch:math-core-types}. Treat the binary
 reader as a faithful ordinary-layout decoder, not as a bounded or semantic curve validator.
 
+\subsection{Texture2DReader validates decoded Color levels but not texture topology}
+\label{sec:xnb-texture2d-reader-contract}
+
+\texttt{Microsoft.Xna.Framework.Content.Texture2DReader} is separately registered (or included
+by the umbrella call), targets \cnaclass{Texture2D}, and inherits the common exact
+serialized-version-zero rule. Its payload begins with four signed 32-bit words:
+\texttt{surfaceFormat}, \texttt{width}, \texttt{height}, and \texttt{levelCount}; every declared
+level then has a signed \texttt{byteCount} followed by that many bytes. The first word depends on
+the \emph{XNB container} version rather than the reader-table version. Version 5 and later are
+cast directly to \cnaclass{SurfaceFormat}. Version 4 accepts only the FNA legacy ordinals 1
+(\texttt{ColorBgraEXT}), 28 (DXT1), 30 (DXT3), and 32 (DXT5). Unknown values fail as a
+\cnaclass{ContentLoadException}; no general enum validation takes place before that later
+format decision.
+
+The practical format surface is deliberately smaller than that decoding step makes it appear.
+CNA accepts raw \texttt{Color}, and accepts DXT1, DXT3, and DXT5 only by software-decompressing
+them to RGBA \texttt{Color} before upload. Every other current \cnaclass{SurfaceFormat} is
+rejected, including \texttt{ColorBgraEXT}; consequently the otherwise recognized version-4
+legacy ordinal 1 immediately reaches CNA's ``only Color/Dxt1/Dxt3/Dxt5'' error. Current FNA
+retains a native DXT format when the active FNA3D device advertises DXT/S3TC support and converts
+only when it cannot; CNA always consumes the larger uncompressed representation. That is a
+performance and memory difference rather than a reason to expect different ordinary pixels.
+It is nevertheless a real compatibility limit for the many non-Color XNA surface formats.
+
+There is a second platform-specific difference. FNA rewrites Color/ColorBgra and the three DXT
+encodings when the XNB platform byte is \texttt{'x'} (Xbox 360) before conversion/upload. CNA's
+container accepts that platform code, but this reader never performs the corresponding
+\texttt{X360TexUtil} swaps. A supported-looking Xbox texture can therefore decode with wrong
+channel/block layout even when its nominal format is one of the four accepted forms. The fixture
+tree has no version-4 or Xbox Texture2D XNB with which to establish an interoperable result.
+
+The existing byte defenses are useful but deliberately local. Width and height must each be
+positive, then the reader calls \texttt{CheckDecodedByteSize(width * height * 4)} before creating
+the texture; with the default \cnaclass{XnbReadLimits}, that nominal base-level RGBA size is
+capped at 256 MiB. For an uncompressed Color level, it reads exactly the declared byte count and
+then requires exactly \texttt{levelWidth * levelHeight * 4} bytes before constructing
+\cnaclass{Color} objects. A negative byte count becomes \cnaclass{ContentLoadException}; a short
+stream remains \texttt{EndOfStreamException}. DXT's helper checks that there are \emph{at least}
+the required 4-by-4 blocks (eight bytes per DXT1 block and sixteen per DXT3/5 block), then emits
+exactly one RGBA image. It does not reject surplus compressed bytes in a declared level, and its
+too-short-data failure is \texttt{std::out\_of\_range}, not the reader's content-load error.
+Thus this is not a uniform malformed-texture exception policy.
+
+Nor is the initial product a complete allocation or device admission policy. It has no per-axis
+device maximum, so a shape such as 500000 by 1 has a small nominal byte count yet can be invalid
+for the selected GPU. More subtly, the current source uses raw signed \texttt{int64\_t}
+multiplication: two legal positive Int32 dimensions can leave \texttt{width * height} representable
+but overflow on the following \texttt{* 4} before \texttt{CheckDecodedByteSize()} observes a
+value. That is C\texttt{++} signed-overflow undefined behavior, not a clean limit rejection.
+The unmerged \texttt{feature/audit} branch contains a checked-multiply and a device-axis preflight,
+but neither commit is an ancestor of this book's \texttt{develop} authority. It must not be
+treated as shipped protection.
+
+Mip topology has the same distinction between a normal asset and hostile input. Construction uses
+only \texttt{levelCount > 1}: a positive multi-level declaration creates the framework's full
+halving chain, rather than a chain exactly as long as the file says. Zero or negative counts make
+a one-level texture and run no per-level reads, so this reader accepts an uninitialized texture
+payload instead of rejecting an invalid count. A positive count above the physical chain has no
+ceiling. The reader shifts \texttt{width >> level} and \texttt{height >> level}, while
+\cnaclass{Texture2D::SetData()} checks only that the level is nonnegative; its CPU mip store grows
+for arbitrary higher levels and the backend is asked to update them. Large levels also make the
+shift itself undefined. An unmerged audit change adds an upper mip ceiling, but current
+\texttt{develop} does not have it. The base-level decoded-size check is therefore not a bound on
+the number, topology, or total storage of declared mip payloads.
+
+A GPU device is mandatory for ordinary manager loading. With a non-null \cnaclass{ContentManager}
+that lacks one, \texttt{getGraphicsDeviceInternal()} throws the manager's own diagnostic before
+the reader's null-device branch. The latter is relevant only to a manually constructed
+\cnaclass{ContentReader} with no manager. Direct existing-instance use has another non-obvious
+shape: normal object dispatch passes none, but a direct boxed \cnaclass{Texture2D} is moved into
+the reader and reused without checking its dimensions, format, device, or mip count against the
+file. File dimensions determine the byte check, whereas \texttt{SetData()} uses the retained
+texture's dimensions. The returned C\texttt{++} handle is the moved/reused value, not a guarantee
+that a caller-owned object was overwritten as a transactional replacement. FNA likewise reuses a
+non-null reference, but has managed reference identity rather than this value-handoff boundary.
+
+The focused unit test proves registration, unsupported \texttt{Bgr565}, one bad Color byte count,
+negative width, and two-axis huge dimensions. It does not prove a successful direct Color or DXT
+decode, legacy/version-4 mapping, Xbox swapping, zero height/width, negative/zero/excessive mip
+counts, one-axis device limits, overflow arithmetic, truncated/negative/surplus level data,
+missing device, existing-instance mismatch, or reader version. End-to-end coverage is better but
+narrow: a real MonoGame 1-by-1 white Color XNB verifies its exact pixel; a real LZX-compressed
+64-by-64 Color explosion is checked only for non-uniform output; and the real SpriteFont fixture
+exercises a nested 128-by-128 DXT3 atlas without independently checking its pixels. There is no
+checked-in Texture2D DXT1/DXT5, version-4, Xbox, or non-Color fixture. Treat the reader as a
+well-tested ordinary Color path with some real compressed integration, not as complete
+Texture2D/XNB format or adversarial-GPU validation.
+
 \section{The resolution order, precisely}
 
 The earlier short three-way description is useful, but it hides two consequential facts: a

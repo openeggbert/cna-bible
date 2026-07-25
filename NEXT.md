@@ -6,17 +6,58 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **545 physical PDF pages, 49 chapters, 6 appendices**.
-- After committing this batch, the local branch will be ahead of `origin/develop` by **six**
+- Book: **547 physical PDF pages, 49 chapters, 6 appendices**.
+- The local branch is ahead of `origin/develop` by **seven**
   documentation commits: the ContentTypeReader contract, XNB container, type-name/table,
-  scalar/math, Decimal/DateTime, and CurveReader audits. This count was checked against the
-  current remote-tracking ref; do not reuse older historical ahead-counts.
+  scalar/math, Decimal/DateTime, CurveReader, and Texture2DReader audits. This count was checked
+  against the current remote-tracking ref; do not reuse older historical ahead-counts.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
   reviewing `git push`. Its response explicitly rejected the request rather than granting
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: CurveReader XNB counted-key and semantic-admission boundary
+## Latest completed batch: Texture2DReader XNB format, byte, mip, and device boundary
+
+No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
+Texture2DReader, Texture2D upload/mip implementation, limits and device resolution, DXT helpers,
+focused and end-to-end tests, real fixtures, current FNA reader, and the unmerged audit history
+establish:
+
+- The explicitly registered, version-zero reader consumes format, width, height, and signed mip
+  count, then signed per-level byte counts and payloads. XNB version 4 accepts only FNA's legacy
+  1/28/30/32 mapping; version 5 casts the current enum. CNA only ultimately accepts Color, Dxt1,
+  Dxt3, and Dxt5. DXT is always decompressed to Color, while FNA retains native compression when
+  its backend supports it; legacy ColorBgraEXT is recognized then rejected.
+- CNA also lacks FNA's Xbox-360 `x` platform Color/DXT byte swaps even though the container
+  accepts that platform. There is no version-4, Xbox, DXT1/DXT5, or non-Color Texture2D fixture.
+- Positive dimensions and the nominal base `width * height * 4` receive the default 256-MiB
+  decoded-size preflight. Color levels must then match exactly. DXT requires at least its block
+  bytes but accepts surplus data; byte-count, short-stream, and DXT-underflow failures use three
+  different exception families.
+- Current `develop` has no per-axis device limit or mip-count topology check. The raw signed
+  Int64 `width * height * 4` expression can itself overflow before the byte limit sees it;
+  zero/negative mip counts create a one-level texture with no data reads; excessive counts can
+  shift past the valid range and upload levels that the constructed texture did not allocate.
+  Checked arithmetic, device-axis, and upper-mip fixes exist only on unmerged `feature/audit`.
+- Normal dispatch starts a new texture and requires a manager with a GraphicsDevice. Direct
+  existing-instance use moves/reuses an arbitrary Texture2D without matching its file dimensions,
+  format, device, or mip chain. Direct tests cover only registration and a few failure cases;
+  real end-to-end coverage proves a white 1x1 Color pixel, a non-uniform LZX Color texture, and a
+  nested DXT3 SpriteFont atlas, not the wider contract.
+
+Ch.8 now records this wire, format/FNA/Xbox distinction, byte/error/limit policy, mip and device
+boundary, existing-instance behavior, unintegrated-hardening status, and evidence matrix. Full
+latexmk succeeded at **547 pages**; targeted undefined-reference and duplicate-label checks are
+empty; makeindex accepted **2,231** entries with zero rejected and zero warnings; `git diff
+--check` passes. Rendered physical pages **113--114** are clean. Ch.8 is **1,582** lines and Ch.6
+is **621** lines. The plan-consistency validator remains absent from this checkout.
+
+Next recommended start: retain the XNB graphics scope and audit `Texture3DReader`'s declared
+depth/slice layout, compressed-volume handling, count/size arithmetic, GPU admission, direct
+existing-instance semantics, and real-fixture coverage. Do not describe the unmerged Texture2D
+hardening as present on `develop`.
+
+## Previous completed batch: CurveReader XNB counted-key and semantic-admission boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
 CurveReader and umbrella registration, current FNA CurveReader, Curve/CurveKeyCollection
