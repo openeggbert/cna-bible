@@ -56,8 +56,13 @@ every backend.
 
 Every \cnaclass{SurfaceFormat} besides \texttt{Color} remains unsupported (a shared,
 cross-backend limitation from Chapter~\ref{ch:textures-rendertargets}, not a D3D9-specific
-one); \texttt{Texture3D} has no oracle or GPU round-trip coverage at all --- only its
-\cnaclass{GraphicsProfile} size-limit behavior is tested; \cnaclass{OcclusionQuery} is not
+one). \texttt{Texture3D} has no oracle-scene coverage, but it does have a real, capability-gated
+sub-volume \texttt{SetData()}/\texttt{GetData()} byte round trip: \texttt{D3D9\_Smoke} creates a
+\(4\times4\times4\) volume only when \texttt{D3DCAPS9::MaxVolumeExtent}
+is nonzero, writes 32 distinct RGBA bytes into the off-origin \(2\times2\times2\) box at
+\((1,1,1)\), and requires an exact readback of that same box. The test proves D3D9's
+\texttt{LockBox()} row- and slice-pitch copy in both directions; it does not prove an oracle
+rendering path or automatic mip generation. \cnaclass{OcclusionQuery} is not
 built for this backend at all, the same gap D3D12 carries; and
 \cnaclass{SpriteSortMode.Immediate} / \texttt{.Texture} were confirmed not viable as
 deterministic oracle scenes at all --- \texttt{Immediate} is not something a raster diff can

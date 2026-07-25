@@ -75,6 +75,12 @@ composite, so Letterbox/Overscan/Stretch/NativeBackBuffer/FixedHeightDynamicWidt
 presentation-geometry difference. The 522-line isolated chapter remains clean apart from its
 seven pre-existing overflow warnings; no new overflow was introduced.
 
+**Current autonomous continuation — Ch.23 D3D9 Texture3D correction:** The former claim of no
+GPU round-trip coverage was stale. `D3D9_Smoke` capability-gates a 4x4x4 volume on
+`D3DCAPS9::MaxVolumeExtent`, writes 32 varying RGBA bytes to its off-origin 2x2x2 box, and
+requires exact `LockBox()` readback. Oracle-scene coverage and automatic mip generation remain
+unproven. The 527-line isolated chapter compiled twice without introducing an overflow.
+
 **Later continuation, also isolated-verified:** Ch.23 gained a ninth, source-grounded D3D11
 verification-ladder subsection. Its minimal document compiled successfully and the affected page
 was rendered and read after a right-edge audit; it is therefore marked isolated LaTeX/PDF clean,
