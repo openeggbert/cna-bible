@@ -760,6 +760,85 @@ checked-in Texture2D DXT1/DXT5, version-4, Xbox, or non-Color fixture. Treat the
 well-tested ordinary Color path with some real compressed integration, not as complete
 Texture2D/XNB format or adversarial-GPU validation.
 
+\subsection{Texture3DReader now slices DXT volumes, but does not admit a physical volume}
+\label{sec:xnb-texture3d-reader-contract}
+
+The separately registered \texttt{Microsoft.Xna.Framework.Content.Texture3DReader} is unusual in
+the C\texttt{++} family because its target is \texttt{std::shared\_ptr<Texture3D>}, not a
+bare resource value. That makes it copyable enough for \texttt{std::any}, while the resource still
+owns a non-copyable backend handle. It inherits exact serialized version zero. CNA and current
+FNA consume the same literal payload: Int32 \texttt{surfaceFormat}, \texttt{width},
+\texttt{height}, \texttt{depth}, and \texttt{levelCount}, followed by one Int32 \texttt{byteCount}
+and payload for each level. Unlike Texture2DReader, there is no pre-version-5 format remapping;
+both readers cast the format word directly and halve all three dimensions after each level.
+FNA's mip-chain constructor nevertheless counts only width and height, not depth, and CNA's
+\cnaclass{Texture3D} deliberately follows that same rule.
+
+The ordinary format boundary is narrower than FNA's. FNA forwards the file's raw level bytes and
+nominal \cnaclass{SurfaceFormat} to its Texture3D implementation. CNA accepts only raw
+\texttt{Color} or DXT1/DXT3/DXT5, converting the latter to RGBA Color before its own upload;
+every other format, including a recognized but unsupported enum value, fails as
+\cnaclass{ContentLoadException}. There is no Texture2D-style legacy mapping or Xbox byte swap in
+either FNA's or CNA's Texture3D reader. CNA's unconditional DXT conversion has the same portability
+versus native-memory/performance trade-off as its 2D path, but its much smaller accepted format
+set remains a compatibility limit.
+
+One important current-develop hardening fix is real. A compressed volume is a sequence of
+independently compressed two-dimensional slices, not one DXT image with a very tall height. The
+reader divides a level's payload by its current depth, feeds each slice separately to
+\texttt{DxtUtil::DecompressDxt1/3/5}, and concatenates the RGBA slices. The prior whole-volume
+interpretation discarded later slices; it was found by the broad XNB hardening sweep and is fixed
+on this branch. The boundary is still permissive: it does not require the byte count to be evenly
+divisible by depth or exactly equal to the required block total. Each helper rejects a slice that
+is too short, but accepts extra full-slice data, and a remainder after the division has already
+been consumed from the stream but is never decompressed. DXT underflow is still
+\texttt{std::out\_of\_range}, while a negative declared count is \cnaclass{ContentLoadException}
+and a short physical stream is \texttt{EndOfStreamException}.
+
+Raw Color levels receive a useful exact check after reading: the bytes must equal the current
+\texttt{width * height * depth * 4} before the reader builds real \cnaclass{Color} objects. Base
+dimensions must also be individually positive and are presented to
+\texttt{CheckDecodedByteSize()} before texture creation. As in the 2D reader, that is not a
+complete arithmetic guard in current \texttt{develop}. The initial raw signed
+\texttt{int64\_t width * height * depth * 4} expression can overflow before the limit helper
+observes it, and the later \texttt{int32\_t voxelCount = width * height * depth} is an independent
+overflow site. The checked-multiply and voxel-range corrections exist in unmerged
+\texttt{feature/audit}, not in the authority documented here. A valid-looking total byte size
+also supplies no per-axis device maximum or reader-level aggregate mip-data budget.
+
+Mip admission has a separate hole. Construction receives only \texttt{levelCount > 1}, so a
+positive multi-level file allocates the framework's complete width/height chain rather than a
+chain exactly as long as its declaration; zero or negative counts create a one-level texture and
+perform no data read. An excessive positive count is not rejected. After the genuine chain ends,
+the reader continues with 1-by-1-by-1 payloads and calls \texttt{SetData()} for arbitrary level
+numbers. Texture3D checks only a negative level and relative box ordering; it neither checks that
+the level exists nor that the box fits the actual stored mip dimensions before forwarding to its
+backend. Thus the base decoded-size cap neither validates a serialized mip topology nor protects
+all backend update paths.
+
+A \cnaclass{GraphicsDevice} is required only when the reader must create a texture. A non-null
+manager without one throws the manager's own diagnostic; a manually built ContentReader with no
+manager reaches the reader's error. But a direct caller may supply a non-null
+\texttt{shared\_ptr<Texture3D>}; normal dispatch never does. That pointer is copied and the same
+referenced resource is mutated in place, without a format, device, dimensions, or mip-chain match
+against the file; it also bypasses the reader's new-texture device lookup. This is close to FNA's
+reference-instance behavior, but notably unlike CNA Texture2D's transported value. Backend
+support is not checked at either point: the default 3D backend factory can return null, after
+which Texture3D's upload and readback paths simply skip backend work. Loading an XNB can therefore
+return a nominal Texture3D whose supplied voxels were not represented by a real backend resource
+on a 2D-only implementation.
+
+Evidence for the ordinary wire is narrow. The joint 3D/cube unit file proves registration,
+rejects one unsupported \texttt{Bgr565} word, and directly feeds a locally written 2-by-2-by-1
+Color body to \texttt{ReadUntyped()}, then reads four exact voxels back. There is no external
+Texture3D XNB anywhere in the fixture tree, no header/table/ContentManager XNB test, and no
+direct DXT, multi-slice, mip, truncation, dimensions, byte-count, version, device, existing-pointer,
+or backend-capability case. The whole-container fuzzer has real Model, Texture2D, and SoundEffect
+seeds only. The separate CNJ test does exercise a self-contained 2-by-2-by-2 volume, but it is a
+different loader and cannot establish XNB compatibility. Treat the current reader as a faithful
+ordinary field-order implementation with a repaired slice algorithm, not as externally-fixtured
+or universally backend-safe volume-texture support.
+
 \section{The resolution order, precisely}
 
 The earlier short three-way description is useful, but it hides two consequential facts: a

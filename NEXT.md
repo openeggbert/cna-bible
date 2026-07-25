@@ -7,16 +7,60 @@ session log; this file is the concise live handoff.
 
 - Branch: `develop`.
 - Book: **547 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by **seven**
+- The local branch is ahead of `origin/develop` by **eight**
   documentation commits: the ContentTypeReader contract, XNB container, type-name/table,
-  scalar/math, Decimal/DateTime, CurveReader, and Texture2DReader audits. This count was checked
-  against the current remote-tracking ref; do not reuse older historical ahead-counts.
+  scalar/math, Decimal/DateTime, CurveReader, Texture2DReader, and Texture3DReader audits. This
+  count was checked against the current remote-tracking ref; do not reuse older historical
+  ahead-counts.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
   reviewing `git push`. Its response explicitly rejected the request rather than granting
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: Texture2DReader XNB format, byte, mip, and device boundary
+## Latest completed batch: Texture3DReader XNB volume, slice, mip, and backend boundary
+
+No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
+Texture3DReader, volume texture upload implementation and default backend contract, DXT helpers,
+focused and CNJ tests, current FNA reader, XNB fixture/fuzz inventory, and branch history
+establish:
+
+- The explicitly registered, version-zero `std::shared_ptr<Texture3D>` reader has FNA's direct
+  format/width/height/depth/mipCount then per-level byteCount/data layout. Neither reader applies
+  Texture2D's version-4 mapping or Xbox conversion; the constructed mip chain counts width and
+  height but deliberately not depth, matching FNA.
+- CNA accepts Color and Dxt1/Dxt3/Dxt5 only, always converting DXT to Color. Current FNA forwards
+  raw bytes and its requested format to its backend, so CNA has a smaller format surface. The
+  real current-develop XNB-47 fix correctly treats a DXT volume as independently compressed 2D
+  slices rather than one tall image, but accepts per-slice surplus data and a remainder after
+  byteCount/depth division.
+- Positive base dimensions and an exact raw-Color level check are present. Current raw Int64
+  `width * height * depth * 4` and downstream Int32 voxel-count products can nevertheless
+  overflow before their checks; checked arithmetic exists only on unmerged `feature/audit`.
+  There is also no generic per-axis device maximum, aggregate mip-data cap, or mip-count ceiling.
+  Zero/negative counts create a one-level texture with no data reads; excess counts reach
+  arbitrary backend levels.
+- A normal new load requires a manager/device, but direct input can reuse and mutate the same
+  non-null shared Texture3D without any dimensions/format/device/mip compatibility test and
+  without the new-resource device lookup. No capability gate rejects a backend that returns no
+  3D resource; Texture3D then silently skips upload/readback work.
+- The only XNB success proof is a direct locally written 2x2x1 Color body with exact readback,
+  alongside registration and one unsupported-format test. There is no external Texture3D XNB,
+  full header/table/manager test, DXT/multi-slice/mip/error/version/existing/backend test, or 3D
+  fuzz seed. A separate 2x2x2 CNJ test exercises another loader only.
+
+Ch.8 now records the exact wire/FNA distinction, fixed slice behavior, residual DXT byte policy,
+arithmetic and topology gaps, backend/direct-instance semantics, and limited evidence. Full
+latexmk succeeded at **547 pages**; targeted undefined-reference and duplicate-label checks are
+empty; makeindex accepted **2,237** entries with zero rejected and zero warnings; `git diff
+--check` passes. Rendered physical pages **114--116** are clean. Ch.8 is **1,661** lines and Ch.6
+is **621** lines. The plan-consistency validator remains absent from this checkout.
+
+Next recommended start: retain the XNB graphics scope and audit `TextureCubeReader`'s six-face
+order, mip/byte accounting, DXT block handling, limits, direct-instance semantics, and the real
+MonoGame DXT1 fixture. Keep the Texture3D DXT slice repair described as current `develop`, but
+keep checked arithmetic only on unmerged `feature/audit`.
+
+## Previous completed batch: Texture2DReader XNB format, byte, mip, and device boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
 Texture2DReader, Texture2D upload/mip implementation, limits and device resolution, DXT helpers,
