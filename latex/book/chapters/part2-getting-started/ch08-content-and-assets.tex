@@ -671,6 +671,73 @@ binary/missing/non-binary/lifetime tests. Until that public architectural decisi
 ordinary \cnaclass{ContentManager} for CNA's supported loose, CNJ, and XNB paths rather than
 instantiating this subclass for a capability it does not provide.
 
+\subsection{\cnaclass{TitleContainer} is an independent direct-file helper, not a ContentManager stream hook}
+\label{sec:title-container-contract}
+
+\cnaclass{TitleContainer} has a much smaller, separate job from either content-manager class:
+its sole public operation is the static \texttt{OpenStream} function. It normalizes every
+backslash in the supplied name to a forward slash, resolves a non-rooted name against the
+process-global \cnaclass{TitleLocation}, and returns a uniquely owned read stream. It does not
+know a requested asset type, an XNB reader, a content root, or a resource manager. In particular,
+a repository-wide source search finds no call from either content-manager class to
+\cnaclass{TitleContainer}; ordinary \cnaclass{ContentManager} \texttt{Load<T>()} calls continue
+to form candidates from their own \texttt{RootDirectory} and open filesystem streams directly.
+Changing CNA's title-location setter therefore does not redirect a game's content load, and
+changing a content root does not redirect \texttt{OpenStream()}.
+
+The default title base is initialized once, on the first getter: CNA asks SDL3 for its application
+base path and falls back to the then-current working directory only when SDL supplies no path. SDL3
+documents that returned base-path pointer as a cached, const pointer; copying it into the CNA
+string does \emph{not} create an SDL allocation which this code must free. The chosen string then
+remains fixed even if the working directory changes. CNA additionally exposes a NOXNA public
+setter which accepts any string without existence, absoluteness, or canonicalization checks. Both
+accessor spellings return a const reference to that one mutable static string, so a later setter
+can invalidate a held reference; neither initialization nor setting has synchronization. Configure
+a custom title base once, before other threads obtain paths, and retain a copy rather than a
+returned reference if another component might reconfigure it. Current FNA instead exposes an
+internal, getter-only title-location property delegated to its platform layer, so CNA's setter is
+a C\texttt{++}-specific test/launcher extension, not portable XNA application surface.
+
+Resolution is lexical rather than a containment or security policy. A rooted name becomes a
+lexically normalized C\texttt{++} filesystem path directly; a relative name is appended to the
+title base and then lexically normalized. On Windows, a drive letter followed by a slash is also
+rooted; on every build, an initial slash is rooted. No canonicalization, prefix check, or symlink
+check follows. Thus \texttt{"../outside.dat"} can leave the configured title directory, and a
+symlink inside it can reach elsewhere. An empty name resolves to the base directory itself. This
+helper is appropriate for trusted application-controlled paths, not for confining a user-supplied
+filename. Its backslash conversion is a convenience for a logical relative name, not an
+authorization check.
+
+On ordinary platforms CNA first performs a filesystem existence check on the resolved path, then
+opens a read-only stream. A missing path produces a generic runtime error that names the resolved
+filename. Filesystem-status failures and an existing directory or unreadable file can instead
+expose their filesystem or stream exception. The helper logs both the original name and the fully
+resolved path at Info level, which is useful while packaging but can disclose a local installation
+path in ordinary logs. Android adds an intentionally separate fallback: when the normal filesystem
+check fails, it asks SDL to load the normalized relative name first and then the resolved name. Its
+returned data are copied into
+\cnaclass{MemoryStream} before the SDL buffer is freed, so the stream does not borrow SDL memory.
+That Android-only conversion narrows \texttt{size\_t} to CNA's signed \texttt{intcs} without a
+range check, however; an asset larger than that maximum is outside its established safe contract.
+
+This differs in both shape and failure boundary from current FNA's direct
+\texttt{File.OpenRead}: FNA has no public mutable title location and lets the managed file API
+choose its normal file/directory/access exception. It also reinforces why
+\cnaclass{TitleContainer} cannot repair the embedded-resource stub in \S8.6: it supplies a
+one-off direct stream for an application path, while CNA's inherited content loads do not consult
+any stream hook at all.
+
+The four focused CNA tests establish much less than their names imply. The relative and absolute
+cases assert only that a non-null stream is returned, not that the expected bytes can be read. The
+test labelled ``normalizes backslashes'' actually passes \texttt{"sub/file.txt"}, with a forward
+slash, so it never exercises the conversion it describes. The missing-file case checks only the
+broad \texttt{std::runtime\_error}. No located test covers parent traversal, symlinks, an empty
+or directory name, access failures, the resulting log text, Android asset loading or its size
+limit, initial SDL/fallback selection, title-location reference lifetime, or concurrent global
+mutation. The tests also set the global title path to fixed temporary names without restoring it.
+Treat it as shared process configuration and isolate it in any new tests; do not treat these four
+happy-path probes as a sandbox or platform-packaging test.
+
 \subsection{\texttt{Unload()} evicts manager caches; it is not a universal asset destructor}
 
 The shortened comment in many XNA examples --- ``unload the content'' --- is useful only if its

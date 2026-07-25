@@ -6,23 +6,64 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **535 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by eighteen documentation commits: `944fa54`
+- Book: **537 physical PDF pages, 49 chapters, 6 appendices**.
+- The local branch is ahead of `origin/develop` by nineteen documentation commits: `944fa54`
   (render-target binding/usage contracts), the Reset-order contracts batch, the resource-lifecycle
   audit, the construction/SDL-ownership audit, the multisample-backend-rebuild audit, and the
   Game/GraphicsDeviceManager lifecycle and callback/disposal audits, plus the Game
   exit/destruction/component-lifetime and ContentManager cache/disposal and
   copy/replacement, service-provider/device-resolution, reader-registration, root/path, and
   Load-failure/type/cache-mutation, concurrency/reentrancy, content-manifest introspection,
-  format-selection/fallback, and ResourceContentManager/OpenStream audits below.
-  The previous seventeen-commit count was accurate before the remote advanced and is retained
+  format-selection/fallback, ResourceContentManager/OpenStream, and TitleContainer/TitleLocation
+  audits below. The previous eighteen-commit count was accurate before this local batch and is retained
   only in the historical session log.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
   reviewing `git push`. Its response explicitly rejected the request rather than granting
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: ResourceContentManager and virtual OpenStream boundary
+## Latest completed batch: TitleContainer and TitleLocation direct-file boundary
+
+No CNA source changes were made; the sibling repository remained a read-only authority. The live
+title classes and tests, every live reference, sharp-runtime stream ownership, SDL3's installed
+filesystem declaration, ContentManager's actual path, history, and current FNA sources establish:
+
+- TitleContainer is a static direct-file helper, not a ContentManager or ResourceContentManager
+  stream layer. Neither manager calls it: their own root/path resolution opens filesystem streams
+  directly. Changing the CNA title-location setter therefore cannot redirect `Content.Load()`, and
+  a ContentManager root cannot redirect `TitleContainer::OpenStream()`.
+- The global base initializes once from SDL3's cached, const application-base pointer, with the
+  current working directory as fallback only when SDL supplies no path. This is not an SDL-owned
+  allocation to free. CNA's NOXNA setter accepts arbitrary strings, has no synchronization, and
+  can invalidate references returned by either getter spelling; configure it once before threads
+  begin and copy a returned path if later mutation is possible. FNA instead makes title location
+  internal and getter-only through its platform layer.
+- Resolution replaces backslashes, then only lexical-normalizes an absolute name or a name
+  appended to the title base. It has no containment/canonical/symlink check: `..` and symlinks can
+  escape, and it is not an untrusted-filename sandbox. On normal platforms a missing path throws
+  the title helper's plain `std::runtime_error`, while filesystem/direct-stream failures retain
+  their own exception boundaries. Both requested and resolved names are Info-logged.
+- Android tries SDL asset loading after a normal filesystem miss, first with the normalized
+  relative name then with the resolved name. It copies bytes into MemoryStream before SDL frees
+  them, so there is no borrowed buffer; the unchecked `size_t` to signed `intcs` narrowing leaves
+  assets larger than that maximum outside the established safe contract.
+- The four focused tests are happy-path probes only: relative/absolute cases never read bytes;
+  the test labelled backslash normalization passes a forward slash; and none covers traversal,
+  symlinks, directory/access errors, logging, Android, initialization, returned-reference
+  lifetime, or concurrent global mutation. Fixed temporary locations are not restored.
+
+Ch.8 now contains the full source-established contract and Ch.6 cross-references it. Full
+`latexmk` succeeded at **537 pages**; targeted undefined-reference and duplicate-label checks are
+empty; makeindex accepted **2,174** entries with zero rejected and zero warnings; `git diff
+--check` passes. Rendered physical pages **112--114** are clean. Ch.8 is **1,039** lines and Ch.6
+is **621** lines. The plan-consistency validator remains absent from this checkout.
+
+Next recommended start: keep the content/I/O scope and audit `ContentReader`'s stream ownership,
+asset-name/context stack, shared-resource fixups, exception and disposal behavior, and its exact
+relationship to type readers/XNB decoding. Compare all focused ContentReader tests and current FNA
+before documenting it; do not reopen the explicitly `needs_human` embedded-resource architecture.
+
+## Previous completed batch: ResourceContentManager and virtual OpenStream boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. The live
 stub/header, every in-repository reference and test path, API-coverage records, and current FNA
@@ -52,11 +93,6 @@ stub/header, every in-repository reference and test path, API-coverage records, 
   checks are empty; makeindex accepted **2,166** entries with zero rejected and zero warnings;
   `git diff --check` passes. Rendered physical pages **112--113** are clean. Ch.8 is now **972**
   lines. The plan-consistency validator remains absent from this checkout.
-
-Next recommended start: retain the content/I/O scope but keep the embedded-resource decision
-blocked. Audit the independent `TitleContainer::OpenStream` / title-location path contract,
-including its relation to ContentManager's direct filesystem loading, error behavior, and tests;
-do not imply it implements ResourceContentManager.
 
 ## Previous completed batch: ContentManager exact format selection and fallback boundary
 
