@@ -7,7 +7,7 @@ session log; this file is the concise live handoff.
 
 - Branch: `develop`.
 - Book: **541 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by twenty-two documentation commits: `944fa54`
+- The local branch is ahead of `origin/develop` by twenty-three documentation commits: `944fa54`
   (render-target binding/usage contracts), the Reset-order contracts batch, the resource-lifecycle
   audit, the construction/SDL-ownership audit, the multisample-backend-rebuild audit, and the
   Game/GraphicsDeviceManager lifecycle and callback/disposal audits, plus the Game
@@ -15,15 +15,58 @@ session log; this file is the concise live handoff.
   copy/replacement, service-provider/device-resolution, reader-registration, root/path, and
   Load-failure/type/cache-mutation, concurrency/reentrancy, content-manifest introspection,
   format-selection/fallback, ResourceContentManager/OpenStream, TitleContainer/TitleLocation,
-  ContentReader, ContentTypeReader, and XNB header/decompression audits below. The previous
-  twenty-one-commit count was accurate before this local batch and is retained only in the
+  ContentReader, ContentTypeReader, XNB header/decompression, and XNB type-reader-name/table
+  audits below. The previous twenty-two-commit count was accurate before this local batch and is
+  retained only in the
   historical session log.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
   reviewing `git push`. Its response explicitly rejected the request rather than granting
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: XNB container header, LZX handoff, and input-limit boundary
+## Latest completed batch: XNB type-reader-name grammar and table-admission contract
+
+No CNA source changes were made; the sibling repository remained a read-only authority. The
+recursive XnbTypeName parser, XnbTypeReaderTable parser, ContentReader initialization/factory
+handoff, global registration source, XNB limits, sharp-runtime BinaryReader implementation,
+focused parser/table tests, and current FNA type-reader manager establish:
+
+- CNA recursively removes outer and nested assembly metadata, turning an XNB reader name into a
+  canonical global factory key. It has no reflection-backed type identity: a bare name and
+  differently assembly-qualified forms select the same key, while unknown keys fail only at the
+  later factory lookup. FNA instead tries the original creator string and then a rewritten
+  reflection name.
+- The parser is not a full .NET grammar validator. It accepts empty/untrimmed bases, never checks
+  generic arity or a legal name alphabet, leaves both top-level and nested parse cursors
+  unconsumed, and has no generic-depth cap. That deliberately discards valid assembly suffixes
+  but also lets arbitrary trailing/malformed material survive canonicalization.
+- The table bounds only its count (0..4,096 by default). It accepts a zero table, duplicate raw
+  and canonical names, and any signed reader version. ContentReader preserves order, creates a
+  fresh reader per entry, then checks the entry version; an unknown reader fails before version
+  compatibility is considered.
+- Name bytes do not use maxStringBytes and recursive generic parsing does not use
+  maxObjectNestingDepth. BinaryReader rejects a seekable name length past the remaining stream but
+  can still allocate a physically supplied name below that bound. Only parser
+  std::invalid_argument failures are wrapped as ContentLoadException; malformed 7-bit prefixes
+  and truncated name/version fields leak their original binary-reader exceptions despite the
+  table header's broader documentation claim.
+- Focused tests cover healthy bare/nested generic names, two bracket failures, count rejection,
+  and one MonoGame fixture. They do not cover empty/trailing/whitespace/arity forms, duplicate
+  keys, truncation, a long name, or nesting depth.
+
+Ch.8 records the canonicalization, FNA contrast, admission/error/limit boundary, duplicate/version
+behavior, and test gaps. Full latexmk succeeded at **541 pages**; targeted undefined-reference
+and duplicate-label checks are empty; makeindex accepted **2,204** entries with zero rejected and
+zero warnings; git diff --check passes. Rendered physical pages **109--110** are clean. Ch.8 is
+**1,320** lines and Ch.6 is **621** lines. The plan-consistency validator remains absent from this
+checkout.
+
+Next recommended start: retain the XNB scope and audit the supported scalar/math/enum built-in
+type readers for byte layout, endian/count boundaries, reader-version policy, and the fixture/test
+matrix. Keep the just-established parser limitations documented as current develop behavior,
+rather than treating the unintegrated feature/audit branch as a source fix.
+
+## Previous completed batch: XNB container header, LZX handoff, and input-limit boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. The
 header, default limits, LZX wrapper/decoder, ContentManager load and manifest paths, all focused

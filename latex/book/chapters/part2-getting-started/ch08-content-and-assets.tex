@@ -439,6 +439,65 @@ a cumulative LZX output ceiling during decoding. Those are CNA implementation de
 book documents the present boundary rather than claiming that the independent
 \texttt{feature/audit} branch has already supplied them.
 
+\subsection{A type-reader name is a canonical registry key, not a validated .NET type identity}
+\label{sec:xnb-type-name-contract}
+
+The body begins with a 7-bit count, then one length-prefixed reader-name string and one signed
+32-bit version for each entry. CNA preserves the raw string for diagnostics but turns its parsed
+form into the key for the process-global \cnaclass{ContentTypeReaderManager} factory. A bare
+name and its assembly-qualified form consequently select the same reader. The normalizer removes
+the outer assembly portion and recursively removes every generic argument's assembly portion, so
+the assembly/version/culture/public-key identity in an ordinary XNB is \emph{not} part of CNA's
+reader identity. This is the practical C\texttt{++} substitute for FNA's reflection path:
+FNA first tries an exact creator string, then rewrites selected framework assembly references and
+asks the runtime to resolve a \texttt{Type}; CNA has no such type identity and must have already
+registered the resulting canonical spelling.
+
+That spelling is structural, not a general .NET-name validator. The parser takes every character
+up to a top-level \texttt{[}, comma, or closing bracket as a base name; it neither trims nor
+requires a nonempty base name, checks the backtick arity against the number of arguments, or
+restricts the name alphabet. Its recursive generic parser correctly preserves nested bracket
+pairing and strips each nested assembly qualifier, but the top-level caller intentionally ignores
+the final cursor so that an outer assembly suffix need not be parsed. As a consequence it also
+accepts arbitrary trailing material, including malformed delimiter text, after a completed name.
+An empty or oddly spaced name normally fails only later as an unregistered factory key, rather
+than at the table boundary. A generic's argument parser similarly need not consume all text
+inside its bracket pair. These are compatibility-oriented canonicalization rules, not evidence
+that a file supplied a syntactically valid reflected type.
+
+Only the parser's limited bracket errors are normalized at this boundary: an unbalanced list, a
+missing argument opener, or text other than a comma/closing bracket after an argument becomes
+\cnaclass{ContentLoadException}. A malformed 7-bit integer, a truncated name or version, and
+other \cnaclass{BinaryReader} failures propagate in their original exception family. The
+\texttt{ParseXnbTypeReaderTable()} documentation currently promises one content-load error for
+every malformed table, but its catch block covers only \texttt{std::invalid\_argument}; callers
+must not rely on that broader promise. The focused tests cover healthy bare and nested generic
+names, two deliberately malformed bracket cases, count-limit rejection, and one real MonoGame
+entry. They do not cover empty names, trailing garbage, whitespace, arity disagreement, truncated
+fields, duplicate names, or an overlong name.
+
+The count itself is the one admission value checked here: it must be nonnegative and no greater
+than \texttt{maxTypeReaderCount} (4,096 by default), before the vector reserves storage. A zero
+entry table is also accepted; a later non-null root dispatch then has no selected reader. Each
+name, however, goes through ordinary \texttt{BinaryReader::ReadString()}; its declared byte
+length is not compared with \texttt{maxStringBytes}. For CNA's seekable in-memory body stream
+the binary reader first rejects a length beyond the remaining bytes, but a physically large,
+well-formed name can still allocate below that stream bound. Nor does parsing generic brackets
+consult \texttt{maxObjectNestingDepth}. Deeply nested generic names recurse both in bracket
+parsing and canonical-string reconstruction, and the temporary bracket depth is a signed
+\texttt{int}. The advertised string and object-depth limits are therefore still not reader-name
+limits.
+
+Finally, the table deliberately preserves file order and does not reject duplicate raw or
+canonical names. \cnaclass{ContentReader} creates a fresh registered reader for every entry and
+only then checks that entry's serialized version, so two identical names may occupy distinct
+dispatch indexes (and may fail independently if their versions differ). An unknown canonical name
+is rejected as unregistered before version compatibility is consulted. This is sufficient for
+ordinary XNB dispatch, but it means table admission is not a uniqueness, identity, or resource
+policy. A future hardening pass should impose a per-name byte limit and generic nesting limit,
+require full structural consumption with a defined assembly-suffix grammar, and choose explicitly
+whether empty, duplicate, or arity-inconsistent keys remain accepted for compatibility.
+
 \section{The resolution order, precisely}
 
 The earlier short three-way description is useful, but it hides two consequential facts: a
