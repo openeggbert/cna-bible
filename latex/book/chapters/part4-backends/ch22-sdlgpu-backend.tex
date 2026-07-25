@@ -437,7 +437,13 @@ segfault was this API contract being violated, not a driver bug that another acq
 could repair. CNA's only viable design for \texttt{GetBackBufferData} is to render every frame
 into a self-owned, swapchain-sized proxy texture, blit that proxy to the real swapchain only for
 presentation, and read the proxy back. That is deliberately not implemented: it imposes one
-extra texture and blit on every frame even for games that never request readback. Third, a real
+extra texture and blit on every frame even for games that never request readback. Consequently
+this backend has no \texttt{ReadBackbuffer()} override at all:
+\texttt{GraphicsDevice::GetBackBuffer\allowbreak Data()} reaches
+\cnaclass{IGraphicsBackend}'s default \texttt{runtime\_error}; working
+\cnaclass{RenderTarget2D::GetData()} tests are a separate resource-readback path and do not
+make the public backbuffer method available. The complete fourteen-product distinction is
+tabulated in \S\ref{sec:backend-readback-matrix}. Third, a real
 \emph{possible} gap that is explicitly, honestly unresolved rather than
 either claimed fixed or claimed broken: \texttt{plan\_sdlgpu.md} records real Vulkan validation
 errors (\texttt{vkCmdBlitImage} / \texttt{vkCreateImageView} range violations along the depth

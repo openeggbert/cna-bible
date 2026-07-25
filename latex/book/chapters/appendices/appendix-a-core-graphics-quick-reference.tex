@@ -286,6 +286,12 @@ synchronized with the plural binding vector; instancing forwards only the first
 positive-frequency buffer, not its frequency/offset or any later stream. SDL GPU and Software
 then throw from the shared instancing default. See
 \S\ref{sec:drawex-instancing-matrix} for the full matrix.
+\textbf{Readback warning:} \texttt{GetBackBufferData()} is not uniform either. Six products
+read a currently bound target, five always read the real backbuffer, Headless synthesizes its
+last clear, and SDL GPU/D3D12 throw. The pointer API also does not validate negative
+\texttt{startIndex}, capacity after the offset, rectangle bounds, or multiplication overflow;
+the caller must do so. See \S\ref{sec:backend-readback-matrix} for the exact source-image,
+coordinate-space, and test-evidence matrix.
 \texttt{SupportsCapability\allowbreak{}(GraphicsCapability)} (Chapter~\ref{ch:backend-architecture}) is the
 one method worth remembering is a query, not a
 guarantee --- it answers honestly for most values but is not yet wired for every one of them.

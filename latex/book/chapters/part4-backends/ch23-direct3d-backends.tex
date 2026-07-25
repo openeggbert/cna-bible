@@ -353,6 +353,24 @@ a live window are proven, but only through a separate, manual diagnostic tool ru
 Proton-managed launch --- never through the routine, automated CTest run, because a full
 Proton bootstrap was judged too heavy and slow for a normal test run in this dev loop.
 
+\subsection{Backbuffer readback is not part of the shared D3D11 foundation}
+
+The repeated phrase ``GPU readback'' in this chapter names several different mechanisms.
+D3D11 has a real \texttt{ReadBackbuffer()} override: it always copies
+\texttt{backBufferTexture\_} into a staging texture, honors \texttt{RowPitch}, and backs the
+public \texttt{GraphicsDevice::GetBackBuffer\allowbreak Data()} route with exact windowed
+clear/draw
+tests. It does not redirect to a currently bound render target.
+
+D3D12 has no corresponding override. A public backbuffer call reaches
+\cnaclass{IGraphicsBackend}'s default \texttt{runtime\_error} on a windowed device, while
+\texttt{HeadlessEXT} has no swapchain to read in the first place. The D3D12 smoke suite's many
+exact GPU pixel assertions call its working render-target-resource readback helpers directly;
+the shared public SpriteBatch example below likewise reads the off-screen render target, not
+\texttt{GetBackBufferData()}. Those results prove the named draw/resource path but cannot be
+quoted as evidence for a public backbuffer bridge that does not exist. The complete backend
+matrix and FNA contrast are in \S\ref{sec:backend-readback-matrix}.
+
 \subsection{Two frames in flight is a real primitive, not a promise that every call site is non-blocking}
 
 Unlike the driver-managed D3D11 model, D3D12 makes the command allocator lifetime explicit.

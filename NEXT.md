@@ -6,19 +6,47 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **490 physical PDF pages, 49 chapters, 6 appendices**.
-- After the batch commit, the local branch is ahead of `origin/develop` by ten coherent
+- Book: **496 physical PDF pages, 49 chapters, 6 appendices**.
+- After the batch commit, the local branch is ahead of `origin/develop` by eleven coherent
   documentation commits:
   roadmap, ShaderEffect/D3D ABI, general capability matrix, MSAA/anisotropy, buffer
   contracts, volume/cube readback contracts, and RenderTargetCube upload/transition
   contracts, followed by Texture2D update contracts, instancing/vertex binding, and input
-  coordinate routing.
+  coordinate routing, then public backbuffer readback.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
   reviewing `git push`. Its response explicitly rejected the request rather than granting
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
 ## Latest completed batch
+
+The public `GraphicsDevice::GetBackBufferData()` /
+`IGraphicsBackend::ReadBackbuffer()` audit is complete:
+
+- Twelve of the fourteen backend products override the method. `SDL_GPU` and `D3D12` inherit
+  the default `runtime_error`; neither public path has back-buffer readback.
+- The name is not a uniform semantic contract. SDL_Renderer, ASCII, Software, EasyGL, DX3,
+  and browser Canvas read the currently bound render target when one is active; Vulkan,
+  BGFX, D3D11, WebGPU, and D3D9 always read the real swapchain/backbuffer; Headless returns
+  only a synthetic image of the last global clear. FNA always routes to its actual
+  backbuffer read API.
+- The shared wrapper validates only `data != nullptr`, `elementCount >= width*height`, and
+  the stored presentation format. It does not reject a negative `startIndex`, prove caller
+  capacity through `startIndex + pixelCount`, validate the rectangle against the target,
+  or guard `width*height` overflow. A null rectangle takes dimensions from
+  `GetViewportSize()`, which several scaled/high-density backends do not express in the same
+  coordinate space as their native readback.
+- Exact-pixel proof is strongest where tests discriminate the source: Software and DX3 read
+  bound target then restored backbuffer; Vulkan explicitly proves that it always reads the
+  swapchain. ASCII returns its pre-quantized game target, not the displayed glyph grid.
+  Canvas has no real browser/DOM proof; Headless has no dedicated public pixel assertion;
+  D3D12's exact smoke readbacks call render-target helpers directly.
+- Ch.9 now labels its worked bound-target probe as Software-specific and records all caller
+  preconditions. Ch.16 carries the complete target/region/evidence matrix and FNA contrast;
+  Ch.22 and Ch.23 distinguish resource readback from the missing SDL GPU/D3D12 public
+  bridge; Appendix A has the concise warning.
+
+## Previous completed batch
 
 The logical/window input-coordinate audit is complete:
 
@@ -52,7 +80,7 @@ The logical/window input-coordinate audit is complete:
   caller-visible consequences and evidence boundary; Appendix F has the quick-reference
   warning.
 
-## Previous completed batch
+## Earlier completed batch
 
 The draw-fallback, instancing, and vertex-binding audit is complete:
 
@@ -80,7 +108,7 @@ The draw-fallback, instancing, and vertex-binding audit is complete:
   previous BGFX overclaim; Ch.22 expands its open-limit count from seven to nine; Appendix A
   carries the concise caller warning.
 
-## Earlier completed batch
+## Earlier completed Texture2D batch
 
 The `Texture2D` interface-default audit is complete:
 
@@ -157,34 +185,35 @@ latexmk -pdf -interaction=nonstopmode -halt-on-error -file-line-error -g main.te
 
 Results:
 
-- `main.pdf`: 490 pages.
+- `main.pdf`: 496 pages.
 - Targeted undefined-reference check: no matches.
 - Duplicate-label check: no matches.
-- `makeindex`: 2,032 accepted, 0 rejected, 0 warnings.
-- Rendered and inspected Ch.16 physical pages 181--184, Ch.25 pages 273--275, Ch.26 pages
-  281--283, and Appendix F pages 478--480.
+- `makeindex`: 2,039 accepted, 0 rejected, 0 warnings.
+- Rendered and inspected Ch.9 physical pages 111--112 and 117, Ch.16 pages 186--188,
+  Ch.22 pages 251--252, Ch.23 page 259, and Appendix A page 461.
 - No clipping, table collision, page-edge spill, malformed heading, running-header collision,
-  or folio defect was found. The new Ch.16 matrix repeats its header cleanly. All overfull
-  warnings introduced by this batch were removed before the final build; older warnings
-  remain elsewhere.
+  or folio defect was found. The new Ch.16 matrix repeats its header cleanly across both page
+  breaks. All overfull warnings introduced by this batch were removed before the final build;
+  older warnings remain elsewhere.
 - `git diff --check`: pass.
 
 Useful verification commands:
 
 ```bash
-wc -l latex/book/chapters/part4-backends/ch16-backend-architecture.tex \
-      latex/book/chapters/part4-backends/ch25-dx3-freedirect-backend.tex \
-      latex/book/chapters/part5-input-audio-net/ch26-input-system.tex \
-      latex/book/chapters/appendices/appendix-f-ecosystem-quick-reference.tex
+wc -l latex/book/chapters/part3-graphics-core/ch09-graphicsdevice.tex \
+      latex/book/chapters/part4-backends/ch16-backend-architecture.tex \
+      latex/book/chapters/part4-backends/ch22-sdlgpu-backend.tex \
+      latex/book/chapters/part4-backends/ch23-direct3d-backends.tex \
+      latex/book/chapters/appendices/appendix-a-core-graphics-quick-reference.tex
 git diff --check
 ```
 
 ## Documentation synchronized
 
-- `PLAN.md` records 490 total pages and exact current line counts: Ch.16 935; Ch.25 286;
-  Ch.26 664; Appendix F 254.
-- Its durable session log records the public dispatch tiers, backend coordinate matrix,
-  window/pixel-space defect, DX3 timing/resize boundary, evidence strength, FNA contrast,
+- `PLAN.md` records 496 total pages and exact current line counts: Ch.9 1,126; Ch.16 1,066;
+  Ch.22 511; Ch.23 749; Appendix A 369.
+- Its durable session log records the four readback result classes, shared pointer-safety
+  gaps, logical/physical coordinate mismatches, per-backend evidence strength, FNA contrast,
   and PDF inspection.
 - `README.md` has build/navigation guidance; `CLAUDE.md` says 49 chapters.
 
@@ -211,8 +240,8 @@ Sibling repositories remain read-only source authorities for ordinary book work.
 
 Continue Ch.16's backend-interface-default audit. Buffer defaults, volume/cube readback,
 RenderTargetCube upload/transitions, Texture2D updates, and draw/instancing fallbacks are
-closed, and coordinate transforms are now closed as well. Re-inventory the remaining
-defaults; backbuffer readback and swap-interval forwarding are promising candidates, but
+closed; coordinate transforms and backbuffer readback are now closed as well. Re-inventory
+the remaining defaults; swap-interval forwarding is the strongest known next candidate, but
 choose by public reachability and documentation gap after rechecking the live source. Trace
 the caller, override matrix, state transitions, and actual assertion layer before writing.
 Do not modify CNA itself; sibling repositories remain read-only source authorities.

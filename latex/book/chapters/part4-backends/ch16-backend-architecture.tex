@@ -182,6 +182,137 @@ uses the inverse ratios. CNA's richer five-mode presentation model needs offsets
 mode-specific viewport math that FNA's simple faux-backbuffer scale does not represent, but
 the table shows that this additional mechanism is not yet uniform or uniformly tested.
 
+\subsection{\texttt{ReadBackbuffer}: one name, four observable contracts}
+\label{sec:backend-readback-matrix}
+
+\cnaclass{IGraphicsBackend}'s comment promises RGBA8 pixels, top-left coordinates in game
+space, and \(w\times h\times4\) bytes of output. Its implementation does not silently
+degrade: it throws
+\texttt{runtime\_error("ReadBackbuffer: not implemented in this backend")}. Twelve products
+override it; \texttt{SDL\_GPU} and \texttt{D3D12} do not.
+
+The public layer does not make those twelve overrides equivalent.
+\texttt{GetBackBuffer\allowbreak Data()} passes a supplied rectangle through unchanged; for a
+null rectangle it asks \texttt{GetViewport\allowbreak Size()} for \(w,h\). It rejects a null output
+pointer and \texttt{elementCount < w*h}, then allocates an RGBA byte buffer, calls the virtual,
+and writes exactly \(w\times h\) \cnaclass{Color} objects starting at \texttt{startIndex}.
+It does not validate a negative offset, the allocation capacity after that offset, rectangle
+bounds, or signed multiplication overflow. Those wrapper gaps are shared; the table below
+records the separate backend behavior reached after them.
+
+\begingroup
+\small
+\setlength{\tabcolsep}{3.2pt}
+\renewcommand{\arraystretch}{1.13}
+\begin{longtable}{@{}p{0.13\textwidth}p{0.25\textwidth}p{0.31\textwidth}p{0.23\textwidth}@{}}
+\toprule
+\textbf{Backend} & \textbf{Image actually read} & \textbf{Region and special behavior} &
+  \textbf{Located evidence} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Backend} & \textbf{Image actually read} & \textbf{Region and special behavior} &
+  \textbf{Located evidence} \\
+\midrule
+\endhead
+\texttt{SDL\_\allowbreak RENDERER}
+  & The current SDL render target; the window only when no target is bound.
+  & Converts to packed RGBA and honors surface pitch. Window readback throws when logical and
+    physical presentation sizes differ; a 1:1 image may still use the presentation offset.
+  & Public exact-pixel tests select \texttt{NativeBackBuffer}; a dedicated target test proves
+    the bound-target route. \\
+\texttt{ASCII}
+  & Its internal logical \texttt{gameTarget\_}, or an explicit user target. Never the final
+    visible glyph grid.
+  & Forwards to SDL Renderer. The displayed quantized grid has a separate test-only
+    real-backbuffer helper used before swap.
+  & Off-screen test distinguishes the game target, explicit target, and public route; present
+    test uses the private final-grid helper. \\
+\texttt{SOFTWARE}
+  & \texttt{CurrentFramebuffer()}: bound target or CPU backbuffer.
+  & Exact top-left CPU copy; out-of-range source pixels become transparent black.
+  & Smoke test reads an exact clear, then distinguishes a still-bound target from the
+    restored backbuffer. \\
+\texttt{HEADLESS}
+  & No rendered image: a synthetic fill of the last global \texttt{Clear} color.
+  & Ignores \(x,y\) and all draw output; only rejects negative dimensions.
+  & Source only for this public result; existing smoke checks trace/resource state, not
+    returned pixels. \\
+\texttt{EASYGL}
+  & The currently bound GL framebuffer.
+  & Flips GL's Y origin and rows; resolves default-framebuffer MSAA. For the window,
+    \texttt{GetViewportSize()} reports logical dimensions but \texttt{glReadPixels} addresses
+    physical framebuffer pixels, so non-1:1 presentation can scale or offset the region.
+  & Many public pixel tests; target-usage test explicitly proves bound-FBO readback. Existing
+    cases are predominantly 1:1. \\
+\texttt{DX3}
+  & \texttt{ActiveSurface()}: bound target or its logical shadow backbuffer.
+  & Exact logical pixels before free-direct's later physical presentation scaling.
+  & Dedicated texture/target test reads the bound target and then the restored shadow
+    backbuffer. \\
+\texttt{VULKAN}
+  & Always the physical swapchain, even while a render target is bound.
+  & Captures the full image into a staging cache before deferred presentation, swizzles the
+    swapchain format, and zero-fills out-of-range pixels.
+  & Broad public pixel coverage; the target round-trip test explicitly documents and proves
+    that a bound target is \emph{not} the source. \\
+\texttt{BGFX}
+  & Always the default swapchain via
+    \texttt{requestScreenShot(\allowbreak BGFX\_INVALID\_HANDLE)}.
+  & Honors callback pitch, Y direction, and BGRA/RGBA order, but performs no source-rectangle
+    bounds check. Each read may advance as many as three bgfx frames; window-coordinate size
+    and screenshot pixel size can diverge on high-density displays.
+  & Public pixel tests compensate by rerendering/retrying; that proves pixels but also exposes
+    the multiple-read-per-frame caveat. \\
+\texttt{CANVAS}
+  & Under Emscripten, the current Canvas2D context: bound target or main canvas.
+  & Synchronous \texttt{getImageData}. The non-Emscripten body is a silent no-op, leaving the
+    wrapper's zero-initialized output unchanged. Logical viewport dimensions can differ from
+    canvas backing-store pixels.
+  & Source only; no real browser/DOM public readback execution was found. \\
+\texttt{D3D11}
+  & Always \texttt{backBufferTexture\_}, independent of render-target binding.
+  & Copies to a fresh staging texture, honors mapped row pitch, and returns top-left RGBA.
+  & Real windowed smoke tests discriminate two clear colors and regions. Their small regions
+    do not independently force a padded-row case. \\
+\texttt{WEBGPU}
+  & Always the physical surface image, independent of render-target binding.
+  & On-demand render, 256-byte-aligned staging rows, format swizzle, and transparent-black
+    out-of-range fill. The wrapper obtains logical dimensions but the copy is indexed in
+    physical pixels, so scaled/high-density regions are mismatched.
+  & Public clear/readback and mutation/revert pixel proofs; no non-1:1 coordinate case. \\
+\texttt{SDL\_GPU}
+  & None: inherited default throws.
+  & The acquired swapchain texture is write-only in SDL's API. A readable proxy would add a
+    texture and blit to every frame and is deliberately not implemented.
+  & Render-target \texttt{GetData} is tested separately; it does not make public backbuffer
+    readback available. \\
+\texttt{D3D9}
+  & Always the actual Direct3D backbuffer.
+  & Copies to system memory, honors pitch, handles the two supported RGBA/BGRA layouts, and
+    rejects other formats or a lost device.
+  & Real smoke/draw tests assert exact returned pixels. \\
+\texttt{D3D12}
+  & None: inherited default throws, including on a windowed device.
+  & Its \texttt{HeadlessEXT} mode has no swapchain at all. The backend owns working
+    render-target resource readback, but no \texttt{ReadBackbuffer} bridge.
+  & Headless smoke tests deliberately read target resources directly; they do not exercise
+    \cnaclass{GetBackBufferData}. \\
+\bottomrule
+\end{longtable}
+\endgroup
+
+The bound-target split is therefore exact, not merely a testing quirk.
+\texttt{SDL\_RENDERER}, \texttt{ASCII}, \texttt{SOFTWARE}, \texttt{EASYGL}, \texttt{DX3},
+and \texttt{CANVAS} follow the active target; \texttt{VULKAN}, \texttt{BGFX},
+\texttt{D3D11}, \texttt{WEBGPU}, and \texttt{D3D9} stay on the real backbuffer;
+\texttt{HEADLESS} is synthetic; two products throw. FNA's public generic overload instead
+queries the actual backbuffer size and surface format and calls
+\texttt{FNA3D\_\allowbreak ReadBackbuffer}, without a current-render-target branch. CNA has
+no \texttt{Graphics\allowbreak Capability} value for this distinction, so portable caller code cannot
+query it through the capability API; it must treat readback support, source image, and
+coordinate space as an explicitly selected backend contract.
+
 \subsection{IRenderTargetBackend: where Chapter~\ref{ch:textures-rendertargets}'s honest defaults actually live}
 
 Reading \cnaclass{IRenderTargetBackend}'s own interface definition directly explains
