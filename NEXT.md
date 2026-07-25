@@ -7,13 +7,13 @@ session log; this file is the concise live handoff.
 
 - Branch: `develop`.
 - Book: **531 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by fourteen documentation commits: `944fa54`
+- The local branch is ahead of `origin/develop` by fifteen documentation commits: `944fa54`
   (render-target binding/usage contracts), the Reset-order contracts batch, the resource-lifecycle
   audit, the construction/SDL-ownership audit, the multisample-backend-rebuild audit, and the
   Game/GraphicsDeviceManager lifecycle and callback/disposal audits, plus the Game
   exit/destruction/component-lifetime and ContentManager cache/disposal and
   copy/replacement, service-provider/device-resolution, reader-registration, root/path, and
-  Load-failure/type/cache-mutation audits below.
+  Load-failure/type/cache-mutation and concurrency/reentrancy audits below.
   The previous seventeen-commit count was accurate before the remote advanced and is retained
   only in the historical session log.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
@@ -21,7 +21,44 @@ session log; this file is the concise live handoff.
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: ContentManager `Load<T>()` failure, type, and cache-mutation boundary
+## Latest completed batch: ContentManager concurrency, reentrancy, and configuration-mutation boundary
+
+No CNA source changes were made; the sibling repository remained a read-only authority. The
+complete ContentManager mutable layout and load paths, manifest APIs, type-reader replacement
+path, focused content tests, and current FNA manager source establish:
+
+- CNA has no mutex, atomic guard, loading sentinel, or reader/writer synchronization around its
+  asset/reader/factory/texture `unordered_map`s, manifest vector/flag, root string, raw pointers,
+  or disposed flag. Any overlap involving a write—two cache-miss loads, Load versus Unload,
+  registration, manifest refresh, or configuration/disposal—is a C++ data race and undefined
+  behavior, not merely duplicate work. No located content test creates a thread or runs a race
+  detector. FNA's current per-manager Load cache also has no manager-level lock; its similarly
+  named lock protects only a static weak manager list.
+- Reentrant calls have separate, sequential hazards. A nested same-key load has no provisional
+  cache entry or cycle check, so it recurses until stack exhaustion. Reentrant `Unload()` clears
+  immediately but an outer reader can write its result after returning; reentrant `Dispose()` can
+  likewise allow the already-running call to return and cache a result despite the newly set guard.
+  These calls are not cancellation barriers. A nested different asset can cache successfully even
+  when its outer reader later fails.
+- `Load<T>()` does not retain a local shared pointer to its selected loose reader. If that reader
+  invokes `RegisterTypeReader<T>` for its own type, map replacement can destroy the active reader
+  during its `Read()` member function: a single-threaded lifetime hazard, not a supported reader
+  hot swap. Finish registrations/configuration before loading; serialize mutable manager use;
+  keep recursive references acyclic; and publish completed values to workers rather than sharing
+  the manager as a concurrent cache. A naive non-recursive external mutex can deadlock legitimate
+  nested loads and cannot solve self-replacement.
+- Ch.8 now gives the source-established ownership discipline. Full `latexmk` succeeded at
+  **531 pages**; targeted undefined-reference and duplicate-label checks are empty; makeindex
+  accepted **2,143** entries with zero rejected and zero warnings; `git diff --check` passes.
+  Rendered physical pages **108--109** are clean. Ch.8 is now **758** lines. The
+  plan-consistency validator remains absent from this checkout.
+
+Next recommended start: keep the ContentManager scope and audit the NOXNA content-manifest
+introspection APIs. Trace scan ordering, duplicate and extension treatment, malformed/unreadable
+XNB behavior, compression inventory, root/error behavior, reader-usage summary freshness, and
+returned-reference lifetime before expanding the manifest worked example's limits.
+
+## Previous completed batch: ContentManager `Load<T>()` failure, type, and cache-mutation boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. The live
 generic and specialized Load paths, XNB `ContentReader` dispatch, content reader/manager tests,

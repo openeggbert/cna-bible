@@ -405,6 +405,58 @@ load is attempted. Applications needing all-or-nothing multi-asset loading must 
 their own aggregate only after every individual load succeeds; \texttt{ContentManager} has no
 loading sentinel, rollback, or cycle-detection protocol.
 
+\subsection{One manager assumes serialized operations and stable reader registration}
+
+The same absence of a loading sentinel is also a concurrency contract. A live
+\texttt{ContentManager} contains ordinary \texttt{std::unordered\_map}s for generic assets,
+weak textures, loose readers, and named CNJ factories; an ordinary \texttt{std::vector} and
+boolean for its lazy manifest; a \texttt{std::string} root; and non-atomic raw device/provider
+pointers plus a non-atomic disposed flag. Neither the header nor implementation contains a mutex,
+atomic guard, reader/writer lock, or ``currently loading'' table around any of them. Thus two
+threads which overlap a cache miss, \texttt{Load()} and \texttt{Unload()}, load and registration,
+manifest refresh and manifest inspection, or a root/device/disposal change and a load have an
+unsynchronized read/write of ordinary C\texttt{++} state. That is a data race and undefined
+behavior, not merely a chance of decoding an asset twice. Even a cache hit should not be promoted
+to a supported parallel-load API: it still observes the unsynchronized manager state and may
+reconstruct or use a graphics backend whose own thread-affinity contract is separate.
+
+Current FNA does not supply a contrary per-manager guarantee. Its public \texttt{Load<T>} reads
+and writes an ordinary \texttt{Dictionary<string, object>} without a manager-level lock; the
+\texttt{ContentManagerLock} in its source protects only FNA's static weak list of managers. The
+two implementations differ in their formats and exception types, but neither source establishes
+``call one ContentManager from arbitrary loading threads'' as an XNA/FNA compatibility promise.
+No located CNA content test starts a thread, uses a sanitizer race detector, or overlaps any of
+these operations.
+
+There are important single-threaded reentrancy cases too. A custom CNJ factory or loose reader
+receives \texttt{ContentManager\&} and can call it again. A different nested asset may load and
+remain cached even if the outer reader later throws. A nested request for the same uncached
+\texttt{(T, normalizedName)} finds no provisional entry, recursively enters the same reader, and
+has no cycle check to stop eventual stack exhaustion. Calling \texttt{Unload()} from such a
+reader clears the maps at that instant, but the suspended outer \texttt{Load<T>} writes its own
+result into the cache after \texttt{Read()} returns; calling \texttt{Dispose()} there similarly
+sets the disposed guard only after clearing, while the already-running outer call can still return
+and write its result. Neither operation is a reentrant cancellation barrier.
+
+Reader replacement is narrower and more dangerous. \texttt{Load<T>} obtains a raw pointer to the
+\texttt{shared\_ptr} held inside its type-reader map, dereferences it, and calls \texttt{Read()}
+without retaining another local \texttt{shared\_ptr}. If that reader calls
+\texttt{RegisterTypeReader<T>} for its own \texttt{T}, the map assignment can destroy the reader
+object while its member function is still executing. This is an untested lifetime hazard even on
+one thread, not a supported hot-swap mechanism. A normal registration replacement outside an
+active read remains subject to the earlier cache rule: it affects only a later cache miss after
+\texttt{Unload()}.
+
+The reliable application discipline is consequently deliberately boring: finish all reader
+registration and graphics-device/root configuration before the loading phase; serialize every
+mutable manager operation (Load, Unload, Dispose, registration, root/device changes, and manifest
+refresh) through one owner thread or a reentrancy-aware loading coordinator; never replace a
+reader from its own callback; and make recursive references acyclic with different logical names.
+Publish fully loaded asset values to worker threads afterwards rather than sharing the manager as
+a general concurrent cache. A plain non-recursive external mutex around every public call is not
+automatically sufficient, because legitimate nested loads would deadlock and it cannot make a
+self-replacing active reader safe.
+
 \subsection{A service provider is stored, not consulted, in current CNA}
 
 The two \texttt{IServiceProvider*} constructors look deliberately XNA-shaped, but their live
