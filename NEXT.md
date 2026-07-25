@@ -94,6 +94,16 @@ new physical pages 3--4 were rendered and inspected cleanly. The isolated docume
 pre-existing overfull warnings elsewhere in Ch.22; none comes from the new subsection. Full-book
 regeneration remains pending regardless.
 
+**Ch.22 then gained its present-timing lifecycle rule.** `GraphicsDeviceManager` defaults VSync
+on, but all 22 local SDL_GPU examples/diagnostics set its public property false before
+`Game::DoInitialize()` to prevent roughly one-second virtual-display frames. A formerly direct
+private `SetSwapInterval(0)` workaround was correctly overwritten by `GraphicsDevice::Reset`
+once its missing public-interval forwarding was fixed. The chapter now documents this ordering,
+SDL_GPU's Immediate-then-Mailbox fallback for interval zero, and the fact that positive intervals
+(including XNA's `PresentInterval::Two`) select VSync. Its isolated document compiled and
+rendered pages 3--4 cleanly; the same five older, unrelated overflow warnings remain. Full-book
+regeneration is still pending.
+
 This was an unusually long, multi-batch session (author unavailable for many hours, explicit
 "continue autonomously" instruction given partway through, repeated several times). Seven full
 batches landed in total (371 → 452 pages, +81), on top of the earlier SDL_GPU chapter insertion

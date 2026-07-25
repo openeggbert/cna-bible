@@ -105,6 +105,41 @@ contract implying every backend does --- a real, previously-unflagged discrepanc
 backend's implementation and the class's own stated cross-backend promise, left for
 Chapter~\ref{ch:vulkan-backend} to account for on its own terms rather than resolved here.
 
+\section{Present timing belongs to the device manager, not a test-only backend poke}
+
+The SDL\_GPU tests establish a small but important rule about CNA's initialization lifecycle.
+\cnaclass{GraphicsDeviceManager} defaults \texttt{SynchronizeWithVerticalRetrace} to true,
+which is the right XNA-compatible default for an ordinary game. On this project's virtual test
+display, however, there is no useful vertical-retrace signal; leaving it enabled made each frame
+wait roughly one second. A 60- or 120-frame GPU regression test therefore consumed its CTest
+budget without doing more useful rendering. The correct setup, used by all 22 current
+SDL\_GPU examples and diagnostics, is public configuration made before
+\texttt{Game::DoInitialize()} creates or resets the device:
+
+\begin{lstlisting}
+gdm_ = std::make_unique<GraphicsDeviceManager>(this);
+gdm_->setPreferredBackBufferWidthProperty(64);
+gdm_->setPreferredBackBufferHeightProperty(64);
+gdm_->setSynchronizeWithVerticalRetraceProperty(false);
+\end{lstlisting}
+
+This order matters. Earlier tests called \texttt{SdlGpuGraphicsBackend::SetSwapInterval(0)}
+directly as a local workaround. During initialization, though, the device manager converts its
+still-true public property to \texttt{PresentInterval::One}; \cnaclass{GraphicsDevice::Reset}
+then forwards that presentation interval to every backend. The correct global forwarding was
+itself a real repair: before it landed, the reset path did not call
+\texttt{IGraphicsBackend::SetSwapInterval()} at all. Once repaired, it rightly overwrote the
+private pre-initialization poke, revealing the test timeout instead of preserving an accidental
+ordering dependency.
+
+For this backend, interval zero asks SDL\_gpu for \texttt{SDL\_GPU\_PRESENTMODE\_IMMEDIATE},
+falling back to \texttt{MAILBOX} if Immediate is unavailable; any positive interval selects
+VSync. SDL\_gpu has no half-rate present mode, so XNA's \texttt{PresentInterval::Two} has the
+same VSync outcome as \texttt{One}. That makes the example's explicit false a test-environment
+choice, not a claim that games should globally disable synchronization: it uses the same public
+property a game would use, at the phase of the lifecycle where CNA will not subsequently replace
+it.
+
 \section{Render targets: a real use-after-free, closed before it ever shipped}
 
 \cnaclass{RenderTarget2D} and \cnaclass{RenderTargetCube} support (with real multisampling and
