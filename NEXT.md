@@ -6,23 +6,68 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **537 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by nineteen documentation commits: `944fa54`
+- Book: **539 physical PDF pages, 49 chapters, 6 appendices**.
+- The local branch is ahead of `origin/develop` by twenty documentation commits: `944fa54`
   (render-target binding/usage contracts), the Reset-order contracts batch, the resource-lifecycle
   audit, the construction/SDL-ownership audit, the multisample-backend-rebuild audit, and the
   Game/GraphicsDeviceManager lifecycle and callback/disposal audits, plus the Game
   exit/destruction/component-lifetime and ContentManager cache/disposal and
   copy/replacement, service-provider/device-resolution, reader-registration, root/path, and
   Load-failure/type/cache-mutation, concurrency/reentrancy, content-manifest introspection,
-  format-selection/fallback, ResourceContentManager/OpenStream, and TitleContainer/TitleLocation
-  audits below. The previous eighteen-commit count was accurate before this local batch and is retained
-  only in the historical session log.
+  format-selection/fallback, ResourceContentManager/OpenStream, TitleContainer/TitleLocation, and
+  ContentReader audits below. The previous nineteen-commit count was accurate before this local
+  batch and is retained only in the historical session log.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
   reviewing `git push`. Its response explicitly rejected the request rather than granting
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: TitleContainer and TitleLocation direct-file boundary
+## Latest completed batch: ContentReader XNB object-graph session boundary
+
+No CNA source changes were made; the sibling repository remained a read-only authority. The
+complete reader implementation and tests, ContentManager XNB call site, stream base behavior,
+reader-table/name parsers, XNB-limit declaration and consumers, history, and current FNA source
+establish:
+
+- CNA's public, non-final ContentReader is one body/session reader, not a reusable file utility.
+  `ReadAsset<T>()` parses its reader table at the current position immediately after the ten-byte
+  XNB header, then reads one root, all shared values, and queued fixups. The constructor comment
+  claiming that the table is already consumed is stale. A second call does not rewind; it parses
+  post-asset bytes as a new table.
+- The stream and manager are raw, non-owning pointers, but BinaryReader's default `leaveOpen =
+  false` closes the supplied stream when the reader dies. ContentManager's stack ordering makes its
+  local body stream safe; standalone callers must keep both referents alive and must expect their
+  stream to close. CNA's temporary type-reader initializer manager dies before reads begin, and
+  session reader instances die with the session: neither is asset-owned state. Late shared parsing
+  or a callback can still fail after a root reader has produced side effects.
+- Positive shared references are fixed up only after every shared value decodes, so forward/cyclic
+  graphs work. Negative indexes silently behave as zero; a typed mismatch leaks
+  `std::bad_any_cast`, unlike FNA's normalized content-load error. Disposal tracking works only
+  for statically typed `shared_ptr<IDisposable>` results with an explicit callback. The normal
+  manager supplies no callback, the promised manager fallback is absent, and type-erased shared
+  values skip tracking.
+- `ReadExternalReference<T>()` is link-instantiated only for Texture2D and TextureCube. Empty
+  names return nullopt; relative upward escape is rejected, but absolute logical references still
+  reach ContentManager's unrestricted absolute path. FNA's counterpart is genuinely generic.
+- Current `develop` applies only part of `XnbReadLimits`: `maxStringBytes` and
+  `maxObjectNestingDepth` have no live consumer, while `maxFileSize` applies only to LZX
+  compressed input. Do not infer a universal input-admission policy. A corrective commit
+  (`30a4fb35`) exists only on the separate, non-integrated `feature/audit` branch; it is not
+  behavior of the audited branch.
+
+Ch.8 now records the source-established stream, dispatch, shared-resource, lifetime, disposal,
+external-reference, error, limits, FNA, and test-coverage boundary. Full `latexmk` succeeded at
+**539 pages**; targeted undefined-reference and duplicate-label checks are empty; makeindex
+accepted **2,188** entries with zero rejected and zero warnings; `git diff --check` passes.
+Rendered physical pages **105--106** are clean. Ch.8 is **1,127** lines and Ch.6 is **621**
+lines. The plan-consistency validator remains absent from this checkout.
+
+Next recommended start: retain the content/XNB scope and audit ContentTypeReader's type-erased
+value, existing-instance, collection/read-limit, and reader-lifetime contract. Keep the current
+`develop` branch separate from the unintegrated `feature/audit` hardening change; deciding whether
+to integrate that source fix belongs to CNA maintainers, not this documentation worktree.
+
+## Previous completed batch: TitleContainer and TitleLocation direct-file boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. The live
 title classes and tests, every live reference, sharp-runtime stream ownership, SDL3's installed

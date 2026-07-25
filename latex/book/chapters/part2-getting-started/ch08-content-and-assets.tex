@@ -115,7 +115,7 @@ pass against FNA's own reference decompressor run under Mono, the same technique
 Chapter~\ref{ch:what-is-cna} describes for \texttt{tools/fna-reference/}, that found and fixed
 a real heap-buffer-overflow in the process), and \cnaclass{SpriteFont}, all five stock
 effects, \cnaclass{SoundEffect}, \cnaclass{Song}, and the general
-\texttt{ReadExternalReference<T>()} mechanism are all real, working \texttt{.xnb} readers
+\cnaclass{Texture2D}/\cnaclass{TextureCube} external-reference paths are all real, working \texttt{.xnb} readers
 today. \cnaclass{Model}'s own \texttt{.xnb} reader --- described in
 Chapter~\ref{ch:models-meshes} as already real and wire-compatible --- was this effort's own
 most complete result throughout its development, and remains so.
@@ -217,6 +217,96 @@ through the replacement reader. This is an untested implementation boundary, not
 way to layer two loose-reader mechanisms. Copying a \texttt{ContentManager} shares its current
 loose-reader pointers but copies its named \texttt{.cnj} factories, as the later
 \texttt{Game::Content} section explains.
+
+\subsection{\cnaclass{ContentReader} is a one-shot XNB object-graph session, not a reusable file reader}
+\label{sec:content-reader-contract}
+
+Every real XNB load eventually creates a \cnaclass{ContentReader} over the body beginning
+immediately after the ten-byte container header. Its first operation, \texttt{ReadAsset<T>()},
+parses the type-reader table at the \emph{current} stream position, reads the shared-resource
+count, deserializes one root object, then reads every shared object and finally invokes its
+queued fixups. The constructor comment currently says that both the header \emph{and} table have
+already been consumed, which contradicts the implementation and the manager's live call site:
+only the header has been consumed. Calling \texttt{ReadAsset<T>()} a second time does not rewind
+or reuse the prior table; it treats whatever bytes follow the first asset as another table.
+Use one new reader for one body and one top-level asset.
+
+Although FNA makes this a sealed class with an internal constructor, CNA's C\texttt{++} class,
+constructor, and the initialization/read methods are public and it is not final. That wider
+surface is not a promise that the object is independently long-lived. The reader stores raw,
+non-owning pointers to both stream and manager. Its inherited \cnaclass{BinaryReader} uses the
+default \texttt{leaveOpen = false}: destroying or closing the reader closes the supplied stream
+but never deletes it. The manager-created stack reader is therefore safe only because its stack
+\cnaclass{MemoryStream} outlives it. A standalone caller must keep both raw referents alive,
+must not retain a \texttt{ContentReader\&} beyond its callback, and must account for the stream
+being closed on reader destruction. Neither the focused tests nor the public API prevent a
+dangling manager/stream or concurrent use of the mutable reader state.
+
+Initialization creates a fresh reader instance for every serialized table entry through the
+process-global factory registry, checks CNA's extra strict serialized-version rule, and only then
+calls \texttt{Initialize()} on every instance. FNA reads but does not enforce reader versions.
+The two-pass construction is useful: a reader may assume its peers have all been created when its
+initializer runs. There is a C\texttt{++}-specific lifetime caveat, however. CNA passes that
+initializer a local \cnaclass{ContentTypeReaderManager} which is destroyed as soon as
+initialization completes; a custom reader must use the reference synchronously and must not store
+it. FNA retains its manager as a field of the ContentReader for the reader session. The fresh CNA
+reader instances themselves are also destroyed when the session ends, so an asset must not retain
+a pointer/reference to its decoder.
+
+Object dispatch is 1-based: zero is a null/default object, while positive index $n$ selects table
+entry $n-1$. For a default-constructible C\texttt{++} result, zero returns \texttt{T\{\}}; with
+an existing instance it returns that instance instead. A non-default-constructible \texttt{T}
+with no existing value has no C\#-style \texttt{default(T)} representation and throws
+\cnaclass{ContentLoadException}. A bad reader/result pairing instead exposes
+\texttt{std::bad\_any\_cast}; CNA does not normalize every object-graph failure. Direct
+\texttt{ReadObject} and \texttt{ReadRawObject} overloads can bypass the 1-based dispatch, but
+CNA lacks FNA's no-argument \texttt{ReadRawObject<T>()} lookup overload. Root success is not a
+transaction: a later shared-resource parse or fixup can throw after the reader has already made
+arbitrary reader-side changes.
+
+Shared resources deliberately have a second phase. A positive reference index queues a typed
+fixup; index zero queues nothing. After the root returns, CNA reads \emph{all} shared values in
+file order, then runs each resource's fixups in file/index order. This correctly supports forward
+and cyclic graph references, but it also means a callback observes a fully-read shared section,
+not an incrementally available one. A positive index above the declared count produces a content
+load error. A negative index instead takes the same silent no-fixup branch as zero, because the
+code tests only \texttt{index > 0}. A wrong typed shared value reaches
+\texttt{std::bad\_any\_cast}; current FNA turns that mismatch into its content-load error. The
+focused tests prove one healthy fixup and zero, but not a negative index, bad type, callback
+throw, forward/cyclic graph, or partial-side-effect case.
+
+Disposal tracking is narrower than the constructor documentation promises. CNA records a result
+only when its \emph{static} C\texttt{++} type is \texttt{std::shared\_ptr<U>} for a
+\texttt{U} derived from \cnaclass{IDisposable}, and only when an explicit callback was supplied.
+The normal \cnaclass{ContentManager} XNB path supplies no callback; despite the header's statement
+about a manager fallback, the live implementation has no such call. Type-erased shared-resource
+reads deliberately skip tracking altogether. FNA instead performs a runtime IDisposable test and
+falls back to its owning ContentManager. No located CNA test exercises either a recording callback,
+the documented fallback, or a disposable shared resource, so do not use the reader as a general
+content-disposal coordinator.
+
+\texttt{ReadExternalReference<T>()} has two separate CNA restrictions. An empty serialized
+reference returns \texttt{std::nullopt}; a nonempty one needs a live manager, resolves relative to
+the containing logical asset name, and then enters the ordinary \texttt{Load<T>()} candidate and
+cache path. Relative upward escape is rejected, but an absolute reference still escapes through
+the manager's unrestricted absolute-path route described in \S8.4. The declaration looks generic,
+but the implementation is explicitly instantiated only for \cnaclass{Texture2D} and
+\cnaclass{TextureCube}; another \texttt{T} compiles against the declaration but has no linked
+definition. FNA's method is genuinely generic and returns \texttt{default(T)}; CNA's
+\texttt{optional} return is the necessary value-type distinction. Existing tests cover only the
+Texture2D sibling, empty, relative-escape, and null-manager paths.
+
+Finally, \cnaclass{XnbReadLimits} is not a universal admission policy on the current
+\texttt{develop} source. Type-reader and shared-resource counts are checked; collection and
+decoded-pixel limits work when a particular built-in reader calls the corresponding helper.
+
+Three declared limits have gaps: \texttt{maxStringBytes} and
+\texttt{maxObjectNestingDepth} have no live consumer, while \texttt{maxFileSize} is consulted
+only on the LZX decompression path. An uncompressed XNB is first read wholesale by
+\cnaclass{ContentManager}, and deeply nested object dispatch or a nested generic type-reader name
+has no reader-level depth guard. Treat the defaults as partial defensive checks, not proof that
+every untrusted XNB has a file, string, allocation, or stack-depth bound. No located focused test
+proves those three advertised limits on this branch.
 
 \section{The resolution order, precisely}
 
