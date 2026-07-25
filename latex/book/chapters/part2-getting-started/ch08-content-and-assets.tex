@@ -604,23 +604,23 @@ asset ownership are deliberately controlled by the caller. Do not use
 the source manager's pointer and cache state instead of preserving the target game's live state.
 
 \begin{sourcenote}
-\textbf{A worked example: asking the content root what it would actually resolve.} Rather than
-just describing the three-way resolution order in the abstract, CNA ships a real,
-\texttt{NOXNA}-tagged introspection tool that answers it concretely for a whole content tree at
-once: \texttt{ContentManager::GetContentManifest()} scans the content root (lazily, on first
-call, via a private \texttt{RefreshContentManifest()}) and returns one
+\textbf{A worked example: asking the content root what files it saw.} Rather than walking a
+content tree independently, tooling can use CNA's real, \texttt{NOXNA}-tagged inventory:
+\texttt{ContentManager::GetContentManifest()} scans the content root lazily on its first call
+(or a caller can invoke the public \texttt{RefreshContentManifest()}) and returns one
 \cnaclass{ContentManifestEntry} per logical asset name, reading directly from
 \texttt{ContentManifestEntry.hpp}:
 
 \begin{lstlisting}
-for (const ContentManifestEntry& entry : content.GetContentManifest()) {
+const auto manifest = content.GetContentManifest(); // value copy: stable across a later refresh
+for (const ContentManifestEntry& entry : manifest) {
     std::cout << entry.relativePath << ": ";
     if (entry.hasXnb) {
-        std::cout << "resolves via .xnb"; // wins outright when present
+        std::cout << ".xnb candidate exists";
     } else if (!entry.nativeExtensions.empty()) {
-        std::cout << "resolves via direct load (" << entry.nativeExtensions[0] << ")";
+        std::cout << "native candidate (" << entry.nativeExtensions[0] << ")";
     } else if (entry.hasCnj) {
-        std::cout << "resolves via .cnj only";
+        std::cout << ".cnj candidate exists";
     }
     std::cout << "\n";
 }
@@ -633,9 +633,55 @@ resolution-order section depends on --- \texttt{hasXnb}, \texttt{hasCnj}, and
 letting a companion method, \texttt{GetXnbReaderUsageSummary()}, aggregate across an entire
 content tree which reader types are actually exercised and whether
 \cnaclass{ContentTypeReaderManager} currently has a registered reader for each one --- a real,
-runnable way to answer ``which of my compiled XNA content's readers does CNA not support yet''
-without reading a single byte of any individual \texttt{.xnb} file by hand.
+runnable first inventory for ``which reader names occur in my compiled XNA content'' without
+reading any individual \texttt{.xnb} file by hand. The next subsection gives the important
+limits before treating that inventory as a loadability verdict.
 \end{sourcenote}
+
+\subsection{The manifest is an unsorted best-effort inventory, not a resolver or health check}
+
+The deliberately changed word ``candidate'' above matters. The manifest is additive
+introspection only: \texttt{Load<T>()} and \texttt{ResolveAssetPath()} still make their own live
+\texttt{std::filesystem::exists()} checks and do not consult it. A row says that a regular file
+with that final extension was seen below the root; it does not prove a reader for the requested
+\texttt{T} exists, that the native extension is one that reader accepts, that a GPU device is
+attached, that a CNJ envelope is valid, or that the XNB object can deserialize. Thus an XNB row
+still ranks ahead of a native/CNJ candidate in the ordinary resolver, but a malformed XNB can make
+the real \texttt{Load} fail rather than fall through to a displayed sibling. The manifest must
+not be used as a dry-run or as a way to change resolution precedence.
+
+The reader-name column is best-effort in a narrower way. For an exact lower-case
+\texttt{.xnb} extension, the scan reads the entire file and inventories only an uncompressed,
+well-formed header/table. An unopened or malformed file, and every compressed file (LZX as well
+as currently unsupported LZ4), remains \texttt{hasXnb = true} with an empty
+\texttt{xnbReaderNames} vector. There is no status or error field distinguishing those cases
+from an XNB that genuinely names no readers, and the usage summary omits that blank entry
+altogether. The planned compressed-reader inventory remains unimplemented even though normal
+LZX \emph{loading} exists. Similarly, \texttt{isRegistered} asks the global factory map anew
+for each summary call: registering a name changes that boolean without a rescan, while new files
+or changed reader-name tables need \texttt{RefreshContentManifest()}. As the earlier registry
+audit showed, ``registered'' means only that a map key is present; it does not validate that a
+stored factory is callable.
+
+Neither order nor scan completeness is a deterministic contract. Directory traversal order feeds
+the \texttt{nativeExtensions} list, then an \texttt{unordered\_map} supplies the manifest and a
+second \texttt{unordered\_map} supplies the usage summary; none is sorted. Tooling which writes
+a report or diff should make and sort its own value copy by \texttt{relativePath} (and sort native
+extensions/reader names as needed), rather than treating the current order as stable. Extension
+classification is byte-exact too: \texttt{asset.XNB} is recorded as a native \texttt{.XNB}
+extension, not as \texttt{hasXnb}; a dotless file contributes an empty native extension. No
+located test covers order, case variants, dotless names, or multiple native extensions.
+
+Finally, the scanner has no public error result and no explicit entry, depth, or total-byte scan
+budget. A missing/inaccessible root produces a successful-looking empty snapshot; permission
+denials are skipped where the iterator can skip them, and a later iteration error can leave a
+partial scan marked built. Every uncompressed XNB is read wholesale before its table is parsed.
+\texttt{GetContentManifest()} returns a const reference to the manager's internal vector, not a
+value snapshot: the vector object remains owned by the manager, while a refresh can invalidate
+its element references, pointers, and iterators and replace what a held vector reference observes.
+Copy it before retaining, sorting, or passing it beyond the serialized inspection phase described
+above. These are diagnostic-tooling limits, not reasons to feed untrusted trees to the method as
+a bounded validator.
 
 \subsection{Audio and video: the \cnaclass{SoundEffect} / \cnaclass{Song} / \cnaclass{Video} readers}
 \label{sec:xnb-audio}

@@ -6,14 +6,15 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **531 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by fifteen documentation commits: `944fa54`
+- Book: **533 physical PDF pages, 49 chapters, 6 appendices**.
+- The local branch is ahead of `origin/develop` by sixteen documentation commits: `944fa54`
   (render-target binding/usage contracts), the Reset-order contracts batch, the resource-lifecycle
   audit, the construction/SDL-ownership audit, the multisample-backend-rebuild audit, and the
   Game/GraphicsDeviceManager lifecycle and callback/disposal audits, plus the Game
   exit/destruction/component-lifetime and ContentManager cache/disposal and
   copy/replacement, service-provider/device-resolution, reader-registration, root/path, and
-  Load-failure/type/cache-mutation and concurrency/reentrancy audits below.
+  Load-failure/type/cache-mutation, concurrency/reentrancy, and content-manifest introspection
+  audits below.
   The previous seventeen-commit count was accurate before the remote advanced and is retained
   only in the historical session log.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
@@ -21,7 +22,44 @@ session log; this file is the concise live handoff.
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: ContentManager concurrency, reentrancy, and configuration-mutation boundary
+## Latest completed batch: ContentManager manifest introspection, ordering, and diagnostic boundary
+
+No CNA source changes were made; the sibling repository remained a read-only authority. The
+manifest implementation and entry API, the focused manifest tests, `plan_xnb.md`/`xnb.md`, and
+the normal resolver establish:
+
+- The NOXNA manifest is an additive snapshot for diagnostics, not a resolver or a loadability
+  check: normal `Load<T>()` and `ResolveAssetPath()` continue with live filesystem probes. Its
+  `hasXnb`, `hasCnj`, and native-extension fields therefore mean candidates were seen, not that a
+  requested reader/type/device/CNJ/XNB is valid. An existing malformed XNB still wins and fails
+  instead of falling through to a displayed native or CNJ sibling.
+- The scan is neither deterministic nor comprehensive. It uses exact lower-case `.xnb`/`.cnj`
+  extension comparisons, leaves directory/native-extension order and both manifest/summary maps
+  unsorted, records `.XNB` as a native extension, and gives dotless files an empty native
+  extension. It exposes no status/error result or entry/depth/byte bound: an inaccessible root
+  looks empty, iterator errors can leave a partial built scan, and every uncompressed XNB is read
+  wholesale. Copy and sort the returned vector before retaining or reporting it; it is a const
+  reference to manager-owned storage and a refresh invalidates element references/iterators.
+- Reader names are available only for well-formed, uncompressed XNB tables. An unreadable,
+  malformed, LZX, or currently unsupported LZ4 file still has `hasXnb` with an indistinguishable
+  empty reader-name vector; normal LZX loading exists but compressed reader-name inventory remains
+  unimplemented. The summary rereads global registration on each call, so a registration changes
+  its boolean without a refresh, while file/table changes require one. That boolean remains only
+  a factory-map-key test, not a callable-factory check.
+- Ch.8 now makes the worked example an honest inventory and spells out its ordering, failure,
+  compression, freshness, and lifetime limits. Full `latexmk` succeeded at **533 pages**;
+  targeted undefined-reference and duplicate-label checks are empty; makeindex accepted **2,143**
+  entries with zero rejected and zero warnings; `git diff --check` passes. Rendered physical pages
+  **112--113** are clean. Ch.8 is now **804** lines. The plan-consistency validator remains
+  absent from this checkout.
+
+Next recommended start: keep the ContentManager scope and audit exact format-selection and
+fallback behavior across generic and specialized loads. Distinguish literal filename, `.xnb`,
+`.cnj`, and registered native-extension candidates; identify where a selected invalid candidate
+prevents a lower-priority fallback; and do not repeat the completed root-confinement, cache-key,
+or manifest work.
+
+## Previous completed batch: ContentManager concurrency, reentrancy, and configuration-mutation boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. The
 complete ContentManager mutable layout and load paths, manifest APIs, type-reader replacement
