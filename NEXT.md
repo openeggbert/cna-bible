@@ -44,6 +44,19 @@ before it reached the end of the 454-page document after generated auxiliaries w
 not claim a new full-book page count or clean-reference state until that rebuild finishes. The
 last fully verified full-book baseline remains commit `87fb144` (454 pages).
 
+**Current autonomous continuation — Ch.22 SDL_GPU MRT audit:** The chapter now states the
+source-and-pixel-proven boundary accurately: stock shaders have one fragment output and thus draw
+only into MRT target zero, whereas one custom `#version 450` ShaderEffect invocation genuinely
+writes two simultaneous attachments. `sdlgpu_mrt_test.cpp` reads the resulting distinct values
+`(51,102,204,255)` and `(102,204,51,255)` back from the two targets. It also records the
+remaining narrow ownership exposure: the primary and render-pass siblings retain shared state,
+but `currentExtraMrtTargets_` still retains active secondary wrappers as raw pointers for later
+`Clear*()` propagation. Destroying such a wrapper before the binding changes can dangle that
+list; keep all active MRT wrappers alive until `SetRenderTargets()` changes/clears the binding.
+The 490-line chapter compiled twice as a ten-page isolated PDF with zero `Overfull \hbox`
+warnings; physical page 7 was rendered and inspected. This is isolated validation only; a fresh
+full-book rebuild remains unavailable in this environment.
+
 **Later continuation, also isolated-verified:** Ch.23 gained a ninth, source-grounded D3D11
 verification-ladder subsection. Its minimal document compiled successfully and the affected page
 was rendered and read after a right-edge audit; it is therefore marked isolated LaTeX/PDF clean,

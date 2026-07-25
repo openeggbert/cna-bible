@@ -314,6 +314,38 @@ releases each queued handle through \texttt{SDL\_ReleaseGPUTexture()}. SDL may s
 physical memory internally; CNA's narrower rule is that a recording cannot release a handle
 which an unsubmitted command still names.
 
+\section{MRT is a real shader capability, not merely a multi-clear convenience}
+
+\cnaclass{GraphicsDevice::SetRenderTargets()} makes the first
+\cnaclass{RenderTarget2D} the primary target and records every later target as one simultaneous
+SDL\_gpu color attachment. At \texttt{Present()} the primary's render pass contains
+\(1+\lvert\texttt{mrtSiblings}\rvert\) \texttt{SDL\_GPUColorTargetInfo} entries; the custom
+effect pipeline cache includes that attachment count, so a pipeline created for one color output
+cannot accidentally be rebound for two. All attachments receive the same CNA blend state, just
+as one \cnaclass{GraphicsDevice::BlendState} governs the whole draw rather than one state per
+target.
+
+That does \emph{not} mean every draw writes every attachment. CNA's stock sprite and 3D fragment
+shaders declare one output, so their real, deliberately narrow MRT contract is: target zero
+receives the draw while targets one onward can still be bound and cleared independently. The
+second half of \texttt{sdlgpu\_mrt\_test.cpp} proves the broader custom-effect path by binding
+two fresh targets and issuing exactly one \cnaclass{SpriteBatch} draw with a \texttt{\#version
+450} fragment shader containing \texttt{layout(location=0) out vec4 outColorA} and
+\texttt{layout(location=1) out vec4 outColorB}. Sampling a white texture with tint
+\((0.2,0.4,0.8,1)\) must read \((51,102,204,255)\) from A and its shader-computed channel swap
+\((102,204,51,255)\) from B. Those distinct readbacks rule out both an extra clear and a copied
+single-output result: one fragment invocation really wrote two simultaneous attachments.
+
+The earlier wrapper-lifetime repair deliberately does not overclaim here. While the primary and
+its sibling states are retained through \texttt{shared\_ptr}s for the deferred render pass, the
+currently bound secondary wrappers are also kept in the separate raw-pointer list
+\texttt{currentExtraMrt\allowbreak{}Targets\_} so that later \texttt{Clear\allowbreak{}*()} calls can queue
+their clear state. Destroying a secondary \cnaclass{Render\allowbreak{}Target2D} while that MRT binding remains active can
+therefore leave that list dangling before such a clear. This is a narrower exception than the
+closed queued-draw use-after-free above, but it is real ownership debt; the conservative current
+rule is to keep every active MRT wrapper alive until a subsequent \texttt{SetRender\allowbreak{}Targets()}
+changes or clears the binding.
+
 \subsection{A worked example: \cnaclass{Texture3D}'s own \texttt{cycle=true} orphaned-write bug}
 
 \cnaclass{Texture3D} support on this backend --- sub-volume upload/readback plus mipmap generation
@@ -390,7 +422,7 @@ separate, write-only swapchain readback limitation described below.
 \section{What remains open}
 \label{sec:sdlgpu-what-remains-open}
 
-Six limits are worth stating precisely rather than glossing over. First, occlusion queries are a
+Seven limits are worth stating precisely rather than glossing over. First, occlusion queries are a
 \emph{permanent} limitation of the underlying API, not a task gap: the vendored
 \texttt{SDL\_gpu.h} has no query-pool or occlusion-query type anywhere in it (only
 \texttt{SDL\_GPUFence} for CPU/GPU synchronization), so \texttt{CreateOcclusionQuery()}
@@ -428,8 +460,11 @@ open pending either a shared content-dialect migration or a real shader-translat
 Fifth, \cnaclass{RasterizerState}'s depth-bias values remain captured-but-unapplied because
 SDL\_gpu has no dynamic depth-bias command and CNA does not yet bake the float values into its
 pipeline cache. Sixth, \cnaclass{SamplerState}'s \texttt{MaxAnisotropy} is retained in a slot
-but not included in command or sampler-cache creation, so no SDL\_gpu sampler uses it. Beyond
-these six, Windows (D3D12 driver) and macOS/iOS (Metal driver)
+but not included in command or sampler-cache creation, so no SDL\_gpu sampler uses it. Seventh,
+an active MRT secondary target is still represented by a raw pointer for deferred
+\texttt{Clear\allowbreak{}*()} propagation; destroying that wrapper before the MRT binding changes can leave
+the pointer dangling, despite the separately fixed queued-draw state lifetime. Beyond these
+seven, Windows (D3D12 driver) and macOS/iOS (Metal driver)
 remain code paths only, not validation claims, until run on real (or Wine/DXVK-class) hardware
 --- the same phased-claim discipline this book already applies to \texttt{D3D11} /
 \texttt{D3D12} (Chapter~\ref{ch:direct3d-backends}) and \texttt{WebGPU}
