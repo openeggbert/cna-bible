@@ -6,25 +6,58 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **543 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by twenty-five documentation commits: `944fa54`
-  (render-target binding/usage contracts), the Reset-order contracts batch, the resource-lifecycle
-  audit, the construction/SDL-ownership audit, the multisample-backend-rebuild audit, and the
-  Game/GraphicsDeviceManager lifecycle and callback/disposal audits, plus the Game
-  exit/destruction/component-lifetime and ContentManager cache/disposal and
-  copy/replacement, service-provider/device-resolution, reader-registration, root/path, and
-  Load-failure/type/cache-mutation, concurrency/reentrancy, content-manifest introspection,
-  format-selection/fallback, ResourceContentManager/OpenStream, TitleContainer/TitleLocation,
-  ContentReader, ContentTypeReader, XNB header/decompression, XNB type-reader-name/table,
-  scalar/math-reader, and Decimal/DateTime-reader audits below. The previous twenty-four-commit
-  count was accurate before this local batch and is retained only in the
-  historical session log.
+- Book: **545 physical PDF pages, 49 chapters, 6 appendices**.
+- After committing this batch, the local branch will be ahead of `origin/develop` by **six**
+  documentation commits: the ContentTypeReader contract, XNB container, type-name/table,
+  scalar/math, Decimal/DateTime, and CurveReader audits. This count was checked against the
+  current remote-tracking ref; do not reuse older historical ahead-counts.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
   reviewing `git push`. Its response explicitly rejected the request rather than granting
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: Decimal/TimeSpan/DateTime XNB-reader compatibility boundary
+## Latest completed batch: CurveReader XNB counted-key and semantic-admission boundary
+
+No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
+CurveReader and umbrella registration, current FNA CurveReader, Curve/CurveKeyCollection
+evaluation code, reader/runtime tests, XNB fixture inventory, and unmerged audit-branch history
+establish:
+
+- The explicitly registered, version-zero reader has FNA's exact wire order: PreLoop, PostLoop,
+  signed key count, then each key's position/value/tangentIn/tangentOut/continuity. Tangents are
+  stored Singles, not CurveTangent enum codes.
+- Loop and continuity words are unchecked casts. Invalid continuity behaves as Smooth during
+  evaluation; an invalid out-of-range loop type falls through to ordinary curve-position
+  evaluation. NaN/infinite fields, duplicate positions, and non-monotone input are accepted;
+  collection insertion only sorts strict-less positions, preserving equal-position order and
+  appending NaNs.
+- CurveReader omits the common count helper: a negative keyCount silently produces no new keys;
+  a large positive count grows incrementally until input exhaustion or storage failure rather than
+  honoring the configured 10-million-element ceiling. A related hardening observation exists only
+  on unmerged `feature/audit`, not current `develop`.
+- Normal ContentReader dispatch always supplies no existing Curve. A direct boxed Curve is copied,
+  has its loop fields replaced, and receives appended keys; the returned value does not mutate the
+  caller's original. FNA's reference-type instance has the same append shape but different
+  ownership consequences.
+- The sole focused test is a direct local BinaryWriter/ReadUntyped happy path for two valid keys.
+  No checked-in XNB Curve fixture, header/table dispatch, manager load, existing instance, bad
+  count/enum/float, truncation, version, or evaluation test exists; the real Curve fixture is
+  `.cnj` only.
+
+Ch.8 now records the literal wire order, enum/float/key-count admission behavior, direct-instance
+semantics, FNA contrast, unintegrated history boundary, and test/fixture scope. Full latexmk
+succeeded at **545 pages**; targeted undefined-reference and duplicate-label checks are empty;
+makeindex accepted **2,220** entries with zero rejected and zero warnings; `git diff --check`
+passes. Rendered physical pages **112--113** are clean. Ch.8 is **1,494** lines and Ch.6 is
+**621** lines. The plan-consistency validator remains absent from this checkout.
+
+Next recommended start: retain the XNB scope and audit `Texture2DReader`'s dimensions, format,
+mip/data byte accounting, use of XnbReadLimits, GPU-device ownership, and real-fixture versus
+direct-test coverage. Keep CurveReader's unchecked count and enum/float behavior recorded as
+current `develop` behavior; applying a collection limit is a CNA source change, not a
+documentation-only correction.
+
+## Previous completed batch: Decimal/TimeSpan/DateTime XNB-reader compatibility boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
 platform-guarded three-reader family, registration, test and history; sharp-runtime Decimal,
@@ -54,10 +87,9 @@ makeindex accepted **2,217** entries with zero rejected and zero warnings; git d
 Rendered physical pages **111--112** are clean. Ch.8 is **1,424** lines and Ch.6 is **621** lines.
 The plan-consistency validator remains absent from this checkout.
 
-Next recommended start: retain the XNB scope and audit CurveReader's counted key sequence,
-continuity/loop/tangent enum casts, existing-instance behavior, invalid-value handling, and
-real-fixture/test coverage. Keep the Decimal reserved-flag/signed-zero and DateTime-kind findings
-recorded as current develop behavior; resolving them spans sharp-runtime fidelity and MSVC support.
+Next recommended start from this historical checkpoint was CurveReader. Keep the Decimal
+reserved-flag/signed-zero and DateTime-kind findings recorded as current develop behavior;
+resolving them spans sharp-runtime fidelity and MSVC support.
 
 ## Previous completed batch: scalar/math XNB-reader layouts and generic-enum boundary
 

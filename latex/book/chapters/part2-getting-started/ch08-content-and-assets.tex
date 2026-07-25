@@ -602,6 +602,76 @@ reserved flag, invalid scale, negative/extreme TimeSpan, Local/Unspecified/3 Dat
 tick, truncation, or version test. These readers make common values usable, but they are not a
 cross-platform, bit-for-bit fidelity guarantee for all XNA temporal and Decimal payloads.
 
+\subsection{CurveReader preserves FNA's field order but not a curve-input policy}
+\label{sec:xnb-curve-reader-contract}
+
+The separately registered \texttt{Microsoft.Xna.Framework.Content.CurveReader} is the binary
+counterpart of Chapter~\ref{ch:math-core-types}'s \texttt{Curve} discussion, not the JSON
+\texttt{.cnj} reader illustrated there. Its target name is
+\texttt{Microsoft.Xna.Framework.Curve}; it joins the built-in set only after an explicit
+\texttt{RegisterCurveXnbReader()} call (or the umbrella registration call), and it inherits the
+usual exact serialized-version-zero requirement. Current FNA's internal \texttt{CurveReader}
+uses the same field sequence:
+
+\begin{center}
+\begin{tabular}{r p{0.76\linewidth}}
+  1 & \texttt{Int32 PreLoop} (\texttt{CurveLoopType}) \\
+  2 & \texttt{Int32 PostLoop} (\texttt{CurveLoopType}) \\
+  3 & signed \texttt{Int32 keyCount} \\
+  4 & for each key: \texttt{Single position}, \texttt{value}, \texttt{tangentIn},
+      \texttt{tangentOut}, then \texttt{Int32 continuity} (\texttt{CurveContinuity}).
+\end{tabular}
+\end{center}
+
+The word ``tangent'' in that layout is important: the four key numbers include two already
+calculated floating-point tangents. They are not \texttt{CurveTangent} enum values, and the
+reader does not invoke \texttt{ComputeTangents()}. The three integer enum sites are merely
+\texttt{static\_cast}s. Valid loop codes are Constant=0, Cycle=1, CycleOffset=2,
+Oscillate=3, and Linear=4; valid continuity codes are Smooth=0 and Step=1. No range check
+occurs before either value enters the returned curve. An invalid continuity is subsequently
+treated as Smooth, because evaluation tests only equality with Step. An invalid pre- or post-loop
+value reaches the switch with no matching case and falls through to ordinary
+\texttt{GetCurvePosition(position)} rather than producing a content-load error. Its result then
+depends on the positions and tangents present in that particular curve. These are malformed-file
+admission details, not alternate documented enum meanings.
+
+Nor does this reader validate the five floating-point fields or impose key semantics beyond what
+\cnaclass{CurveKeyCollection} happens to do. NaN/infinite numbers, duplicate positions, and
+non-monotone serialized order are accepted. \texttt{Add()} insertion-sorts only when a new
+position compares strictly less than an old one, so equal positions retain input order and NaN
+positions append. Subsequent curve evaluation can therefore encounter a zero position span or
+non-finite arithmetic; this reader neither rejects nor repairs it. This is deliberately unlike
+the textual \texttt{.cnj} examples' named enum vocabulary: a binary cast is not validation.
+
+The declared key count is the sharper input boundary. CNA reads it as signed \texttt{Int32} and
+immediately uses \texttt{for (i = 0; i < keyCount; ++i)}. It does \emph{not} call
+the common collection-count helper, despite that helper rejecting a
+negative count and enforcing the configured ten-million-element default before collection
+growth. Thus a negative count succeeds as an empty key sequence after the two loop fields, while
+a very large positive count repeatedly appends keys until the body stream fails or storage is
+exhausted. It does not reserve the full count in advance, but it has no reader-level count ceiling
+either. A current hardening commit that notes this omission exists only on the unmerged
+\texttt{feature/audit} branch; it is not behavior supplied by this book's current
+\texttt{develop} authority.
+
+There is also an easy-to-miss existing-instance asymmetry. CurveReader does not advertise
+\texttt{CanDeserializeIntoExistingObject}; the normal \cnaclass{ContentReader} object dispatch
+therefore always passes no existing curve. A direct type-erased caller can nevertheless supply a
+\cnaclass{Curve}. CNA takes that value copy, overwrites its two loop fields, and appends newly
+read keys without clearing its old ones; the returned C\texttt{++} value is separate from the
+caller's original. FNA's same append logic operates on its reference-type instance. This corner
+does not affect a normal manager load, but it means direct reader reuse is neither a replacement
+operation nor a caller-object mutation contract in CNA.
+
+The focused CurveReader test writes two ordinary, locally generated keys through CNA's own
+\texttt{BinaryWriter}, calls \texttt{ReadUntyped()} directly, and checks registration, both loop
+fields, positions, values, selected tangents, and the two valid continuities. It has no XNB
+header/table dispatch, external producer fixture, manager load, existing-instance, zero/negative/
+large count, truncation, nonzero version, invalid enum, duplicate/NaN/infinite key, or evaluation
+test. The checked-in XNB fixture inventory contains no Curve asset; the related real fixture is
+only the \texttt{.cnj} Curve covered in Chapter~\ref{ch:math-core-types}. Treat the binary
+reader as a faithful ordinary-layout decoder, not as a bounded or semantic curve validator.
+
 \section{The resolution order, precisely}
 
 The earlier short three-way description is useful, but it hides two consequential facts: a
