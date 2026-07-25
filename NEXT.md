@@ -7,12 +7,12 @@ session log; this file is the concise live handoff.
 
 - Branch: `develop`.
 - Book: **527 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by ten documentation commits: `944fa54`
+- The local branch is ahead of `origin/develop` by eleven documentation commits: `944fa54`
   (render-target binding/usage contracts), the Reset-order contracts batch, the resource-lifecycle
   audit, the construction/SDL-ownership audit, the multisample-backend-rebuild audit, and the
   Game/GraphicsDeviceManager lifecycle and callback/disposal audits, plus the Game
   exit/destruction/component-lifetime and ContentManager cache/disposal and
-  copy/replacement audits below.
+  copy/replacement and service-provider/device-resolution audits below.
   The previous seventeen-commit count was accurate before the remote advanced and is retained
   only in the historical session log.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
@@ -20,7 +20,44 @@ session log; this file is the concise live handoff.
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: ContentManager copy assignment and `Game::Content` replacement
+## Latest completed batch: ContentManager service-provider and graphics-device resolution
+
+No CNA source changes were made; the sibling repository remained a read-only authority. The live
+ContentManager constructors and all provider/device uses, GPU/no-device tests, Game's default
+construction, `GameServiceContainer`, `ResourceContentManager`, relevant history, and current FNA
+source establish:
+
+- CNA's `ContentManager(IServiceProvider*)` overloads only store the raw provider pointer, retain
+  the `"Content"` field default unless another root is supplied, and register readers.
+  `getServiceProviderProperty()` only returns the stored address. There is no
+  `IServiceProvider::GetService()` call anywhere in ContentManager, so adding an
+  `IGraphicsDeviceService` to a `GameServiceContainer` cannot configure a manager. The header's
+  claim that this provider resolves graphics and other services is stale.
+- Null is accepted; much of the parser-only test suite deliberately constructs
+  `ContentManager(nullptr, root)`. A GPU-backed load instead needs a prior explicit
+  `setGraphicsDevice()`. The Video XNB test pair proves this boundary: attaching the device
+  succeeds, while an otherwise equivalent no-device load throws `ContentLoadException`. No
+  located test passes a non-null provider or checks provider lookup.
+- FNA rejects a null provider and, only when it first needs a device, requests
+  `IGraphicsDeviceService` from `ServiceProvider`, caching its device or throwing a named
+  `ContentLoadException`. CNA Game works because it default-constructs `Content_` and immediately
+  attaches `GraphicsDevice_`; its Services container is not passed to Content. The
+  provider-taking ResourceContentManager takes the same passive base path and remains an
+  embedded-resource-stream stub.
+- Ch.8 now gives the correct standalone pattern: a service container may be passed as retained
+  metadata, but `setGraphicsDevice(device)` is separately mandatory before a GPU-backed load and
+  the device must outlive that use. This is source-established behavior, not a runtime injection.
+- Validation: incremental `latexmk` succeeded at **527 pages**; targeted undefined-reference and
+  duplicate-label checks are empty; makeindex accepted **2,141** entries with zero rejected and
+  zero warnings; `git diff --check` passes. Rendered physical pages **105--107** are clean. Ch.8
+  is now **525** lines. The plan-consistency validator remains absent from this checkout.
+
+Next recommended start: retain the ContentManager scope and audit reader-registration ownership.
+Trace `RegisterTypeReader<T>()`, `RegisterCnjLoader<T>()`, the per-manager `std::any` tables, the
+global XNB `ContentTypeReaderManager`, replacement/duplicate/null behavior, cache/copy
+interactions, tests, and FNA/XNA compatibility before expanding the extension-point guidance.
+
+## Previous completed batch: ContentManager copy assignment and `Game::Content` replacement
 
 No CNA source changes were made; the sibling repository remained a read-only authority. The live
 `Game` constructor/setter, `ContentManager` object layout and load paths, all setter call sites,
@@ -50,10 +87,7 @@ focused tests, and current FNA `Game` establish:
   zero warnings; `git diff --check` passes. Rendered physical pages **106--107** are clean. Ch.8
   is now **479** lines. The plan-consistency validator remains absent from this checkout.
 
-Next recommended start: retain the ContentManager scope and audit the `IServiceProvider`
-constructor contract. The class stores that pointer, while current load paths appear to require a
-separately assigned graphics device; verify every lookup/call site, constructor documentation,
-tests, and FNA/XNA compatibility before correcting any potentially stale wording.
+The service-provider recommendation from this batch has been completed by the newer audit above.
 
 ## Previous completed batch: ContentManager cache ownership and disposal boundary
 

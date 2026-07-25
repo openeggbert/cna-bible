@@ -224,6 +224,52 @@ loose-file type, and \texttt{RegisterCnjLoader<T>(name, CnjLoaderFn<T>)} for a n
 \S\ref{sec:cnj} already named as the reason a game never needs to invent its own ad-hoc JSON
 format for a custom asset type.
 
+\subsection{A service provider is stored, not consulted, in current CNA}
+
+The two \texttt{IServiceProvider*} constructors look deliberately XNA-shaped, but their live
+CNA contract is narrower than their header comment suggests. Both constructors merely store the
+raw pointer, retain the field's \texttt{"Content"} root default unless the caller supplies a
+root, and register the built-in readers. \texttt{getServiceProviderProperty()} simply returns
+that stored address. There is no \texttt{IServiceProvider::GetService()} call anywhere in
+\texttt{ContentManager.cpp}: registering an \texttt{IGraphicsDeviceService} in a
+\texttt{GameServiceContainer} does \emph{not} make a standalone manager discover a graphics
+device. The current Doxygen promise that the provider is ``used to resolve graphics and other
+services'' is therefore stale implementation documentation, not an additional setup route.
+
+FNA has the opposite lazy dependency rule. Its public constructors reject a null provider; the
+first code path that needs a graphics device asks \texttt{ServiceProvider} for
+\texttt{IGraphicsDeviceService}, throws \texttt{ContentLoadException("No Graphics Device
+Service")} if it is absent, and caches the returned device. CNA accepts
+\texttt{ContentManager(nullptr)} --- many parser-only tests intentionally use it --- but a
+GPU-backed reader must instead find the device previously set by CNA's explicit method. The
+direct video-reader test makes this boundary especially clear: its successful fixture first calls
+\texttt{setGraphicsDevice(gd)}, while its paired no-device case throws
+\texttt{ContentLoadException}; neither case asks a provider.
+
+For a standalone manager, retain the explicit association even if a service container is useful
+to the rest of the application:
+
+\begin{lstlisting}
+GameServiceContainer services;
+ContentManager assets(&services, "Content"); // retrievable metadata; no lookup occurs
+assets.setGraphicsDevice(device);             // required before a GPU-backed Load
+
+auto logo = assets.Load<Texture2D>("sprites/logo");
+\end{lstlisting}
+
+\texttt{setGraphicsDevice()} records only another raw address; it neither transfers ownership
+nor follows later service-container registrations. A reader which never asks
+\texttt{getGraphicsDeviceInternal()} can work without this call, but that is a property of that
+specific reader, not evidence that service resolution occurred. Conversely, model, texture,
+effect, font, or video paths may ask for the device during their own construction, so attach it
+before the first such load and keep it alive for the manager's use. \texttt{Game} avoids the
+standalone trap by a different route: it default-constructs \texttt{Content\_} with no provider
+and immediately calls \texttt{Content\_.setGraphicsDevice(GraphicsDevice\_)} in its constructor.
+\texttt{ResourceContentManager} does not repair this difference; its provider-taking constructor
+only delegates to the same base constructor and its embedded-resource stream operation remains a
+documented CNA stub. No located test supplies a non-null provider to \texttt{ContentManager} or
+proves provider-based device discovery.
+
 \subsection{\texttt{Unload()} evicts manager caches; it is not a universal asset destructor}
 
 The shortened comment in many XNA examples --- ``unload the content'' --- is useful only if its
