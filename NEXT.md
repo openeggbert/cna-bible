@@ -7,22 +7,69 @@ session log; this file is the concise live handoff.
 
 - Branch: `develop`.
 - Book: **539 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by twenty documentation commits: `944fa54`
+- The local branch is ahead of `origin/develop` by twenty-one documentation commits: `944fa54`
   (render-target binding/usage contracts), the Reset-order contracts batch, the resource-lifecycle
   audit, the construction/SDL-ownership audit, the multisample-backend-rebuild audit, and the
   Game/GraphicsDeviceManager lifecycle and callback/disposal audits, plus the Game
   exit/destruction/component-lifetime and ContentManager cache/disposal and
   copy/replacement, service-provider/device-resolution, reader-registration, root/path, and
   Load-failure/type/cache-mutation, concurrency/reentrancy, content-manifest introspection,
-  format-selection/fallback, ResourceContentManager/OpenStream, TitleContainer/TitleLocation, and
-  ContentReader audits below. The previous nineteen-commit count was accurate before this local
-  batch and is retained only in the historical session log.
+  format-selection/fallback, ResourceContentManager/OpenStream, TitleContainer/TitleLocation,
+  ContentReader, and ContentTypeReader audits below. The previous twenty-commit count was accurate
+  before this local batch and is retained only in the historical session log.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
   reviewing `git push`. Its response explicitly rejected the request rather than granting
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: ContentReader XNB object-graph session boundary
+## Latest completed batch: ContentTypeReader erased-value and collection boundary
+
+No CNA source changes were made; the sibling repository remained a read-only authority. The
+generic/base/manager API, all focused registration/custom/collection/unsupported-reader tests,
+normal dispatch, concrete registrations, and current FNA reader/manager/collection sources
+establish:
+
+- ContentTypeReaderBase is the unavoidable C++ non-template companion to the public
+  ContentTypeReader<T> template. Its target type is only an advisory canonical-name string, not a
+  reflected type identity. The erased ReadUntyped boundary carries std::any; disagreement among
+  the table name, target name, template, and returned object is ultimately a bad_any_cast rather
+  than a normalized ContentLoadException.
+- Copyable target values live directly in any. Bare move-only targets instead live as
+  shared_ptr<T>, which normal indexed dispatch unwraps correctly. This applies to SoundEffect and
+  TextureCube. Public direct ReadObject/ReadRawObject overloads do not implement the matching
+  convention: direct reads of a move-only result throw bad_any_cast, while the overload accepting
+  an existing bare move-only instance cannot instantiate. Use ordinary indexed dispatch for those
+  types.
+- An existing instance is moved as an input value and returned as a replacement, not mutated in
+  the caller. No production CNA code reads CanDeserializeIntoExistingObject; manager loads start
+  fresh and cache the result. Lists append to a supplied value, dictionaries clear it, and arrays
+  resize a mismatched vector. Only ListReader and DictionaryReader advertise the capability.
+- FNA resolves collection element readers from a per-file reflected type table during Initialize.
+  CNA instead needs each closed generic and each non-reference element reader registered manually,
+  then creates fresh global-factory readers at decode time. Those nested readers get neither
+  per-file Initialize nor serialized version checking, so this is valid only for the current
+  stateless built-ins. The umbrella registration intentionally omits arbitrary closed generics;
+  SpriteFont contributes its three known list shapes.
+- All counted collections validate declared counts before allocation. But CNA uses
+  unordered_map::emplace for dictionaries, silently retaining the first duplicate key where FNA's
+  Dictionary.Add throws. Tests do not cover reference-shaped collections, a stateful custom
+  element reader, null/throwing factories, duplicate keys, incorrect any boxing, or the direct
+  move-only overload trap. The known unsupported EffectReader is a deliberate named-error
+  placeholder, not a fallback.
+
+Ch.8 corrects its previous claim that only SoundEffect used the move-only branch and records this
+extension/compatibility boundary. Full latexmk succeeded at **539 pages**; targeted
+undefined-reference and duplicate-label checks are empty; makeindex accepted **2,193** entries
+with zero rejected and zero warnings; git diff --check passes. Rendered physical pages
+**106--107** are clean. Ch.8 is **1,197** lines and Ch.6 is **621** lines. The
+plan-consistency validator remains absent from this checkout.
+
+Next recommended start: retain the XNB scope and audit the XNB header/decompression handoff and
+its cross-layer size/length limits. Separate validated compressed LZX input from the unbounded
+uncompressed whole-file path already documented in the reader contract; do not treat the
+non-integrated feature/audit hardening commit as current develop behavior.
+
+## Previous completed batch: ContentReader XNB object-graph session boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. The
 complete reader implementation and tests, ContentManager XNB call site, stream base behavior,
@@ -62,10 +109,10 @@ accepted **2,188** entries with zero rejected and zero warnings; `git diff --che
 Rendered physical pages **105--106** are clean. Ch.8 is **1,127** lines and Ch.6 is **621**
 lines. The plan-consistency validator remains absent from this checkout.
 
-Next recommended start: retain the content/XNB scope and audit ContentTypeReader's type-erased
-value, existing-instance, collection/read-limit, and reader-lifetime contract. Keep the current
-`develop` branch separate from the unintegrated `feature/audit` hardening change; deciding whether
-to integrate that source fix belongs to CNA maintainers, not this documentation worktree.
+The next recommended audit at this checkpoint was ContentTypeReader. It was completed in the
+newer batch above. The current `develop` branch remains separate from the unintegrated
+`feature/audit` hardening change; deciding whether to integrate that source fix belongs to CNA
+maintainers, not this documentation worktree.
 
 ## Previous completed batch: TitleContainer and TitleLocation direct-file boundary
 

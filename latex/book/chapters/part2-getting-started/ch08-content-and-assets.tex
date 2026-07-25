@@ -308,6 +308,73 @@ has no reader-level depth guard. Treat the defaults as partial defensive checks,
 every untrusted XNB has a file, string, allocation, or stack-depth bound. No located focused test
 proves those three advertised limits on this branch.
 
+\subsection{\cnaclass{ContentTypeReader} is a value-erased adapter, not a runtime type system}
+\label{sec:content-type-reader-contract}
+
+CNA keeps the familiar template name \texttt{ContentTypeReader<T>} for a game author's typed
+base class. Its separate, \texttt{NOXNA} \cnaclass{ContentTypeReaderBase} exists because C\texttt{++}
+cannot give both the non-template and template forms the same unqualified name as C\# can. A
+concrete reader implements the protected typed \texttt{Read(ContentReader\&, optional<T>)}; the
+base translates that call to public \texttt{ReadUntyped(ContentReader\&, any)}. The stored target
+type is only a caller-supplied canonical XNA \emph{name} string. CNA has neither reflection nor a
+runtime \texttt{Type} identity, and it does not verify that the string, the registered table name,
+the template \texttt{T}, and the value actually returned by the reader agree. The eventual
+\texttt{any\_cast} is the real check, and a mismatch exposes \texttt{std::bad\_any\_cast}, not a
+uniform content-load exception.
+
+For a copy-constructible \texttt{T}, the erased payload is a literal \texttt{T}. For a move-only
+\texttt{T}, it is instead \texttt{shared\_ptr<T>}, because \texttt{std::any} itself requires a
+copy-constructible held type. The normal indexed \texttt{InnerReadObject<T>()} path contains the
+matching compile-time unwrap and therefore loads bare move-only roots correctly. The public direct
+\texttt{ReadObject<T>(reader)} and \texttt{ReadRawObject<T>(reader)} overloads do \emph{not}:
+they always cast the returned \texttt{any} to bare \texttt{T}. For a move-only value they therefore
+reach \texttt{bad\_any\_cast}; their overloads taking an existing value try to put that bare value
+in \texttt{any} and cannot be instantiated. This affects both \cnaclass{SoundEffect} and
+\cnaclass{TextureCube}, not only the former. Use ordinary indexed dispatch for those types; the
+direct-reader overloads are currently reliable only for a copy-constructible target (or a reader
+whose declared \texttt{T} is already a copyable handle such as \texttt{shared\_ptr<Texture3D>}).
+
+An existing instance is likewise a transported value, not an observable in-place update of the
+caller's object. CNA moves it into \texttt{optional<T>}, lets the reader return a replacement
+value, then returns that value to the caller. In particular, no production CNA call site consults
+\texttt{getCanDeserializeIntoExistingObjectProperty()}: normal \texttt{ContentManager} loading
+starts without one and caches its completed result. Only \texttt{ListReader} and
+\texttt{DictionaryReader} advertise true, but a direct caller still receives a new C\texttt{++}
+container value. The list result appends decoded items after the supplied values; the dictionary
+result clears its supplied entries first. \texttt{ArrayReader} advertises the default false yet
+accepts an explicitly supplied vector and resizes it to the file count, a deliberate safety
+departure from FNA's unchecked array indexing. No collection test proves the public
+\texttt{ContentReader} overloads, a real manager reload, or the distinction between a returned
+replacement and mutation of a caller-owned container.
+
+Collection genericity is also deliberately finite. FNA's per-file manager uses reflection and
+\texttt{TargetType} to find the element reader from the current table during \texttt{Initialize()}.
+CNA instead requires each closed \texttt{ArrayReader}, \texttt{ListReader},
+\texttt{DictionaryReader}, or \texttt{NullableReader} registration to carry canonical names for
+its element readers. At every collection read it creates those readers afresh from the global
+factory map; they are neither initialized from the current file nor checked against a serialized
+version. This is sound only for the currently stateless built-ins, as the source comment says.
+The umbrella registration deliberately excludes arbitrary closed generics; only SpriteFont's three
+known list shapes are pre-registered. A custom collection must register its exact outer
+combination and every value-type element reader before loading, rather than expecting a
+reflection-like fallback.
+
+For \texttt{shared\_ptr} elements the collection consumes one indexed object dispatch per item,
+allowing the file table to select a concrete subtype; non-\texttt{shared\_ptr} elements use the
+manually named direct reader. All three counted collections check the configured element limit
+before allocation or reserve, and the focused tests cover unsigned overflow, negative counts, and
+one above-limit count. They do not cover reference-shaped elements, a stateful custom element
+reader, factory exceptions/null returns, or duplicate dictionary keys. The latter diverges from
+FNA particularly: FNA uses \texttt{Dictionary.Add} and throws for a duplicate, while CNA uses
+\texttt{unordered\_map::emplace} and silently retains the first value.
+
+The built-in marker reader for the general EffectReader is the other intentional branch of this
+framework. It consumes no input and always gives a named content-load error for compiled platform
+shader bytecode. This is a precise scope boundary, not a generic reader fallback. Tests prove its
+registration and direct throw, plus healthy custom registration and selected collection behavior;
+none exercises incorrect \texttt{any} boxing, the move-only direct-overload trap, target-name
+disagreement, initializer lifetime, or the global registry's null-returning factory.
+
 \section{The resolution order, precisely}
 
 The earlier short three-way description is useful, but it hides two consequential facts: a
@@ -1089,11 +1156,12 @@ std::any ReadUntyped(ContentReader& input, std::any existingInstance) override {
 }
 \end{lstlisting}
 
-Every other reader in this chapter's own reader set is an ordinary, copy-constructible \texttt{T}
-and never touches the \texttt{else} branch at all --- \cnaclass{SoundEffect} is, at the time of
-writing, the one type in the whole reader set that needs it, but the branch exists at the shared
-base-class level specifically so a future move-only reader would not need to rediscover this
-same wall.
+Several readers use a copyable value or a \texttt{shared\_ptr} handle and never touch this branch.
+The bare move-only targets are currently \cnaclass{SoundEffect} and \cnaclass{TextureCube};
+both depend on it. The branch still belongs in the shared base so a future move-only reader does
+not need to rediscover the same wall, but the direct reader overloads described in
+\S\ref{sec:content-type-reader-contract} must learn the same box/unbox convention before they can
+support those targets.
 
 \texttt{SongReader} and \texttt{VideoReader} both follow a simpler, sibling shape: neither reads
 an embedded media payload at all, since real XNA \cnaclass{Song} / \cnaclass{Video} assets are
