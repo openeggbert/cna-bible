@@ -108,6 +108,35 @@ contract implying every backend does --- a real, previously-unflagged discrepanc
 backend's implementation and the class's own stated cross-backend promise, left for
 Chapter~\ref{ch:vulkan-backend} to account for on its own terms rather than resolved here.
 
+\subsection{The \texttt{.cnj} fixture exposes the remaining shader-compatibility boundary}
+
+The runtime compiler does not make every GLSL text accepted elsewhere in CNA portable to this
+backend. The real \texttt{CnjEffectTest.LoadsRealCnjFixture} content test writes an ordinary
+\texttt{.cnj} effect manifest plus a GLSL ES~3.00 vertex/fragment pair: \texttt{\#version 300 es},
+unqualified stage outputs/inputs, and loose \texttt{uniform mat4 projection} /
+\texttt{uniform sampler2D texture1} declarations. Under \texttt{SDL\_GPU}, that fixture fails
+before a pixel is drawn. Its source is not in the SPIR-V-compatible dialect required by the
+runtime compiler and by the resource counts CNA supplies to \texttt{SDL\_CreateGPUShader}.
+
+The passing \texttt{SdlGpu\_ShaderEffect} regression makes the required contrast concrete. Its
+two sources use desktop \texttt{\#version 450}, explicit \texttt{layout(location=...)} qualifiers
+for every vertex attribute and stage I/O, and the exact fixed binding spaces this backend
+declares: the fragment sampler is \texttt{layout(set=2, binding=0)}, while the per-draw values
+live in a named uniform block at \texttt{set=1} for the vertex stage and \texttt{set=3} for the
+fragment stage. It compiles both stages at runtime, draws a white texture into a
+\cnaclass{RenderTarget2D}, and reads back the effect's own blue-tinted value; repeating the
+same draw without the effect must read white. Thus the supported dialect and binding contract
+are proven by pixels, not merely by \texttt{IsEffectValid()}.
+
+This is deliberately an open compatibility gap, not evidence that \cnaclass{ShaderEffect} is a
+no-op on SDL\_GPU. Closing it needs a separately designed decision: either migrate the shared
+\texttt{.cnj} fixture/source convention to the stricter portable dialect, or teach this backend
+to translate its existing loose GLSL into the blocks, locations, and bindings SDL\_gpu requires.
+Neither is a safe one-line relaxation; the first changes content expectations across backends,
+and the second is a real shader-translation layer. The chapter therefore records the narrower,
+honest current contract: custom effects work when authored for SDL\_GPU's binding dialect, while
+the generic \texttt{.cnj} fixture is not yet cross-backend portable to it.
+
 \section{Present timing belongs to the device manager, not a test-only backend poke}
 
 The SDL\_GPU tests establish a small but important rule about CNA's initialization lifecycle.
@@ -286,10 +315,11 @@ after this call, so CNA submits it first and then throws with the captured SDL e
 it leaves \texttt{framePending\_} true: a caller which recovers the window must be able to submit
 the same queued clear and draws rather than silently lose them.
 
-\texttt{sdlgpu\_swapchain\_recovery\_test.cpp} proves that latter path without pretending a real
+\texttt{sdlgpu\_\allowbreak swapchain\_\allowbreak recovery\_\allowbreak test.cpp} proves that latter path without pretending a real
 device loss is easy to reproduce. On frame 10 it calls SDL's own
-\texttt{SDL\_ReleaseWindowFromGPUDevice()}, makes \texttt{Present()} fail, reclaims the identical
-window with \texttt{SDL\_ClaimWindowForGPUDevice()}, and calls \texttt{Present()} again. The test
+\texttt{SDL\_\allowbreak ReleaseWindow\allowbreak FromGPU\allowbreak Device()}, makes \texttt{Present()} fail, then
+uses SDL's matching claim call to reclaim the identical window before calling \texttt{Present()}
+again. The test
 requires all five stages: nine ordinary frames, the induced throw, successful reclaim, successful
 presentation of the preserved frame, and 30 further frames without exception. This is a bounded,
 controlled proof of recovery after a hard acquisition failure; it does not claim to solve the

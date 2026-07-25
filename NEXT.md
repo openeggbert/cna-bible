@@ -110,16 +110,15 @@ and was rendered as a contact sheet for inspection. Full-book regeneration is st
 (submit the required command buffer, throw, and retain `framePending_`). The real recovery test
 unclaims its SDL window on frame 10, observes the throw, reclaims it, presents the original queued
 frame, then renders 30 further frames. The new section was isolated-compiled with zero overfull
-warnings and its page 5 was rendered and inspected. The PLAN table's Ch.22 line count must be
-updated from 307 to 326 in the next documentation commit; full-book regeneration remains pending.
+warnings and its page 5 was rendered and inspected. The later PLAN matrix updates record the
+then-current line count; full-book regeneration remains pending.
 
 **Newest validation continuity pass in Ch.22:** the debug-build SDL_GPU validation toggle now
 documents two concrete fixes it exposed: MSAA cannot use a six-layer 2D-array attachment, and
 generated mipmaps require `SAMPLER | COLOR_TARGET` usage. It also points back to the still-open
 Texture3D depth-mipmap issue rather than treating validation as a completed binary state. The
 isolated chapter still compiles with zero overfull warnings; the added material on physical page
-4 was rendered and inspected. Its line count is now 350 and needs propagation to the PLAN matrix
-before committing this pass.
+4 was rendered and inspected. The later PLAN matrix updates record the then-current line count.
 
 **Newest Ch.22 correction:** the former wording called swapchain readback an unresolved segfault.
 The live SDL_GPU contract proves instead that acquired swapchain textures are write-only. The
@@ -128,6 +127,15 @@ self-owned proxy, then blit to the swapchain) and records why it remains deliber
 its extra texture and blit would cost every frame. The corrected page 6 was rendered and inspected
 after a zero-overfull isolated compile. The chapter is 354 lines, and the PLAN matrix records
 that current count.
+
+**Latest Ch.22 audit:** custom ShaderEffect support is real but narrower than generic GLSL
+portability. The live CnjEffect fixture uses GLSL ES 3.00 with loose uniforms and unqualified
+stage I/O, which fails under SDL_GPU; the passing dedicated regression instead uses version 450,
+explicit locations, fixed set/binding spaces, and named uniform blocks. It pixel-verifies an
+effect-specific tint and a no-effect white control. The 384-line chapter compiled twice as an
+eight-page isolated PDF with zero overfull boxes; the new material was rendered and inspected.
+The fixture remains an intentional, separately-scoped compatibility gap rather than a claim
+that custom effects are unsupported.
 
 **Latest continuation: Ch.25 (DX3/free-direct) received a source-grounded fifth pass.** Its
 fixed-output letterbox limitation does not make input mapping ambiguous: the backend's real
