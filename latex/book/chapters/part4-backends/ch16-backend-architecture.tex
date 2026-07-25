@@ -212,6 +212,122 @@ after the fixed layout family grew: its custom record is 48 bytes, the same tota
 vertex, but has different offsets and a trailing color. Correct diagnostic pixels therefore
 prove the declaration won over the fixed 48-byte interpretation.
 
+\subsection{DrawEx fallbacks and the narrow instancing bridge}
+\label{sec:drawex-instancing-matrix}
+
+The two ordinary effect-aware defaults look dangerously permissive:
+\path{DrawPrimitivesEx()} drops its entire parameter block and calls the colored draw, while
+\path{DrawIndexedPrimitivesEx()} does the same to its indexed counterpart. The current
+factory graph makes both defaults dead. EasyGL, Vulkan, BGFX, WebGPU, SDL GPU, D3D9/11/12,
+Software, and Headless all override both methods. The remaining SDL\_RENDERER, ASCII, Canvas,
+and DX3 products are 2D-only: public buffer construction fails first, and their colored
+fallback target throws if invoked directly. This is the same useful distinction as the dead
+\path{UpdatePixels()} default below: a
+permissive body is a maintenance risk, but not a current public data-loss path.
+
+\path{DrawInstancedPrimitivesEx()} is different. Its shared default throws
+\path{std::runtime_error}, and is live on two constructible 3D implementations. The public
+bridge above it also narrows XNA/FNA's binding model before any backend runs. CNA stores
+multiple bindings, but scans out only the first non-null entry with a positive instance
+frequency. \path{GpuDrawParams} receives one raw instance-buffer pointer, with no frequency,
+binding offset, or additional stream. FNA's \path{PrepareVertexBindingArray()} instead
+forwards every binding's buffer, declaration, offset, and frequency to FNA3D. CNA can
+therefore represent ``one mesh stream plus one first-element, divisor-one instance stream,''
+not the complete public type it stores.
+
+\begingroup
+\small
+\setlength{\tabcolsep}{3.5pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{@{}p{0.14\textwidth}p{0.28\textwidth}p{0.23\textwidth}p{0.27\textwidth}@{}}
+\toprule
+\textbf{Backend} & \textbf{Instanced implementation} &
+  \textbf{No positive-frequency binding} & \textbf{Strongest located evidence} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Backend} & \textbf{Instanced implementation} &
+  \textbf{No positive-frequency binding} & \textbf{Strongest located evidence} \\
+\midrule
+\endhead
+\texttt{EASYGL}
+  & Real GPU instanced call. A custom \cnaclass{ShaderEffect} binds both caller declarations;
+    instance attributes use divisor one. Its stock-effect branch binds no instance attributes.
+  & Draws the requested number of identical instances.
+  & Public two-instance test reads two distinct pixels and mutation-proves the divisor. It
+    deliberately uses a custom effect. \\
+\texttt{VULKAN}
+  & Fixed instanced pipeline; the instance record supplies a world matrix.
+  & Falls back to one ordinary indexed draw.
+  & Public three-instance test reads three distinct positions plus background. \\
+\texttt{BGFX}
+  & Fixed instanced program and transient instance-data buffer; insufficient transient
+    capacity also returns silently.
+  & Returns without drawing.
+  & Source only; no dedicated BGFX instancing test was found. \\
+\texttt{WEBGPU}
+  & Fixed two-stream pipeline and copied instance-buffer shadow.
+  & Falls back to one ordinary indexed draw.
+  & Direct-backend three-instance pixel test; its separate fallback check also reads a pixel. \\
+\texttt{D3D9}
+  & Fixed 64-byte world-matrix stream using \texttt{SetStreamSourceFreq}; resets persistent
+    stream frequency after drawing.
+  & Falls back to one ordinary indexed draw.
+  & Direct-backend two-instance pixels, fallback behavior, and post-draw reset are
+    mutation-tested. \\
+\texttt{D3D11}
+  & Fixed 64-byte \texttt{INSTANCEWORLD0--3} input and
+    \texttt{DrawIndexedInstanced}.
+  & Falls back to one ordinary indexed draw.
+  & Direct smoke test reads exact output for one identity instance; it does not prove
+    multi-instance stepping. \\
+\texttt{D3D12}
+  & Fixed dual-stream instanced PSO; currently requires an offscreen color target.
+  & Falls back to one ordinary indexed draw.
+  & Direct smoke test reads exact output for one identity instance only. \\
+\texttt{SDL\_GPU}
+  & Inherits the shared throwing default despite having real 3D buffers and pipelines.
+  & Same unconditional throw.
+  & Source-proven; no dedicated instancing test was found. \\
+\texttt{SOFTWARE}
+  & Inherits the shared throwing default despite real CPU vertex/index buffers.
+  & Same unconditional throw.
+  & Source-proven; no dedicated instancing test was found. \\
+\texttt{HEADLESS}
+  & Logic-only override: records one indexed draw and increments its draw-call statistic to
+    the requested instance count.
+  & Records the same logical count without requiring instance data.
+  & Source only; no dedicated public binding/instancing test was found. \\
+\textit{Four 2D-only products}
+  & Shared unconditional throw.
+  & Same throw.
+  & Public construction of the required buffers fails earlier under the 2D-only contract. \\
+\bottomrule
+\end{longtable}
+\endgroup
+
+The seven real GPU callbacks do not imply a portable arbitrary-effect contract. Except for
+EasyGL's custom-effect branch, each chooses a CNA-owned instancing shader rather than making
+the currently applied effect consume the caller's declarations. Their common useful subset is
+a per-vertex position stream, one per-instance world matrix, shared view/projection, and a
+small fixed material payload. This is why a valid stock or custom effect does not by itself
+establish that the same instanced scene is portable across these rows.
+
+The binding state has an independent defect above this matrix: the offset-taking singular
+setter discards its offset, and both singular setters write only
+the singular buffer pointer; the old binding vector survives. Conversely,
+\path{SetVertexBuffers({})} clears the vector while leaving that pointer live. The plural
+getter can therefore disagree with the singular getter, and replacing a mesh through the
+singular setter after an earlier instanced binding can reuse the stale instance buffer on the
+next instanced draw. The existing \path{VertexBufferBindingTests.cpp} checks value copying in
+a standalone vector, never these \cnaclass{GraphicsDevice} transitions.
+
+Finally, \cnaclass{GraphicsCapability} has no hardware-instancing entry. This is not merely
+the usual false-positive-default problem: there is no query value to override. FNA asks
+FNA3D directly and throws \texttt{NoSuitableGraphicsDeviceException} when hardware
+instancing is unavailable; CNA callers cannot perform an equivalent portable preflight and
+will instead see the row-specific throw, fallback, repeated draw, or silent return above.
+
 \subsection{Texture2D updates: one dead default and one live silent discard}
 \label{sec:texture2d-update-matrix}
 

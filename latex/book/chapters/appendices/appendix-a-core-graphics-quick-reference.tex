@@ -276,11 +276,16 @@ escalating from a bare color to a full \texttt{ClearOptions}/depth/stencil form)
 \texttt{Present()}; render-target binding is \texttt{SetRenderTarget} / \texttt{SetRenderTargets}
 (single 2D target, a single cube face, or a full multi-target array via
 \cnaclass{RenderTargetBinding}); vertex/index binding is
-\texttt{SetVertexBuffer} / \texttt{SetVertexBuffers} (the latter for multi-stream instancing) and
-the \texttt{Indices} property; and the full 3D draw dispatch is
-\texttt{DrawPrimitives} / \texttt{DrawIndexedPrimitives} (bound-buffer forms) alongside the
+\texttt{SetVertexBuffer} / \texttt{SetVertexBuffers} and the \texttt{Indices} property; the
+full 3D draw dispatch is \texttt{DrawPrimitives} / \texttt{DrawIndexedPrimitives} /
+\texttt{DrawInstancedPrimitives} (bound-buffer forms) alongside the
 \texttt{DrawUserPrimitives} / \texttt{Draw\allowbreak{}User\allowbreak{}Indexed\allowbreak{}Primitives}
 family Chapter~\ref{ch:graphicsdevice} covers for CPU-side vertex arrays.
+\textbf{Current binding warning:} the singular setter ignores its offset and is not
+synchronized with the plural binding vector; instancing forwards only the first
+positive-frequency buffer, not its frequency/offset or any later stream. SDL GPU and Software
+then throw from the shared instancing default. See
+\S\ref{sec:drawex-instancing-matrix} for the full matrix.
 \texttt{SupportsCapability\allowbreak{}(GraphicsCapability)} (Chapter~\ref{ch:backend-architecture}) is the
 one method worth remembering is a query, not a
 guarantee --- it answers honestly for most values but is not yet wired for every one of them.

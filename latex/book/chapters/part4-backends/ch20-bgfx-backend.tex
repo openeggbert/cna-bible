@@ -264,8 +264,8 @@ not yet attempted.
 \section{Instancing: a real, working implementation with no dedicated test of its own}
 \label{sec:bgfx-instancing}
 
-\cnaclass{GraphicsDevice}\allowbreak{}\texttt{::DrawInstancedPrimitives()} is real and fully
-wired on this backend --- \texttt{BgfxGraphicsBackend::DrawInstancedPrimitivesEx()} is a
+\cnaclass{GraphicsDevice}\allowbreak{}\texttt{::DrawInstancedPrimitives()} reaches a real
+backend implementation --- \texttt{BgfxGraphicsBackend::DrawInstancedPrimitivesEx()} is a
 genuine, roughly seventy-line implementation, not a stub --- but grepping
 \texttt{cmake/Tests/BgfxTests.cmake} directly for anything instancing-related finds nothing at
 all, in contrast to \texttt{D3D9}, \texttt{EASYGL}, \texttt{Vulkan}, and \texttt{WebGPU}, each
@@ -291,6 +291,15 @@ for (const auto& binding : currentVertexBuffers_) {
     }
 }
 \end{lstlisting}
+
+This pointer-only bridge is why ``fully wired'' would overstate compatibility. The actual
+frequency value is discarded after its greater-than-zero test, both bindings' offsets are
+discarded, and every later positive-frequency stream is ignored. BGFX therefore receives no
+way to reproduce a divisor above one or a third input stream. Its fixed instancing program
+consumes the narrower CNA convention rather than the complete binding array FNA sends to
+FNA3D. Chapter~\ref{ch:backend-architecture},
+\S\ref{sec:drawex-instancing-matrix}, compares that public narrowing and its proof boundary
+across every backend.
 
 Two real, silent-failure paths follow directly from this backend's own implementation of the
 receiving end, worth naming precisely rather than assuming instancing either works or throws:

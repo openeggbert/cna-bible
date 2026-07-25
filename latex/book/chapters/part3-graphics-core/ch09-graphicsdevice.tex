@@ -374,13 +374,16 @@ paragraph of caption disclaiming what it doesn't actually show.
 
 \begin{description}
 \item[\texttt{void SetVertexBuffer(const VertexBuffer* vertexBuffer)}] binds a vertex buffer
-  with no vertex offset, or unbinds with \texttt{nullptr}.
+  into the singular slot used by every draw, or unbinds it with \texttt{nullptr}.
 \item[\texttt{void SetVertexBuffer(const VertexBuffer* vertexBuffer, int vertexOffset)}] binds
-  with an explicit starting vertex offset into the buffer.
+  the same singular slot. The public signature promises an explicit starting offset, but the
+  current implementation leaves that parameter unnamed and discards it.
 \item[\texttt{void SetVertexBuffers(const std::vector<VertexBufferBinding>\& vertexBuffers)}]
-  binds multiple vertex buffers (multi-stream vertex input) simultaneously.
+  stores as many as sixteen multi-stream descriptions and also selects the first description's
+  buffer as the singular draw slot.
 \item[\texttt{std::vector<VertexBufferBinding> GetVertexBuffers() const}] returns the currently
-  bound bindings.
+  stored multi-stream descriptions by value. The warning below explains why this is not always
+  the same thing as the singular slot actually used for geometry.
 \item[\texttt{void SetIndexBuffer(const IndexBuffer* indexBuffer)}] binds an index buffer, or
   unbinds with \texttt{nullptr}. This is a plain method alongside the older
   \texttt{Indices} / \texttt{setIndicesProperty} property pair from
@@ -397,6 +400,24 @@ paragraph of caption disclaiming what it doesn't actually show.
   a real (if harmless) redundancy in the header rather than a documentation simplification.
 \end{description}
 
+\begin{sourcenote}
+\textbf{The two binding surfaces are not synchronized.} The singular setter changes only
+\texttt{currentVertexBuffer\_}; it neither replaces nor clears
+\texttt{currentVertexBuffers\_}. Conversely, \texttt{SetVertexBuffers(\{\})} stores an empty
+vector but does not clear the old singular pointer, because that assignment happens only when
+the incoming vector is non-empty. Thus \texttt{GetVertexBuffers()} can report an old list after
+\texttt{SetVertexBuffer(\&newMesh)}, or an empty list while \texttt{GetVertexBuffer()} and an
+ordinary draw still use the old mesh. An instanced draw after the first sequence can combine
+the new singular mesh with an old per-instance buffer from the stale list.
+
+FNA keeps one binding array and makes both setter families update it; its offset-taking setter
+also retains the supplied offset. CNA's
+\path{VertexBufferBindingTests.cpp} does not catch the split: despite its
+``GetVertexBuffers contract'' heading, it constructs and copies a standalone
+\texttt{std::vector<VertexBufferBinding>} without constructing a
+\cnaclass{GraphicsDevice} or calling either setter.
+\end{sourcenote}
+
 \section{Draw calls: concrete overloads where FNA has generics}
 \label{sec:draw-calls}
 
@@ -404,12 +425,59 @@ paragraph of caption disclaiming what it doesn't actually show.
 
 Three methods share this shape, all present with FNA-matching signatures and all drawing from
 whatever vertex/index buffers are currently bound per \S\ref{sec:vertex-index-binding}.
+
 \texttt{DrawPrimitives} takes \texttt{primitiveType}, \texttt{vertexStart}, and
-\texttt{primitiveCount}. \texttt{DrawIndexedPrimitives} adds \texttt{baseVertex},
-\texttt{minVertexIndex}, and \texttt{numVertices} ahead of its own \texttt{startIndex}/%
-\texttt{primitiveCount} pair. \texttt{Draw\allowbreak{}Instanced\allowbreak{}Primitives} takes
-the identical parameter list as \texttt{DrawIndexedPrimitives}, with a trailing
-\texttt{instanceCount} added.
+\texttt{primitiveCount}.
+
+\texttt{DrawIndexedPrimitives} adds \texttt{baseVertex}, \texttt{minVertexIndex}, and
+\texttt{numVertices} ahead of its own \texttt{startIndex}/\texttt{primitiveCount} pair.
+
+\texttt{Draw\allowbreak{}Instanced\allowbreak{}Primitives} takes the identical parameter list
+as the indexed method, with a trailing \texttt{instanceCount} added.
+
+\subsection{What DrawInstancedPrimitives actually forwards}
+\label{sec:graphicsdevice-instancing}
+
+The minimal current call shape, used by the public EasyGL and Vulkan regressions, is:
+
+\begin{lstlisting}
+device.SetVertexBuffers({
+    VertexBufferBinding(&meshVertices, 0, 0),
+    VertexBufferBinding(&instanceWorlds, 0, 1),
+});
+device.SetIndexBuffer(&meshIndices);
+effect.Apply();
+device.DrawInstancedPrimitives(
+    PrimitiveType::TriangleList,
+    /*baseVertex=*/0, /*minVertexIndex=*/0, /*numVertices=*/4,
+    /*startIndex=*/0, /*primitiveCount=*/2, /*instanceCount=*/3);
+\end{lstlisting}
+
+This compiles like XNA's multi-stream idiom, but CNA forwards a narrower contract.
+CNA scans the stored binding vector and passes the backend only the \emph{first} non-null
+buffer whose instance frequency is greater than zero. \path{GpuDrawParams} contains that one
+backend pointer; it has no field for the actual frequency, either binding's offset, or any
+additional stream. Frequencies 1,
+2, and 100 are consequently indistinguishable, every consumed stream starts at offset zero,
+and a third stream is never visible to the draw backend. FNA instead passes its complete
+native binding array, including every offset and frequency, before issuing the instanced draw.
+
+The effect contract is narrower too. EasyGL can bind both caller declarations to a custom
+\cnaclass{ShaderEffect}, advancing the instance attributes with divisor one. Vulkan, BGFX,
+WebGPU, and D3D9/11/12 use CNA-owned instancing shaders, generally interpreting the instance
+record as one 64-byte world matrix rather than letting the applied effect define arbitrary
+streams. EasyGL's stock-effect branch issues an instanced GPU call but binds no instance
+attributes, so the same geometry is overdrawn; its public two-instance pixel proof
+deliberately uses a custom effect.
+
+There is no \cnaclass{GraphicsCapability} value for hardware instancing. FNA asks its native
+driver and throws \texttt{NoSuitableGraphicsDeviceException} when support is absent; CNA
+cannot be queried equivalently. Seven GPU backends implement a real instanced callback,
+SDL GPU and Software inherit the shared \texttt{std::runtime\_error} default, and a missing
+positive-frequency binding produces different results even among the seven implementations
+(one ordinary draw, repeated identical geometry, or no draw). The complete outcome and
+test-evidence matrix is in Chapter~\ref{ch:backend-architecture},
+\S\ref{sec:drawex-instancing-matrix}.
 
 \subsection{User-primitive draws: the generics-to-overloads translation}
 

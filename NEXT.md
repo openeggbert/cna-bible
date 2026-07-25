@@ -6,17 +6,46 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **484 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by eight coherent documentation commits:
+- Book: **486 physical PDF pages, 49 chapters, 6 appendices**.
+- After the batch commit, the local branch is ahead of `origin/develop` by nine coherent
+  documentation commits:
   roadmap, ShaderEffect/D3D ABI, general capability matrix, MSAA/anisotropy, buffer
   contracts, volume/cube readback contracts, and RenderTargetCube upload/transition
-  contracts, followed by Texture2D update contracts.
+  contracts, followed by Texture2D update contracts and instancing/vertex binding.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
   reviewing `git push`. Its response explicitly rejected the request rather than granting
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
 ## Latest completed batch
+
+The draw-fallback, instancing, and vertex-binding audit is complete:
+
+- The ordinary `DrawPrimitivesEx` / `DrawIndexedPrimitivesEx` fallbacks are dead today. All
+  ten constructible 3D/diagnostic backends override them; the four 2D-only backends fail
+  buffer construction first and their fallback target throws anyway.
+- The shared throwing `DrawInstancedPrimitivesEx` default is live on SDL GPU and Software.
+  Seven GPU backends override it; Headless records logical statistics; the four 2D-only
+  backends cannot reach it through public buffer construction.
+- `GraphicsDevice` forwards only the first binding with `InstanceFrequency > 0` as one raw
+  instance-buffer pointer. `GpuDrawParams` carries neither the actual frequency nor binding
+  offsets, so no backend can reproduce FNA's complete binding array. EasyGL's custom-effect
+  path binds the caller's declaration with divisor one; the other real GPU paths use a fixed
+  internal instancing shader and predominantly a 64-byte world-matrix record.
+- Binding state itself is inconsistent: the offset-taking singular setter ignores its offset
+  and leaves `currentVertexBuffers_` stale; an empty plural setter leaves
+  `currentVertexBuffer_` stale. A later instanced draw can therefore combine a new mesh slot
+  with an old instance slot. The existing `VertexBufferBindingTests` never constructs a
+  `GraphicsDevice`, so its “GetVertexBuffers contract” comments do not exercise this state.
+- Backend proof is strongest on public EasyGL/Vulkan multi-instance pixel tests; WebGPU and
+  D3D9 have direct multi-instance pixel tests; D3D11/12 directly prove only one instance;
+  BGFX, SDL GPU, Software, and Headless have no dedicated instancing pixel/contract test.
+- Ch.9 now documents the public narrowing and the unsynchronized singular/plural binding
+  state; Ch.16 carries the complete fallback/override/evidence matrix; Ch.20 removes a
+  previous BGFX overclaim; Ch.22 expands its open-limit count from seven to nine; Appendix A
+  carries the concise caller warning.
+
+## Previous completed batch
 
 The `Texture2D` interface-default audit is complete:
 
@@ -37,7 +66,7 @@ The `Texture2D` interface-default audit is complete:
   GPU evidence. Ch.16 contains the full backend matrix and evidence limits. Ch.19 corrects
   its stale Vulkan no-op claim, and Appendix A carries the concise caller-facing warning.
 
-## Previous completed batch
+## Earlier completed batch
 
 The remaining `RenderTargetCube` interface defaults were traced through the public API,
 every factory/override, backend target state, FNA, and the relevant examples:
@@ -93,34 +122,34 @@ latexmk -pdf -interaction=nonstopmode -halt-on-error -file-line-error -g main.te
 
 Results:
 
-- `main.pdf`: 484 pages.
+- `main.pdf`: 486 pages.
 - Targeted undefined-reference check: no matches.
 - Duplicate-label check: no matches.
-- `makeindex`: 2,018 accepted, 0 rejected, 0 warnings.
-- Rendered and inspected Ch.11 physical pages 139--140, Ch.16 pages 184--187, Ch.19 page
-  212, and Appendix A page 449.
+- `makeindex`: 2,026 accepted, 0 rejected, 0 warnings.
+- Rendered and inspected Ch.9 physical pages 114--115, Ch.16 pages 184--187, Ch.20 page 226,
+  Ch.22 pages 245--246, and Appendix A page 453.
 - No clipping, table collision, page-edge spill, malformed heading, running-header collision,
-  or folio defect was found. The new Ch.16 matrix is clean. The one local Ch.19 overfull
-  warning found on the first build was removed before the final build; older warnings remain
-  elsewhere.
+  or folio defect was found. The new Ch.16 matrix is clean. All overfull warnings introduced
+  by this batch were removed before the final build; older warnings remain elsewhere.
 - `git diff --check`: pass.
 
 Useful verification commands:
 
 ```bash
-wc -l latex/book/chapters/part3-graphics-core/ch11-textures-rendertargets.tex \
+wc -l latex/book/chapters/part3-graphics-core/ch09-graphicsdevice.tex \
       latex/book/chapters/part4-backends/ch16-backend-architecture.tex \
-      latex/book/chapters/part4-backends/ch19-vulkan-backend.tex \
+      latex/book/chapters/part4-backends/ch20-bgfx-backend.tex \
+      latex/book/chapters/part4-backends/ch22-sdlgpu-backend.tex \
       latex/book/chapters/appendices/appendix-a-core-graphics-quick-reference.tex
 git diff --check
 ```
 
 ## Documentation synchronized
 
-- `PLAN.md` records 484 total pages and exact current line counts: Ch.11 521; Ch.16 710;
-  Ch.19 457; Appendix A 358.
-- Its durable session log records the two public update paths, backend/default matrix,
-  CPU-shadow evidence boundary, WebGPU divergence, and PDF inspection.
+- `PLAN.md` records 486 total pages and exact current line counts: Ch.9 1,097; Ch.16 826;
+  Ch.20 373; Ch.22 505; Appendix A 363.
+- Its durable session log records the public binding narrowing, fallback/override matrix,
+  backend-specific behavior and evidence strength, stale-state defect, and PDF inspection.
 - `README.md` has build/navigation guidance; `CLAUDE.md` says 49 chapters.
 
 ## Repository safety
@@ -145,9 +174,9 @@ Sibling repositories remain read-only source authorities for ordinary book work.
 ## Recommended next starting point
 
 Continue Ch.16's backend-interface-default audit. Buffer defaults, volume/cube readback,
-RenderTargetCube upload/transitions, and Texture2D updates are closed. Re-inventory the
-remaining permissive defaults; draw-parameter fallbacks and coordinate transforms are
-promising next candidates, but choose by public reachability and documentation gap after
-rechecking the live source. Trace the caller, override matrix, state transitions, and actual
-assertion layer before writing. Do not modify CNA itself; sibling repositories remain
-read-only source authorities.
+RenderTargetCube upload/transitions, Texture2D updates, and draw/instancing fallbacks are
+closed. Re-inventory the remaining defaults; coordinate transforms, backbuffer readback, and
+swap-interval forwarding are promising candidates, but choose by public reachability and
+documentation gap after rechecking the live source. Trace the caller, override matrix, state
+transitions, and actual assertion layer before writing. Do not modify CNA itself; sibling
+repositories remain read-only source authorities.

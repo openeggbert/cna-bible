@@ -424,7 +424,7 @@ separate, write-only swapchain readback limitation described below.
 \section{What remains open}
 \label{sec:sdlgpu-what-remains-open}
 
-Seven limits are worth stating precisely rather than glossing over. First, occlusion queries are a
+Nine limits are worth stating precisely rather than glossing over. First, occlusion queries are a
 \emph{permanent} limitation of the underlying API, not a task gap: the vendored
 \texttt{SDL\_gpu.h} has no query-pool or occlusion-query type anywhere in it (only
 \texttt{SDL\_GPUFence} for CPU/GPU synchronization), so \texttt{CreateOcclusionQuery()}
@@ -465,8 +465,21 @@ pipeline cache. Sixth, \cnaclass{SamplerState}'s \texttt{MaxAnisotropy} is retai
 but not included in command or sampler-cache creation, so no SDL\_gpu sampler uses it. Seventh,
 an active MRT secondary target is still represented by a raw pointer for deferred
 \texttt{Clear\allowbreak{}*()} propagation; destroying that wrapper before the MRT binding changes can leave
-the pointer dangling, despite the separately fixed queued-draw state lifetime. Beyond these
-seven, Windows (D3D12 driver) and macOS/iOS (Metal driver)
+the pointer dangling, despite the separately fixed queued-draw state lifetime. Eighth, an
+ordinary mipmapped \cnaclass{Texture2D} reports the full public \texttt{LevelCount}, but this
+backend allocates its native \texttt{SDL\_GPUTexture} with exactly one level and inherits
+\texttt{ITextureBackend::UpdatePixelsLevel()}'s empty body. A higher-level
+\texttt{SetData()} therefore updates only the shared CPU shadow; a following
+\texttt{GetData()} appears to succeed even though no sampled GPU mip exists
+(Chapter~\ref{ch:backend-architecture}, \S\ref{sec:texture2d-update-matrix}).
+Ninth, hardware instancing is absent at a different layer: this otherwise 3D-capable backend
+does not override \texttt{DrawInstancedPrimitivesEx()}, so every valid public
+\texttt{DrawInstancedPrimitives()} call reaches the common
+\texttt{std::runtime\_error} default. SDL\_gpu itself exposes per-instance vertex input; the
+gap is CNA-side pipeline/binding work, not a permanent underlying-API limitation. No
+\cnaclass{GraphicsCapability} entry lets a caller ask about it
+(Section~\ref{sec:drawex-instancing-matrix}).
+Beyond these nine, Windows (D3D12 driver) and macOS/iOS (Metal driver)
 remain code paths only, not validation claims, until run on real (or Wine/DXVK-class) hardware
 --- the same phased-claim discipline this book already applies to \texttt{D3D11} /
 \texttt{D3D12} (Chapter~\ref{ch:direct3d-backends}) and \texttt{WebGPU}
