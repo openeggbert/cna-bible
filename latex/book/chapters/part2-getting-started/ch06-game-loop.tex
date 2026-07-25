@@ -59,6 +59,81 @@ itself, but it must not be the sole release path for a game's resources. The com
 does invoke that component virtual. Chapter~\ref{ch:graphicsdevice} traces the manager disposal
 and callback-lifetime consequences in detail.
 
+\subsection{\texttt{Exit()} requests a stop; \texttt{Exiting} describes the completed loop}
+
+The names of \texttt{Exit()} and \texttt{Exiting} invite a plausible but wrong mental model: that
+calling the former immediately raises the latter. In the desktop implementation, \texttt{Exit()}
+does only two things: it sets the public \texttt{RunApplication} loop flag to \texttt{false} and
+sets \texttt{suppressDraw\_}. The current tick therefore skips its draw if an \texttt{Update()}
+called \texttt{Exit()}, and the enclosing \texttt{while (RunApplication)} loop then ends. Only
+after that loop has finished does \texttt{RunLoop()} call \texttt{OnExiting()}, which raises the
+event. It is a loop-boundary notification, not an immediate cancellation callback.
+
+For an ordinary first desktop \texttt{Run()}, the source gives the following order:
+
+\begin{enumerate}
+  \item \texttt{DoInitialize()} runs once when necessary; it creates/configures the registered
+    graphics service, initializes gamepad support, calls \texttt{Initialize()}, and categorizes
+    the current components.
+  \item \texttt{BeginRun()} executes, followed by \texttt{BeforeLoop()}. The latter sets
+    \texttt{IsActive} true, so a newly inactive game raises \texttt{Activated} here.
+  \item \texttt{RunLoop()} repeatedly calls \texttt{Tick()} while its loop flag remains true.
+    \texttt{Exit()} or an SDL quit event clears that flag, and the loop then raises
+    \texttt{Exiting}.
+  \item Only after \texttt{Exiting} returns does \texttt{Run()} call \texttt{EndRun()} and
+    \texttt{AfterLoop()}.
+\end{enumerate}
+
+This order matters to an override which has both an \texttt{Exiting} handler and an
+\texttt{EndRun()} override: the handler runs first. Calling \texttt{Exit()} before \texttt{Run()}
+does not bypass the surrounding lifecycle; the initialization and begin hooks still run, the
+loop has zero ticks, and desktop \texttt{RunLoop()} still raises \texttt{Exiting}. Nor does
+\texttt{Run()} reset \texttt{RunApplication}; a second call after exit reaches the same
+zero-tick exit boundary unless application code sets that public CNA extension true again.
+\texttt{RunOneFrame()}, by contrast, performs its one-time initialization and one \texttt{Tick()}
+only. It does not call \texttt{BeginRun()}, \texttt{BeforeLoop()}, \texttt{EndRun()},
+\texttt{AfterLoop()}, or \texttt{OnExiting()}. Browser builds use an Emscripten callback rather
+than the blocking desktop loop, but likewise raise \texttt{Exiting} only when that callback
+observes the false loop flag and cancels the browser loop.
+
+\subsection{Explicit disposal, destructor cleanup, and the gap between them}
+
+\texttt{Game::Dispose()} is not merely a spelling of the C\texttt{++} destructor. Its protected
+\texttt{Dispose(true)} path first calls \texttt{Dispose()} on every current component that
+implements \texttt{IDisposable}. It then disposes the content manager, the cached graphics-device
+service when one has been resolved, and the SDL gamepad subsystem. It sets the private disposed
+flag only after that sequence. The public wrapper subsequently raises \texttt{Game::Disposed}.
+Consequently, explicit disposal is the route that makes a \cnaclass{DrawableGameComponent}'s
+virtual \texttt{Dispose(bool)} call its \texttt{UnloadContent()} hook; it does \emph{not} call
+\texttt{Game::UnloadContent()}.
+
+The destructor instead calls \texttt{Dispose(false)}, then shuts down audio, and ordinary member
+destruction happens afterward. The false path deliberately skips the component loop, explicit
+\texttt{ContentManager::Dispose()}, graphics-service disposal, and gamepad-subsystem shutdown.
+The member destructors still run, so this is not a claim that all native storage survives a
+normal C\texttt{++} scope exit; it is a precise warning that the explicit lifecycle callbacks and
+their ordering do not run there. In particular, \texttt{ContentManager}'s destructor is defaulted
+rather than a call to its public \texttt{Dispose()}, and the current
+\texttt{SdlInputBridge::ShutdownGamepadSubsystem()} call site is only the \texttt{disposing ==
+true} branch. A typical scoped game which only calls \texttt{Run()} therefore relies on wider SDL
+shutdown for that gamepad-subsystem counterpart, whereas an explicitly disposed game executes it
+immediately. The same C\texttt{++} destructor rule matters to a drawable component: it has no
+destructor which calls its override, and the later \cnaclass{GameComponent} base destructor's
+virtual call resolves to \texttt{GameComponent::Dispose(false)}, not
+\texttt{DrawableGameComponent::Dispose(false)}. Destruction alone therefore does not dispatch the
+drawable's \texttt{UnloadContent()} hook either.
+
+Two event-safety details are visible directly in the short implementation. First, the disposed
+flag is written only after all the protected true-path cleanup succeeds. An exception from a
+component, content manager, or graphics service aborts the remaining cleanup, leaves the flag
+false, and prevents the outer \texttt{Disposed} notification. Second, the public wrapper raises
+\texttt{Disposed} even when the protected method returns early because the object was already
+disposed. Thus a second ordinary \texttt{Dispose()} raises the event again; a handler which calls
+\texttt{Dispose()} recursively re-enters that wrapper. This wrapper shape also matches the
+current FNA \texttt{Game} source, but it is still a reason for a handler to release only its own
+state and never dispose the notifying game again. No located CNA \texttt{Game} test exercises
+normal destruction, repeated public disposal, handler exceptions, or this re-entrancy boundary.
+
 \subsection{The timing loop, ported wholesale from FNA}
 
 \texttt{Game}'s private implementation carries over FNA's adaptive-sleep-precision timing
@@ -293,6 +368,12 @@ class MyGame final : public Game {
         fpsCounter_.setDrawOrderProperty(1000); // draw last, on top of everything else
         getComponentsProperty().Add(&fpsCounter_);
     }
+
+    ~MyGame() override
+    {
+        // Derived members are still alive here; remove the raw registration first.
+        getComponentsProperty().Remove(&fpsCounter_);
+    }
 private:
     GraphicsDeviceManager graphics_;
     FpsCounterComponent fpsCounter_;
@@ -301,10 +382,21 @@ private:
 
 Two details worth being deliberate about, both real rather than incidental to this example.
 First, \texttt{GameComponentCollection::Add(IGameComponent*)} takes a raw, non-owning
-pointer --- \texttt{fpsCounter\_} must outlive the \texttt{Components} collection it is
-registered in, which is exactly why it is declared as a plain member of \texttt{MyGame}
-(constructed before, destroyed after, the collection that references it) rather than a
-dynamically-allocated object registered and forgotten. Second,
+pointer. A derived class's members are actually destroyed \emph{before} its \cnaclass{Game} base
+and the base's \texttt{Components} member, so merely making \texttt{fpsCounter\_} a plain member
+does not make it outlive the collection. The destructor above is the safe RAII pairing: while the
+derived destructor body still has a live base and component, \texttt{Remove()} raises
+\texttt{ComponentRemoved}; \cnaclass{Game} then removes the component from its update/draw lists
+and removes the order-change event tokens it installed. Use the same remove-before-destroy rule
+for a separately owned or heap-allocated component.
+
+This is more than collection tidiness. \texttt{Game::Dispose()} disposes components but does not
+remove them or their order-change tokens, and the collection's implicit C\texttt{++} destructor
+does not call \texttt{Clear()} (so it raises no removal events). The component setters have no
+disposed guard. A component which survives an explicitly disposed game can still emit an order
+event into that game; a component which survives the game's destruction retains a raw callback to
+the now-dead game and can cause a native use-after-free on its next order change. Removing it
+while both objects are alive closes both routes. Second,
 \texttt{setDrawOrderProperty(1000)} is what guarantees the FPS counter renders \emph{after}
 whatever the game's own \texttt{Draw} override draws first --- \cnaclass{DrawableGameComponent}
 does not know or care what order its owner's own \texttt{Draw} override runs relative to

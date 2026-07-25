@@ -6,11 +6,12 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **523 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by seven documentation commits: `944fa54`
+- Book: **525 physical PDF pages, 49 chapters, 6 appendices**.
+- The local branch is ahead of `origin/develop` by eight documentation commits: `944fa54`
   (render-target binding/usage contracts), the Reset-order contracts batch, the resource-lifecycle
   audit, the construction/SDL-ownership audit, the multisample-backend-rebuild audit, and the
-  Game/GraphicsDeviceManager lifecycle and callback/disposal audits.
+  Game/GraphicsDeviceManager lifecycle and callback/disposal audits, plus the Game
+  exit/destruction/component-lifetime audit below.
   The previous seventeen-commit count was accurate before the remote advanced and is retained
   only in the historical session log.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
@@ -18,7 +19,56 @@ session log; this file is the concise live handoff.
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: GraphicsDeviceManager resize callback and disposal boundary
+## Latest completed batch: Game exit, disposal, destructor, and component lifetime
+
+No CNA source changes were made; the sibling repository remained a read-only authority. The live
+`Game`, component/collection, SDL gamepad, and focused test sources, the current FNA `Game`, and
+the relevant history establish:
+
+- On desktop, `Exit()` only clears `RunApplication` and suppresses the current tick's draw.
+  `RunLoop()` delivers `Exiting` after its loop has ended and before `Run()` reaches `EndRun()` and
+  `AfterLoop()`. `RunOneFrame()` does not invoke any of those run-boundary hooks or the event.
+  `Run()` does not reset the public flag, so a second call after exit has zero ticks but still takes
+  the desktop exit-notification path. The browser callback likewise raises only after it observes
+  the false flag and cancels its loop.
+- Explicit `Game::Dispose()` is materially different from ordinary scope destruction. Its true
+  path disposes current disposable components, ContentManager, a cached graphics service, and the
+  SDL gamepad subsystem; then it sets the flag and the public wrapper raises `Disposed`. The
+  destructor calls only `Dispose(false)`, then audio shutdown, before normal member destruction.
+  It skips that explicit cleanup path, and ContentManager's defaulted destructor is not a public
+  `Dispose()` call. The current gamepad shutdown call site is only the true path.
+- An automatically destroyed `DrawableGameComponent` also does not dispatch its own protected
+  `Dispose(false)`/`UnloadContent()` override: C++ virtual dispatch from the later
+  `GameComponent` base destructor resolves to the base implementation. Explicit component or Game
+  disposal is consequently the only located route to that drawable hook.
+- A throw during Game's true cleanup aborts the rest, leaves the disposed flag false, and prevents
+  the public event. Conversely, the public wrapper raises `Disposed` even after the protected call
+  returns for an already disposed object; repeated public disposal repeats the event and a handler
+  which disposes the game recurses. The wrapper is shaped the same way in current FNA. No located
+  CNA Game test covers destruction, repeated disposal, exceptions, or re-entrancy.
+- After initialization Game stores raw-this order-change callbacks in every component and removes
+  them only from `OnComponentRemoved`. `Game::Dispose()` does not remove collection items/tokens,
+  and the collection's implicit destructor emits no removal events. An independently owned
+  component can therefore notify a still-live disposed Game, or notify a dangling Game after it
+  outlives Game destruction. The chapter's member-component example now calls `Remove()` in its
+  derived destructor body; this corrects the prior false C++ claim that a derived member outlives
+  the base Game collection. The standalone collection tests and direct gamepad-helper test do not
+  exercise this integration boundary.
+- Ch.6 now documents the lifecycle event order, the explicit/destructor distinction, exception and
+  re-entrancy caveats, and the safe raw-component RAII pattern. Validation: incremental `latexmk`
+  succeeded at **525 pages**; target undefined-reference/duplicate-label checks are empty;
+  makeindex accepted **2,136** entries with zero rejected and zero warnings; `git diff --check`
+  passes. No new Ch.6 overfull box was introduced. Rendered physical pages **58--59** and **63**
+  are clean. Ch.6 is now **619** lines.
+- The historical plan-consistency command remains unavailable: no
+  `test/validate_plan_consistency.py` or replacement validator exists in this checkout.
+
+Next recommended start: continue the now-focused ownership audit with `ContentManager` itself:
+trace cache ownership and `Unload()`/`Dispose()`/ordinary destruction through the loaded asset
+types, then document only behavior established by current source and tests. Keep it separate from
+the completed Game component-token conclusion.
+
+## Previous completed batch: GraphicsDeviceManager resize callback and disposal boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. The
 current GraphicsDeviceManager, Game, GameWindow, EventHandler, focused real-window-resize

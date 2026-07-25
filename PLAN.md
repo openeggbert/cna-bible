@@ -1,6 +1,6 @@
 # The CNA Bible — Expansion Plan (1000–2000 pages per part-group; single book since 2026-07-20)
 
-**Status: Phase 1 execution is active. The current book is 523 physical PDF pages
+**Status: Phase 1 execution is active. The current book is 525 physical PDF pages
 (49 chapters + 6 appendices), fully rebuilt and reference-checked on 2026-07-25. This is a
 long-running, multi-session project — this file is the durable task list and progress tracker
 across sessions. Update the status column and the session log at the bottom every session.**
@@ -10,10 +10,10 @@ across sessions. Update the status column and the session log at the bottom ever
 The latest full-book rebuild includes the render-target binding and `RenderTargetUsage` audit;
 the current incremental checkpoint also includes the `GraphicsDevice::Reset()` event-order,
 resource-lifecycle, construction/SDL-ownership, multisample-backend-rebuild, Game/GraphicsDeviceManager
-lifecycle, and manager callback/disposal audits. `main.pdf` is 523 pages; the targeted
-undefined-reference and duplicate-label checks are empty; makeindex accepted 2,132 entries with
-no rejection or warning. Current physical pages 50, 58, 60, 63--64, 110--111, 115--116,
-124--125, and 126--127 were rendered and inspected.
+lifecycle, manager callback/disposal, and Game exit/destruction/component-lifetime audits.
+`main.pdf` is 525 pages; the targeted undefined-reference and duplicate-label checks are empty;
+makeindex accepted 2,136 entries with no rejection or warning. Current physical pages 50, 58--59,
+60, 63--64, 110--111, 115--116, 124--125, and 126--127 were rendered and inspected.
 No changed page has clipping, cell collision, page-edge spill, malformed heading, running-header
 collision, or folio defect. The earlier full reference build established a 492-warning pre-existing
 overfull baseline; the later incremental batches introduced and removed eight binding/usage, four
@@ -166,7 +166,7 @@ numbers below are unchanged by the merge.
 | 3 | Design Philosophy | 336 (was 256) | 30 | Added NOXNA self-check worked example, corrected an imprecise claim; (depth pass) added a `SkinnedEffect::WeightsPerVertex` worked example for validated property setters, and a full missing-dependency lifecycle worked example (sharp-runtime's `BinaryReader::ReadChar`/`ReadDecimal` — real gap, documented stopgap, proper fix now landed, verified against real sharp-runtime source) | **In progress (~8 of ~30 pages, PDF-verified clean)** |
 | 4 | Building CNA | 295 (was 294) | 35 | Added full CMake option reference table; (depth pass) added real per-platform build walkthroughs for Android/NDK (grounded in docs/devices-build.md, incl. the compile-only/no-APK caveat) and Web/Emscripten (real emcc 6.0.2 verification, incl. the real sharp-runtime FileSystemWatcher bug found along the way); fixed a pre-existing overfull-hbox; (seventh pass) fixed the backend-option table's own "every value accepted" caption — it was missing `SDL_GPU`, a real, valid CNA_GRAPHICS_BACKEND value confirmed directly against cmake/BackendSelection.cmake's own CACHE STRINGS list | **In progress (~7 of ~35 pages, PDF-verified clean)** |
 | 5 | First Game | 379 (was 131) | 40 | Added complete movement, edge-bounce/audio, and coin-collision programs grounded in the real framework API and `RectangleTests.cpp`; the current lifecycle audit corrects its stale FNA-shaped ownership claim: CNA's `Game` preconstructs the device and its manager configures that same object during `DoInitialize()`. The full chapter was rendered again at the 2026-07-25 checkpoint. | **In progress (~8 of ~40 pages, PDF-verified clean)** |
-| 6 | Game Loop | 527 (was 216) | 40 | Covers GameServiceContainer, PresentationMode, a full DrawableGameComponent example, fixed-timestep catch-up and `IsRunningSlowly` hysteresis, and the default-fixed-timestep `ResetElapsedTime()` no-op. Recent contract passes separate timestep scheduling from VSync blocking and document the hidden global event-pump behavior: input sees non-repeated F9/F10 first, then the framework invokes backend loss/restore hooks. Current audits correct `DrawableGameComponent`'s nonexistent device-service subscription, the manager's inert selection virtuals, and the false implication that Game-level `UnloadContent()` is called automatically. | **In progress (~10 of ~40 pages, PDF-verified clean)** |
+| 6 | Game Loop | 619 (was 216) | 40 | Covers GameServiceContainer, PresentationMode, a full DrawableGameComponent example, fixed-timestep catch-up and `IsRunningSlowly` hysteresis, and the default-fixed-timestep `ResetElapsedTime()` no-op. Recent contract passes separate timestep scheduling from VSync blocking and document the hidden global event-pump behavior: input sees non-repeated F9/F10 first, then the framework invokes backend loss/restore hooks. Current audits correct `DrawableGameComponent`'s nonexistent device-service subscription, the manager's inert selection virtuals, and the false implication that Game-level `UnloadContent()` is called automatically; they now also trace desktop `Run()`/`Exit()`/`Exiting` order, explicit-versus-destructor teardown, and raw component registration/token lifetime, correcting the worked example's C++ destruction-order claim. | **In progress (~11 of ~40 pages, PDF-verified clean)** |
 | 7 | Math and Core Types | 1675 (was 270) | 110 | All 11 type-families have full reference + worked examples, most with 2-4; chapter-wide "shared surface" section; Vector Length/LengthSquared, Vector4 clip-space Transform (tied to real SOFTWARE-backend code); Matrix arithmetic statics + Decompose, CreateBillboard/CreateConstrainedBillboard (two independent epsilon fallbacks), CreateShadow/CreateReflection (normalization asymmetry), CreateOrthographic (shadow-map worked example, tied to real CNA test source) worked examples; Quaternion Concatenate-vs-Multiply and Lerp-vs-Slerp angular-velocity findings (both numerically verified); Plane::Transform inverse-transpose finding (numerically verified); Point and CurveKeyCollection full references; Rectangle IsEmpty corrected; Ray second worked example; BoundingBox-specific, BoundingFrustum-specific, and BoundingSphere::Transform (non-uniform-scale, numerically verified) worked examples; (depth pass, fresh gap found via header/test diff) added a genuinely new worked example — `Curve`'s real `.xnb`/`.cnj` content-pipeline support, previously undocumented anywhere in this chapter, quoting a real `CnjCurveTests.cpp` fixture in full and correcting a plausible-but-wrong reading of its own `continuity: "Step"` field (only meaningful with a third key, not visible in this two-key fixture) | **In progress (~34 of ~110 pages) --- four sessions now focused on this chapter; still well short of target, see PLAN.md session log for what's still missing** |
 | 8 | Content and Assets | 379 (was 242) | 55 | Added ContentManager reference + manifest worked example; (depth pass) quoted two real .cnj files directly from cnj.md (a self-contained SpriteFont document and a Texture2D sourceFile/colorKey metadata sidecar); fixed two pre-existing overfull-hboxes; (fifth pass, mined `plan_xnb.md`'s Phase G, complete 2026-07-16, not previously used) **the chapter's own ".xnb reader still growing" framing was itself stale**: every phase through Phase G is now complete, so updated the framing to "largely complete"; added two new subsections --- a real hardening pass finding 3 more heap-buffer-overflows via deterministic whole-container fuzzing (Texture2D/3D/Cube byteCount-vs-dimension validation, a dormant Texture3D compressed-volume bug, DxtUtil's unenforced dataSize parameter), and the custom-reader extension point verified against a real third-party reader (prime31/Nez's BitmapFontReader) plus the ReflectiveReader<T> permanent scope decision; incidentally cross-checked a potential plan_xnb.md/plan_net.md conflict about NetworkSession::Dispose() idempotency and confirmed Ch.30's own claim (already fixed) is accurate, no correction needed; (sixth pass) added a new closing section on the real SoundEffect/Song/Video .xnb content readers (previously only the graphics-side readers were covered in depth), grounded directly in the real reader source | **In progress (~11 of ~55 pages, PDF-verified clean)** |
 | 9 | GraphicsDevice | 1513 (was 966) | 90 | Full method/lifecycle coverage, adapter and format-query limits, draw-matrix extraction, render-target/MRT and capability findings, plus corrected stencil/depth-clear history. Recent passes establish requested-vs-native presentation state and correct the three recovery/debug extensions; audit Reset, resources, construction, and legacy MSAA replacement; and separate manager/device event layers. The latest callback/disposal pass records the discarded window-event removal token, early-manager-destruction UAF risk, unreachable manager `DeviceDisposing` route, inactive Game-level `UnloadContent()` hook, and manager `Disposed` re-entrancy hole. | **In progress (28 of ~90 printed pages, PDF-verified clean)** |
@@ -2972,3 +2972,42 @@ stays frozen by explicit author decision, not left incomplete.
 
   The formerly recorded plan-consistency command cannot be rerun in this checkout because
   test/validate_plan_consistency.py is absent; no replacement validator was located.
+
+- **2026-07-25, autonomous continuation — Game exit, disposal, destructor, and component
+  lifetime audited.** Traced the live `Game` run/loop/disposal paths, `GameComponent`,
+  `DrawableGameComponent`, `GameComponentCollection`, SDL gamepad bridge, focused unit-test
+  files, current FNA source, and relevant component-token/gamepad history. No CNA source was
+  changed; the sibling repository remains the read-only implementation authority.
+
+  On desktop, `Exit()` only clears the public loop flag and suppresses the current tick's draw.
+  `RunLoop()` raises `Exiting` after its loop ends and before `Run()` calls `EndRun()` and
+  `AfterLoop()`. `RunOneFrame()` has none of those run-boundary hooks or the exit event.
+  `Run()` does not reset the loop flag, so an already-exited second run is a zero-tick run which
+  still reaches the desktop exit notification. The Emscripten callback has the corresponding
+  delayed-exit shape rather than a blocking loop.
+
+  Explicit `Game::Dispose()` disposes current disposable components, the content manager, a
+  cached graphics service, and the SDL gamepad subsystem, then sets its guard and raises
+  `Disposed`. Its destructor calls only `Dispose(false)`, then audio shutdown: it skips that
+  explicit component/content/service/gamepad sequence before normal member destruction. The
+  defaulted ContentManager destructor is not a public Dispose call, and base-destructor virtual
+  dispatch means automatic destruction also does not route a DrawableGameComponent through its
+  `UnloadContent()` override. An exception during the true cleanup path leaves Game's guard false;
+  the public wrapper raises `Disposed` again after an already-disposed protected call, so a
+  re-entrant handler recurses. The wrapper behavior matches current FNA, but no located CNA Game
+  test covers these boundaries.
+
+  Game's initialized component categorization registers raw-this order-change lambdas and only
+  removes their tokens in `OnComponentRemoved`. Explicit game disposal neither removes collection
+  entries nor these tokens; the implicit collection destructor does not emit removals. An
+  outliving component can therefore call a disposed Game, or after Game destruction invoke a
+  dangling raw callback. Corrected the Chapter 6 FPS-component example: C++ derived members die
+  before their Game base, so it now removes the member component in the derived destructor body
+  while both objects are alive. The collection tests cover standalone add/remove events only, and
+  the gamepad test directly calls the bridge helpers rather than constructing/destroying Game.
+
+  Ch.6 is now 619 lines. Incremental `latexmk` succeeded at **525 pages**; target undefined-
+  reference and duplicate-label checks are empty; makeindex accepted **2,136** entries with zero
+  rejected and zero warnings; `git diff --check` passed. No new overfull box appeared in the
+  Chapter 6 source range. Rendered physical pages 58--59 and 63 are clean. The plan-consistency
+  validator remains absent from this checkout.
