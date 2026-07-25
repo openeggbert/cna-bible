@@ -152,8 +152,13 @@ level/rectangle-scoped overload, each further overloaded with an explicit start 
 \cnaclass{Texture2D} keeps an optional CPU-side pixel shadow (\texttt{cpuPixels\_}) that exists
 solely so \texttt{GetData()} and by-value \texttt{ContentManager::Load<Texture2D>()} copies work
 without a GPU readback; \texttt{NOXNA} methods \texttt{SetDataRGBA}, \texttt{CreateFromPixels},
-and \texttt{HasBackend} are CNA-only conveniences layered on top. \cnaclass{RenderTarget2D}
-extends \cnaclass{Texture2D} and adds \cnaclass{IRenderTarget}, with two constructors (a
+and \texttt{HasBackend} are CNA-only conveniences layered on top. This also means an ordinary
+\texttt{SetData(level,...)} / \texttt{GetData(level,...)} round trip proves the shadow, not
+sampled GPU content. Higher-level uploads are real on EasyGL, Vulkan, BGFX, WebGPU, and
+D3D9/11/12; SDL GPU silently discards them while reporting the public mip count, Software
+and Headless retain only the public/trace illusion, and the four 2D-only backends throw. See
+\S\ref{sec:texture2d-update-matrix} for the exact matrix.
+\cnaclass{RenderTarget2D} extends \cnaclass{Texture2D} and adds \cnaclass{IRenderTarget}, with two constructors (a
 simple width/height form, and a full form specifying mip-mapping, surface and depth-stencil
 format, multisample count, and \cnaclass{RenderTargetUsage}) plus a \texttt{ContentLost} event
 that XNA's own console-era API defines but CNA never actually raises.

@@ -212,6 +212,102 @@ after the fixed layout family grew: its custom record is 48 bytes, the same tota
 vertex, but has different offsets and a trailing color. Correct diagnostic pixels therefore
 prove the declaration won over the fixed 48-byte interpretation.
 
+\subsection{Texture2D updates: one dead default and one live silent discard}
+\label{sec:texture2d-update-matrix}
+
+\cnaclass{ITextureBackend} gives both \texttt{UpdatePixels()} and
+\texttt{UpdatePixelsLevel()} empty default bodies. They look symmetric in the header, but
+the current factory graph makes them materially different. Every concrete object returned by
+any backend's \texttt{CreateTexture()} overrides level~0 \texttt{UpdatePixels()} (ASCII
+returns SDL\_RENDERER's object), so that first no-op is unreachable today. The mip-level
+default remains live on SDL GPU. Software and Headless override it too, but deliberately
+discard the bytes or record only a trace, respectively.
+
+The public routing matters before reading the table. Whole-texture
+\texttt{SetData(Color*, count)} recreates the resource and never calls either update hook.
+Only the detailed level/rectangle overload reaches them: level~0 patches the CPU shadow and
+re-uploads that complete level through \texttt{UpdatePixels()}, while a higher level calls
+\texttt{UpdatePixelsLevel()}. Ordinary \texttt{Texture2D::GetData()} then reads the same CPU
+shadow, not the GPU object, so a public SetData/GetData round trip is not proof that either
+hook changed sampled content.
+
+\begingroup
+\small
+\setlength{\tabcolsep}{3.5pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{@{}p{0.16\textwidth}p{0.20\textwidth}p{0.25\textwidth}p{0.31\textwidth}@{}}
+\toprule
+\textbf{Backend} & \textbf{Detailed level~0} & \textbf{Level above zero} &
+  \textbf{Strongest located evidence} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Backend} & \textbf{Detailed level~0} & \textbf{Level above zero} &
+  \textbf{Strongest located evidence} \\
+\midrule
+\endhead
+\texttt{EASYGL}
+  & real full-level GPU upload & real GPU mip upload
+  & A rendered minified stock-effect pixel selects authored higher-level color. The older
+    SetData/GetData test is CPU-shadow-only. \\
+\texttt{VULKAN}
+  & real staged GPU upload & real staged, level-specific GPU upload
+  & A rendered minified pixel selects the authored mip; validation also caught and fixed a
+    wrong-level image barrier. \\
+\texttt{BGFX}
+  & real mutable-texture update & real \texttt{updateTexture2D} mip upload
+  & A rendered minified pixel selects the authored mip. \\
+\texttt{WEBGPU}
+  & real upload; also regenerates the chain & real per-level upload
+  & Direct backend readback distinguishes level~1, and a nonuniform source proves
+    linear-filtered generated mips. \\
+\texttt{SDL\_GPU}
+  & real transfer-buffer upload & inherited no-op; physical texture has one level
+  & No plain-Texture2D mip test was found. The one-level descriptor and missing override are
+    source-proven. \\
+\texttt{D3D9}
+  & real managed-texture lock & real per-level \texttt{LockRect}
+  & Exact native readback proves construction and a level~0 replacement; higher-level
+    addressing is source-proven. \\
+\texttt{D3D11}
+  & real \texttt{UpdateSubresource} & real mip-subresource update
+  & Direct staging readback proves exact level~1 bytes and unchanged level~0. \\
+\texttt{D3D12}
+  & real staged copy and fence & real mip-subresource copy
+  & Direct readback proves exact level~1 bytes and unchanged level~0. \\
+\texttt{SOFTWARE}
+  & real CPU level~0 replacement & explicit no-op
+  & Source only for the mip discard; the public shadow can mask it. \\
+\texttt{HEADLESS}
+  & real CPU level~0 replacement plus trace & trace only; no backend mip storage
+  & Logic trace only; no sampled-pixel claim is possible. \\
+\texttt{SDL\_RENDERER}, \texttt{ASCII}
+  & real SDL texture update & explicit \texttt{runtime\_error}
+  & SDL\_RENDERER's dedicated test proves the throw; ASCII returns the same texture class. \\
+\texttt{CANVAS}
+  & real Canvas2D update & explicit \texttt{runtime\_error}
+  & Source-proven; no dedicated mip test was found. \\
+\texttt{DX3}
+  & real DirectDraw surface write & explicit \texttt{runtime\_error}
+  & Source-proven; no dedicated mip test was found. \\
+\bottomrule
+\end{longtable}
+\endgroup
+
+WebGPU's level~0 behavior is a deliberate compatibility difference, not merely an
+implementation technique. It renders a linear downsample from each level into the next
+whenever level~0 changes, including at construction. FNA and CNA's other ordinary-texture
+implementations expect authored/content-pipeline mip data instead. Consequently WebGPU gives
+an otherwise-empty chain useful pixels automatically, but a later level~0 write also
+regenerates over higher levels authored before it.
+
+The test boundary is especially important for EasyGL and Vulkan's identically registered
+\path{easygl_texture2d_mip_test.cpp}: the file itself states ``No framebuffer readback ---
+pure CPU shadow buffer.'' The separate texture-filter tests are the GPU proof. D3D11/12 and
+WebGPU instead bypass the public shadow and read native subresources directly. This is the
+same audit rule the volume/cube matrix below applies to Headless's misleadingly named
+``round-trip'' tests: follow the assertion to the storage layer it actually observes.
+
 \subsection{Volume and cube readback: the no-op default mostly became real}
 \label{sec:texture-volume-readback-matrix}
 

@@ -97,7 +97,7 @@ for (int y = 0; y < size; ++y) {
 }
 checker.SetData(pixels.data(), static_cast<int>(pixels.size()));
 
-// Read a single pixel back to verify -- GetData is a real round trip, not a cache echo:
+// Read the CPU shadow back (this does not prove what the GPU samples):
 Color topLeft;
 checker.GetData(&topLeft, 0, 1);
 \end{lstlisting}
@@ -111,6 +111,42 @@ constructor overload throws immediately, before a single pixel is ever uploaded.
 an arbitrary pixel struct, unlike real XNA's \texttt{T[]} generic form), a game working with
 any other in-memory pixel representation must convert to \cnaclass{Color} before calling
 \texttt{SetData} --- there is no faster typed path around it.
+
+\subsection{Two SetData paths, and why GetData can hide a failed upload}
+\label{sec:texture2d-update-contract}
+
+The simple whole-texture call in the example and the detailed level/rectangle overload do
+not update the resource the same way. \texttt{SetData(Color*, count)} converts the complete
+level~0 image, replaces this object's shared backend reference, and calls
+\texttt{CreateTexture()} for a replacement resource. The detailed overload instead patches
+CNA's CPU shadow first. At level~0 it sends the \emph{whole reconstructed level} through
+\texttt{ITextureBackend::UpdatePixels()}, even when the caller supplied a small rectangle;
+above level~0 it sends that level's complete shadow through
+\texttt{UpdatePixelsLevel()}. This differs from FNA, whose detailed overload forwards the
+requested rectangle directly to \texttt{FNA3D\_SetTextureData2D()}.
+
+That CPU shadow changes what a test proves. An ordinary \cnaclass{Texture2D::GetData()} reads
+\texttt{cpuPixels\_} or \texttt{extraMipLevels\_}; it does not read the sampled GPU resource.
+The source file for \path{easygl_texture2d_mip_test.cpp} says this explicitly: its three-level
+``round trip'' is pure CPU-shadow verification with no framebuffer readback. It would still
+return every color supplied by \texttt{SetData()} if the corresponding backend update were
+an empty body. GPU sampling, a native backend readback, or a rendered pixel is required to
+establish the other half.
+
+That distinction exposes a live split. EasyGL, Vulkan, BGFX, WebGPU, and D3D9/11/12 allocate
+and update real \cnaclass{Texture2D} mip subresources. SDL\_RENDERER, ASCII, Canvas, and DX3
+reject a level-above-zero upload with \texttt{std::runtime\_error}. Software explicitly
+discards it, Headless records the call without storing a backend mip, and SDL GPU inherits
+the interface's empty \texttt{UpdatePixelsLevel()} body while allocating only one physical
+level even when public \texttt{LevelCount} reports a full chain. In all three discard cases,
+the public CPU shadow still remembers the supplied level, so a following
+\texttt{GetData(level,...)} can look successful while rendering can never consume it.
+
+WebGPU has the opposite extra behavior: writing level~0 automatically regenerates every
+higher level with a real linear-filtered render-pass cascade. That prevents undefined mip
+content, but differs from FNA and means a later level~0 update overwrites any authored
+higher levels written earlier. Chapter~\ref{ch:backend-architecture},
+\S\ref{sec:texture2d-update-matrix}, gives the complete backend and evidence matrix.
 
 \subsection{FromStream format support}
 \label{sec:texture-streams}

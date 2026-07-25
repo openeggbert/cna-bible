@@ -165,11 +165,15 @@ A cube-map render target's MSAA support is real but indirect: rather than a genu
 multisampled cube attachment, it is implemented as an ordinary (non-cube) multisampled 2D
 texture array paired with a separately cube-flagged resolve texture. Multiple render targets
 are capped at four by shared, cross-backend code mirroring FNA's own
-\texttt{MAX\_RENDERTARGET\_BINDINGS} constant --- notably \emph{not} because Vulkan's own
+\path{MAX_RENDERTARGET_BINDINGS} constant --- notably \emph{not} because Vulkan's own
 device capability is the limiting factor, since a typical device supports eight. Uploading
-\texttt{Texture2D} data at a mip level above zero is a silent no-op on this backend (a shared
-finding with Chapter~\ref{ch:state-objects}'s sampler-state coverage). Forwarding a real,
-non-\texttt{Color} \cnaclass{SurfaceFormat} shares the identical blocked/architectural
+\texttt{Texture2D} data at a mip level above zero is now real: the image and view allocate
+the public level count, a level-specific barrier and staged copy update the requested
+subresource, and the dedicated minification test samples its authored color. The former
+silent no-op recorded earlier in this chapter's source history was fixed by Task~925; see
+Chapter~\ref{ch:backend-architecture}, \S\ref{sec:texture2d-update-matrix}, for the current
+cross-backend matrix and proof boundary. Forwarding a real, non-\texttt{Color}
+\cnaclass{SurfaceFormat} shares the identical blocked/architectural
 limitation already covered for EasyGL in Chapter~\ref{ch:easygl-backend} --- both backends
 are blocked by the same upstream \texttt{Texture::ValidateFormat} contract, not by anything
 Vulkan-specific.
