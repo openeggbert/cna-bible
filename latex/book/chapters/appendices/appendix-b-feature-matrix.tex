@@ -104,7 +104,7 @@ Custom \texttt{Effect} via \texttt{Begin(effect)} & OK & OK &
   OK & OK & OK & OK & OK \\
 \texttt{DepthStencilState} (compare func + full stencil ops) & OK & OK &
   P & OK & OK & OK & OK \\
-\texttt{RasterizerState} & OK & P & P & OK & OK &
+\texttt{RasterizerState} aggregate\textsuperscript{d} & OK & P & P & OK & OK &
   OK & OK \\
 Per-slot \texttt{SamplerState} (16 slots) & OK & OK & OK & OK &
   P & OK & OK \\
@@ -137,6 +137,13 @@ on all three hardware backends and found a real, previously-undiscovered Vulkan
 current than the source document's own \texttt{X} until that document is refreshed --- the same
 caution this appendix's closing section already asks a reader to apply project-wide, now with a
 concrete instance to point at.
+
+\noindent\textsuperscript{d}\textbf{Do not read this aggregate cell field-by-field.}
+The source document collapses culling, fill, bias, multisampling, and scissor enable into one
+status. The live audit found that SDL\_Renderer ignores the whole rasterizer object while
+applying a non-empty scissor rectangle unconditionally, and D3D12's otherwise-real rasterizer
+PSOs still force a full-target native scissor. Section
+\ref{sec:backend-viewport-scissor-matrix} supersedes this row for viewport/scissor decisions.
 \end{footnotesize}
 
 This grid omits the source document's own Texture2D/Texture3D/TextureCube,

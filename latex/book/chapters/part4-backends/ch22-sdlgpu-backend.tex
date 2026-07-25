@@ -172,7 +172,10 @@ proves that this dynamic value reaches the GPU rather than merely being stored i
 There are two explicit boundaries to that otherwise draw-time rule. Scissor is applied once for
 each render pass from the live state at \texttt{Present()}-time, not independently re-snapshotted
 for every queued command; changing the scissor rectangle repeatedly between draws targeting one
-pass is therefore a documented simplification. More importantly, \cnaclass{RasterizerState}'s
+pass is therefore a documented simplification. The same helper runs for backbuffer, 2D-target,
+and cube-face passes, and the half-target render-state test pixel-proves the clip. There is no
+\texttt{SetViewport()} override at all, however: a custom public viewport remains stored-only
+even though the adjacent scissor is real. More importantly, \cnaclass{RasterizerState}'s
 \texttt{DepthBias} and \texttt{SlopeScaleDepthBias} are captured but currently have no effect.
 SDL\_gpu lacks a Vulkan-style dynamic depth-bias call, so honoring them would require carrying
 the float values in the pipeline-cache key and baking them into each pipeline. The backend does

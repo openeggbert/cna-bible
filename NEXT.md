@@ -6,20 +6,92 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **507 physical PDF pages, 49 chapters, 6 appendices**.
-- After the batch commit, the local branch is ahead of `origin/develop` by fourteen coherent
+- Book: **509 physical PDF pages, 49 chapters, 6 appendices**.
+- After the batch commit, the local branch is ahead of `origin/develop` by fifteen coherent
   documentation commits:
   roadmap, ShaderEffect/D3D ABI, general capability matrix, MSAA/anisotropy, buffer
   contracts, volume/cube readback contracts, and RenderTargetCube upload/transition
   contracts, followed by Texture2D update contracts, instancing/vertex binding, and input
   coordinate routing, public backbuffer readback, swap-interval contracts, and presentation
-  format/fullscreen contracts, and recovery/debug-hook contracts.
+  format/fullscreen contracts, recovery/debug-hook contracts, and viewport/scissor contracts.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
   reviewing `git push`. Its response explicitly rejected the request rather than granting
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch
+## Latest completed batch: viewport and scissor contract
+
+The public `GraphicsDevice.Viewport` / `ScissorRectangle` audit is complete:
+
+- Both setters store the public value and immediately invoke `IGraphicsBackend::SetViewport`
+  or `SetScissorRect`. `RasterizerState.ScissorTestEnable` is a separate switch delivered by
+  `ApplyRasterizerState`; storing a rectangle must not by itself enable clipping.
+- Construction obtains the initial full-window viewport, but unlike FNA it leaves CNA's
+  initial public scissor rectangle at its default zero rectangle. Every actual 2D, cube, or
+  MRT target switch later resets both public properties to the full dimensions of the new
+  target (the first target for MRT), including the backbuffer on unbind. Ordinary
+  `Present()` preserves a custom viewport unless the backend/window size truly changed.
+- CNA's in-place `GraphicsDevice::Reset()` does not reproduce FNA's unconditional reset of
+  both properties. It calls the size-change-sensitive `UpdateViewportFromWindow()` only:
+  same-size reset preserves both custom values; a real size change eventually resets only
+  the viewport, leaving the old scissor rectangle intact. The resize regression test checks
+  viewport only, and its header still predates the now-real manager-to-`Reset()` routing.
+- FNA is the reference contrast: its constructor initializes both properties to the
+  presentation bounds, both setters immediately forward to FNA3D, `Reset()` restores both
+  full-backbuffer rectangles, and each non-redundant `SetRenderTargets()` resets both to the
+  first target or backbuffer dimensions.
+- Real custom viewport and independently-enabled scissor behavior is pixel-proven on EasyGL.
+  D3D11 and D3D9 issue immediate native calls; D3D11 has direct native state round-trip proof,
+  while no viewport/scissor oracle scene exists in the current 39-scene D3D9 corpus despite
+  `plan_dx9.md`'s stale statement that both are oracle-proven.
+- The EasyGL statement needs a SpriteBatch qualifier: each SpriteBatch flush unconditionally
+  restores a full physical-window or full-render-target GL viewport and does not restore the
+  prior custom viewport. Thus the dedicated viewport test proves 3D, not SpriteBatch, and a
+  SpriteBatch flush can leave native state disagreeing with the still-custom public property.
+  EasyGL's scissor state is not similarly overwritten.
+- Vulkan stores both values and samples them only when recording the backbuffer pass; custom
+  render-target viewport/scissor values are replaced by full-target rectangles. WebGPU
+  samples and clamps both once per backbuffer/2D-target/cube pass. Both therefore use the
+  state current at deferred pass recording, not a per-queued-draw snapshot.
+- BGFX applies an enabled, nonzero scissor before SpriteBatch and 3D submissions, but applies
+  a custom viewport only to backbuffer 3D submissions; SpriteBatch and render-target views
+  remain full-size, and viewport depth limits are ignored. Both public features have
+  dedicated pixel tests.
+- SDL GPU implements an independently-enabled scissor once per deferred pass for backbuffer,
+  2D targets, and cube faces, with pixel proof, but has no viewport hook. SDL Renderer (and
+  ASCII by delegation) has the opposite semantic defect: setting a nonzero rectangle
+  immediately enables SDL clipping regardless of `ScissorTestEnable`, because the backend
+  never consumes `RasterizerState`; neither implements a viewport hook.
+- D3D12 inherits both empty hooks and explicitly programs full-target viewport/scissor state
+  in every 3D and SpriteBatch command list. Software explicitly discards both, Canvas and DX3
+  inherit both no-ops, and Headless only validates/traces them without rasterizing.
+- Independently of the backend matrix, CNA's shared `SpriteBatch::Begin(...,
+  RasterizerState*, ...)` ignores that argument completely. A caller cannot enable scissoring
+  through the normal SpriteBatch parameter as in FNA; only an already-applied
+  `GraphicsDevice.RasterizerState` can reach a capable backend, and the null/default Begin path
+  also fails to restore FNA's default cull/scissor state. No dedicated test currently catches
+  this cross-backend public-routing gap.
+- Ch.9--11 and Ch.14 now state the shared property, lifecycle, render-target, and SpriteBatch
+  consequences. Ch.16 contains the complete fourteen-product draw-time matrix; Ch.17--25 carry
+  each applicable backend qualification; Appendix A has the concise portability warning and
+  Appendix B now warns that its aggregate `RasterizerState` row is not field-level evidence.
+- Final validation: a forced and subsequent incremental `latexmk` rebuild produces **509
+  pages**; targeted undefined-reference and multiply-defined-label checks are empty; makeindex
+  accepts **2,092 entries** with zero rejected and zero warnings; `git diff --check` passes.
+  Rendered physical pages 111--112, 131, 147--148, 172, 203--205, 215, 222--223, 231, 244,
+  250, 256, 269--270, 283, 289--290, 473--474, and 479 have no clipping, cell collision,
+  edge spill, malformed heading, running-header collision, or folio defect. The matrix header
+  repeats correctly and all overfull warnings introduced by this batch were removed.
+- Exact line counts: Ch.9 1,211; Ch.10 530; Ch.11 523; Ch.14 353; Ch.16 1,556; Ch.17 411;
+  Ch.18 379; Ch.19 496; Ch.20 402; Ch.21 344; Ch.22 525; Ch.23 849; Ch.24 358; Ch.25 306;
+  Appendix A 396; Appendix B 171.
+
+Next recommended start: select the next independent public `GraphicsDevice` contract whose
+shared default is not already covered by a recent matrix, avoiding the actively moving
+BlendState work in the sibling `feature/audit` worktree. Re-read the live sibling source,
+tests, and plans before choosing; do not infer implementation status from old plan labels.
+
+## Previous recovery/debug batch
 
 The `SetContextRecoveryEnabled()`, `DebugSimulateContextLoss()` /
 `DebugRestoreContext()`, and `SetStringMarkerEXT()` audit is complete:

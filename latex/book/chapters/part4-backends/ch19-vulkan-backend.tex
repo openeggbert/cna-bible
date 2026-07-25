@@ -204,6 +204,17 @@ deferred, potentially-multiple-render-targets-per-frame recording model has no w
 \emph{which} \cnaclass{Viewport} was actually active at the moment each render target's own draws
 were originally issued, by the time a frame's commands actually get recorded.
 
+The same scope limit applies to scissor, not only viewport. Each render-target pass hardcodes
+both a full-target \texttt{VkViewport} and \texttt{VkRect2D}; the stored custom values are read
+only for the backbuffer pass, with \texttt{ScissorTestEnable=false} or a zero rectangle falling
+back to the full swapchain. One dynamic viewport/scissor pair is installed before both
+\texttt{drawSpritesFor()} and \texttt{draw3DFor()}, so the last live state when the command
+buffer is recorded governs every queued sprite and 3D draw in that backbuffer pass. It is not
+snapshotted per draw at the time the game issued it. Dedicated pixel tests prove the custom
+backbuffer viewport and enabled/disabled scissor cases; the shared render-target reset test
+proves the full-size reset visible after switching targets, not a custom sub-region inside a
+Vulkan target.
+
 \section{How a swapchain gets built: format, color space, and present mode}
 \label{sec:vulkan-swapchain}
 

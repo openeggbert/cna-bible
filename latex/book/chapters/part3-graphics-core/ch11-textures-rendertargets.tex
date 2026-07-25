@@ -393,18 +393,20 @@ still open, and what is now fixed:
 \end{description}
 
 Two further, project-wide findings from the same original list are also now closed, not open.
-Switching the active render target correctly resets \texttt{Viewport} and
-\texttt{ScissorRectangle} to the new target's (or the backbuffer's) own dimensions, on every
-backend, and \texttt{GraphicsDevice.Viewport} itself now has real GPU wiring on all three
+Switching the active render target correctly resets the shared public \texttt{Viewport} and
+\texttt{Scissor\allowbreak{}Rectangle} values to the new target's (or the backbuffer's) own
+dimensions on every backend; whether those setters then change native rasterization is the separate
+fourteen-product contract in \S\ref{sec:backend-viewport-scissor-matrix}.
+\texttt{GraphicsDevice.Viewport} itself now has real GPU wiring on all three
 hardware backends investigated --- EasyGL applies a custom sub-region \cnaclass{Viewport}
-unconditionally, whether or not a render target is currently bound, while Vulkan's own version
+on its ordinary 3D paths whether or not a render target is currently bound (SpriteBatch is the
+documented exception), while Vulkan's own version
 of the identical fix is honestly narrower, backbuffer-pass-only, for an architectural reason
 Chapters~\ref{ch:vulkan-backend} and~\ref{ch:easygl-backend} both cover in full. And
-\texttt{GraphicsDevice::SetRenderTargets()} now genuinely enforces FNA's real four-target
-\texttt{MAX\_RENDERTARGET\_BINDINGS} cap at the shared, cross-backend level --- throwing if a
-caller passes more than four bindings, regardless of what any individual backend's own internal
-buffer happens to be sized for --- closing what this section once described as no backend
-matching that real XNA limit at all.
+\texttt{SetRenderTargets()} now genuinely enforces FNA's real four-target cap at the shared,
+cross-backend level --- throwing if a caller passes more than four bindings, regardless of
+what any individual backend's own internal buffer happens to be sized for --- closing what
+this section once described as no backend matching that real XNA limit at all.
 
 \section{SurfaceFormat, in one sentence}
 

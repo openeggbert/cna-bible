@@ -373,6 +373,25 @@ partial rectangle, a three-level volume mip round trip, and a per-face cube mip 
 Together they distinguish a correct transfer from reading level zero, the wrong cube face, or a
 CPU buffer left untouched by the former interface default.
 
+\section{Viewport and scissor deliberately have different submission scope}
+
+Both public setters first become stored BGFX-side values, but that similarity ends at
+submission. An enabled, nonzero scissor is reissued through \texttt{bgfx::setScissor()} before
+every 3D submit and every SpriteBatch submit, because bgfx scissor is per draw and otherwise
+resets to ``none.'' The Boolean from \cnaclass{RasterizerState} is retained independently from
+the rectangle. \texttt{bgfx\_scissor\_test} proves both halves, then disables the test again to
+exclude a one-way/stuck-state implementation.
+
+Viewport is a view-level rectangle rather than per-draw state. CNA reapplies a stored custom
+rectangle only before 3D submissions and only when the current view ID is zero, the backbuffer.
+SpriteBatch's \texttt{EnsureViewState()} establishes its own full-size view, and render-target
+views stay full target because one frame-global viewport value cannot reconstruct which value
+belonged to which deferred target. The public min/max depth values are discarded as an explicit
+bgfx limitation. The dedicated sub-region test is nevertheless a real public 3D pixel proof:
+a full-NDC quad fills only the left half under a custom viewport, then both halves after the
+full viewport is restored. Section~\ref{sec:backend-viewport-scissor-matrix} places that strong
+test beside its narrower SpriteBatch/render-target scope.
+
 \section{Where this leaves the backend}
 
 The original Phase~72 closure is a useful historical snapshot, but not a freeze-frame: the

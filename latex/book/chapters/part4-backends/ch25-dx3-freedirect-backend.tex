@@ -147,6 +147,15 @@ output scale, always presenting in letterbox regardless --- a real, acknowledged
 that would require a change inside \texttt{free-direct} itself to close, not something fixable
 from CNA's side alone.
 
+The same stored-versus-applied distinction affects two ordinary XNA properties:
+\texttt{Dx3Graphics}\allowbreak\texttt{Backend} overrides neither \texttt{SetViewport()} nor
+\texttt{SetScissorRect()}, and it has no rasterizer-state hook. Both values therefore
+round-trip through \cnaclass{GraphicsDevice} without changing the 2D DirectDraw/SDL output.
+The SDL renderer that \texttt{free-direct} owns privately does not rescue this path: CNA never
+routes these graphics-state setters into it (unlike the separate public input-discovery route
+below). There is no dedicated negative pixel test, so this is a source-proven permanent 2D
+boundary rather than an executed claim.
+
 There is a related resize defect that is easier to miss because the new logical surfaces
 \emph{are} created correctly. Once the first \texttt{Present()} has configured
 \texttt{free-direct}'s internal renderer, a later \texttt{SetVirtualResolution()} replaces CNA's

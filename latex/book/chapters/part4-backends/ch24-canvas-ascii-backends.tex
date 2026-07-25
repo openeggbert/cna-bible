@@ -226,6 +226,17 @@ Input on this backend required zero new code at all --- verified twice, independ
 through the existing backend-agnostic mouse test suite, and once through a new, dedicated
 input test written specifically for this backend, passing in full.
 
+\subsection{Two stored rectangles, only one delegated}
+
+Neither backend overrides \texttt{SetViewport()}, so a custom public viewport never remaps its
+2D output. CANVAS also inherits the empty scissor and rasterizer hooks: both public values are
+stored-only. ASCII is asymmetrical because it delegates \texttt{SetScissorRect()} to the inner
+SDL renderer but does not delegate \texttt{ApplyRasterizerState()}. The rectangle therefore
+clips the off-screen game target before ASCII quantizes it to cells whenever its size is
+positive, regardless of the public \texttt{ScissorTestEnable} Boolean; a non-positive rectangle
+disables the SDL clip. No dedicated ASCII test currently distinguishes those pixels. This is
+composition faithfully inheriting SDL\_Renderer's own state bug, not a separate quantizer rule.
+
 \section{Both backends are 2D-only by explicit design, not by omission}
 
 Every backend documented in the previous three chapters implements the full backend interface,

@@ -254,6 +254,19 @@ demo, a bouncing-sprite physics scene, a keyboard-driven sprite, a two-glyph
 \texttt{ctest} entries rather than left as manual verification, giving this backend
 end-to-end coverage beyond its unit-level pixel tests.
 
+Viewport and scissor expose a more subtle 2D-state boundary. There is no
+\texttt{SetViewport()} override, so a custom public viewport changes stored state and
+\cnaclass{Viewport}'s own projection mathematics but never remaps an SDL sprite. Scissor
+\emph{does} reach SDL: a positive \texttt{ScissorRectangle} installs a renderer clip, and a
+non-positive size disables it. However, the rasterizer-state hook is also absent. The clip is
+consequently active solely because
+the rectangle is non-empty, even when
+\texttt{RasterizerState.ScissorTestEnable == false}. The existing rasterizer construction test
+cannot detect this: it verifies no-throw assignment and getter round trip, then clears one
+pixel, but never sets a scissor rectangle or asks whether drawing outside it survives. This is
+the precise distinction the fourteen-product matrix in
+\S\ref{sec:backend-viewport-scissor-matrix} preserves.
+
 \section{Reading the feature matrix for this backend}
 
 \texttt{docs/graphics-backend-feature-matrix.md}'s own snapshot for

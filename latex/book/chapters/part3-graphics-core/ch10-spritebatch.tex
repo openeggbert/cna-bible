@@ -2,7 +2,7 @@
 \label{ch:spritebatch}
 
 \cnaclass{SpriteBatch} is the API most CNA code touches most often, and --- because it is
-also the one class every one of the twelve backends in Part~IV must implement --- the class
+also the one class every one of the fourteen backend products in Part~IV must implement --- the class
 whose bugs and fixes best illustrate what ``backend parity'' actually costs to achieve. This
 chapter covers its API surface, its supporting types (\cnaclass{SpriteSortMode},
 \cnaclass{SpriteEffects}, \cnaclass{SpriteFont}), and the specific, real bugs found while
@@ -11,7 +11,7 @@ verifying it, because the bugs are as instructive as the API itself.
 \section{Begin, Draw, End}
 
 \cnaclass{SpriteBatch} inherits \cnaclass{GraphicsResource} and offers five \texttt{Begin()}
-overloads of increasing specificity, each defaulting whatever the caller omits:
+overloads of increasing specificity. The public contract defaults whatever the caller omits:
 \texttt{Begin()} alone defaults to \texttt{SpriteSortMode::Deferred},
 \cnaclass{BlendState::AlphaBlend}, a \texttt{LinearClamp} sampler, no depth-stencil state,
 \texttt{RasterizerState::\allowbreak{}CullCounterClockwise}, and an identity transform; the fuller
@@ -19,6 +19,22 @@ overloads let a caller override the sort mode and blend state, the three optiona
 objects (nullptr falls back to the same defaults), a custom \cnaclass{Effect} (nullptr falls
 back to an internal default \cnaclass{SpriteEffect}), and finally an explicit transform
 \cnaclass{Matrix} applied to every sprite in the batch before projection.
+
+\begin{sourcenote}
+\textbf{The live CNA implementation does not currently honor that whole state contract.}
+\texttt{SpriteBatch::Begin()} applies the requested/default blend and depth-stencil values and
+forwards the resolved sampler, but its \texttt{RasterizerState*} parameter is commented out and
+never read. FNA stores the caller's value (or
+\texttt{CullCounterClockwise}, the matching \cnaclass{RasterizerState} preset) and applies it in
+\texttt{PrepRenderState()}. CNA instead leaves whatever rasterizer state was already on
+\cnaclass{GraphicsDevice}. The practical scissor consequence is direct: passing a rasterizer
+with \texttt{ScissorTestEnable=true} to the normal full \texttt{Begin()} overload cannot enable
+clipping on any backend; a previously-enabled state can also leak through a later default
+\texttt{Begin()}. A game can work around the first half only by assigning
+\texttt{GraphicsDevice.RasterizerState} separately before drawing. Section
+\ref{sec:backend-viewport-scissor-matrix} then determines whether the selected backend can
+actually honor it.
+\end{sourcenote}
 
 \texttt{Draw} itself has nine overloads: six are the canonical XNA forms ---
 position-or-destination-rectangle, an optional source rectangle (represented as

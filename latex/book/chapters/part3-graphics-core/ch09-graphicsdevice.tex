@@ -151,6 +151,51 @@ follow the simpler get/set-by-value shape. \texttt{BlendFactor} (a \cnaclass{Col
 \texttt{int}) round out the fixed-function state XNA exposes directly on the device rather than
 through a state object.
 
+\subsection{Viewport and scissor: stored state is not proof of raster state}
+\label{sec:graphicsdevice-viewport-scissor}
+
+The two setters have the same shared shape and no shared validation. CNA first copies the
+complete public value, then immediately invokes the matching backend viewport or scissor
+hook. A backend that inherits those virtuals' empty defaults therefore still
+round-trips the property perfectly while changing no pixels. Conversely, a backend that throws
+after receiving the call can leave requested state stored even though native state was not
+updated. \texttt{Viewport::Project()} and \texttt{Unproject()} remain useful pure mathematics in
+either case; they operate on the \cnaclass{Viewport} value itself, not on queried GPU state.
+
+\texttt{ScissorRectangle} is only the rectangle. Whether it clips is a separate
+\cnaclass{RasterizerState::\allowbreak{}ScissorTestEnable} value forwarded through
+\texttt{ApplyRasterizerState}. A conforming backend must retain both pieces independently:
+setting a non-empty rectangle while the Boolean is false must not clip, and enabling the
+Boolean must use the last rectangle. Several backends do that, but the complete audit in
+\S\ref{sec:backend-viewport-scissor-matrix} finds both silent no-ops and one inverse failure:
+\texttt{SDL\_RENDERER} (and ASCII through delegation) applies an SDL clip immediately from the
+rectangle while ignoring the Boolean, so a non-empty rectangle clips even when the public
+rasterizer state says it is disabled.
+
+Three lifecycle rules are easy to conflate:
+
+\begin{itemize}
+  \item Construction obtains a full-size viewport and pushes it to the backend. CNA does
+        \emph{not} initialize \texttt{ScissorRectangle} to the same bounds; its public value
+        remains the default zero rectangle. FNA initializes and forwards both.
+  \item \texttt{Present()} calls \texttt{UpdateViewportFromWindow()}, but that helper compares
+        the current size against its own last backend-derived dimensions. A custom sub-region
+        survives ordinary frames and is reset only after a genuine size change. Scissor is not
+        touched by this path.
+  \item Every actual 2D, cube, or MRT target switch resets both properties through one shared
+        helper. They become
+        \((0,0,w,h)\), using the first target's dimensions for MRT and the backbuffer's
+        dimensions on unbind.
+\end{itemize}
+
+CNA's in-place \texttt{Reset()} falls between the last two rules and currently diverges from
+FNA. FNA unconditionally restores both full-backbuffer values on every reset. CNA merely calls
+the size-sensitive \texttt{UpdateViewportFromWindow()}: a same-size reset preserves both custom
+values; a reset whose size eventually changes restores only the viewport and can leave a
+scissor rectangle sized for the old backbuffer. The existing resize regression test proves the
+viewport half only. Portable code should explicitly reassign both properties after a reset
+rather than infer them from \texttt{PresentationParameters}.
+
 \subsection{Index buffer}
 
 \texttt{Indices} (get-only \texttt{const IndexBuffer*}, plus the separate

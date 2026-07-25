@@ -293,6 +293,15 @@ last clear, and SDL GPU/D3D12 throw. The pointer API also does not validate nega
 the caller must do so. See \S\ref{sec:backend-readback-matrix} for the exact source-image,
 coordinate-space, and test-evidence matrix.
 
+\textbf{Viewport/scissor warning:} both properties always round-trip, but only seven products
+provide a real custom viewport and/or correctly enable-gated scissor, with different 3D,
+SpriteBatch, target, and deferred-pass scopes. SDL Renderer/ASCII clip from a non-empty
+rectangle even when \texttt{ScissorTestEnable} is false; D3D12/Software/Canvas/DX3 do not apply
+either custom state. CNA also starts with a zero scissor and its same-size \texttt{Reset()}
+preserves both values, unlike FNA. Passing a rasterizer into \texttt{SpriteBatch::Begin()}
+currently does not reach any backend. See
+\S\ref{sec:backend-viewport-scissor-matrix}.
+
 \textbf{Present-interval warning:} a stored
 \texttt{PresentationParameters.\allowbreak PresentationInterval} is requested state, not a query of the
 driver. The manager's VSync Boolean selects only One/Immediate; five products including

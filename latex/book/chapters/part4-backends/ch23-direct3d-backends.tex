@@ -370,6 +370,31 @@ cases, not redundant screenshots.  By the end of that series the D3D11 smoke exe
 specific paths named here; it is not a license to extrapolate that any arbitrary, untested
 D3D11 state combination must therefore be correct.
 
+\subsection{Viewport/scissor: D3D9 and D3D11 are direct; D3D12 is full-target-only}
+
+D3D9 and D3D11 take the simplest possible immediate route. Their public setters call the
+corresponding native viewport and scissor setters; their rasterizer mapping separately controls
+scissor enable. Neither SpriteBatch implementation replaces those native rectangles, and both
+derive their 2D projection size from the currently-bound native viewport. D3D11 Smoke Check~O
+reads the exact native viewport, depth range, and scissor back through the corresponding native
+getters. That is strong native-state evidence but still one layer short of a public behavioral
+pixel test because the check invokes backend methods directly.
+
+D3D9's source path is equally real, but its evidence label needed correction. The backend plan
+now calls viewport and scissor ``oracle-proven.'' A direct recount/search of the current
+39-scene \texttt{tools/xna-oracle/scenes} corpus finds cull-mode scenes but no viewport or
+scissor scene, and the D3D9 smoke program's resize check proves a full-size post-reset viewport,
+not a custom sub-region. The safest current claim is therefore native-source implementation
+plus broad D3D9 draw coverage, not a zero-tolerance XNA comparison for these two states.
+
+D3D12 is not the analogous modern implementation. It inherits both setters' empty defaults,
+and every ordinary, extended, instanced, and SpriteBatch command list constructs a fresh
+full-target \texttt{D3D12\_VIEWPORT} and \texttt{D3D12\_RECT} immediately before drawing.
+Consequently the public properties round-trip but custom values never reach rasterization.
+The backend's real rasterizer-state pixel suite proves culling/fill/depth-bias-era PSO fields;
+it does not turn that specific full-target-only source behavior into viewport/scissor support.
+The complete product comparison is \S\ref{sec:backend-viewport-scissor-matrix}.
+
 \section{An MRT set has to finish every target, not only the first}
 
 An ordinary single \cnaclass{RenderTarget2D} owns a simple end-of-use rule. When it is unbound,

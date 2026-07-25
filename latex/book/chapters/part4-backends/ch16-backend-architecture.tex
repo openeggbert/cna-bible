@@ -1150,6 +1150,129 @@ live call path behind it right now, not a currently-reachable gap --- worth reco
 as that, rather than either dismissing it as obviously dead without checking or citing it as an
 active risk without tracing where it actually leads.
 
+\section{Viewport and scissor: one stored contract, fourteen raster contracts}
+\label{sec:backend-viewport-scissor-matrix}
+
+\cnaclass{GraphicsDevice} stores both public values before immediately invoking the two
+otherwise-empty backend hooks. Scissor enable arrives separately through
+\texttt{ApplyRasterizerState}. A successful setter and an exact getter round trip therefore say
+nothing yet about where a later primitive lands. The table records \emph{draw-time} behavior;
+clear operations are a separate native-API question.
+
+\begingroup
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.12}
+\begin{longtable}{@{}p{0.13\textwidth}p{0.22\textwidth}p{0.27\textwidth}p{0.28\textwidth}@{}}
+\toprule
+\textbf{Product} & \textbf{Custom viewport} & \textbf{Scissor rectangle + enable} &
+\textbf{Scope, timing, and evidence} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Product} & \textbf{Custom viewport} & \textbf{Scissor rectangle + enable} &
+\textbf{Scope, timing, and evidence} \\
+\midrule
+\endhead
+\texttt{SDL\_\allowbreak{}RENDERER}
+  & No hook; stored property and \cnaclass{Viewport} math only.
+  & A positive rectangle immediately installs an SDL clip; a non-positive size disables it.
+    \texttt{ScissorTestEnable} is ignored, so a non-empty rectangle clips even when false.
+  & Immediate 2D-renderer state. The rasterizer test proves assignment/round trip only; no
+    clipping or viewport pixel test was found. \\
+\texttt{ASCII}
+  & No hook.
+  & Delegates the rectangle to its inner SDL renderer, inheriting the same always-active clip;
+    the rasterizer Boolean is not delegated.
+  & Clips the off-screen game target before glyph quantization. Source-proven, with no dedicated
+    state pixel test. \\
+\texttt{EASYGL}
+  & Immediate GL viewport and depth range, with top-left to bottom-left conversion using the
+    active target height.
+  & Immediate GL rectangle plus a genuinely independent GL enable.
+  & Dedicated 3D viewport and scissor pixel tests, plus target-switch reset proof. A SpriteBatch
+    flush overwrites the GL viewport with full window/target size and does not restore it; its
+    scissor remains effective. \\
+\texttt{VULKAN}
+  & Stored until command recording; custom value is read for the backbuffer pass only.
+  & Stored Boolean/rectangle is read for the backbuffer pass only; target passes force their
+    full rectangle.
+  & One live value governs all queued sprites and 3D draws when the pass is recorded, not each
+    draw's issue-time value. Both features have backbuffer pixel tests; target-reset proof does
+    not prove a custom target sub-region. \\
+\texttt{BGFX}
+  & Applied before each backbuffer 3D submit only; SpriteBatch and render-target views remain
+    full-size. Min/max depth is discarded.
+  & Independent Boolean and rectangle, re-applied before every SpriteBatch and 3D submit.
+  & Dedicated public pixel tests prove both features. Scissor is per submit; viewport is a
+    per-view rectangle with the stated 3D/backbuffer limit. \\
+\texttt{WEBGPU}
+  & Stored, clamped to target bounds, and applied once when each pass is encoded.
+  & Independent Boolean/rectangle; disabled or zero becomes the full target, otherwise it is
+    clamped and applied once per pass.
+  & Backbuffer, 2D-target, and cube passes use the live record-time value for all queued sprite
+    and 3D commands. \texttt{WebGPU\_GraphicsState} has exact inside/outside pixel checks. \\
+\texttt{SDL\_GPU}
+  & No hook.
+  & Independent Boolean/rectangle, applied once per backbuffer, 2D-target, or cube pass; disabled
+    or zero becomes full target.
+  & Live pass-flush state, not part of each queued command's otherwise-rich snapshot. The
+    render-state test pixel-proves a half-target clip. \\
+\texttt{D3D11}
+  & Immediate \texttt{RSSetViewports}, including depth range.
+  & Immediate \texttt{RSSetScissorRects}; cached rasterizer state controls
+    \texttt{ScissorEnable}.
+  & Persists into subsequent 3D and SpriteBatch draws. Smoke Check~O reads the native state back,
+    but calls backend methods directly and is not a behavioral public pixel test. \\
+\texttt{D3D12}
+  & Empty hook; every 3D and SpriteBatch command list explicitly installs the full target.
+  & Empty hook; every draw installs a full-target native scissor regardless of the public
+    rectangle/Boolean.
+  & Source-proven negative contract. State-object pixel tests cover other fields, not a custom
+    viewport/scissor discriminator. \\
+\texttt{D3D9}
+  & Immediate native viewport, including depth range.
+  & Immediate native rectangle; \texttt{D3DRS\_SCISSORTESTENABLE} is independent.
+  & Subsequent 3D/SpriteBatch draws use native state. Source and broad native-draw tests exist,
+    but the 39-scene oracle corpus contains no viewport/scissor scene; the plan's
+    ``oracle-proven'' shorthand is stale. \\
+\texttt{SOFTWARE}
+  & Explicit no-op.
+  & Explicit rectangle no-op; rasterizer application keeps culling but discards scissor enable.
+  & Public values round-trip while both CPU 3D and SpriteBatch rasterization ignore them.
+    Source-proven; no dedicated negative test. \\
+\texttt{HEADLESS}
+  & Validation and trace only.
+  & Validation and trace only; enable is merely another traced rasterizer-state change.
+  & No pixels are rasterized. Tests prove viewport trace divergence and validation-mode rejection
+    of invalid scissor input, not visual clipping. \\
+\texttt{CANVAS}
+  & No hook.
+  & No rectangle or rasterizer hook.
+  & Stored-only public state on a 2D-only browser backend; source-audited, not browser-executed. \\
+\texttt{DX3}
+  & No hook.
+  & No rectangle or rasterizer hook.
+  & Stored-only public state on the 2D \texttt{free-direct} route; no dedicated test. \\
+\bottomrule
+\end{longtable}
+\endgroup
+
+The common lifecycle adds two independent qualifications to every row. Render-target switches
+do reset both public values to the first target's or backbuffer's full bounds. Construction and
+\texttt{Reset()} do not yet match FNA: CNA starts with a zero public scissor, and its reset path
+preserves both custom values when size is unchanged or resets only the viewport after a real
+size change. FNA initializes both to presentation bounds and unconditionally resets both.
+
+\cnaclass{SpriteBatch} adds another shared gap above the table. The rasterizer pointer in its
+full \texttt{Begin()} overload is never read, whereas FNA
+stores the caller's state (defaulting null to \texttt{CullCounterClockwise}) and applies it
+before drawing. A capable row therefore still cannot be reached through CNA's ordinary
+``pass a scissor-enabled rasterizer to Begin'' idiom; the game must assign device rasterizer
+state separately. There is no \cnaclass{GraphicsCapability} entry for either feature, and
+invalid rectangles are not normalized at the shared boundary, so portable code must neither
+probe by getter nor rely on one backend's clamp/ignore/throw behavior.
+
 \section{GpuDrawParams: already covered, worth remembering here}
 
 Chapter~\ref{ch:stock-effects} already introduced \cnaclass{GpuDrawParams} in full --- the

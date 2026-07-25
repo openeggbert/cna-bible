@@ -302,6 +302,12 @@ remains visible under the other. Scissor and viewport are genuine dynamic render
 logical-versus-physical-size hazard: CNA's stored logical viewport can exceed the real
 swapchain dimensions. The backend therefore clamps it at application time, which is both a
 WebGPU API requirement and what restored the pre-existing 2D and 3D regression tests.
+The application point is once per encoded pass --- backbuffer, 2D render target, or cube face
+--- before that pass's queued SpriteBatch and 3D commands. Thus both draw families and all
+three target kinds see the feature, but they all see the one live value sampled when the pass
+is recorded; changing viewport/scissor repeatedly between deferred draws in the same pass is
+not preserved as per-draw history. A disabled or zero scissor is expanded to the full current
+target instead of issuing an invalid zero-area native rectangle.
 
 Third, this is not a claim that every state object is complete. \cnaclass{FillMode}'s
 \texttt{WireFrame} value is stored but has no effect because the pinned WebGPU API offers no

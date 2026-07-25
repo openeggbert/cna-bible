@@ -199,6 +199,23 @@ implementing the identical interface method can genuinely differ in how complete
 honor it, for reasons rooted in each backend's own underlying execution model rather than in
 how carefully either one was built.
 
+That conclusion needs one draw-family qualifier the earlier Task~880 account missed.
+The EasyGL batch flush explicitly sets the GL viewport to the full active render target, or
+to the full physical window when no target is bound, before building its orthographic
+projection. It neither consults
+\texttt{GraphicsDevice.Viewport} nor restores the previous GL viewport afterward. Custom
+viewport behavior is therefore real for the 3D draw paths the dedicated sub-region pixel test
+exercises, but not for SpriteBatch; worse, after a flush the public property can still report
+the custom rectangle while native GL state has returned to full size. Reassign the public
+viewport after a SpriteBatch pass before relying on it for later 3D work.
+
+Scissor does not share that overwrite. \texttt{ApplyRasterizerState()} owns the GL enable and
+\texttt{SetScissorRect()} owns only the rectangle, both immediate. The latter now flips Y
+against \texttt{currentRtHeight\_} when a render target is active. Thus
+\path{docs/easygl_bugs.md}'s still-live row claiming it always uses physical window height is
+stale in current source, just like the viewport status above; \texttt{easygl\_scissor\_test}
+pixel-proves disabled, enabled, and disabled-again behavior independently.
+
 \subsection{A claim this chapter itself got wrong: two-sided stencil's shared mask is correct, not a bug}
 
 An earlier pass of this chapter listed ``two-sided stencil incorrectly reusing the front-face
