@@ -6,18 +6,61 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **547 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by **eight**
+- Book: **549 physical PDF pages, 49 chapters, 6 appendices**.
+- The local branch is ahead of `origin/develop` by **nine**
   documentation commits: the ContentTypeReader contract, XNB container, type-name/table,
-  scalar/math, Decimal/DateTime, CurveReader, Texture2DReader, and Texture3DReader audits. This
-  count was checked against the current remote-tracking ref; do not reuse older historical
-  ahead-counts.
+  scalar/math, Decimal/DateTime, CurveReader, Texture2DReader, Texture3DReader, and
+  TextureCubeReader audits. This count was checked against the current remote-tracking ref; do
+  not reuse older historical ahead-counts.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
   reviewing `git push`. Its response explicitly rejected the request rather than granting
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: Texture3DReader XNB volume, slice, mip, and backend boundary
+## Latest completed batch: TextureCubeReader XNB face, mip, byte-accounting, and ownership boundary
+
+No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
+TextureCubeReader, cube upload/mip/backend implementations, DXT helpers, focused and real-fixture
+tests, current FNA reader, XNB fuzz inventory, and current-versus-unmerged history establish:
+
+- The explicitly registered, version-zero reader has FNA's direct `SurfaceFormat`, square size,
+  and level count, then byteCount/data for every level of faces 0--5 in `PositiveX`, `NegativeX`,
+  `PositiveY`, `NegativeY`, `PositiveZ`, `NegativeZ` order. Neither implementation has
+  Texture2D-style legacy mapping or Xbox byte swapping.
+- FNA forwards declared bytes in their requested format. CNA accepts Color and Dxt1/Dxt3/Dxt5,
+  software-decompressing DXT to Color; DXT checks the minimum block data (including sub-4 mips)
+  but discards surplus bytes and reports an undersized level as `std::out_of_range`.
+- Current `develop` has a serious raw-Color defect: it trusts the file's declared byte count and
+  then indexes as if it exactly equalled `faceSize * faceSize * 4`; a small positive count reads
+  beyond the vector and a large one is ignored. `e3bc2be1` reproduces that heap out-of-bounds read
+  and adds the missing equality check, but exists only on unmerged `feature/audit`. The base-face
+  preflight does not cap all six faces/mips, and its signed multiplication can overflow before the
+  limit observes it; checked multiplication is likewise only unmerged.
+- Zero/negative levels produce an unread one-level cube, while excessive positive levels are not
+  rejected. `TextureCube` validates basic face/rectangle/count fields but not allocated levels;
+  its high-level shift can be undefined before backend upload. A default null cube backend also
+  silently skips transfers. Direct type-erased existing-instance input moves a caller-supplied
+  `shared_ptr<TextureCube>` object into a newly boxed result, leaving the caller's object
+  moved-from rather than matching FNA's in-place reference semantics.
+- The real MonoGame `SampleCube64DXT1Mips.xnb` test covers all six faces and seven DXT1 levels
+  (64 through 1), including a non-uniform PositiveX base and a NegativeZ 1-by-1 read. It has no
+  exact pixel/orientation, raw Color, bad-byte, size/level/format/version/device/existing, or
+  fuzz coverage.
+
+Ch.8 now records the literal wire/FNA distinction, raw-Color out-of-bounds defect and unmerged
+repair boundary, compressed and aggregate-size policy, mip/backend/direct-instance semantics, and
+fixture limitations. Full latexmk succeeded at **549 pages**; targeted undefined-reference and
+duplicate-label checks are empty; makeindex accepted **2,240** entries with zero rejected and
+zero warnings; `git diff --check` passes. Rendered physical pages **116--117** are clean. Ch.8 is
+**1,735** lines and Ch.6 is **621** lines. The plan-consistency validator remains absent from this
+checkout.
+
+Next recommended start: retain the XNB graphics scope and audit `SpriteFontContentTypeReader`'s
+nested Texture2D handoff, glyph and character lists, kerning/default-character admission,
+direct-instance ownership, and real SpriteFont fixture coverage. Keep the Cube raw-byte fix and
+checked arithmetic explicitly limited to unmerged `feature/audit`.
+
+## Previous completed batch: Texture3DReader XNB volume, slice, mip, and backend boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
 Texture3DReader, volume texture upload implementation and default backend contract, DXT helpers,

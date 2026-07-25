@@ -839,6 +839,80 @@ different loader and cannot establish XNB compatibility. Treat the current reade
 ordinary field-order implementation with a repaired slice algorithm, not as externally-fixtured
 or universally backend-safe volume-texture support.
 
+\subsection{TextureCubeReader loads a real DXT1 cube but still trusts raw Color byte counts}
+\label{sec:xnb-texturecube-reader-contract}
+
+The explicitly registered \texttt{Microsoft.Xna.Framework.Content.TextureCubeReader} has FNA's
+simple wire order: Int32 \texttt{surfaceFormat}, square Int32 \texttt{size}, and Int32
+\texttt{levels}; then, in this exact nested order, six faces and every level of each face, an
+Int32 byte count followed by its bytes. Face values 0 through 5 map directly to
+\texttt{PositiveX}, \texttt{NegativeX}, \texttt{PositiveY}, \texttt{NegativeY},
+\texttt{PositiveZ}, and \texttt{NegativeZ}. The file does not serialize a per-face dimension:
+CNA starts every face at the base size and halves it after each level. Neither current FNA nor CNA
+has a Texture2D-style legacy version mapping or Xbox byte-swapping branch here. CNA again applies
+the common exact serialized-version-zero rule around FNA's ordinary payload decoding.
+
+FNA forwards each declared blob and its nominal \cnaclass{SurfaceFormat} to TextureCube. CNA
+accepts Color plus DXT1/DXT3/DXT5 only, always software-decompressing DXT to Color, and rejects
+all other formats. This is the same format-surface reduction as the other texture readers. For
+compressed levels, the current DXT helper verifies that the data contains at least the required
+4-by-4 block sequence (including a full minimum block for 2-by-2 and 1-by-1 mip levels), then
+returns the expected RGBA image. Extra compressed bytes are accepted and discarded after the
+declared level has been consumed; a too-short DXT level throws \texttt{std::out\_of\_range}, not
+a unified content-load error.
+
+The uncompressed branch has a sharper current-develop defect. It calls
+\texttt{ReadBytesExactOrThrow()}, which proves only that the file supplied as many bytes as its
+own \emph{declared} count, then indexes the result as though it were exactly
+\texttt{faceSize * faceSize * 4}. A small positive raw byte count therefore reaches
+\texttt{bytes[o]} through \texttt{bytes[o+3]} past the vector's end. This is not merely a missing
+test assertion: the later \texttt{feature/audit} commit \texttt{e3bc2be1} records it as a
+reproduced heap out-of-bounds read and adds the sibling readers' equality guard and regression
+test, but that commit is not an ancestor of current \texttt{develop}. A too-large raw count is
+silently ignored after the expected colors have been formed. Treat both cases as the live source
+contract until the source fix is integrated; the earlier broad XNB hardening commit's description
+does not override the code actually present on this branch.
+
+The preflight before those levels is only partial. It rejects a nonpositive size and presents
+\texttt{size * size * 4} to \texttt{CheckDecodedByteSize()}, bounding one base face's nominal
+RGBA bytes to the default 256 MiB. Six faces and a complete mip chain can require almost eight
+times that base amount, and there is no total cube-data budget. The raw signed
+\texttt{int64\_t size * size * 4} expression can itself overflow before the helper observes a
+value; its checked-multiply counterpart is also only on unmerged \texttt{feature/audit}. There
+is no reader-level device-size admission either (apart from a separate D3D9 profile check inside
+the resource constructor). The base face cap is consequently neither a complete arithmetic guard
+nor a portable GPU limit.
+
+Mip handling repeats the family pattern. The constructor sees only \texttt{levels > 1}, then
+creates the framework's full square chain rather than a chain exactly equal to the file count.
+Zero or negative levels create a one-level cube and read no face payload; too many positive levels
+continue with 1-by-1 data and are never rejected. TextureCube validates a nonnegative level, face,
+rectangle, and element count, but not that the level is allocated. Its mip helper shifts the base
+size by the supplied level, so sufficiently large hostile levels make that shift undefined before
+the backend update. The reader also has no generic cube-capability gate: a backend using the
+default null cube factory produces an object whose upload/readback methods simply skip backend
+work. A successful parser return is not proof that an actual cube resource exists.
+
+Existing-instance behavior is particularly unlike FNA's reference object. Normal ContentReader
+dispatch gives this reader no instance. For a direct move-only \cnaclass{TextureCube} read,
+CNA's type erasure requires the caller to supply a \texttt{shared\_ptr<TextureCube>}; it moves the
+pointed-to resource into a local value, uploads into that value without checking its size, format,
+device, or mip chain against the file, then returns a newly boxed result. The caller's original
+shared pointer is left pointing at a moved-from resource. FNA instead writes directly into its
+non-null reference instance. A direct existing-instance read therefore has neither FNA identity
+semantics nor a safe replacement/matching contract in CNA.
+
+This reader has the strongest external fixture among the three texture variants, but still a
+limited oracle. A real MonoGame \texttt{SampleCube64DXT1Mips.xnb} loads through
+\cnaclass{ContentManager}; it covers all six faces and seven DXT1 levels from 64 through 1,
+including the sub-4-by-4 block case. The test checks size, Color output format, level count,
+non-uniform PositiveX level 0, and that one NegativeZ 1-by-1 read does not throw. It does not
+check exact pixels, face orientation/order, every face, DXT3/DXT5, raw Color, bad byte count,
+size/level/format/version/device/existing cases, cache/unload, or another producer/platform.
+There is no Cube seed in the whole-container fuzzer. Thus the fixture is valuable evidence for
+ordinary DXT1 traversal, not proof that arbitrary Cube XNB input is bounded or that all six faces
+are semantically correct.
+
 \section{The resolution order, precisely}
 
 The earlier short three-way description is useful, but it hides two consequential facts: a
