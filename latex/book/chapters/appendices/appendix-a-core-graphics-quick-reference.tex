@@ -158,6 +158,17 @@ simple width/height form, and a full form specifying mip-mapping, surface and de
 format, multisample count, and \cnaclass{RenderTargetUsage}) plus a \texttt{ContentLost} event
 that XNA's own console-era API defines but CNA never actually raises.
 
+\cnaclass{Texture3D} adds \texttt{Width} / \texttt{Height} / \texttt{Depth};
+\cnaclass{TextureCube} adds one square-face \texttt{Size}. Both are move-only, accept only
+\cnaclass{SurfaceFormat::Color}, expose whole-resource and level/subregion
+\texttt{SetData}/\texttt{GetData} overloads, and keep no CPU pixel shadow. Their ordinary
+GPU readback is real on EasyGL, Vulkan, BGFX, WebGPU, SDL GPU, and D3D9/11/12; Software
+implements only a level-0 CPU cube. \cnaclass{RenderTargetCube} extends
+\cnaclass{TextureCube} and \cnaclass{IRenderTarget}, but its CPU readback is a separate,
+narrower capability: only WebGPU and SDL GPU override it today. The exact null-factory,
+placeholder, and mip boundaries are tabulated in
+Chapter~\ref{ch:backend-architecture}, \S\ref{sec:texture-volume-readback-matrix}.
+
 \cnaclass{SpriteBatch} is the class Chapter~\ref{ch:spritebatch} covers end to end; this table
 is purely a shape reminder. Five \texttt{Begin} overloads escalate from a zero-argument default
 (\texttt{AlphaBlend}, linear-clamp sampling, no depth test) up to the full XNA signature

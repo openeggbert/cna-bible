@@ -212,6 +212,92 @@ after the fixed layout family grew: its custom record is 48 bytes, the same tota
 vertex, but has different offsets and a trailing color. Correct diagnostic pixels therefore
 prove the declaration won over the fixed 48-byte interpretation.
 
+\subsection{Volume and cube readback: the no-op default mostly became real}
+\label{sec:texture-volume-readback-matrix}
+
+\cnaclass{ITexture3DBackend::GetData()} and
+\cnaclass{ITextureCubeBackend::GetData()} both default to an empty body. The public wrappers
+make the consequence subtler than ``the caller is untouched.'' When a backend object exists,
+each wrapper allocates a zero-initialized RGBA byte vector, calls the backend, then converts
+the whole requested element range back to \cnaclass{Color}. An inherited no-op therefore
+\emph{overwrites} that destination range with transparent black. When a resource factory
+returns \texttt{nullptr}, by contrast, the wrapper returns before allocating or converting
+anything and really does leave the caller's destination unchanged.
+
+The ordinary-resource columns below cover \cnaclass{Texture3D} and
+\cnaclass{TextureCube}. The third is separate because \cnaclass{RenderTargetCube} inherits
+the same public \texttt{GetData()} but supplies a different backend object:
+
+\begingroup
+\small
+\setlength{\tabcolsep}{3.5pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{@{}p{0.17\textwidth}p{0.22\textwidth}p{0.22\textwidth}p{0.31\textwidth}@{}}
+\toprule
+\textbf{Backend} & \textbf{Texture3D} & \textbf{TextureCube} & \textbf{RenderTargetCube} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Backend} & \textbf{Texture3D} & \textbf{TextureCube} & \textbf{RenderTargetCube} \\
+\midrule
+\endhead
+\texttt{EASYGL}
+  & real GPU readback & real GPU readback & inherited no-op; transparent black \\
+\texttt{VULKAN}
+  & real GPU readback & real GPU readback & inherited no-op; transparent black \\
+\texttt{BGFX}
+  & real if transfer caps exist & real if transfer caps exist
+  & inherited no-op; transparent black \\
+\texttt{D3D9}
+  & real GPU readback & real GPU readback & inherited no-op; transparent black \\
+\texttt{D3D11}
+  & real GPU readback & real GPU readback & inherited no-op; transparent black \\
+\texttt{D3D12}
+  & real GPU readback & real GPU readback & inherited no-op; transparent black \\
+\texttt{WEBGPU}
+  & real GPU readback & real GPU readback & real GPU readback; level~0 only \\
+\texttt{SDL\_GPU}
+  & real GPU readback & real GPU readback & real GPU readback \\
+\texttt{SOFTWARE}
+  & null factory; caller unchanged & real CPU readback; level~0
+  & null factory; caller unchanged \\
+\texttt{HEADLESS}
+  & explicit transparent black & explicit transparent black
+  & inherited no-op; transparent black \\
+\texttt{SDL\_RENDERER}, \texttt{ASCII}, \texttt{CANVAS}, \texttt{DX3}
+  & null factory; caller unchanged & null factory; caller unchanged
+  & null factory; caller unchanged \\
+\bottomrule
+\end{longtable}
+\endgroup
+
+The eight ordinary GPU implementations are not CPU-shadow echoes. EasyGL attaches the
+requested slice or face to a temporary framebuffer and calls \texttt{glReadPixels}; Vulkan
+copies the requested image subresource into host-visible staging memory; D3D9 locks its
+managed cube/volume resource, while D3D11 and D3D12 use staging/readback resources with
+native row and slice pitches; WebGPU maps a staged copy asynchronously; and SDL GPU waits on
+a download transfer and fence. BGFX cannot mark an ordinary sampled source
+\texttt{READ\_BACK}, so it blits the requested region into a temporary transfer texture and
+advances frames until \texttt{readTexture()} completes. If the selected renderer lacks its
+required blit/readback capabilities, that path logs and returns; the public zero-initialized
+staging vector then makes the result transparent black.
+
+The proof is correspondingly stronger than ``did not throw.'' EasyGL, Vulkan, and BGFX
+share exact slice, off-origin rectangle, and mip round trips; WebGPU's public checks
+distinguish all six faces, a non-origin rectangle, and mip data, plus separate volume slices,
+voxel, and mip cases. SDL GPU checks distinct slices/faces and authored/generated mip
+retention. D3D9/11/12 smoke tests compare exact subregion bytes (D3D9 first gates its
+volume/cube cases on the real device caps). Software's cube storage is source-proven and its
+environment-map sampling is pixel-proven, but no dedicated public exact
+\texttt{TextureCube::GetData()} assertion was found.
+
+Headless is the cautionary counterexample. The first comments in
+\path{headless_resource_backends_test.cpp} call its volume and cube checks ``round-trips,''
+but the implementation deliberately discards uploads and returns zero placeholders. The
+actual assertions only prove that calls on two faces and one volume do not throw; they never
+compare returned colors. A test title or introductory comment is not evidence when the
+assertion body establishes a weaker contract.
+
 \subsection{IIndexBufferBackend::SetData32: a defensive throw traced out to dead code}
 
 Not every default in this file is a silent no-op. \cnaclass{IIndexBufferBackend}'s

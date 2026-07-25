@@ -159,8 +159,9 @@ with an actual pixel readback rather than trusting the call to behave as documen
 
 \cnaclass{RenderTargetCube} support (Task WEBGPU-114) landed after the plain
 \cnaclass{RenderTarget2D} path above, and reused most of its design directly: one shared
-6-array-layer \texttt{WGPUTexture} (the same layout \texttt{WebGPUTextureCubeBackend} already
-uses for an upload-only \cnaclass{TextureCube}), one shared \texttt{size}$\times$\texttt{size}
+6-array-layer \texttt{WGPUTexture} (the same layout \texttt{WebGPUTextureCubeBackend} uses
+for an ordinary sampled, readback-capable \cnaclass{TextureCube}), one shared
+\texttt{size}$\times$\texttt{size}
 depth/stencil texture reused across all six faces (only one face is ever bound at a time, the
 same choice Vulkan's own \cnaclass{RenderTargetCube} backend makes), and a
 \texttt{WGPUTextureViewDimension\_2D} view per face for the render-pass color attachment
@@ -169,8 +170,8 @@ the whole thing back later.
 
 That whole-cube sampling view is where a real, previously-invisible bug lived. Before this
 task, \cnaclass{EnvironmentMapEffect}'s \texttt{envMap} field on this backend was hardcoded to
-the concrete type \texttt{const WebGPUTextureCubeBackend*} --- so binding an ordinary,
-upload-only \cnaclass{TextureCube} as \texttt{EnvironmentMapEffect.EnvironmentMap} worked, but
+the concrete type \texttt{const WebGPUTextureCubeBackend*} --- so binding an ordinary
+\cnaclass{TextureCube} as \texttt{EnvironmentMapEffect.EnvironmentMap} worked, but
 binding a \cnaclass{RenderTargetCube} (a different concrete class implementing the same
 \cnaclass{ITextureCubeBackend} interface) did not: the hardcoded-type cast failed silently,
 and the effect fell back to its own 1$\times$1 white cube default instead of throwing or
@@ -179,7 +180,7 @@ the real header:
 
 \begin{lstlisting}
 // WEBGPU-114: the cube-map sibling of IWebGPUSamplable -- lets both
-// WebGPUTextureCubeBackend (upload-only) and WebGPURenderTargetCubeBackend
+// WebGPUTextureCubeBackend and WebGPURenderTargetCubeBackend
 // (render-into) resolve safely to their own whole-cube view wherever a
 // GpuDrawParams::envMap needs to be sampled, via a dynamic_cast that
 // degrades to nullptr for a null or incompatible-type input.

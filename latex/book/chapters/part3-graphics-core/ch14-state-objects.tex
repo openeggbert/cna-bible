@@ -264,12 +264,13 @@ EasyGL correctly honors any explicit \texttt{Mip}-qualified filter, but \texttt{
 too), because CNA does not set \texttt{GL\_TEXTURE\_MAX\_LEVEL} per texture, and applying a
 mip-aware filter unconditionally to the common non-mipmapped case would render as GL-incomplete
 (solid black) instead. Second, and more severe: \texttt{Texture2D::SetData} at a mip level
-above~0 was a \emph{total, silent no-op} on both Vulkan and BGFX --- the same severity class
-of bug as the \cnaclass{Texture3D} / \cnaclass{TextureCube} \texttt{GetData} no-op from
-Chapter~\ref{ch:textures-rendertargets} --- and Vulkan additionally hardcoded a single mip
-level and never set a sampler's \texttt{minLod} / \texttt{maxLod} at all. Both are now fixed on
-all three hardware backends: mip-level \texttt{SetData} is real GPU upload everywhere, and
-EasyGL's \texttt{GL\_TEXTURE\_MAX\_LEVEL} incompleteness bug is fixed alongside it.
+above~0 was a \emph{total, silent no-op} on both Vulkan and BGFX --- the same historical
+failure shape their \cnaclass{Texture3D} / \cnaclass{TextureCube} readback paths once had
+(Chapter~\ref{ch:textures-rendertargets} now records the corrected live matrix) --- and Vulkan
+additionally hardcoded a single mip level and never set a sampler's \texttt{minLod} /
+\texttt{maxLod} at all. Both are now fixed on all three hardware backends: mip-level
+\texttt{SetData} is real GPU upload everywhere, and EasyGL's
+\texttt{GL\_TEXTURE\_MAX\_LEVEL} incompleteness bug is fixed alongside it.
 Anisotropic filtering itself: correct on Vulkan (queries the real device capability and
 clamps the requested level); EasyGL was silently falling back to plain trilinear filtering
 regardless of the requested anisotropy level until a fix wired real

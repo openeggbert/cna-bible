@@ -132,23 +132,29 @@ exactly fill the requested box.
 Beyond the structural deviation described above, \cnaclass{Texture3D} and
 \cnaclass{TextureCube} are both non-copyable (each owns a unique GPU handle) but movable ---
 \cnaclass{Texture3D} specifically gained move construction/assignment to satisfy a glTF
-content-pipeline reader's needs. Neither type's requested \cnaclass{SurfaceFormat} is honored
-by any backend; both are always stored as RGBA8 on the GPU regardless of what was requested.
+content-pipeline reader's needs. Their requested \cnaclass{SurfaceFormat} is not silently
+ignored: the shared \texttt{Texture::ValidateFormat()} gate rejects every value except
+\cnaclass{SurfaceFormat::Color} before a backend is created, so every surviving resource is
+RGBA8 by construction.
 
-\texttt{docs/texture3d-texturecube-support.md} is candid about the deepest gap here:
-\textbf{no backend implements a CPU shadow buffer for \texttt{GetData} readback} on either
-type, the way \cnaclass{Texture2D} does. \textbf{EasyGL} genuinely reads pixels back, via a
-real per-slice or per-face framebuffer plus \texttt{glReadPixels}. \textbf{Vulkan} and
-\textbf{BGFX} both make \texttt{GetData} a total, silent no-op --- the caller's buffer is
-left completely untouched, with no exception and no error of any kind, because the call falls
-through to an unimplemented base-class default. This escaped detection for a long time
-because the existing test suites for these methods only ever asserted that the call did not
-crash, never that the returned data was actually correct.
+Neither type keeps a \cnaclass{Texture2D}-style CPU pixel shadow. Every valid
+\texttt{GetData()} on a constructed backend therefore reaches that backend's own readback
+path. The old support document's claim that only EasyGL really implements this is now stale:
+EasyGL, Vulkan, BGFX, WebGPU, SDL GPU, and all three Direct3D backends have real GPU readback
+for both resource types. Their mechanisms differ --- framebuffer reads, staging copies,
+native lock/map calls, or a temporary BGFX transfer texture --- but all eight return actual
+sub-region bytes. Software adds a real level-0 CPU implementation for
+\cnaclass{TextureCube}, while its \cnaclass{Texture3D} factory is absent. Headless deliberately
+returns transparent-black placeholders. Chapter~\ref{ch:backend-architecture}'s
+\S\ref{sec:texture-volume-readback-matrix} gives the full factory/readback matrix, including
+the separate and much narrower \cnaclass{RenderTargetCube} result.
 
-Mip levels above~0 have the identical bug shape on every cell of the matrix except one:
-\textbf{EasyGL's \texttt{TextureCube}} alone pre-allocates real per-face storage per mip
-level (a fix from an earlier task); \textbf{EasyGL's \texttt{Texture3D}} and \textbf{both
-types on Vulkan and BGFX} all hardcode a single mip level regardless of what is requested.
+Authored mip-level upload and readback are likewise real on both ordinary resource types
+across those eight GPU backends. Exact public mip round trips are registered for EasyGL,
+Vulkan, BGFX, WebGPU, and SDL GPU; the Direct3D implementations allocate and address mip
+subresources too, although their cited smoke-test readbacks concentrate on discriminating
+level-0 subregions. This statement is about explicitly supplied mip data, not a promise that
+every backend automatically generates a mip chain after a level-0 upload.
 \texttt{CubeMapFace} validation, by contrast, is a place CNA is \emph{stricter} than FNA: an
 out-of-range face throws \texttt{std::out\_of\_range} at the public API layer, a safety check
 real XNA never performs at all.
@@ -186,12 +192,12 @@ for (int i = 0; i < 6; ++i) {
 }
 \end{lstlisting}
 
-One of this chapter's own already-stated facts constrains what this loop can safely do next.
-\texttt{GetData} on any of these six faces is a genuine no-op on Vulkan and BGFX (silently
-leaves the caller's buffer untouched) --- so a readback-based unit test of this exact loop can
-only run meaningfully on EasyGL, which is exactly why \texttt{docs/texture3d-texturecube-support.md}
-scopes its own \texttt{GetData} verification to that one backend. \texttt{skybox} \emph{can}
-now be bound to a custom \cnaclass{ShaderEffect} on EasyGL, per
+This loop can now be verified with a real \texttt{GetData()} round trip on any of the eight
+GPU backends above, rather than only on EasyGL as the stale support document still says.
+The strongest reusable checks deliberately distinguish slices, faces, off-origin regions,
+and mip levels; they do not merely assert that the call returned. Software can make the same
+check at level~0 for a cube. \texttt{skybox} \emph{can} also be bound to a custom
+\cnaclass{ShaderEffect} on EasyGL, per
 \S\ref{sec:texture3d-inheritance} above --- either through \texttt{SetTexture(int,
 TextureCube\&)} directly, or, since \cnaclass{TextureCube} now inherits \cnaclass{Texture},
 through the ordinary \texttt{GraphicsDevice.Textures[slot]} assignment every 2D texture in
@@ -242,8 +248,8 @@ per-call rebind) if disabling the \texttt{SetTexture()} call would make it fail.
 simultaneous multi-target binding (\cnaclass{RenderTargetBinding}'s own
 \texttt{(Texture*, CubeMapFace)} constructor exists specifically to build entries for that
 vector form, not for single-target binding). Rendering a small scene into a single cube face
-and then reading it back is the pattern a real-time reflection probe or a baked-environment-map
-tool would use:
+and then sampling that cube in a later draw is the pattern a real-time reflection probe or a
+baked-environment-map tool would use:
 
 \begin{lstlisting}
 RenderTargetCube probe(getGraphicsDeviceProperty(), 256, /*mipMap=*/false,
@@ -254,6 +260,13 @@ device.Clear(Color::CornflowerBlue);
 // ... draw the scene as seen looking down +Z from the probe's location ...
 device.SetRenderTarget(nullptr); // back to the backbuffer
 \end{lstlisting}
+
+Sampling and CPU readback are separate capabilities here. The code above can feed the cube to
+an effect without ever calling \texttt{probe.GetData()}; direct CPU readback of a
+\cnaclass{RenderTargetCube} is currently real only on WebGPU and SDL GPU. EasyGL, Vulkan,
+BGFX, and D3D9/11/12 construct and sample the target but inherit the cube interface's no-op
+\texttt{GetData()}, whose public wrapper produces transparent black. The central matrix in
+\S\ref{sec:texture-volume-readback-matrix} records this otherwise easy-to-miss split.
 
 Whether this actually produces a correct image is, per \S\ref{sec:rendertargets} below,
 backend-dependent in a way no amount of correct call-site code can work around: EasyGL renders
@@ -270,11 +283,16 @@ the example above; BGFX no longer belongs in that category.
 \cnaclass{RenderTarget2D} inherits both \cnaclass{Texture2D} and \cnaclass{IRenderTarget},
 which is what lets it be both drawn into and sampled as an ordinary texture afterward; its
 \texttt{Dispose(bool)} correctly throws \texttt{InvalidOperationException} if it is still
-bound to the device, matching FNA. \cnaclass{RenderTargetCube}, by contrast, inherits
-\cnaclass{GraphicsResource} directly rather than \cnaclass{Texture2D} --- a downstream
-consequence of the \cnaclass{TextureCube} structural deviation above --- and so it
-\emph{cannot} get the same bound-while-disposing guard, since \cnaclass{RenderTargetBinding}
-only ever stores a \texttt{Texture*}. This is tracked, not fixed.
+bound to the device, matching FNA. An earlier explanation for
+\cnaclass{RenderTargetCube}'s missing equivalent guard is now stale:
+\cnaclass{RenderTargetCube} does inherit \cnaclass{TextureCube} and
+\cnaclass{IRenderTarget}, while \cnaclass{TextureCube} itself inherits \cnaclass{Texture}, so
+\cnaclass{RenderTargetBinding} can store it through a \texttt{Texture*}. The guard is still
+absent for a different reason. The singular cube-target setter clears
+\texttt{currentRenderTargets\_} and retains only a boolean ``some target is bound,'' not the
+cube pointer; \cnaclass{RenderTargetCube} supplies no \texttt{Dispose(bool)} override of its
+own to compensate. The compatibility gap remains, but the former class-hierarchy explanation
+does not.
 
 \texttt{docs/rendertarget-support.md} once listed five further per-backend divergences here
 (Tasks~877--881) as open gaps, and an earlier pass of this chapter reproduced that list
