@@ -6,8 +6,8 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **541 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by twenty-three documentation commits: `944fa54`
+- Book: **543 physical PDF pages, 49 chapters, 6 appendices**.
+- The local branch is ahead of `origin/develop` by twenty-four documentation commits: `944fa54`
   (render-target binding/usage contracts), the Reset-order contracts batch, the resource-lifecycle
   audit, the construction/SDL-ownership audit, the multisample-backend-rebuild audit, and the
   Game/GraphicsDeviceManager lifecycle and callback/disposal audits, plus the Game
@@ -15,16 +15,54 @@ session log; this file is the concise live handoff.
   copy/replacement, service-provider/device-resolution, reader-registration, root/path, and
   Load-failure/type/cache-mutation, concurrency/reentrancy, content-manifest introspection,
   format-selection/fallback, ResourceContentManager/OpenStream, TitleContainer/TitleLocation,
-  ContentReader, ContentTypeReader, XNB header/decompression, and XNB type-reader-name/table
-  audits below. The previous twenty-two-commit count was accurate before this local batch and is
-  retained only in the
+  ContentReader, ContentTypeReader, XNB header/decompression, XNB type-reader-name/table, and
+  scalar/math-reader audits below. The previous twenty-three-commit count was accurate before this
+  local batch and is retained only in the
   historical session log.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
   reviewing `git push`. Its response explicitly rejected the request rather than granting
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: XNB type-reader-name grammar and table-admission contract
+## Latest completed batch: scalar/math XNB-reader layouts and generic-enum boundary
+
+No CNA source changes were made; the sibling repository remained a read-only authority. The
+primitive/math reader and registration families, umbrella registration, ContentReader composite
+methods, sharp-runtime BinaryReader/BinaryWriter, focused unit tests, real MonoGame SpriteFont
+fixtures, current FNA reader-manager source, and every CNA enum-reader reference establish:
+
+- CNA installs 13 primitive and 13 math reader factories only when explicitly registered; the
+  umbrella helper includes them but ContentManager construction does not. All inherit the common
+  exact serialized-version-zero rule, unlike FNA's version-discarding reader table.
+- Primitive wire values are explicit little-endian scalars; Boolean is one nonzero-true byte,
+  Char is a variable-length UTF-8-decoded UTF-16 code unit, and String is a 7-bit byte length plus
+  raw std::string bytes. Char/length failures remain binary-reader errors. String adds neither
+  UTF-8 validation nor maxStringBytes enforcement.
+- Geometry is direct component order: vectors, quaternion, M11..M44 matrix, RGBA Color, and the
+  documented Plane/Point/Rectangle/bounds/frustum/ray field sequences. Readers construct results
+  without their own finiteness, range, normal, min/max, size, or invertibility validation.
+- CNA has no generic EnumReader<T> class, key, or fallback. FNA's manager explicitly creates
+  generic enum readers. CNA's parser accepts an EnumReader table spelling, then factory lookup
+  rejects it as unregistered; callers need their own exact canonical factory.
+- The unit test uses the matching local BinaryWriter and direct ReadUntyped calls: all primitives
+  round-trip, but only 8 of 13 math readers get field checks. It covers no external scalar XNB,
+  header/table dispatch, malformed/truncated input, serialized version, Unicode/string edge, or
+  enum. Real MonoGame SpriteFont fixtures additionally exercise Char, Rectangle, and Vector3.
+
+Ch.8 now records the reader set, layouts, strict-version and validation behavior, generic-enum
+gap, and test scope. Full latexmk succeeded at **543 pages**; targeted undefined-reference and
+duplicate-label checks are empty; makeindex accepted **2,212** entries with zero rejected and
+zero warnings; git diff --check passes. Rendered physical pages **110--111** are clean. Ch.8 is
+**1,379** lines and Ch.6 is **621** lines. The plan-consistency validator remains absent from this
+checkout.
+
+Next recommended start: retain the XNB scope and audit the separate Decimal/DateTime/TimeSpan
+reader family, especially its platform guard, Decimal bit/scale validation, DateTime-kind loss,
+serialized versions, and fixture/test coverage. Treat the generic-enum gap as current develop
+behavior; implementing a universal enum mechanism is a compatibility and registration-design
+decision, not a documentation-only correction.
+
+## Previous completed batch: XNB type-reader-name grammar and table-admission contract
 
 No CNA source changes were made; the sibling repository remained a read-only authority. The
 recursive XnbTypeName parser, XnbTypeReaderTable parser, ContentReader initialization/factory

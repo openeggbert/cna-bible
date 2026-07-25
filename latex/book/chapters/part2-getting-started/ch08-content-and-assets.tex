@@ -498,6 +498,65 @@ policy. A future hardening pass should impose a per-name byte limit and generic 
 require full structural consumption with a defined assembly-suffix grammar, and choose explicitly
 whether empty, duplicate, or arity-inconsistent keys remain accepted for compatibility.
 
+\subsection{The scalar and geometry readers have literal layouts, but no enum fallback}
+\label{sec:xnb-scalar-math-reader-contract}
+
+Two intentionally small reader families form the value-type baseline: thirteen primitives and
+thirteen framework/math values. Their internal C\texttt{++} class names are not part of the XNB
+protocol; \texttt{RegisterPrimitiveXnbReaders()} and \texttt{RegisterMathXnbReaders()} install
+the real \texttt{Microsoft.Xna.Framework.Content.*Reader} keys. Calling the umbrella
+\texttt{RegisterAllBuiltInXnbReaders()} includes both families, but none is registered implicitly
+by constructing a \cnaclass{ContentManager}. Like every reader that does not override the common
+method, all twenty-six accept only serialized version zero under CNA's stricter
+\texttt{SupportsVersion()} policy. FNA reads and discards those table version integers, so a
+nonzero version on an otherwise familiar primitive is a deliberate CNA compatibility rejection.
+
+The primitive layouts are exactly the underlying \cnaclass{BinaryReader} operations, rather than
+host-memory copies: Boolean and signed/unsigned bytes consume one byte (any nonzero Boolean byte
+is true); 16-, 32-, and 64-bit integers are little-endian; \texttt{Single} and
+\texttt{Double} are little-endian IEEE-754 bit patterns. A \texttt{Char} is different from a
+two-byte C\texttt{++} \texttt{char16\_t}: it is one UTF-8-decoded UTF-16 code unit and may consume
+one to three input bytes. A four-byte code point is rejected because it requires a surrogate pair.
+The text reader takes a 7-bit byte length followed by those raw bytes into \texttt{std::string};
+it does not separately validate UTF-8 or apply \texttt{maxStringBytes}. Thus an XNB field called
+\texttt{String} is a length-delimited byte string at this boundary, with the same remaining-stream
+preflight and allocation caveat described for type-reader names above. Truncation and malformed
+character/length encodings retain the underlying binary-reader exceptions, not a reader-specific
+\cnaclass{ContentLoadException}.
+
+The geometric layouts are equally literal: \texttt{Vector2}, \texttt{Vector3}, and
+\texttt{Vector4} are two, three, and four Singles in component order; \texttt{Quaternion} is
+\texttt{x,y,z,w}; and \texttt{Matrix} is sixteen Singles in the source field order
+\texttt{M11} through \texttt{M44}. \cnaclass{Color} is four consecutive \texttt{r,g,b,a} bytes,
+not its packed integer representation. \cnaclass{Plane} is Vector3 normal then \texttt{D};
+\cnaclass{Point} is two Int32 values; and \cnaclass{Rectangle} is left, top, width, height as
+four Int32 values. A bounding box is min Vector3 followed by max Vector3, a sphere is center
+Vector3 followed by radius, a frustum is reconstructed from one Matrix, and a ray is position
+Vector3 followed by direction Vector3. These readers merely construct their value after consuming
+the fields: they do not add finite-value, normal-length, radius, min/max, rectangle-size, or
+matrix-invertibility validation. Any invariant a framework value enforces is therefore separate
+from XNB admission.
+
+There is no corresponding generic \texttt{EnumReader<T>} in current CNA. The source tree has no
+enum reader class, registration, or specialized factory key, and the umbrella registration cannot
+supply one. FNA's own reader manager explicitly instantiates generic enum readers (including
+\texttt{SpriteEffects} and \texttt{Blend}) for its reflection/AOT machinery. CNA's type-name
+normalizer can parse a generic EnumReader table name, but the later global factory lookup reports
+it as unregistered. A compiled asset whose root or nested object relies on a generic enum reader
+therefore cannot load without an application-provided exact canonical factory; a C\texttt{++}
+enum's underlying type alone is not a fallback policy.
+
+The focused primitive/math test writes values through the same local \cnaclass{BinaryWriter} and
+calls \texttt{ReadUntyped()} directly, without an XNB header, table, dispatch index, fixture from
+another producer, truncation case, or nonzero-version case. It checks every primitive reader, but
+only Vector2, Color, Plane, Point, Rectangle, BoundingBox, BoundingSphere, and Ray among the
+math layouts; Vector3, Vector4, Matrix, Quaternion, and BoundingFrustum have registration-only
+coverage there. The two real MonoGame SpriteFont end-to-end fixtures additionally exercise
+Char, Rectangle, and Vector3 through nested lists, but no located fixture proves the remaining
+layouts, Unicode edge cases, Boolean false/noncanonical true, malformed UTF-8, string bounds, or
+the enum gap. Treat this family as a transparent binary compatibility layer for the stated
+layouts, not as a validating schema or complete XNB value-type surface.
+
 \section{The resolution order, precisely}
 
 The earlier short three-way description is useful, but it hides two consequential facts: a
