@@ -318,6 +318,22 @@ the cull-mode mapping itself required a pixel test to correct an initially plaus
 winding interpretation, so copying a stencil front/back mapping without an equivalent
 differential stencil test would risk making an invisible wrongness look ``implemented.''
 
+\section{Clear is selective on two target types, unconditional on the third}
+
+Three pending Booleans independently select colour, depth, and stencil load operations for the
+backbuffer and a preserve-content \cnaclass{RenderTarget2D}; a discard-content target forces all
+three, as its usage permits. Switching targets flushes the outgoing pass and consumes the
+flags. Values are nevertheless global, so repeated clears before that flush collapse rather
+than interleave with already-queued draws.
+
+\cnaclass{RenderTargetCube} is different. The backend interface never conveyed the cube's
+preserve-contents usage, so every cube-face pass unconditionally clears all three attachments
+from the current global values. Shared \cnaclass{GraphicsDevice} also fails to retain the
+singular cube in its active-target list, leaving its depth format invisible to the FNA-style
+mask. Existing readback proves immediate colour replacement and the combined 2D-target path;
+it does not isolate these cube/option edges. The full comparison is
+\S\ref{sec:backend-clear-matrix}.
+
 \section{What remains open}
 
 Several gaps are shared with every other CNA backend rather than unique to this one: no

@@ -135,6 +135,18 @@ throws immediately, rather than silently truncating or wrapping. \texttt{free-di
 propagates that failure as a real, catchable exception instead of masking it --- a case where
 the honest answer for a request the backend genuinely cannot satisfy is simply to say so.
 
+\section{Public depth/stencil clear}
+
+The ordinary colour hook locks and fills the complete active surface with all four requested
+channels, and target-redirection tests prove that ``active'' changes between the shadow
+backbuffer and a \cnaclass{RenderTarget2D}. Depth and stencil follow two different layers.
+\cnaclass{GraphicsDevice} sees \texttt{SupportsDepthStencil()==false}, strips both flags, and
+returns silently when no target bit remains --- the same depthless-target rule current FNA
+uses. \texttt{dx3\_no3d\_test.cpp} separately invokes all six backend combination hooks and
+proves their \texttt{ThrowNo3D} errors precisely because those hooks are unreachable through
+the public mask. Treating either result as evidence for the other would conflate shared and
+backend contracts; \S\ref{sec:backend-clear-matrix} keeps them separate.
+
 \section{Known, permanent limitations}
 
 No 3D pipeline exists, matching \texttt{free-direct}'s own explicit ``Direct3D not

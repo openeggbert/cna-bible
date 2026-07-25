@@ -245,6 +245,15 @@ target turns out to have real gaps in that support (Chapter~\ref{ch:backend-arch
 covers several). \texttt{CANVAS} and \texttt{ASCII} are architecturally different: neither one
 \emph{attempts} 3D at all, and this is enforced in code, not merely asserted in prose.
 
+Clear calls illustrate why ``the backend throws for 3D'' does not automatically describe the
+public API. Both products report no depth/stencil support, so
+\cnaclass{GraphicsDevice}\texttt{.Clear} masks those bits before dispatch: depth/stencil-only is
+a silent FNA-faithful no-op and a target-containing request performs the ordinary colour clear.
+Canvas then overwrites the active browser context; ASCII delegates to its SDL-rendered
+off-screen target. The direct combination hooks below still throw when tests call the backend
+itself, but public code cannot reach those throws through the masked path
+(\S\ref{sec:backend-clear-matrix}).
+
 \subsection{ASCII: a dedicated test proves every 3D entry point throws}
 
 \texttt{AsciiGraphicsBackend} forwards every 3D-pipeline method it does override directly to

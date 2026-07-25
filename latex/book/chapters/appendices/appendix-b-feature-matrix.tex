@@ -25,12 +25,13 @@ EASYGL & Broadest 3D feature coverage of any backend. Own bug list explicitly st
   fixed by reading the current shader source directly (Task~1111/1112). & Ch.~\ref{ch:easygl-backend} \\
 VULKAN & Second-most mature. BlendState/stencil both had ``accepts params, discards them''
   bugs, now fixed. Occlusion queries went from never-wired to fully real. 1 open item
-  (DepthBias extreme-magnitude sub-case); \cnaclass{RenderTargetCube} sampling still renders
-  black for two distinct, separately-tracked reasons (Task~875/876). & Ch.~\ref{ch:vulkan-backend} \\
+  (DepthBias extreme-magnitude sub-case); both formerly-open render-target black cases are
+  now regression-proven closed (Task~875/876), although Task~876's exact fixing commit was not
+  bisected. & Ch.~\ref{ch:vulkan-backend} \\
 BGFX & 37 of 38 originally-found gaps fixed in one session; the 38th (DepthBias, a genuine
   gap in the underlying bgfx library) fixed too. 2 remaining failures are environment
   ceilings, not code bugs; \cnaclass{RenderTargetCube} sampling's former wrong-handle-type
-  cast (Task~873/874) is fixed, unlike Vulkan's still-unresolved black-render equivalent. &
+  cast (Task~873/874) and Vulkan's formerly-black equivalent are both fixed. &
   Ch.~\ref{ch:bgfx-backend} \\
 WEBGPU & Experimental, activated 2026-07-12. Native 2D baseline plus growing 3D (PBR, skinning,
   render targets, instancing, mip generation). Excluded from this matrix's own cross-backend
@@ -110,8 +111,9 @@ Per-slot \texttt{SamplerState} (16 slots) & OK & OK & OK & OK &
   P & OK & OK \\
 \texttt{GraphicsDevice.}\allowbreak\texttt{ReferenceStencil} & X & OK & X & N/A & --- & OK & N/A \\
 \texttt{Clear} honors \texttt{ClearOptions::}\allowbreak\texttt{Stencil} &
-  OK\textsuperscript{c} & OK\textsuperscript{c} & OK\textsuperscript{c} &
-  P & --- & P & --- \\
+  OK\textsuperscript{c} & P\textsuperscript{c} & P\textsuperscript{c} &
+  N/A\textsuperscript{c} & P\textsuperscript{c} & OK\textsuperscript{c} &
+  OK\textsuperscript{c} \\
 \bottomrule
 \end{longtable}
 \end{center}
@@ -130,13 +132,15 @@ decision is involved. See Chapter~\ref{ch:sdl-renderer}.
 \noindent\textsuperscript{c}\textbf{This grid deliberately corrects the source document.}
 \path{docs/graphics-backend-feature-matrix.md} still marks this row \texttt{X} ``ignored, all
 3 (Task~871, open)'' for \texttt{EASYGL} / \texttt{VULKAN} / \texttt{BGFX} --- stale as of this
-book's own independent re-verification (Chapters~\ref{ch:graphicsdevice},
-\ref{ch:state-objects}, and \ref{ch:sdl-renderer} all cover the real fix, which closed the gap
-on all three hardware backends and found a real, previously-undiscovered Vulkan
-\texttt{stencilLoadOp} bug along the way). Treat this appendix's own \textbf{OK} here as more
-current than the source document's own \texttt{X} until that document is refreshed --- the same
-caution this appendix's closing section already asks a reader to apply project-wide, now with a
-concrete instance to point at.
+book's own independent re-verification. Public stencil dispatch now exists. EasyGL has
+selective D24S8 pixel proof. Vulkan/BGFX have cross-frame value proof but unconditionally clear
+all view/pass attachments, hence \texttt{P}, not \textbf{OK}. SDL\_Renderer has no stencil
+attachment and public masking makes the operation a no-op, hence \texttt{N/A}. D3D9's public
+test proves colour preservation but not stencil bytes and gates target clears with the
+backbuffer format, hence \texttt{P}; D3D11/D3D12 have direct GPU stencil-plane readback plus
+the public dispatch route. Even their \textbf{OK} assumes \texttt{Depth24Stencil8}: CNA's shared
+format mask wrongly retains stencil for depth-only target formats. The complete qualification
+is \S\ref{sec:backend-clear-matrix}.
 
 \noindent\textsuperscript{d}\textbf{Do not read this aggregate cell field-by-field.}
 The source document collapses culling, fill, bias, multisampling, and scissor enable into one

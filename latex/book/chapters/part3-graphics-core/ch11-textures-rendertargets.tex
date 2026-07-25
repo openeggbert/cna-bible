@@ -327,15 +327,17 @@ and BGFX's separate explicit-cube-null overload defect are recorded in
 \S\ref{sec:rendertargetcube-default-contracts}.
 
 Whether this actually produces a correct image is, per \S\ref{sec:rendertargets} below,
-backend-dependent in a way no amount of correct call-site code can work around: EasyGL renders
-this correctly; Vulkan renders black for either (or both) of two distinct, separately-tracked
-reasons; and BGFX's former unconditional \texttt{static\_cast} type-confusion bug has since
-been fixed by shared cube-sampling interfaces and virtual handle dispatch, as the detailed
-status below records. A porting engineer hitting a black cube face on Vulkan should treat this
-as a confirmed, known backend limitation rather than a bug in call-site code structured like
-the example above; BGFX no longer belongs in that category.
+backend-dependent in ways the call site cannot infer. EasyGL renders it correctly. Vulkan's
+two formerly-tracked black-render defects (Tasks~875/876) are now both closed: clear-only
+targets enter the used-target list, and the original cube-sampling regression test passes
+repeatedly end to end, although the exact incidental change that retired the second defect was
+not bisected. BGFX's former unconditional \texttt{static\_cast} type-confusion bug is likewise
+fixed by shared cube-sampling interfaces and virtual handle dispatch. The remaining transition,
+same-frame, and upload qualifications above still apply; ``Vulkan cube sampling is broken'' no
+longer does.
 
-\section{Render targets: a once-sharp per-backend divergence, mostly closed since}
+\section[Render-target divergences]{Render targets: a once-sharp per-backend divergence,
+mostly closed since}
 \label{sec:rendertargets}
 
 \cnaclass{RenderTarget2D} inherits both \cnaclass{Texture2D} and \cnaclass{IRenderTarget},
@@ -352,24 +354,25 @@ cube pointer; \cnaclass{RenderTargetCube} supplies no \texttt{Dispose(bool)} ove
 own to compensate. The compatibility gap remains, but the former class-hierarchy explanation
 does not.
 
-\texttt{docs/rendertarget-support.md} once listed five further per-backend divergences here
+The render-target support ledger once listed five further per-backend divergences here
 (Tasks~877--881) as open gaps, and an earlier pass of this chapter reproduced that list
 faithfully. Reading every backend's own current \texttt{.cpp} directly instead of trusting that
 document's status column finds four of the five already closed --- each superseded by a later
-task (\texttt{Task~903} / \texttt{907} / \texttt{911}) whose own fix comments the tracking document
+task (903, 907, or 911) whose own fix comments the tracking document
 was never updated to reflect, the identical ``a status that looked settled turned out to be
 stale'' pattern Chapters~\ref{ch:easygl-backend} and~\ref{ch:vulkan-backend} both ran into
 independently while auditing this exact same document for their own backends. What is actually
 still open, and what is now fixed:
 
 \begin{description}
-  \item[Sampling a \cnaclass{RenderTargetCube} face after rendering into it, then unbinding.]
-        \textbf{EasyGL}: works correctly. \textbf{Vulkan}: still renders black, for the two
-        distinct, separately-tracked reasons Chapter~\ref{ch:vulkan-backend} covers in full ---
-        a clear-only render target never actually records a render pass, and a second, separate
-        black-render defect whose root cause remains genuinely unresolved between two named
-        candidates. \textbf{BGFX}: fixed --- the unconditional \texttt{static\_cast} that once
-        read a framebuffer-pool handle where a texture-pool handle was expected
+  \item[Cube sampling.] Sampling a \cnaclass{RenderTargetCube} face after rendering into it,
+        then unbinding, works correctly on \textbf{EasyGL}. \textbf{Vulkan} now works in both
+        discriminating
+        regressions --- Task~875's clear-only case explicitly records the target, while
+        Task~876's original render-all-faces/then-sample test no longer reproduces the black
+        result (the exact fixing commit was not retroactively isolated).
+        \textbf{BGFX}: fixed --- the unconditional \texttt{static\_cast} that once read a
+        framebuffer-pool handle where a texture-pool handle was expected
         (Chapter~\ref{ch:bgfx-backend} names the exact mechanism) is gone, replaced by a real
         \texttt{dynamic\_cast} to a shared cube-samplable interface for the
         \cnaclass{EnvironmentMapEffect} path and virtual width/height dispatch for the ordinary

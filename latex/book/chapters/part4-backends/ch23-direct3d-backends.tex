@@ -395,6 +395,28 @@ The backend's real rasterizer-state pixel suite proves culling/fill/depth-bias-e
 it does not turn that specific full-target-only source behavior into viewport/scissor support.
 The complete product comparison is \S\ref{sec:backend-viewport-scissor-matrix}.
 
+\subsection{Clear: exact native bits do not imply one shared public contract}
+
+D3D11 immediately clears every bound RTV and selects the native depth and stencil clear bits
+independently when a DSV exists. D3D12 mirrors that selection with synchronous command lists.
+Both have strong
+direct-backend proof: stencil-plane bytes are read back from the GPU, changed to a second
+value, and depth is distinguished by whether one identical triangle passes. Those tests bypass
+\cnaclass{GraphicsDevice}'s active-format mask. That matters because the shared mask retains
+stencil for public \texttt{Depth16}/\texttt{Depth24}; D3D11/12 physically map
+\texttt{Depth24} to D24S8, but \texttt{Depth16} has no stencil plane. D3D12 also requires a
+bound colour resource at the start of every combination helper, so its headless off-screen
+device can throw before a depth-only no-op.
+
+D3D9's native \texttt{IDirect3DDevice9::Clear} bits are likewise immediate and individually
+selected, but their final gate consults \texttt{depthStencilFormatOrdinal\_}, the presentation
+format captured for the backbuffer. Binding a differently-formatted 2D or cube target never
+updates that field. A target can therefore lose a real depth clear when the backbuffer has no
+depth, or receive a stencil bit selected because the backbuffer has one. The smoke test's seven
+public combinations all use a D24S8 backbuffer and mostly check colour preservation, so they
+cannot reveal this mismatch. See \S\ref{sec:backend-clear-matrix} for the corresponding
+thirteen-product contrast.
+
 \section{An MRT set has to finish every target, not only the first}
 
 An ordinary single \cnaclass{RenderTarget2D} owns a simple end-of-use rule. When it is unbound,

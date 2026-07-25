@@ -6,20 +6,94 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **509 physical PDF pages, 49 chapters, 6 appendices**.
-- After the batch commit, the local branch is ahead of `origin/develop` by fifteen coherent
+- Book: **513 physical PDF pages, 49 chapters, 6 appendices**.
+- After the batch commit, the local branch is ahead of `origin/develop` by sixteen coherent
   documentation commits:
   roadmap, ShaderEffect/D3D ABI, general capability matrix, MSAA/anisotropy, buffer
   contracts, volume/cube readback contracts, and RenderTargetCube upload/transition
   contracts, followed by Texture2D update contracts, instancing/vertex binding, and input
   coordinate routing, public backbuffer readback, swap-interval contracts, and presentation
-  format/fullscreen contracts, recovery/debug-hook contracts, and viewport/scissor contracts.
+  format/fullscreen contracts, recovery/debug-hook contracts, viewport/scissor contracts, and
+  public `ClearOptions` contracts.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
   reviewing `git push`. Its response explicitly rejected the request rather than granting
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: viewport and scissor contract
+## Latest completed batch: `GraphicsDevice::Clear` / `ClearOptions`
+
+No CNA source changes were made; the sibling repository remained a read-only authority.
+Findings were verified against the live shared source, backend implementations, tests,
+Task 1113, and current FNA source:
+
+- CNA's `Clear(Color)` now correctly requests `Target | DepthBuffer | Stencil`, uses the
+  current viewport's `MaxDepth`, and therefore no longer matches Ch.9's stale “colour only”
+  description. Conversely the NOXNA raw-float overload bypasses shared routing and is not
+  equivalent to `Clear(Color)`: each backend receives only its plain `Clear(r,g,b,a)` hook.
+- The shared full overload validates an out-of-range depth before target-capability masking,
+  but only when `DepthBuffer` was requested. It derives one binary `hasRealDepthBuffer` value
+  from the backbuffer or the first bound target, then dispatches the seven non-empty flag
+  combinations. This is too coarse for XNA/FNA's real depth-format contract: FNA removes both
+  depth and stencil for `DepthFormat::None`, and removes stencil alone for every format other
+  than `Depth24Stencil8`.
+- The binary mask creates two concrete CNA defects. `Depth16`/`Depth24` targets still receive
+  a requested stencil clear. A singular `RenderTargetCube` is not retained in
+  `currentRenderTargets_` at all, so the mask falls back to the backend-wide backbuffer answer
+  and cannot see that cube's own `DepthFormat`; plural binding likewise recognizes only
+  `RenderTarget2D`. Cube clears can therefore be forwarded for nonexistent attachments or
+  suppressed according to unrelated backbuffer state rather than the active face.
+- FNA settles Task 1113's alleged open policy question: a depth/stencil-only clear on a
+  depthless active target is legal and becomes an empty, silent no-op. The SDL_Renderer audit
+  and render-target-depth-decision tests still expect throws and are stale; their assertions
+  fail before any backend `ThrowNo3D` hook can be reached because CNA's public mask follows the
+  same no-op policy. Target-containing combinations still clear colour.
+- Immediate backend behavior is not uniform. D3D11 selects the requested native views/flags
+  exactly after shared routing. D3D9 also issues exact `D3DCLEAR_*` flags, but gates them with
+  the presentation/backbuffer `depthStencilFormatOrdinal_` even while a custom target is bound;
+  target format and backbuffer format can therefore disagree. D3D12's exact offscreen
+  implementation still throws before a depth-only no-op if no colour resource is bound.
+  EasyGL's supposedly colour-only hook includes `GL_DEPTH_BUFFER_BIT`, so `Target` and the raw
+  float overload may clear depth too, and every GL clear remains scissor-sensitive.
+- Deferred Vulkan and BGFX render passes/views unconditionally clear all existing
+  colour/depth/stencil attachments at pass start, irrespective of the public option subset;
+  their depth-only hooks also fail to begin/touch an otherwise empty pass. WebGPU and SDL GPU
+  track independent pending flags (except discard/fresh-attachment clears), but still collapse
+  multiple same-pass calls to final clear values before queued draws. Software has independent
+  colour/depth storage but no real stencil. SDL Renderer, ASCII, Canvas, and DX3 mask
+  depth/stencil away publicly; Headless records synthetic operations only.
+- Existing proof is uneven. EasyGL tests public overload routing and depth-range validation;
+  cross-frame EasyGL/BGFX/Vulkan tests prove real stencil values; the generic depth test proves
+  the two colour+depth combinations but explicitly omits depth-only on Vulkan/BGFX. D3D9's smoke
+  test calls all seven public combinations but its depth/stencil checks mostly prove colour is
+  unchanged, while D3D12 has strong direct-backend depth/stencil readback proof rather than a
+  shared-API test. No current test discriminates the shared cube-mask defect, the
+  depth-without-stencil format rule, or deferred same-pass call ordering.
+
+- Ch.9 now states the overload and active-format contract; Ch.11 corrects the stale Vulkan
+  render-target ledger; Ch.14 narrows the stencil-mirror recommendation; Ch.16 carries the
+  complete fourteen-product matrix; Ch.17--25 carry backend-local qualifications; Appendices
+  A/B carry the portability warning and corrected compact capability row.
+- Final validation: a forced full build and the subsequent incremental build produce **513
+  pages**; targeted
+  undefined-reference and multiply-defined-label checks are empty; makeindex accepts **2,103
+  entries** with zero rejected and zero warnings; `git diff --check` passes. Rendered physical
+  pages 112--113, 127--128, 147--148, 171, 203--205, 217, 227, 231--232, 239, 253--254,
+  264--265, 274--275, 287, 293, 478, and 483 have no clipping, cell collision, page-edge
+  spill, malformed heading, running-header collision, or folio defect. Pages 254 and 265 are
+  intentional chapter-boundary blanks; the matrix header repeats correctly on both
+  continuation pages. All overfull warnings introduced by the batch were removed.
+- Exact line counts: Ch.9 1,220; Ch.11 526; Ch.14 353; Ch.16 1,697; Ch.17 413; Ch.18 396;
+  Ch.19 503; Ch.20 414; Ch.21 360; Ch.22 538; Ch.23 871; Ch.24 367; Ch.25 318; Appendix A
+  403; Appendix B 175.
+
+Next recommended start: select another independent public `GraphicsDevice` contract not
+already covered by the recent matrices, while avoiding the actively moving BlendState work in
+the sibling `feature/audit` worktree. A good first candidate is render-target binding/unbinding
+and `RenderTargetUsage` preservation, because the Clear audit exposed target-format and
+pass-lifetime interactions there. Re-read the live sibling source, tests, and plans before
+choosing; do not infer implementation status from old task labels.
+
+## Previous completed batch: viewport and scissor contract
 
 The public `GraphicsDevice.Viewport` / `ScissorRectangle` audit is complete:
 

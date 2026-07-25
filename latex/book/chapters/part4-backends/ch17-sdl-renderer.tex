@@ -242,13 +242,15 @@ out-of-bounds behavior, not because any real sampler-state value is being honore
 \texttt{MultiSampleCount} is accepted and ignored, always reporting zero. Fullscreen
 toggling round-trips correctly at the API level, but the audit is explicit that genuine
 OS-level fullscreen state cannot actually be verified inside this project's own headless
-\texttt{Xvfb} test environment. \texttt{Clear} honoring \texttt{ClearOptions::Stencil} correctly
-throws on this backend specifically (\texttt{ThrowNo3D}, the same 2D-only pattern every other
-3D-facing entry point in this chapter already follows) --- Task~871, once a real, genuine
-cross-backend no-op on every hardware backend, is now closed everywhere else too
-(Chapter~\ref{ch:graphicsdevice}/\ref{ch:state-objects} both cover the real fix in full); this
-backend was never part of that gap to begin with, since it has no stencil buffer concept for
-\texttt{Clear} to honor or fail to honor. Five real, multi-frame compatibility samples --- a 2D
+\texttt{Xvfb} test environment. \texttt{ClearOptions::DepthBuffer} / \texttt{Stencil} expose
+a shared-routing distinction from the rest of this chapter's 3D methods. The backend's six
+direct combination hooks do call \texttt{ThrowNo3D}, but public
+\cnaclass{GraphicsDevice}\texttt{.Clear} first sees \texttt{SupportsDepthStencil()==false} and masks
+both bits away. A depth/stencil-only request is therefore an FNA-faithful silent no-op; adding
+\texttt{Target} still clears colour. The two SDL-specific tests that expect public throws
+predate that mask and are stale (Task~1113), not proof that the direct hooks are reachable.
+Chapter~\ref{ch:graphicsdevice} and \S\ref{sec:backend-clear-matrix} separate the shared and
+backend layers in full. Five real, multi-frame compatibility samples --- a 2D
 demo, a bouncing-sprite physics scene, a keyboard-driven sprite, a two-glyph
 \cnaclass{SpriteFont} test, and an animated spritesheet --- are registered as genuine
 \texttt{ctest} entries rather than left as manual verification, giving this backend

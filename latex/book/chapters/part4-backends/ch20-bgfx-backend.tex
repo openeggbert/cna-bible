@@ -17,6 +17,18 @@ restyle the window, after which \texttt{EnsureViewState()} notices the dimension
 \texttt{bgfx::reset}; the empty presentation-format hook does not prevent that window route.
 \end{sourcenote}
 
+\section{One view clear is broader than seven public combinations}
+
+\texttt{EnsureViewState()} always installs the colour, depth, and stencil
+\texttt{BGFX\_CLEAR} flags; it does not vary those flags with
+\cnaclass{ClearOptions}. Colour and stencil entry points also touch the view, while
+\texttt{ClearDepth()} merely changes the global scalar and cannot initiate an otherwise-empty
+view. If a draw is later submitted, the full three-attachment clear still happens once at view
+start. Multiple public clears in one unadvanced frame consequently collapse to the last global
+values and precede all submitted draws. The cross-frame stencil regression proves the stencil
+value is real, not same-view issue ordering or attachment selectivity; see
+\S\ref{sec:backend-clear-matrix}.
+
 \section{Test baseline and the Phase 72 closure}
 
 At the time of writing, the full unit suite passes 4{,}375 of 4{,}377 tests (two hardware

@@ -336,6 +336,23 @@ vertex data uploaded through the ordinary non-options overloads round-trips corr
 custom-layout extension has no raw readback surface at all, while the separate dynamic-options
 shadow bug above affects typed data project-wide.
 
+\section{\texttt{Clear} is immediate GL state, but \texttt{Target} is not colour-only}
+
+The seven backend methods are real immediate \texttt{glClear} paths, and the depth/stencil
+variants correctly force full depth/stencil write masks before clearing. GL ignores the
+viewport for this operation but honors an enabled scissor, so a clear can cover less than the
+active target even though the custom viewport cannot narrow it.
+
+The plain \texttt{Clear(r,g,b,a)} hook is the exception: it requests both
+\texttt{Color|Depth} and does not force the depth mask. The shared full overload dispatches
+\emph{that same hook} for a target-only request; CNA's raw-float overload calls it
+directly as well. Either spelling can therefore clear depth that the caller did not request,
+or leave it untouched solely because an earlier state disabled depth writes. Existing overload
+tests verify the resulting colour and that a depth-only clear preserves colour, but never
+prime/test depth around a target-only call. This is why the cross-backend matrix in
+\S\ref{sec:backend-clear-matrix} does not promote those passing tests to complete option
+selectivity.
+
 \section{Test baseline}
 
 The feature matrix records exactly three known pre-existing test failures for this backend:

@@ -1150,6 +1150,147 @@ live call path behind it right now, not a currently-reachable gap --- worth reco
 as that, rather than either dismissing it as obviously dead without checking or citing it as an
 active risk without tracing where it actually leads.
 
+\section{ClearOptions: seven shared routes, fourteen execution models}
+\label{sec:backend-clear-matrix}
+
+\cnaclass{GraphicsDevice} converts the colour once, then selects exactly one of seven backend
+methods for the seven non-empty combinations of target/depth/stencil. Before that selection it
+validates a requested depth value and applies the active-target mask described in
+\S\ref{sec:clearoptions}. FNA's mask uses the actual \cnaclass{DepthFormat}: \texttt{None}
+retains target only, while every format except \texttt{Depth24Stencil8} removes stencil. CNA
+currently has only a binary depth-storage query, and its singular cube binding is absent from
+the tracked target list. The table begins \emph{after} those shared differences; ``exact'' means
+exact only for the flags that survived shared routing.
+
+\begingroup
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.12}
+\begin{longtable}{@{}p{0.13\textwidth}p{0.25\textwidth}p{0.27\textwidth}p{0.25\textwidth}@{}}
+\toprule
+\textbf{Product} & \textbf{Native/pass behavior} & \textbf{Option and target fidelity} &
+\textbf{Evidence boundary} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Product} & \textbf{Native/pass behavior} & \textbf{Option and target fidelity} &
+\textbf{Evidence boundary} \\
+\midrule
+\endhead
+\texttt{SDL\_\allowbreak{}RENDERER}
+  & Immediate \texttt{SDL\_RenderClear} of the active colour target.
+  & Public depth/stencil bits are masked away; depth/stencil-only is a silent no-op.
+    Direct six 3D hooks throw, but are unreachable through this public path.
+  & Two dedicated public tests still expect the obsolete throw behavior and fail. Their
+    colour assertions remain useful; Task~1113's policy question is settled by FNA. \\
+\texttt{ASCII}
+  & Delegates colour and all six combination hooks to the inner SDL renderer.
+  & Same public mask and no-op behavior; colour affects the off-screen game target before
+    character conversion.
+  & The dedicated test proves direct hooks throw, not that public masked calls throw. \\
+\texttt{EASYGL}
+  & Immediate \texttt{glClear}; viewport-independent but narrowed by an enabled scissor.
+    Depth/stencil-specific hooks force full write masks.
+  & The plain colour hook incorrectly includes \texttt{GL\_DEPTH\_BUFFER\_BIT} without forcing
+    depth writes. Thus public \texttt{Target} and the raw-float overload can clear depth too,
+    or fail to do so according to the prior depth mask. Other combinations select their bits.
+  & Public overload/range tests, generic depth tests, and cross-frame stencil pixel proof
+    exist. No test discriminates target-only depth preservation, depth-only formats, or the
+    cube-format mask. \\
+\texttt{VULKAN}
+  & Deferred render-pass clears. The backbuffer and discard-content targets clear every
+    existing attachment at pass start from final global values.
+  & Not option-selective. A preserve-content target loads colour and uses
+    \texttt{DONT\_CARE} for depth/stencil even after an explicit clear; \texttt{ClearDepth}
+    also fails to mark an otherwise-unused target. Calls before queued draws are reordered to
+    pass start.
+  & Cross-frame depth/stencil tests prove values on the backbuffer; the clear-only RT
+    regression proves Task~875's pass is now recorded for the default discard case. Neither
+    proves preserve-content or same-pass ordering. \\
+\texttt{BGFX}
+  & Every prepared view installs
+    \texttt{COLOR|DEPTH|STENCIL} through \texttt{setViewClear}; values are global and apply
+    once when the view executes.
+  & Not option-selective. \texttt{ClearDepth} changes only the scalar and does not touch an
+    otherwise-empty view; with a later submission all three attachments clear. Multiple calls
+    collapse to final values before all submissions.
+  & Generic colour+depth and cross-frame stencil tests pass. They deliberately do not exercise
+    depth-only no-draw behavior or same-view issue ordering. \\
+\texttt{WEBGPU}
+  & Backbuffer and 2D-target passes use independent pending colour/depth/stencil load ops;
+    a discard target forces all three. Calls are consumed when the outgoing target/pass flushes.
+  & Selective for backbuffer and preserve-content 2D targets after shared masking.
+    Cube passes always clear all three attachments because the backend interface did not convey
+    cube preserve usage; final global values win there.
+  & Same-call colour readback and combined 2D-target depth usage are proven. No isolated
+    depth/stencil or cube-option test was found. \\
+\texttt{SDL\_GPU}
+  & Independent pending flags and values exist per backbuffer, 2D target/MRT attachment, and
+    cube face; each becomes the matching SDL GPU load operation when the deferred pass begins.
+  & Selective after shared routing. A pass still collapses repeated calls before queued draws,
+    and shared code cannot inspect a singular cube's format.
+  & Smoke/render-state tests exercise the full combined form; no isolated option-order or
+    cube-format discriminator was found. \\
+\texttt{D3D11}
+  & Immediate full-view clears: all bound colour RTVs, plus exactly requested native
+    depth/stencil flags when a DSV exists.
+  & Backend selection is exact. Shared routing wrongly retains stencil for
+    \texttt{Depth16}/\texttt{Depth24}; the former has no stencil plane, while the latter is
+    physically mapped to D24S8 despite its depth-only public name.
+  & Strong direct-backend GPU readback proves stencil values and depth-only colour
+    preservation; ordinary public tests do not cover the format-mask edge. \\
+\texttt{D3D12}
+  & Immediate, synchronous command lists clear bound off-screen/swap-chain RTVs and selected
+    DSV flags exactly.
+  & Same format-mask issue as D3D11. In an off-screen device with no colour resource bound,
+    every combination helper checks that colour binding first, so even a depth-only no-op
+    throws \texttt{NotYetImplemented}.
+  & Strong direct-backend depth-test and stencil-plane readback proof exists. It bypasses the
+    shared public mask and requires a real bound target. \\
+\texttt{D3D9}
+  & Immediate \texttt{IDirect3DDevice9::Clear} with the selected
+    \texttt{D3DCLEAR\_*} bits.
+  & Native bits are further gated by the presentation/backbuffer
+    \texttt{depthStencilFormatOrdinal\_}, even while a differently-formatted 2D/cube target is
+    bound. The active attachment can therefore be skipped or receive an invalid extra bit.
+  & The smoke test calls all seven public combinations on D24S8, but most depth/stencil-only
+    checks prove only that colour stayed unchanged. No backbuffer/target-format mismatch test
+    exists. \\
+\texttt{SOFTWARE}
+  & Immediate CPU framebuffer clears with independent colour and depth arrays.
+  & Colour/depth selection is exact after shared routing. There is no stencil storage:
+    stencil-only is a no-op and combined forms ignore that component.
+  & Source-proven; broad rendering tests use clears, but no dedicated seven-combination
+    discriminator was found. \\
+\texttt{HEADLESS}
+  & Synthetic state only: colour forms update last-clear colour and one counter; depth/stencil
+    forms add counters/traces without pixels.
+  & Dispatch identity is visible in traces, not attachment contents. Backend-wide depth support
+    defaults true; per-target support merely echoes whether depth was requested.
+  & Smoke and trace-difference tests prove counters/names, not XNA rendering semantics. \\
+\texttt{CANVAS}
+  & Browser builds synchronously overwrite the whole active Canvas2D context (transparent
+    clears use \texttt{clearRect}); native non-Emscripten builds do nothing.
+  & Public depth/stencil is masked away. Direct combination hooks throw as unsupported 3D, but
+    public calls cannot reach them.
+  & Source-audited; no browser execution was performed for this audit. \\
+\texttt{DX3}
+  & Immediate locked full-surface RGBA fill of the active free-direct target, including caller
+    alpha.
+  & Public depth/stencil is masked away and becomes a no-op; direct 3D combination hooks throw.
+  & Dedicated tests prove exact colour/alpha, target redirection, public no-op masking, and the
+    otherwise-unreachable direct throws. \\
+\bottomrule
+\end{longtable}
+\endgroup
+
+No \cnaclass{GraphicsCapability} value reports clear selectivity or same-pass ordering.
+Portable code should use \texttt{Clear(Color)} for the conventional frame-start operation,
+avoid the raw-float overload, pass only attachments the active target publicly owns, and place
+clear calls before drawing. Even that discipline cannot repair Vulkan preserve-content clears,
+EasyGL target-only depth coupling, or a backend's cube-format routing; those are implementation
+gaps, not caller preconditions.
+
 \section{Viewport and scissor: one stored contract, fourteen raster contracts}
 \label{sec:backend-viewport-scissor-matrix}
 

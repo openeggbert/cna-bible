@@ -222,18 +222,23 @@ other backend.
 Four overloads, only two of which are real XNA:
 
 \begin{description}
-\item[\texttt{Clear(const Color\& color)}] clears the color buffer only, to \texttt{color}.
-\item[\texttt{Clear(ClearOptions options, const Color\& color, float depth, int stencil)}]
-  the full XNA form --- \texttt{options} is a bitwise-OR of \texttt{ClearOptions::Target}/%
-  \texttt{DepthBuffer} / \texttt{Stencil} (\S\ref{sec:clearoptions} below), \texttt{depth} is the
-  depth-buffer clear value in \texttt{[0,1]}, \texttt{stencil} is the stencil-buffer clear value.
-\item[\texttt{Clear(float r, float g, float b, float a)}] \texttt{NOXNA} (though under-tagged
-  in the header itself --- see the audit note below) --- a convenience equivalent to
-  \texttt{Clear(Color(r,g,b,a))} without constructing a \cnaclass{Color} at the call site.
-\item[\texttt{Clear(const Color\& color, float depth)}] \texttt{NOXNA} --- clears color and
-  depth together without needing to spell out \texttt{ClearOptions::Target |
-  ClearOptions::DepthBuffer} at every call site. This is the overload the worked example in
-  \S\ref{sec:worked-drawprimitives} below actually uses.
+\item[\texttt{Clear(Color)}] Requests target, depth, and stencil together, matching XNA/FNA.
+  The depth value is the current
+  \texttt{Viewport.MaxDepth}, not an unconditional \(1.0\), and stencil is cleared to zero. A
+  target without those attachments is reduced by the shared mask described in
+  \S\ref{sec:clearoptions}.
+\item[\texttt{Clear(options,\ldots)}] The full XNA form accepts options, colour, depth, and
+  stencil. The options are a bitwise-OR of \texttt{Target}, \texttt{DepthBuffer}, and
+  \texttt{Stencil} (\S\ref{sec:clearoptions} below); depth is the clear value in
+  \texttt{[0,1]}, and stencil is the stencil-buffer clear value.
+\item[\texttt{Clear(r,g,b,a)}] \texttt{NOXNA} (though under-tagged in the header itself --- see
+  the audit note below) --- bypasses the full shared overload and invokes the backend's plain
+  colour hook directly. It is therefore \emph{not} equivalent to
+  \texttt{Clear(Color(r,g,b,a))}: EasyGL's hook also clears depth, Vulkan/BGFX fold it into a
+  broader pass/view clear, while most other products clear colour alone.
+\item[\texttt{Clear(Color,depth)}] \texttt{NOXNA} --- clears color and depth together without
+  needing to spell out the target and depth-buffer option flags at every call site. This is
+  the overload the worked example in \S\ref{sec:worked-drawprimitives} below actually uses.
 \end{description}
 
 FNA's \texttt{Clear(ClearOptions, Vector4, float, int)} overload (color as a \texttt{Vector4}
@@ -1012,7 +1017,7 @@ an API surface that reads as a genuine hardware query but is only actually backe
 twelve backends --- worth knowing before writing portable code that branches on either method's
 return value.
 
-\section{ClearOptions: one closed gap, one still genuinely open}
+\section{ClearOptions: public dispatch is complete; attachment masking is not}
 \label{sec:clearoptions}
 
 \cnaclass{ClearOptions} is a three-value flags enum (\texttt{Target=1}, \texttt{DepthBuffer=2},
@@ -1021,56 +1026,60 @@ on \cnaclass{DisplayOrientation} in Chapter~\ref{ch:game-loop}. \texttt{ClearOpt
 was, for a real stretch of this project's history, a confirmed no-op on EasyGL and Vulkan (Task~%
 871) --- \texttt{GraphicsDevice::Clear()} never even checked the flag, and neither backend's own
 stencil-clear path was reachable through the public API at all. It is fixed now, on every
-backend that has a real stencil buffer to clear: \texttt{Clear()} was extended with four new
+backend that can represent the operation: \texttt{Clear()} was extended with four new
 per-backend dispatch methods (\texttt{ClearStencil}, \texttt{ClearDepthAndStencil},
 \texttt{ClearColorAndStencil}, \texttt{ClearColorDepthAndStencil}), and the fix surfaced a real,
 independent bug on Vulkan specifically while closing it --- every one of this backend's
 render-pass-creation sites had \texttt{stencilLoadOp} hardcoded to
 \texttt{VK\_ATTACHMENT\_LOAD\_OP\_DONT\_CARE}, discarding whatever stencil clear value a caller
-requested regardless of what \texttt{Clear()} itself now correctly dispatched. A real
-methodology finding came out of testing this fix, worth knowing on its own: an initial
+requested regardless of what \texttt{Clear()} itself now dispatched.
+
+A methodology finding came out of testing this fix, worth knowing on its own: an initial
 same-frame test (stamp a stencil value, clear it, compare, all within one \texttt{Draw()} call)
 failed on Vulkan and BGFX even with the fix correctly applied, because both backends defer an
 entire frame's draws into one command buffer/view whose own clear always applies once, before
 that frame's draws, regardless of the order \texttt{Clear()} / \texttt{DrawXxx()} were actually
 called in game code --- an artifact of this project's per-frame-batched rendering architecture,
-not a discriminating test. Splitting the stamp and the clear-plus-compare across two separate
-real frames fixed the test on all three hardware backends. This is a small, concrete example of
-the kind of specific, checkable claim Chapter~\ref{ch:what-is-cna} promised this book would
-preserve rather than round off to ``clearing works.''
+not a discriminating test. Splitting the stamp and the clear-plus-compare across real frames
+proves the requested value eventually reaches all three hardware backends, but it does
+\emph{not} prove same-frame call ordering or per-flag selectivity. The fourteen-product matrix
+in \S\ref{sec:backend-clear-matrix} records that stricter boundary.
 
-\subsection{A silent no-op, not a thrown exception, for an impossible depth/stencil clear}
+\subsection{FNA settles the depthless-target policy; CNA's format mask is too coarse}
 
-\texttt{Clear()}'s own real implementation carries a second, distinct wrinkle worth reading
-directly from \texttt{GraphicsDevice.cpp} rather than assuming from the header alone. Before
-issuing any backend call, it checks whether the currently active render target genuinely has a
-real depth/stencil buffer --- via the currently bound \cnaclass{RenderTarget2D}'s own backend
-when one is set, or \texttt{IGraphicsBackend::SupportsDepthStencil()} for the back buffer
-otherwise --- and, if not, masks \texttt{options} down to \texttt{ClearOptions::Target} alone
-before doing anything else. This is a deliberate, documented design choice with a clear
-motivation: without it, plain \texttt{Clear(const Color\&)} --- which always requests
-\texttt{Target\ \textbar\ DepthBuffer\ \textbar\ Stencil}, matching FNA's own single-argument
-overload exactly --- would crash outright on a 2D-only backend with no depth buffer at all,
-rather than degrading gracefully to the color-only clear such a backend can actually perform.
+The full overload first validates \texttt{depth} only when \texttt{DepthBuffer} was requested;
+this happens \emph{before} target-capability masking. Thus an invalid depth still throws on a
+depthless target, while the same unused value on a target-only clear is ignored. CNA then asks
+the first bound \cnaclass{RenderTarget2D}'s backend whether requested depth storage is real, or
+uses the backend's \texttt{SupportsDepthStencil()} query for the backbuffer. If the answer is
+false it executes \texttt{options \&= ClearOptions::Target}; the remaining seven non-empty flag
+combinations dispatch to seven separate backend methods.
 
-The still-open question this masking leaves behind is what happens to a caller who asks for
-something narrower and more deliberate: \texttt{Clear(ClearOptions::DepthBuffer, color, 1.0f,
-0)} on a backend with no real depth buffer masks down to an \emph{empty} options value, and the
-call returns having cleared nothing at all, silently, with no exception and no way for the
-caller to tell the difference between ``the depth buffer was cleared'' and ``there was no depth
-buffer to clear, so nothing happened.'' Found running this project's own \texttt{SDL\_Renderer}
-regression suite --- a dedicated audit test expects exactly this call to throw, matching the
-``ask, don't catch'' philosophy \texttt{SupportsCapability} above is built around, and it
-currently does not, confirmed as a genuine, pre-existing behavior rather than a regression by
-reproducing it identically against an unmodified checkout. The project's own tracking leaves
-the resolution deliberately open rather than picking one side unilaterally: either the test's
-own expectation is the one that is wrong (a graceful, silent no-op may simply be the intended,
-documented contract, mirroring how \texttt{DX3}'s own equivalent test was written from the
-start to expect exactly this and check the honest internal method directly instead), or
-\texttt{Clear()}'s masking itself should learn to distinguish ``nothing was requested that this
-backend can't do'' from ``the caller explicitly asked for something impossible and deserves to
-be told'' --- a real API-design question, not a bug with one obvious fix, left to be settled
-against real XNA/FNA's own documented behavior for this exact case.
+Task~1113 left the empty result as an alleged policy question because two SDL\_Renderer tests
+expected an exception. Current FNA source resolves it directly. FNA discovers the active
+\cnaclass{DepthFormat}; for \texttt{None} it masks options to \texttt{Target}, and for any
+format other than \texttt{Depth24Stencil8} it removes \texttt{Stencil} alone. A
+depth/stencil-only request on a depthless target therefore becomes empty and returns silently.
+The two SDL tests are stale, not evidence for a different XNA rule; DX3's test already avoids
+the public mask and calls its throwing internal hooks directly for exactly this reason.
+
+CNA matches the \texttt{None}-means-no-op rule but loses the format's second dimension. Its
+single Boolean cannot distinguish \texttt{Depth16} or \texttt{Depth24} from
+\texttt{Depth24Stencil8}, so a requested stencil clear survives on both depth-only public
+formats. D3D11 and D3D12 happen to allocate a physical D24-UNORM-S8 resource for
+\texttt{Depth24}; that implementation
+detail does not change the XNA-visible rule that stencil was not requested by the target's
+format. A \texttt{Depth16} DSV has no such hidden stencil plane at all.
+
+Cube binding exposes the other routing defect. The singular cube setter clears the device's
+current-render-target list instead of retaining the active cube, so \texttt{Clear()} falls
+back to the backend-wide backbuffer answer and cannot inspect the cube's own
+\texttt{DepthFormat}. The plural path likewise recognizes only \cnaclass{RenderTarget2D}.
+Depth/stencil bits can therefore be kept or removed according to unrelated backbuffer/backend
+state rather than the active cube face. D3D9 compounds this by gating its native depth and
+stencil clear flags with the presentation depth/stencil-format ordinal even while a custom
+target is bound. These are concrete
+compatibility bugs; the silent empty no-op itself is not.
 
 This same finding connects directly to the \texttt{SupportsCapability} discussion above, and
 sharpens it: \texttt{CNA::GraphicsCapability::DepthStencilBuffer} exists in the enum, its own doc

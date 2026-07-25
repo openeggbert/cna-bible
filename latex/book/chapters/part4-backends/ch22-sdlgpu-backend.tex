@@ -505,6 +505,19 @@ remain code paths only, not validation claims, until run on real (or Wine/DXVK-c
 \texttt{D3D12} (Chapter~\ref{ch:direct3d-backends}) and \texttt{WebGPU}
 (Chapter~\ref{ch:webgpu-backend}).
 
+\section{Clear state is per target, but still per pass}
+
+Unlike Vulkan/BGFX, this backend carries independent pending colour, depth, and stencil flags
+for the swapchain, each 2D target/MRT attachment, and each cube face. The matching
+\texttt{SDL\_GPU\_LOADOP\_CLEAR} is selected only when that flag is set, so the backend side is
+option-selective. It also queues the same clear into every active MRT colour sibling.
+
+The timing remains deferred: one pass sees final pending values before all queued draws, not a
+chronological sequence of clear commands interleaved with those draws. Shared code also cannot
+inspect a singular cube's own depth format when applying the FNA-style mask. Current smoke and
+render-state tests exercise the full combined form but do not discriminate isolated options or
+same-pass ordering; \S\ref{sec:backend-clear-matrix} records that evidence boundary.
+
 \section{Verification methodology}
 
 Every claim above is backed by a real CTest binary, not a code read alone. Counting the actual

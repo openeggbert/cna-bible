@@ -154,16 +154,16 @@ is set once, as part of constructing each \cnaclass{DepthStencilState} --- this 
 does not rely on changing it independently afterward, which sidesteps the still-open gap
 flagged above (no real \texttt{SetReferenceStencil} override exists on EasyGL specifically,
 BGFX's own fix now notwithstanding; a technique needing a per-draw-call reference value without
-rebuilding the whole state object would hit that remaining gap directly on EasyGL). A
-stencil-only \texttt{Clear} call is real on all three hardware backends today (Task~871, fixed
---- see Chapter~\ref{ch:graphicsdevice}), so a game using this exact two-pass technique across
-multiple frames now has a genuine choice for resetting the mirror mask between frames: either
-call \texttt{Clear(ClearOptions::Stencil, ...)} explicitly, or keep relying on what this
-technique's own first pass already does regardless --- its unconditional
+rebuilding the whole state object would hit that remaining gap directly on EasyGL). Task~871
+made the requested stencil \emph{value} real on all three hardware backends, but did not make a
+stencil-only clear selective everywhere. EasyGL issues only the stencil bit; Vulkan/BGFX clear
+all pass/view attachments at pass start and can therefore disturb colour/depth too
+(\S\ref{sec:backend-clear-matrix}). Portable code should keep relying on what this technique's
+own first pass already does --- its unconditional
 \texttt{CompareFunction::Always} / \texttt{StencilOperation::Replace} configuration overwrites
 the stencil value outright every frame, never depending on it having been zeroed first, which
-is exactly why this specific technique never actually needed the fix to be correct in the
-first place.
+is exactly why this specific technique remains correct without assuming selective clear
+semantics.
 
 \section{RasterizerState}
 

@@ -302,6 +302,13 @@ preserves both values, unlike FNA. Passing a rasterizer into \texttt{SpriteBatch
 currently does not reach any backend. See
 \S\ref{sec:backend-viewport-scissor-matrix}.
 
+\textbf{Clear warning:} \texttt{Clear(Color)} requests colour, current
+\texttt{Viewport.MaxDepth}, and zero stencil; the raw-float overload bypasses that contract.
+FNA silently removes unavailable attachments, but CNA's binary mask cannot distinguish
+\texttt{Depth16}/\texttt{Depth24} from \texttt{Depth24Stencil8} and cannot see a singular
+cube's format. EasyGL, Vulkan, and BGFX do not preserve strict per-option semantics; deferred
+products can also move/collapse calls to pass start. See \S\ref{sec:backend-clear-matrix}.
+
 \textbf{Present-interval warning:} a stored
 \texttt{PresentationParameters.\allowbreak PresentationInterval} is requested state, not a query of the
 driver. The manager's VSync Boolean selects only One/Immediate; five products including
