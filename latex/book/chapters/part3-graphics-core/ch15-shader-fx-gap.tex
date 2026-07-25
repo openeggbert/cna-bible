@@ -280,31 +280,37 @@ shader's own \texttt{max(dot(...), 0.0)} clamps to a genuinely lit black. Only a
 world-space lighting can produce that second, specific result rather than merely happening
 to draw something.
 
-\subsection{A second, narrower gap this one uncovered: fixed vertex strides only}
+\subsection{A second, narrower gap this one uncovered, then closed: arbitrary layouts}
 
-The 3D draw path above only recognizes the five byte-strides EasyGL's pre-existing
-\texttt{ApplyLayout()} switch already knew about (16/20/24/32/52, one stock
-\texttt{VertexPositionXxx} type per case) --- deliberately scoped that way rather than
-solved in the same task, since several real ported sample shaders
+The first version of the 3D draw path above recognized only the five byte-strides EasyGL's
+then-existing \texttt{ApplyLayout()} switch knew about (16/20/24/32/52). Later PBR and
+vertex-color work expanded the fixed family to 48/56/68 too, but a stride is still not a
+description of its internal fields. Arbitrary layouts were deliberately scoped out of the
+first task, since several real ported sample shaders
 (\texttt{NormalMapping.fx}'s \texttt{Position+Normal+Binormal+Tangent+TexCoord} layout,
-among others) need a vertex format that matches none of the five. A truly custom
-\cnaclass{VertexDeclaration} --- arbitrary element count, arbitrary per-element offset,
-any \cnaclass{VertexElementFormat} --- reads back correctly through the same 3D
-\cnaclass{ShaderEffect} draw path via a second, separately-tracked fix: \texttt{VertexBuffer::SetDataRaw()}
+among others) need element arrangements that match none of those fixed interpretations. A
+truly custom \cnaclass{VertexDeclaration} --- arbitrary element count, arbitrary per-element
+offset, any \cnaclass{VertexElementFormat} --- reads back correctly through the same 3D
+\cnaclass{ShaderEffect} draw path via a second, separately-tracked fix:
+\texttt{VertexBuffer::SetDataRaw()}
 now pushes the buffer's own \cnaclass{VertexDeclaration} down to the backend through a new
-\texttt{IVertexBufferBackend::SetVertexDeclaration()} call (default no-op, so Vulkan/BGFX/SDL\_Renderer
-needed zero code changes for this to stay correct), and \texttt{ApplyLayout()} binds
+\texttt{IVertexBuffer}\allowbreak{}\texttt{Backend::}\allowbreak{}%
+\texttt{SetVertexDeclaration()} call (default no-op, so
+Vulkan/BGFX/SDL\_Renderer needed zero code changes for this to stay correct), and
+\texttt{ApplyLayout()} binds
 generically from that declaration when one is present --- GLSL attribute location equals
 the element's own index within the declaration --- falling straight through to the
 original stride-keyed switch, unchanged, whenever no declaration was supplied. This is a
 purely additive capability, not a replacement of the fixed-stride path the first worked
 example already exercises.
 
-The real test behind this (\texttt{easygl\_shadereffect\_custom\_vertex\_layout\_test.cpp})
+The real test behind this (\path{easygl_shadereffect_custom_vertex_layout_test.cpp})
 is worth citing for its own verification technique, not just its result: it declares a
-5-element, 48-byte layout (\texttt{Position} / \texttt{Normal} / \texttt{Tangent} / \texttt{TextureCoordinate} / \texttt{Color})
-that matches none of the five built-in strides, then diagnostically encodes three of the
-four non-position attributes directly into the output pixel
+5-element, 48-byte layout (\texttt{Position} / \texttt{Normal} / \texttt{Tangent} / %
+\texttt{TextureCoordinate} / \texttt{Color}). CNA now also has a fixed 48-byte PBR layout,
+but that one contains a four-float tangent and no trailing color; sharing a total stride does
+not make the records equivalent. The test diagnostically encodes three of the four
+non-position attributes directly into the output pixel
 (\texttt{FragColor = vec4(Normal.x, Tangent.y, TexCoord.x, Color.r)}) and draws the same
 quad twice with two independently-chosen sets of attribute values. Distinct, correctly-offset
 readback values across both draws is what proves each attribute is being read from its own

@@ -299,8 +299,12 @@ doubled shape, but split only by index width, \texttt{std::uint16\_t} or
 (vertex only) / \texttt{VertexCount} or \texttt{IndexCount} as read-only properties.
 \cnaclass{DynamicVertexBuffer} and \cnaclass{DynamicIndexBuffer} add only
 \texttt{IsContentLost} (always \texttt{false} in CNA) and a \texttt{SetDataOptions}-taking
-overload of every \texttt{SetData} above --- accepted for API conformance but currently
-ignored by every backend, per Chapter~\ref{ch:textures-rendertargets}'s own finding.
+overload of every \texttt{SetData} above. The class-level \texttt{dynamic} constructor flag is
+still ignored, but upload hints are real on EasyGL, SDL GPU, D3D9, and D3D11; the other
+constructible backends discard them. The options-taking wrappers currently fail to update the
+shared CPU readback shadow, so inherited \texttt{GetData} is broken after such an upload on a
+non-\texttt{WriteOnly} dynamic buffer. Chapter~\ref{ch:textures-rendertargets} has the full
+matrix and exact exception behavior.
 
 \cnaclass{Effect} itself (Chapter~\ref{ch:stock-effects}) is deliberately thin: a
 \texttt{CurrentTechnique} property, \texttt{Parameters} / \texttt{Techniques} collections, a

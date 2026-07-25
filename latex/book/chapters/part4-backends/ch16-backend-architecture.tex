@@ -129,6 +129,89 @@ discarding every setter. Chapter~\ref{ch:shader-fx-gap} gives the full live matr
 architectural lesson here is that each method on this permissive interface is an independent
 capability, even after compilation succeeds.
 
+\subsection{Buffer streaming: one ignored constructor flag, four real hint mappings}
+
+\cnaclass{IVertexBufferBackend} has two permissive defaults that originally made the public
+buffer family look simpler than it now is. \path{SetDataWithOptions()} discards its
+\cnaclass{SetDataOptions} argument and calls plain \texttt{SetData()}; and
+\path{SetVertexDeclaration()} discards the caller's element list. The index interface has
+the analogous \path{SetData16WithOptions()} / \path{SetData32WithOptions()} forwarding
+defaults. These methods are all reachable on the ten 3D-capable implementations, unlike the
+unreachable \texttt{SetData32} throw discussed next.
+
+The shared public constructors impose one universal limit before that backend split. Each
+\texttt{Dynamic*} class passes \texttt{dynamic=true} to its protected base constructor, but
+that constructor leaves the parameter unnamed and calls the same factory as the static class.
+The type therefore never selects a different allocation merely by being dynamic. That does
+\emph{not} mean every upload hint is ignored:
+
+\begingroup
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{@{}p{0.20\textwidth}p{0.26\textwidth}p{0.46\textwidth}@{}}
+\toprule
+\textbf{Backend} & \textbf{Options route} & \textbf{Actual update contract} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Backend} & \textbf{Options route} & \textbf{Actual update contract} \\
+\midrule
+\endhead
+\texttt{EASYGL}
+  & explicit, distinct & \texttt{Discard} orphans storage then uploads at offset zero;
+    \texttt{NoOverwrite} uses sub-data in place. Vertex buffers need an existing allocation.
+    Index-buffer \texttt{NoOverwrite} additionally falls back to reallocation when context
+    recovery is disabled, because its eligibility check is coupled to the absent CPU shadow. \\
+\texttt{SDL\_GPU}
+  & explicit, distinct & \texttt{None}/\texttt{Discard} set
+    \texttt{SDL\_UploadToGPUBuffer}'s \texttt{cycle} flag; \texttt{NoOverwrite} clears it. \\
+\texttt{D3D9}
+  & explicit, distinct & Every buffer is native dynamic storage. \texttt{NoOverwrite} uses
+    \texttt{D3DLOCK\_NOOVERWRITE}; both other values use \texttt{D3DLOCK\_DISCARD}.
+    A freshly created or grown buffer forces discard regardless of the requested option. \\
+\texttt{D3D11}
+  & explicit, distinct & Every buffer is \texttt{D3D11\_USAGE\_DYNAMIC}.
+    \texttt{NoOverwrite} maps to \texttt{D3D11\_MAP\_WRITE\_NO\_OVERWRITE}; both other values
+    map to \texttt{D3D11\_MAP\_WRITE\_DISCARD}. \\
+\texttt{VULKAN}, \texttt{BGFX}
+  & inherited default & The option is discarded. Vulkan copies to persistently mapped memory;
+    BGFX updates its dynamic handle at element zero. \\
+\texttt{WEBGPU}, \texttt{D3D12}
+  & explicit, ignored & WebGPU always calls \texttt{wgpuQueueWriteBuffer}; D3D12 always performs
+    its synchronous staging-buffer copy and fence wait. \\
+\texttt{SOFTWARE}, \texttt{HEADLESS}
+  & explicit, ignored & Software replaces its CPU bytes. Headless records the same generic
+    \texttt{SetData} trace, with no option identity retained. \\
+\texttt{SDL\_RENDERER}, \texttt{ASCII}, \texttt{CANVAS}, \texttt{DX3}
+  & unreachable & Buffer construction fails first under their 2D-only contract. \\
+\bottomrule
+\end{longtable}
+\endgroup
+
+EasyGL has the strongest public pixel proof:
+\path{easygl_dynamic_buffer_stress_test.cpp} cycles all three enum values over twelve
+successive colored-quad frames and reads the center pixel each time. SDL GPU's smoke test
+calls both distinct paths for vertex and index buffers but checks only the resulting count,
+so the native \texttt{cycle} distinction is established by source, not by that assertion.
+WebGPU's own plan still leaves its option-specific buffer tests open.
+
+One bug sits above every row in this table. The options-taking public wrappers pack and upload
+their bytes but never update the shared \cnaclass{VertexBuffer}/\cnaclass{IndexBuffer}
+\texttt{cpuShadow\_}. Consequently a non-\texttt{WriteOnly} dynamic buffer's inherited
+\texttt{GetData()} cannot return the data just uploaded: on a fresh instance the empty shadow
+produces \texttt{ArgumentOutOfRangeException}; after an older ordinary upload it can return
+stale data. Chapter~\ref{ch:textures-rendertargets} gives the caller-facing consequence.
+
+The declaration default has one live override too. \path{VertexBuffer::SetDataRaw()} sends
+its element list through \path{SetVertexDeclaration()} before upload. EasyGL consumes all
+twelve \cnaclass{VertexElementFormat} shapes and binds GLSL attribute locations by declaration
+order; the other nine constructible implementations inherit the no-op and remain dependent on
+their fixed stride/effect combinations. The EasyGL test is deliberately discriminating even
+after the fixed layout family grew: its custom record is 48 bytes, the same total as CNA's PBR
+vertex, but has different offsets and a trailing color. Correct diagnostic pixels therefore
+prove the declaration won over the fixed 48-byte interpretation.
+
 \subsection{IIndexBufferBackend::SetData32: a defensive throw traced out to dead code}
 
 Not every default in this file is a silent no-op. \cnaclass{IIndexBufferBackend}'s

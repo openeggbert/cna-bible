@@ -258,7 +258,14 @@ Both throw \texttt{NotSupportedException} correctly when \texttt{GetData} is cal
 \texttt{BufferUsage::WriteOnly} buffer, matching real XNA's own documented restriction --- the
 shadow exists but is deliberately not consulted in that case.
 
-\subsection{The one real gap this correction actually leaves standing: \texttt{SetDataRaw}}
+There is one shared typed-path exception this chapter's earlier wording missed:
+the options-taking \texttt{SetData} wrappers on both dynamic buffer classes upload correctly
+but never refresh their public \texttt{cpuShadow\_} vectors. With
+\texttt{BufferUsage::None}, an inherited \texttt{GetData} after that normal dynamic upload
+sees an empty or stale shadow; this fails identically on every backend and is not an EasyGL
+readback limitation. Chapter~\ref{ch:textures-rendertargets} traces the exact path.
+
+\subsection{The separate raw-layout gap: \texttt{SetDataRaw}}
 
 Chapter~\ref{ch:backend-architecture}'s Task~1080 custom-vertex-layout capability --- EasyGL's
 own extension letting a caller supply an arbitrary \cnaclass{VertexDeclaration} instead of only
@@ -283,9 +290,10 @@ void VertexBuffer::SetDataRaw(const void* data, int count, int stride)
 caller who populates a buffer through \texttt{SetDataRaw()} and then genuinely needs the data
 back has no API surface to ask with at all, typed or raw. This is a narrower, more precisely
 scoped gap than the earlier ``not implemented at all'' framing suggested: ordinary XNA-shaped
-vertex data round-trips correctly through \texttt{GetData} on this backend exactly like every
-other one, and only the \texttt{NOXNA} custom-layout extension point that Task~1080 added is
-where a real readback gap survives.
+vertex data uploaded through the ordinary non-options overloads round-trips correctly through
+\texttt{GetData} on this backend exactly like every other one. The \texttt{NOXNA}
+custom-layout extension has no raw readback surface at all, while the separate dynamic-options
+shadow bug above affects typed data project-wide.
 
 \section{Test baseline}
 

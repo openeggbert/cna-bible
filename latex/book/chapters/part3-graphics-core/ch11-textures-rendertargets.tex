@@ -358,34 +358,88 @@ shadow copy is a faithful, sufficient implementation of read-your-own-writes sem
 \cnaclass{VertexPositionNormalTexture}, and
 \cnaclass{VertexPositionTexture} --- plus a
 \texttt{NOXNA} skinned variant and a raw \texttt{SetDataRaw(data, count, stride)} escape hatch
-for layouts with no dedicated XNA struct). \cnaclass{DynamicVertexBuffer} and
+for layouts with no dedicated XNA struct. \cnaclass{DynamicVertexBuffer} and
 \cnaclass{DynamicIndexBuffer} add \texttt{IsContentLost} (always \texttt{false}) and
-\texttt{SetData(..., SetDataOptions)} overloads --- but the \texttt{dynamic} construction flag
-and the \texttt{Discard} / \texttt{NoOverwrite} streaming hints are both accepted purely for API
-conformance and currently ignored by every backend: static and dynamic buffers take the
-identical GPU upload path today, regardless of the hint given.
+\texttt{SetData(..., SetDataOptions)} overloads. One half of the chapter's old simplification
+is still true: the protected \cnaclass{VertexBuffer} and \cnaclass{IndexBuffer} constructors
+receive a \texttt{dynamic} boolean from the two derived classes but deliberately leave the
+parameter unnamed and never pass it to a backend factory. Choosing \texttt{Dynamic*} therefore
+does not itself select different storage. D3D9 and D3D11 allocate their ordinary and dynamic
+buffers through the same always-dynamic native path; BGFX likewise uses dynamic handles for
+both. The \emph{per-upload} hint is no longer universally ignored, however:
 
-\section{Vertex layout: chosen by stride, not by declaration}
+\begin{itemize}
+  \item EasyGL maps \texttt{Discard} to buffer orphaning plus a new sub-data upload and
+    \texttt{NoOverwrite} to an in-place sub-data update. Its vertex path makes this distinction
+    whenever storage already exists. Its index path has one surprising coupling: when context
+    recovery is disabled, no backend CPU shadow is retained, so its
+    \texttt{NoOverwrite}-eligibility check fails and falls back to a fresh data allocation.
+  \item SDL GPU's native \texttt{cycle} flag is true for \texttt{None} and
+    \texttt{Discard}, but false for \texttt{NoOverwrite}. D3D9 uses the corresponding
+    \texttt{DISCARD}/%
+    \texttt{NO}\allowbreak{}\texttt{OVERWRITE} lock flags once storage exists (a fresh
+    allocation forces discard). D3D11 uses the corresponding
+    \texttt{WRITE\_}\allowbreak{}\texttt{DISCARD}/%
+    \texttt{WRITE\_}\allowbreak{}\texttt{NO\_OVERWRITE} map modes.
+  \item Vulkan and BGFX inherit the interface default, which discards the option and invokes
+    plain \texttt{SetData}. WebGPU and D3D12 explicitly receive but ignore it before their
+    queue-write or synchronous staging-copy path. Software and Headless likewise replace their
+    CPU/trace data without interpreting the hint. The four 2D-only backends reject buffer
+    construction before any of these methods can be reached.
+\end{itemize}
+
+The real \texttt{easygl\_dynamic\_buffer\_stress\_test.cpp} exercises the distinction through
+the public classes rather than calling a backend directly. Across twelve frames it cycles
+\texttt{None}, \texttt{Discard}, and \texttt{NoOverwrite}, uploads a differently colored
+six-vertex quad and six indices, draws, then reads the center pixel and checks the two public
+capacities. That is a genuine pixel proof that all three routes preserve current data through
+repeated use. It is not, by itself, proof of which native allocation primitive ran; the
+orphan/sub-data distinction is established by the implementation read above.
+
+\subsection{A shared readback hole in the options-taking path}
+
+That audit exposes a separate bug above every backend. The ordinary typed
+\path{VertexBuffer::SetData} and \path{IndexBuffer::SetData} overloads update the shared
+\texttt{cpuShadow\_} after uploading. None of the protected
+\path{SetDataWithOptions} overloads does. A \cnaclass{DynamicVertexBuffer} or
+\cnaclass{DynamicIndexBuffer} created with \texttt{BufferUsage::None} can therefore inherit
+\texttt{GetData}, but after its normal options-taking \texttt{SetData} call the shared shadow
+is still empty (or stale after an earlier ordinary upload): a fresh buffer throws
+\path{ArgumentOutOfRangeException} instead of returning the bytes just written.
+\path{BufferUsage::WriteOnly} still throws \path{NotSupportedException} by design; that
+documented restriction does not excuse the broken non-write-only case. This is shared public
+code, so changing graphics backend cannot avoid it.
+
+\section{Vertex layout: fixed by stride, except for EasyGL raw declarations}
 \label{sec:vertex-layout}
 
-The single most important fact in this section is one that is easy to miss reading the API in
-isolation: \textbf{every hardware backend selects its GPU vertex-attribute layout from the raw
-byte stride of the bound vertex buffer, not from the \cnaclass{VertexDeclaration}'s own
-element list.} \cnaclass{VertexDeclaration} is stored and used to compute the stride, and its
-individual \cnaclass{VertexElementFormat} / \cnaclass{VertexElementUsage} mapping tables are
-each individually correct on EasyGL, Vulkan, and BGFX --- but they are consulted only as an
-audit reference today, not by the active draw dispatch. Exactly five hardcoded strides render
-correctly: 16 bytes (\cnaclass{VertexPositionColor}), 20 (\cnaclass{VertexPositionTexture}),
-24 (\cnaclass{VertexPositionColorTexture}), 32 (\cnaclass{VertexPositionNormalTexture}), and
-52 (a custom skinned layout). Anything else falls back differently per backend: EasyGL
-renders position-only with a logged warning; Vulkan compiles no pipeline at all and silently
-skips the draw; BGFX falls back to position-plus-color-only, treating anything past that as
-padding, which produces visibly wrong shading if the shader in question actually reads a
-normal or UV attribute from that padding. SDL\_Renderer has no 3D vertex pipeline at all, so
-\texttt{CreateVertexBuffer()} throws immediately, consistent with its documented 2D-only
-scope.
+The ordinary typed paths still choose fixed GPU layouts from the uploaded byte stride. The
+current project-wide family has grown from five to eight shapes: 16, 20, 24, and 32 bytes for
+the four stock XNA vertex types; 48 for CNA's PBR tangent layout; 52 for GPU skinning; 56 for
+the same skinned data plus vertex color; and 68 for tangent-space PBR plus skinning. Exact
+shader/effect combinations remain backend-specific, so recognizing a stride is not a promise
+that every effect can consume it.
 
-If you are authoring a custom vertex layout for a ported game (this book's migration chapter
-returns to this), the practical rule this section implies is blunt: stick to one of the five
-recognized strides, or verify your chosen backend's fallback behavior directly, because the
-declaration you wrote is not what determines what actually reaches the GPU.
+There is now one deliberate exception to the stride-only rule.
+\path{VertexBuffer::SetDataRaw()} pushes the buffer's own
+\cnaclass{VertexDeclaration} element list through
+\path{IVertexBufferBackend::SetVertexDeclaration()} immediately before upload. That
+interface method defaults to a no-op, and EasyGL is currently its only override. EasyGL maps
+all twelve XNA element-format values to the correct GL attribute shape and uses the
+declaration's element order as GLSL locations \(0,1,\ldots\); the semantic
+\cnaclass{VertexElementUsage} does not choose the location.
+
+The pixel proof is stronger today than its original ``non-standard stride'' description.
+\path{easygl_shadereffect_custom_vertex_layout_test.cpp} supplies five elements in a
+48-byte record: three \texttt{Vector3} fields, one \texttt{Vector2}, and a trailing normalized
+\texttt{Color}. Forty-eight bytes is now also the size of CNA's fixed PBR layout, but that
+layout uses a four-float tangent and has no trailing color. The test encodes normal, tangent,
+UV, and color inputs into the output pixel; its two distinct, tolerance-bounded readbacks
+therefore prove that EasyGL followed the declaration's offsets rather than merely selecting
+its different fixed 48-byte case.
+
+The practical rule is consequently backend-specific. An arbitrary
+\cnaclass{VertexDeclaration} is a real EasyGL+\cnaclass{ShaderEffect} capability when uploaded
+through the \texttt{NOXNA} \texttt{SetDataRaw} path. Every other backend still discards that
+declaration at the interface default and relies on its known stride/effect combinations;
+SDL\_Renderer and the other 2D-only backends reject vertex-buffer construction outright.
