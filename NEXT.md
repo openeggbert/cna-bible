@@ -49,6 +49,11 @@ verification-ladder subsection. Its minimal document compiled successfully and t
 was rendered and read after a right-edge audit; it is therefore marked isolated LaTeX/PDF clean,
 not full-book clean, until the complete rebuild can run to completion.
 
+Ch.35 then gained an eighth pass documenting the real, deliberate `TaskT<TResult>::ContinueWith`
+gap: non-generic `Task` continuation machinery is live and tested, but generic tasks have only
+the synchronization needed by `WhenAny` and no callback list or public continuation method. Its
+minimal chapter document compiles cleanly; the full-book rebuild remains the outstanding check.
+
 This was an unusually long, multi-batch session (author unavailable for many hours, explicit
 "continue autonomously" instruction given partway through, repeated several times). Seven full
 batches landed in total (371 → 452 pages, +81), on top of the earlier SDL_GPU chapter insertion

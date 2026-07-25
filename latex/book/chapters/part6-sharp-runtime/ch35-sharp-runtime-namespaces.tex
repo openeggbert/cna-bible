@@ -256,6 +256,28 @@ grounded in the UTF-8 grammar by direct code reading, but --- consistent with th
 own recurring theme --- its correctness currently rests entirely on that reading, not on a
 passing test asserting it.
 
+\section{A deliberately incomplete continuation surface: \texttt{TaskT<TResult>}}
+
+The non-generic \cnaclass{Task} now has a real \texttt{ContinueWith} implementation: it keeps a
+mutex-protected callback list, invokes registered continuations inline when the antecedent
+completes, and is tested for success, fault, cancellation, chaining, and multiple registrations.
+That machinery also let \texttt{Task::WhenAny} stop spawning one watcher thread per input task.
+It is tempting to infer that the generic-result \texttt{TaskT<TResult>} has the same surface;
+it does not. Its own \texttt{State} intentionally contains only the completion mutex and
+condition variable needed to block \texttt{Wait()} / \texttt{getResultProperty()} for a
+future-less \texttt{WhenAny} result. It has no continuations list and no
+\texttt{TaskT<TResult>::ContinueWith} method.
+
+This is a real, recorded limitation rather than an accidental omission hidden by a stub. The
+existing state already supplies the synchronization groundwork, but a faithful implementation
+still needs a callback list and the same weak-pointer cycle-avoidance policy as \cnaclass{Task}.
+The current \texttt{WhenAny}/\texttt{WhenAll} helpers operate only on non-generic
+\cnaclass{Task}, so they did not require that API to close their own work. A caller can await a
+generic result or consume it with \texttt{getResultProperty()}, but cannot attach a continuation
+that receives the completed \texttt{TaskT<TResult>} object. That boundary is preferable to a
+plausible-looking method which silently executes on the wrong lifetime or scheduler model; it
+should remain documented as open until its generic continuation semantics and tests land.
+
 \section{The post-stabilization audit: distrusting a complete-looking task list on purpose}
 
 \texttt{sharp-runtime}'s own ticket backlog --- 1{,}709 tickets across sixteen categories ---
