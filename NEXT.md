@@ -81,6 +81,11 @@ GPU round-trip coverage was stale. `D3D9_Smoke` capability-gates a 4x4x4 volume 
 requires exact `LockBox()` readback. Oracle-scene coverage and automatic mip generation remain
 unproven. The 527-line isolated chapter compiled twice without introducing an overflow.
 
+**Current autonomous continuation — Ch.23 D3D9 render-target audit:** The chapter now covers
+the real 2D/cube target readback route, capability-gated 4x MSAA `StretchRect()` resolve, and
+caps-enforced MRT clear/unbind behavior. Its boundary is explicit: this proves attachment binding,
+clear, resolve, and target-count rejection, but not a multi-output fragment-shader draw.
+
 **Later continuation, also isolated-verified:** Ch.23 gained a ninth, source-grounded D3D11
 verification-ladder subsection. Its minimal document compiled successfully and the affected page
 was rendered and read after a right-edge audit; it is therefore marked isolated LaTeX/PDF clean,

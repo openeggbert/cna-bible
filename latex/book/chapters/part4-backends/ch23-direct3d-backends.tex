@@ -72,6 +72,26 @@ result in this section: \texttt{D3DCAPS9} itself is synthesized by DXVK on this 
 reported by genuine XNA-era driver hardware --- real-Windows-hardware verification remains
 open, as stated above.
 
+\subsection{D3D9 render targets prove native limits before promising a draw path}
+
+The D3D9 smoke test proves real render-target storage and recovery rather than treating an
+off-screen bind as a no-crash smoke test. An 8x8 target with Depth24Stencil8 is bound, cleared
+through the public device, and copied with D3D9's required
+\texttt{GetRenderTargetData()}--system-memory-surface--\texttt{LockRect()} route; its own surface
+must contain the exact requested color. A cube-face target has the same proof for one selected
+face, followed by an independent back-buffer clear/readback after unbind.
+
+MSAA is capability-gated by \texttt{IDirect3D9::CheckDeviceMultiSampleType()}, not assumed from
+the requested count. When 4x is available, a multisampled target is cleared and unbound; D3D9's
+\texttt{StretchRect()} resolve must make its separate sampleable texture read exactly
+\((200,210,220,255)\). The test proves the resolved result, not merely the multisample surface.
+
+Multiple render targets are also bounded by the real \texttt{D3DCAPS9::NumSimultaneousRTs}: two
+targets receive one exact-color clear, unbinding restores the back buffer, and requesting one
+more target than the device reports throws rather than silently truncating. This proves D3D9's
+multi-attachment binding and clear semantics. It does not separately prove a shader with several
+fragment outputs, so the result should not be generalized into a G-buffer draw claim.
+
 \subsection{A worked example: one real oracle scene, quoted in full}
 
 The oracle's own scene format is a small, declarative text file, not a compiled asset or a
