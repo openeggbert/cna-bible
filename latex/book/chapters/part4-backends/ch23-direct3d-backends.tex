@@ -215,6 +215,25 @@ exploiting CMake's own documented support for a static-library link cycle --- an
 confirmed genuinely pre-existing (via \texttt{git stash}, it reproduced identically on the
 base commit), not something the D3D11 work itself introduced.
 
+\subsection{The public presentation-mode call reaches D3D11 and D3D12, but neither scales yet}
+
+Chapter~\ref{ch:game-loop}'s \texttt{NOXNA} \texttt{Presentation\allowbreak{}Mode} is not lost before it
+reaches these backends: the public manager/device forwarding path passes the selected enum to each
+backend. But the final handlers are
+currently intentional no-ops. D3D11 explicitly discards \texttt{mode}; D3D12 has the same
+empty handler. They create and present their swap chain at the real SDL window's pixel size,
+not a separately rendered logical surface which could be letterboxed, cropped, or stretched.
+
+Their \texttt{SetVirtualResolution(width,height)} methods only retain the supplied integers.
+On D3D11, \texttt{GetViewportSize()} still queries the window's physical pixel size; on D3D12,
+the stored virtual dimensions are returned to the caller but do not create a scaling pass.
+Consequently setting \texttt{Letterbox}, \texttt{Overscan}, \texttt{Stretch},
+\texttt{NativeBackBuffer}, or \texttt{FixedHeightDynamicWidth} produces no different
+presentation geometry on either native Direct3D backend today. This is a real backend limitation,
+not an XNA-compatibility promise: the enum itself is a CNA extension, and there is no test that
+could honestly pixel-prove a mode-specific result until a logical render target plus final
+composite/scaling path exists.
+
 \subsection{A proof ladder for real D3D11 3D draws, not a blanket ``3D works'' claim}
 
 The D3D11 plan's own 3D work is unusually useful as a verification example because it did not

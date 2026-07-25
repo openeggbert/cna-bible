@@ -68,6 +68,13 @@ pixel-tested, and is recorded only at that scope. The 503-line chapter compiled 
 ten-page isolated PDF; the new pages were rendered and checked. It introduced zero overflows;
 seven pre-existing standalone overflow warnings remain. Full-book verification remains pending.
 
+**Current autonomous continuation — Ch.23 presentation-mode audit:** Both native Direct3D
+backends receive the public `PresentationMode` enum, but D3D11 discards it and D3D12's handler is
+empty. Their virtual-resolution values do not create a logical render surface or final scaling
+composite, so Letterbox/Overscan/Stretch/NativeBackBuffer/FixedHeightDynamicWidth make no
+presentation-geometry difference. The 522-line isolated chapter remains clean apart from its
+seven pre-existing overflow warnings; no new overflow was introduced.
+
 **Later continuation, also isolated-verified:** Ch.23 gained a ninth, source-grounded D3D11
 verification-ladder subsection. Its minimal document compiled successfully and the affected page
 was rendered and read after a right-edge audit; it is therefore marked isolated LaTeX/PDF clean,
