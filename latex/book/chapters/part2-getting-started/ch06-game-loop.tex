@@ -71,6 +71,23 @@ blocking \texttt{while} loop is not a viable main-loop shape in a browser --- Em
 instead requires yielding control back to the browser's own event loop via a registered
 callback. This book's Web/Emscripten chapter covers this in full.
 
+\subsection{Two global debug keys hidden in the ordinary event pump}
+
+\texttt{PollEvents()} sends every SDL event through the input bridge first, then reserves two
+non-repeated key-downs: F9 calls the backend's
+\texttt{DebugSimulateContextLoss()}, and F10 calls \texttt{DebugRestoreContext()}. The input
+state still sees both keys because that bridge ran first; a game binding F9/F10 therefore
+gets its own key state \emph{and} this framework action. FNA's own \cnaclass{Game} installs no
+equivalent global hotkeys.
+
+Most CNA products inherit empty hook bodies, so the reservation is invisible. EasyGL and
+D3D9 make it consequential. On desktop EasyGL either key performs a complete synchronous GL
+loss-and-recreate cycle; in a browser F9 requests asynchronous loss and F10 separately
+requests restore. D3D9 instead uses F9 for one
+\texttt{DeviceLost} transition and F10 for the real
+\texttt{DeviceResetting}/\texttt{DeviceReset} recovery sequence. The complete product and
+evidence matrix is \S\ref{sec:backend-recovery-debug-matrix}.
+
 \subsection{Two small, explicitly-marked CNA extensions}
 
 Two \texttt{NOXNA}-tagged additions live directly on \cnaclass{Game}: a public

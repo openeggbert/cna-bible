@@ -52,6 +52,19 @@ oracle; the fifth, an untextured vertex-lit variant, remains permanently unreach
 by the same missing position-only vertex layout that limits the untextured lit bucket on
 every backend.
 
+\begin{sourcenote}
+D3D9's real lost-device lifecycle is also reachable through two framework-reserved keys:
+after ordinary input processing, non-repeated F9 enters \texttt{Lost} and raises
+\texttt{DeviceLost}; F10 performs the real reset, bracketing it with
+\texttt{DeviceResetting} and \texttt{DeviceReset}. The smoke suite checks exact event counts,
+that rendering fails while lost, exact pixels after recovery, and release/recreation of
+default-pool resources. This strong deterministic debug path should not be confused with two
+other public extensions: D3D9's \texttt{SetStringMarkerEXT()} throws, and
+\texttt{SetContextRecoveryEnabled()} changes the shared \cnaclass{Texture2D} shadow policy
+before its D3D9 hook throws. Section~\ref{sec:backend-recovery-debug-matrix} compares all
+fourteen products and calls out that partial-state outcome.
+\end{sourcenote}
+
 \subsection{What is not, and the one caveat that applies to every number above}
 
 Every \cnaclass{SurfaceFormat} besides \texttt{Color} remains unsupported (a shared,

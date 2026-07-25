@@ -683,15 +683,17 @@ A cluster of methods exist purely to support tooling, testing, and backend-inter
   \texttt{GraphicsProfile = GraphicsProfile.HiDef} request --- called once, internally, from
   \cnaclass{GraphicsDeviceManager}'s own apply path, never as a general public runtime
   profile-switch (real XNA has none either).
-\item[\texttt{void SetContextRecoveryEnabled(bool enabled)}] disables GL context-loss recovery
-  (the CPU-side pixel shadow copies Chapter~\ref{ch:content-and-assets}'s content chapter and
-  Chapter~\ref{ch:textures-rendertargets} both reference) --- must be called before the device
-  initializes; safe to disable on desktop, where context loss never actually occurs, saving
-  roughly one copy of texture RAM per loaded texture.
-\item[\texttt{void SetStringMarkerEXT(const std::string\& marker)}] inserts a named debug
-  marker into the GPU command stream. On Vulkan with \texttt{VK\_EXT\_debug\_utils} available,
-  this becomes a real \texttt{vkCmdInsertDebugUtilsLabelEXT} call, visible in RenderDoc/NVIDIA
-  Nsight; a no-op on every other backend.
+\item[\texttt{void SetContextRecoveryEnabled(bool enabled)}] changes a policy for subsequent
+  resource creation and uploads. Call it immediately after device construction but before
+  loading content --- the device and backend necessarily already exist. On every product,
+  disabling it lets a completed \cnaclass{Texture2D} upload discard its CPU pixel shadow;
+  EasyGL additionally stops registering later GL resources for recreation. This saves memory
+  but makes ordinary \texttt{GetData()} and partial level-0 updates fail after that shadow is
+  freed. Re-enabling does not rebuild discarded shadows or retroactively register resources.
+\item[Debug marker] \texttt{SetStringMarkerEXT()} requests a named GPU marker. On Vulkan with
+  the debug-utils extension available, this becomes a real native debug-label command visible
+  in RenderDoc/NVIDIA Nsight. D3D9 throws an explicit not-implemented error; the other twelve
+  products inherit the empty hook.
 \item[\texttt{IGraphicsBackend\& GetBackend() const}] returns a reference to the active backend
   interface --- the seam Part~IV's whole backend-by-backend treatment sits behind.
 \item[\texttt{constexpr CNA::GraphicsBackendType GetGraphicsBackendType() const}] reports which
@@ -719,17 +721,25 @@ A cluster of methods exist purely to support tooling, testing, and backend-inter
   \cnaclass{GraphicsDeviceManager} so a caller can read settings back via the
   \texttt{PresentationParameters} property after applying preferred settings, ahead of whatever
   later call actually resets the device.
-\item[\texttt{void RecreateBackendForMultiSampleCount(int)}] test-only: tears
-  down and rebuilds the active backend (same window) with a new requested multisample count.
-  The header's own documentation is candid
-  about why this exists rather than a real \texttt{GraphicsDevice.Reset}-driven path: a
-  backend-level property picked once at construction time (Vulkan's own back-buffer
-  \texttt{sampleCount\_} is the motivating case) currently has no way to change after the fact
-  through \cnaclass{GraphicsDeviceManager}'s existing apply path, since real mid-game device
-  reset/recreation is a separate, not-yet-implemented feature. Safe only before any GPU
-  resources exist against the current backend --- it destroys and replaces the backend outright
-  rather than performing a real, resource-preserving reset.
+\item[Legacy multisample rebuild] \leavevmode\par
+  The test-only \texttt{RecreateBackendForMultiSampleCount(int)} hook tears down and rebuilds
+  the active backend (same window) with a new requested multisample count.
+  Its header still describes a missing manager/reset path, but that rationale is stale:
+  ordinary \texttt{ApplyChanges()} now reaches the normal reset and multisample-application
+  path. This older escape hatch remains in several focused tests; it is still safe only before
+  GPU resources exist, because it destroys and replaces the complete backend rather than
+  performing the normal resource-preserving reconfiguration.
 \end{description}
+
+\begin{sourcenote}
+\textbf{Recovery is not one backend Boolean.} The framework flag changes
+\cnaclass{Texture2D}'s CPU-shadow lifetime on every product even when the backend virtual is
+empty. EasyGL is the sole backend that also changes a real recovery registry. D3D9 is the
+awkward third case: the framework flag changes first, then its override throws
+\texttt{runtime\_error}, leaving the shared texture policy changed despite the failed call.
+The F9/F10 loss channel and marker behavior are separately classified in
+\S\ref{sec:backend-recovery-debug-matrix}.
+\end{sourcenote}
 
 \begin{lstlisting}
 // Worked example: defensively check a capability before relying on it,

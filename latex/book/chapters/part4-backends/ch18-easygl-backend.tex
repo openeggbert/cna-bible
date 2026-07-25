@@ -82,6 +82,19 @@ window can separately change through the shared SDL fullscreen call, whose failu
 non-fatal. The full requested/native distinction is in
 \S\ref{sec:backend-presentation-format-matrix}.
 
+\begin{sourcenote}
+EasyGL is the only product whose backend hook adds real work to
+\cnaclass{GraphicsDevice}'s recovery setter. Calling it with \texttt{false} after device
+construction but before content loading both enables the shared
+\cnaclass{Texture2D} CPU-shadow discard and prevents subsequently-created GL resources from
+joining EasyGL's recovery registry. It does not unregister existing resources or reconstruct
+pixels after re-enabling, so toggling is not a reversible migration. The global F9/F10 debug
+keys then expose two platform shapes: on desktop either key performs a complete synchronous
+loss-and-restore cycle, while on Web F9 requests loss and F10 separately requests restore
+through asynchronous browser events. The cross-product contract and evidence boundary are in
+\S\ref{sec:backend-recovery-debug-matrix}.
+\end{sourcenote}
+
 \subsection{A worked example: finding the real SpriteBatch quad ceiling}
 
 The \texttt{uint16\_t} index-type finding above is worth turning into an actual number, since

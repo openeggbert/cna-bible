@@ -191,6 +191,17 @@ up: on Emscripten it is a second, independent call (mirroring the browser's own 
 events); on desktop it is simply \texttt{DebugSimulateContextLoss()} called a second time,
 since loss and restore are one atomic operation there with no separate event to wait for.
 
+The public entry point is less isolated than those backend methods suggest. Every
+\cnaclass{Game} sends each SDL event through the ordinary input bridge first and then reserves
+non-repeated F9 for the loss request and F10 for restore. On Web those are genuinely separate,
+asynchronous browser operations; on desktop EasyGL either key runs the whole synchronous
+cycle. Calling \texttt{SetContextRecoveryEnabled(false)} after device construction but before
+content creation also prevents future EasyGL resources from joining the recovery registry
+and permits uploaded \cnaclass{Texture2D} objects to discard their CPU shadow. A later
+simulated loss cannot reconstruct those resources. This browser branch remains source-audited
+rather than executed in a real browser; the complete product/evidence matrix is in
+\S\ref{sec:backend-recovery-debug-matrix}.
+
 \subsection{A real, still-open inconsistency: only one of three Emscripten targets pins a WebGL version}
 
 Reading \texttt{cmake/Examples.cmake} directly turns up a genuine, previously-undocumented gap

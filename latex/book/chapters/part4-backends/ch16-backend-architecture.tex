@@ -1288,6 +1288,93 @@ For a \cnaclass{RenderTarget2D} or \cnaclass{RenderTargetCube}, read that target
 \texttt{MultiSampleCount}; its backend getter reports the applied value (zero means disabled)
 on the implementations that genuinely negotiate it.
 
+\subsection{Recovery and debug hooks: one shared flag, two real loss channels, one marker}
+\label{sec:backend-recovery-debug-matrix}
+
+Three more interface defaults look like optional backend diagnostics but cross the public
+framework boundary in three different ways. First, the device's public
+\texttt{SetContextRecovery\allowbreak{}Enabled()} changes its shared recovery flag
+\emph{before} it calls the backend hook. The flag
+controls whether a successful full \cnaclass{Texture2D} upload may discard its CPU pixel
+shadow. When recovery is disabled, a later ordinary \texttt{GetData()} or partial level-zero
+update can therefore throw even on a product whose backend hook is empty; a complete
+level-zero replacement can still recreate the resource. Unit tests prove all three cases.
+Turning recovery back on does not reconstruct already-discarded pixels.
+
+The declaration's instruction to call the setter ``before device initialization'' cannot be
+read literally: the public method belongs to an already-constructed
+\cnaclass{GraphicsDevice}, whose backend is created eagerly. The intended safe point,
+confirmed by the change's own Git history, is after device construction but before loading
+game resources. It is a policy for future creation and uploads, not a reversible migration
+of existing resources.
+
+Second, non-repeated F9 and F10 key-down events are global \cnaclass{Game} debug triggers.
+Its event pump sends the event through \texttt{SdlInputBridge} first, then calls the loss or
+restore hook. Game input state thus sees the key as well as the framework action. Third,
+\texttt{SetStringMarkerEXT()} is a public device method with a silent interface default.
+The full product matrix matters:
+
+\begingroup
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.13}
+\begin{longtable}{@{}p{0.13\textwidth}p{0.25\textwidth}p{0.27\textwidth}p{0.27\textwidth}@{}}
+\toprule
+\textbf{Product} & \textbf{Recovery-policy effect} &
+\textbf{F9 / F10 loss channel} & \textbf{String marker and evidence} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Product} & \textbf{Recovery-policy effect} &
+\textbf{F9 / F10 loss channel} & \textbf{String marker and evidence} \\
+\midrule
+\endhead
+\texttt{EASYGL}
+  & Shared texture-shadow rule, plus disabling registration of subsequently-created GL
+    textures, buffers, queries, SpriteBatch state, and render targets. Existing registrations
+    are not removed.
+  & Desktop: either key performs one complete synchronous loss/recreate/restore cycle.
+    Web: F9 requests asynchronous browser loss; F10 separately requests restore.
+  & Marker is a no-op. Desktop recovery is exercised by source/tests; the real browser event
+    path was source-audited, not executed here. \\
+\texttt{D3D9}
+  & The shared flag changes, then the backend hook throws
+    \texttt{runtime\_error} through \texttt{NotYetImplemented}; the public call leaves partial
+    state.
+  & F9 enters \texttt{Lost} and raises \texttt{DeviceLost}; F10 performs a real reset and
+    raises \texttt{DeviceResetting}, then \texttt{DeviceReset}. Invalid repeated transitions
+    do nothing.
+  & Marker also throws. The smoke suite proves event counts, lost-state draw rejection,
+    exact post-reset pixels, and default-pool resource recreation. \\
+\texttt{VULKAN}
+  & Shared texture-shadow rule only; the backend hook is empty.
+  & Both keys reach empty hooks.
+  & Real, but deferred: a non-empty marker is queued in the pending 3D/current-render-target
+    stream, then becomes a Vulkan debug-utils label only when
+    \texttt{vkCmdInsert\allowbreak{}DebugUtils\allowbreak{}LabelEXT} is loaded. No dedicated
+    marker assertion was found. \\
+\texttt{DX3}
+  & Shared texture-shadow rule only.
+  & Both keys are no-ops, directly confirmed by the backend test.
+  & Marker is a no-op. \\
+\texttt{SDL\_\allowbreak{}RENDERER}, \texttt{ASCII}, \texttt{BGFX}, \texttt{WEBGPU},
+\texttt{SDL\_GPU}, \texttt{D3D11}, \texttt{D3D12}, \texttt{CANVAS},
+\texttt{SOFTWARE}, \texttt{HEADLESS}
+  & Shared texture-shadow rule only.
+  & Both keys reach empty hooks.
+  & Marker is a no-op; these rows are source-proven rather than dedicated loss/marker tests. \\
+\bottomrule
+\end{longtable}
+\endgroup
+
+There is no public capability query for any row in this matrix. A portable game should not
+bind gameplay to F9/F10 without accounting for the global side effect, should treat
+\texttt{SetContextRecoveryEnabled(false)} as a one-way policy for subsequent resource
+creation and full uploads, and cannot use successful marker submission as proof that a native
+marker was emitted. FNA provides the marker extension by forwarding it uniformly to FNA3D,
+but has neither CNA's recovery-policy extension nor these framework-installed F9/F10
+triggers.
+
 \section{Build-time selection}
 
 \texttt{cmake/BackendSelection.cmake} is where the backend list from

@@ -6,20 +6,61 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **505 physical PDF pages, 49 chapters, 6 appendices**.
-- After the batch commit, the local branch is ahead of `origin/develop` by thirteen coherent
+- Book: **507 physical PDF pages, 49 chapters, 6 appendices**.
+- After the batch commit, the local branch is ahead of `origin/develop` by fourteen coherent
   documentation commits:
   roadmap, ShaderEffect/D3D ABI, general capability matrix, MSAA/anisotropy, buffer
   contracts, volume/cube readback contracts, and RenderTargetCube upload/transition
   contracts, followed by Texture2D update contracts, instancing/vertex binding, and input
   coordinate routing, public backbuffer readback, swap-interval contracts, and presentation
-  format/fullscreen contracts.
+  format/fullscreen contracts, and recovery/debug-hook contracts.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
   reviewing `git push`. Its response explicitly rejected the request rather than granting
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
 ## Latest completed batch
+
+The `SetContextRecoveryEnabled()`, `DebugSimulateContextLoss()` /
+`DebugRestoreContext()`, and `SetStringMarkerEXT()` audit is complete:
+
+- `GraphicsDevice::SetContextRecoveryEnabled()` always changes a framework-level flag used by
+  `Texture2D::MaybeFreeCpuPixels()`, even when the backend hook is empty. The current Ch.9
+  statement that it must run before device initialization is impossible literally: the device
+  and backend already exist before the method can be called. The intended safe point, confirmed
+  by the change's Git history, is after device construction but before game resources load.
+- EasyGL additionally uses the hook to stop registering subsequently-created GL resources.
+  Existing registrations/shadows are not retroactively normalized, so this is a creation/upload
+  policy, not a reversible live migration. D3D9 changes the shared flag first and then throws
+  `NotYetImplemented`; the other twelve products inherit the backend no-op while retaining the
+  shared `Texture2D` memory/readback consequences.
+- Every `Game::PollEvents()` reserves non-repeated F9/F10 key-down events for the two debug
+  methods after input processing. EasyGL implements real context loss/restore (asynchronous
+  separate events on Web; either key performs a complete synchronous loss+restore cycle on
+  desktop). D3D9 uses the same keys for deterministic
+  `DeviceLost`--`DeviceResetting`--`DeviceReset` event testing. The other twelve products
+  silently do nothing.
+- Vulkan alone implements a real marker, queued into its pending 3D/render-target stream and
+  emitted only when `vkCmdInsertDebugUtilsLabelEXT` is available. D3D9 overrides the empty
+  default with a loud `runtime_error`; the other twelve inherit silence. This corrects Ch.9's
+  current “no-op on every other backend” overclaim. FNA exposes the same marker extension by
+  forwarding it to FNA3D, but does not install CNA's global F9/F10 hooks.
+- Ch.6 documents the global event-pump reservation, Ch.9 corrects all three public extension
+  contracts and the stale legacy-MSAA rationale, Ch.16 contains the complete fourteen-product
+  matrix, Ch.18/23/40 record the EasyGL/D3D9/Web boundaries, and Appendix E now indexes the
+  extension family.
+- Validation: a forced `latexmk -g` build produces **507 pages**; targeted undefined-
+  reference and duplicate-label checks are empty; makeindex accepts **2,080 entries** with
+  zero rejected and zero warnings; `git diff --check` passes. Rendered physical pages 58,
+  121, 205--207, 218, 262, 410, and 489 have no clipping, cell collision, edge spill,
+  malformed heading, running-header collision, or folio defect. All overfull warnings
+  introduced by this batch were removed. Exact line counts: Ch.6 513; Ch.9 1,167; Ch.16
+  1,433; Ch.18 362; Ch.23 824; Ch.40 247; Appendix E 227.
+- The separate `feature/audit` CNA worktree is actively repairing omitted BlendState fields.
+  Do not publish a new state-field gap matrix from `develop` while that unmerged work is
+  moving; this completed recovery/debug cluster is independent of it.
+
+## Previous presentation-format batch
 
 The `PresentationParameters.BackBufferFormat` / `DepthStencilFormat` / `IsFullScreen` and
 `IGraphicsBackend::UpdatePresentationFormatEXT()` audit is complete:
@@ -59,16 +100,6 @@ The `PresentationParameters.BackBufferFormat` / `DepthStencilFormat` / `IsFullSc
   Rendered pages 64, 113, 190--192, 209, 216, 227, 233, 243, 252, 264, 287, and 470 have no
   clipping, cell collision, page-edge spill, malformed heading, running-header collision, or
   folio defect. The matrix header repeats correctly on both continuation pages.
-
-## Recommended next starting point
-
-Re-inventory the remaining live defaults in
-`include/CNA/Internal/Backends/Common/IGraphicsBackend.hpp` against the now-large Ch.16
-coverage. Prefer a contract with a real public caller and divergent native effects over an
-already-covered factory/null/default. The state-application and dynamic-state families are
-the first candidates to compare against Ch.14; avoid repeating its existing
-`SetReferenceStencil` finding. Record any selected method and preliminary backend inventory
-here before changing prose.
 
 ## Previous swap-interval batch
 
@@ -329,8 +360,11 @@ Sibling repositories remain read-only source authorities for ordinary book work.
 
 Continue Ch.16's backend-interface-default audit. Buffer defaults, volume/cube readback,
 RenderTargetCube upload/transitions, Texture2D updates, draw/instancing fallbacks,
-coordinate transforms, backbuffer readback, and swap intervals are closed. Re-inventory the
-remaining defaults and choose the strongest public, non-duplicate gap by reachability and
-documentation value. Trace the caller, override matrix, state transitions, and actual
-assertion layer before writing. Do not modify CNA itself; sibling repositories remain
-read-only source authorities.
+coordinate transforms, backbuffer readback, swap intervals, presentation formats, and
+recovery/debug hooks are closed. The next safe candidate is the paired
+`IGraphicsBackend::SetViewport()` / `SetScissorRect()` defaults: trace public property
+assignment and draw-time reapplication, all fourteen products, native coordinate
+conventions, and actual pixel assertions. Compare Ch.9/14 and the existing EasyGL, Vulkan,
+and WebGPU notes before writing. Avoid the BlendState field matrix while the separate
+`feature/audit` worktree is changing it. Do not modify CNA itself; sibling repositories
+remain read-only source authorities.
