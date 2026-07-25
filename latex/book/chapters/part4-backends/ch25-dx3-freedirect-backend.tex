@@ -118,10 +118,14 @@ dev.SetRenderTarget(nullptr);
 \end{lstlisting}
 
 Two further checks round out the same test. \texttt{RenderTargetUsage::DiscardContents}
-auto-clearing to black on every rebind needed \emph{zero} DX3-specific code at all --- it
+auto-clearing to black on rebind needed \emph{zero} DX3-specific code at all --- it
 falls straight out of shared \texttt{GraphicsDevice.cpp} logic once bind/\texttt{Clear}/read
 were wired correctly, the same "comes for free" shape Chapter~\ref{ch:textures-rendertargets}
-documents for other backends. \texttt{SetRenderTargets()} with two or more bindings throws, honestly:
+documents for other backends. This is also a CNA/FNA identity difference: CNA repeats that
+clear on an identical currently-bound target, while FNA treats the redundant call as a no-op.
+The persistent DirectDraw surface makes Preserve and Platform retain color in source, but the
+test proves only the Discard-to-black case; presentation usage is ignored.
+\texttt{SetRenderTargets()} with two or more bindings throws, honestly:
 \texttt{IDirectDrawSurface} has exactly one active surface at a time, the identical
 single-active-surface conclusion Chapter~\ref{ch:sdl-renderer} already reached for
 \texttt{SDL\_RENDERER} (Task~709) for an unrelated reason (that backend's SDL2 render target

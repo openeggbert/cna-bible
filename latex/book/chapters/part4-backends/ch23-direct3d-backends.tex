@@ -716,6 +716,23 @@ successful compilation: the fixed input layout, automatic viewport slot, \texttt
 constant-buffer/root binding, \texttt{t0}/\texttt{s0} resource path, custom pixel shader, and
 GPU readback all participated in one observable public-API draw.
 
+\section{Persistent Direct3D resources do not make every usage contract complete}
+
+All three Direct3D factories ignore the 2D preserve Boolean, but their color resources persist
+across binding. Shared code therefore supplies the visible policy: Discard immediately clears
+black plus optional depth, while Preserve and Platform do not clear. The implicit request
+never includes stencil. A redundant bind is not a no-op; D3D9/11 can resolve the same target
+before rebinding it, D3D12 runs its own unbind/finalization path, and shared code then repeats
+the discard clear and rectangle reset.
+
+Cube construction has no usage input on any of the three. Their persistent resources
+therefore retain content unless explicitly cleared, subject to the public D3D11/12
+cube finalization and unbind failures below. MRT uses the first 2D target's shared usage
+decision, as FNA does, but no current Direct3D test compares usage values, Platform, preserved
+depth/stencil, or redundant binding. The strong resolve/mip tests prove finalization when their
+paths run, not \cnaclass{RenderTargetUsage}; see
+\S\ref{sec:backend-rendertarget-usage-matrix}.
+
 \section{A reopened feature, and a public routing gap above the finished mechanisms}
 
 \texttt{D3DCommon}'s shared HLSL/DXBC and state-mapping tables, named above, make it easy to

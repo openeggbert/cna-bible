@@ -237,6 +237,17 @@ positive, regardless of the public \texttt{ScissorTestEnable} Boolean; a non-pos
 disables the SDL clip. No dedicated ASCII test currently distinguishes those pixels. This is
 composition faithfully inheriting SDL\_Renderer's own state bug, not a separate quantizer rule.
 
+\subsection{Persistent 2D targets, but no presentation-usage policy}
+
+Both products ignore the backend preserve Boolean yet keep browser-canvas or SDL target
+storage persistent. Shared binding therefore makes exact Discard overwrite an explicit 2D
+target with black, while Preserve and Platform leave its color alone. ASCII's empty/null bind
+is special: it redirects to its private game target, but never consults the presentation
+parameter's usage value. Its off-screen test proves a Preserve target survives that redirection;
+CANVAS has only source evidence because the native non-Emscripten implementation is a no-op
+and no real browser was available. Neither product supports cube targets or MRT. See
+\S\ref{sec:backend-rendertarget-usage-matrix}.
+
 \section{Both backends are 2D-only by explicit design, not by omission}
 
 Every backend documented in the previous three chapters implements the full backend interface,

@@ -110,6 +110,8 @@ Custom \texttt{Effect} via \texttt{Begin(effect)} & OK & OK &
 Per-slot \texttt{SamplerState} (16 slots) & OK & OK & OK & OK &
   P & OK & OK \\
 \texttt{GraphicsDevice.}\allowbreak\texttt{ReferenceStencil} & X & OK & X & N/A & --- & OK & N/A \\
+\texttt{RenderTargetUsage} 2D color, Discard/P only\textsuperscript{e} &
+  OK & OK & P & OK & P & P & P \\
 \texttt{Clear} honors \texttt{ClearOptions::}\allowbreak\texttt{Stencil} &
   OK\textsuperscript{c} & P\textsuperscript{c} & P\textsuperscript{c} &
   N/A\textsuperscript{c} & P\textsuperscript{c} & OK\textsuperscript{c} &
@@ -148,6 +150,14 @@ status. The live audit found that SDL\_Renderer ignores the whole rasterizer obj
 applying a non-empty scissor rectangle unconditionally, and D3D12's otherwise-real rasterizer
 PSOs still force a full-target native scissor. Section
 \ref{sec:backend-viewport-scissor-matrix} supersedes this row for viewport/scissor decisions.
+
+\noindent\textsuperscript{e}\textbf{This row is deliberately narrow.}
+It compares only non-MSAA \cnaclass{RenderTarget2D} color across separate
+\texttt{DiscardContents}/\texttt{PreserveContents} bind cycles. SDL Renderer, EasyGL, and
+Vulkan have discriminating pixels; BGFX has smoke only; D3D9/11/12 are source-proven here.
+It says nothing about Platform, depth/stencil, cube targets, presentation/backbuffer usage,
+redundant binds, or plural cube bindings. Those cases diverge materially; see
+\S\ref{sec:backend-rendertarget-usage-matrix}.
 \end{footnotesize}
 
 This grid omits the source document's own Texture2D/Texture3D/TextureCube,

@@ -161,7 +161,11 @@ and Headless retain only the public/trace illusion, and the four 2D-only backend
 \cnaclass{RenderTarget2D} extends \cnaclass{Texture2D} and adds \cnaclass{IRenderTarget}, with two constructors (a
 simple width/height form, and a full form specifying mip-mapping, surface and depth-stencil
 format, multisample count, and \cnaclass{RenderTargetUsage}) plus a \texttt{ContentLost} event
-that XNA's own console-era API defines but CNA never actually raises.
+that XNA's own console-era API defines but CNA never actually raises. Usage is not uniform:
+Discard versus Preserve has strong non-MSAA 2D color proof only on SDL Renderer, EasyGL, and
+Vulkan; Platform splits by backend, backbuffer presentation usage is ignored, redundant CNA
+binds repeat state/clear work, and discard never requests stencil in the shared 2D path. See
+\S\ref{sec:backend-rendertarget-usage-matrix}.
 
 \cnaclass{Texture3D} adds \texttt{Width} / \texttt{Height} / \texttt{Depth};
 \cnaclass{TextureCube} adds one square-face \texttt{Size}. Both are move-only, accept only
@@ -177,7 +181,10 @@ Its inherited \texttt{SetData} surface is narrower again: only EasyGL changes th
 every other constructed backend silently discards a valid upload. Cube-target switching has
 independent backend-specific finalization gaps --- notably missing public unbind routing on
 D3D11/12 --- tabulated in
-\S\ref{sec:rendertargetcube-default-contracts}.
+\S\ref{sec:rendertargetcube-default-contracts}. Use only the singular cube-target overload:
+although \cnaclass{RenderTargetBinding} accepts a cube/face, CNA's plural conversion turns it
+into a null backend pointer, and the singular route does not retain it for
+\texttt{GetRenderTargets()} or usage handling.
 
 \cnaclass{SpriteBatch} is the class Chapter~\ref{ch:spritebatch} covers end to end; this table
 is purely a shape reminder. Five \texttt{Begin} overloads escalate from a zero-argument default

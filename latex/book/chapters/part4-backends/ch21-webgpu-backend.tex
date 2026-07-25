@@ -326,13 +326,21 @@ three, as its usage permits. Switching targets flushes the outgoing pass and con
 flags. Values are nevertheless global, so repeated clears before that flush collapse rather
 than interleave with already-queued draws.
 
+``Preserve-content'' here means only the exact Preserve enum value. Shared construction treats
+Platform as a false preserve Boolean, so WebGPU forces all three clear load ops for Platform
+too even though shared bind code issues no implicit black clear. Conversely, the backbuffer's
+\texttt{Presentation\allowbreak{}Parameters.Render\allowbreak{}Target\allowbreak{}Usage} is
+never consulted, and plural binding inherits the interface's first-target-only fallback rather
+than creating MRT.
+
 \cnaclass{RenderTargetCube} is different. The backend interface never conveyed the cube's
 preserve-contents usage, so every cube-face pass unconditionally clears all three attachments
 from the current global values. Shared \cnaclass{GraphicsDevice} also fails to retain the
 singular cube in its active-target list, leaving its depth format invisible to the FNA-style
 mask. Existing readback proves immediate colour replacement and the combined 2D-target path;
 it does not isolate these cube/option edges. The full comparison is
-\S\ref{sec:backend-clear-matrix}.
+\S\ref{sec:backend-clear-matrix}; the separate usage matrix is
+\S\ref{sec:backend-rendertarget-usage-matrix}.
 
 \section{What remains open}
 

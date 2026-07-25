@@ -29,6 +29,16 @@ values and precede all submitted draws. The cross-frame stencil regression prove
 value is real, not same-view issue ordering or attachment selectivity; see
 \S\ref{sec:backend-clear-matrix}.
 
+BGFX's persistent view state makes target usage observable. When a 2D target requests
+Preserve, the backend disables view clearing with
+\texttt{BGFX\_\allowbreak{}CLEAR\_\allowbreak{}NONE}; Discard relies on the shared implicit
+clear to install all three flags. Platform is passed to the backend as ``not preserve'' but
+receives no shared clear, so it can inherit whatever clear flags that recycled view ID last
+held. Cube binding and MRT creation likewise lack a usage-specific clear reset. The named BGFX
+usage test only proves two-frame bind/unbind does not crash; despite its comments, it contains
+no pixel oracle. The full distinction is
+\S\ref{sec:backend-rendertarget-usage-matrix}.
+
 \section{Test baseline and the Phase 72 closure}
 
 At the time of writing, the full unit suite passes 4{,}375 of 4{,}377 tests (two hardware

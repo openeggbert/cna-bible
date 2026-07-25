@@ -1150,6 +1150,151 @@ live call path behind it right now, not a currently-reachable gap --- worth reco
 as that, rather than either dismissing it as obviously dead without checking or citing it as an
 active risk without tracing where it actually leads.
 
+\section{Render-target binding identity and usage across fourteen products}
+\label{sec:backend-rendertarget-usage-matrix}
+
+The public enum is small; the execution contract is not. CNA has three independent shared
+routes. The singular 2D route always calls \texttt{SetRenderTarget2D}, replaces the tracked
+binding list, resets viewport/scissor, and, for exact
+\texttt{DiscardContents}, clears black plus optional depth. The singular cube route calls
+\texttt{SetRenderTargetCubeFace}, clears the tracked list, keeps only a Boolean, resets the
+rectangles, and performs no usage-dependent clear. The plural route copies the caller's list
+but converts only \cnaclass{RenderTarget2D} objects to backend pointers; the first 2D target
+controls dimensions, implicit clear, and usage. An empty list restores the backbuffer without
+ever reading \texttt{PresentationParameters.RenderTargetUsage}.
+
+Three shared consequences precede any backend difference:
+
+\begin{enumerate}
+  \item There is no redundant-binding check. An identical repeated 2D bind clears a discard
+        target again and resets viewport/scissor; an identical repeated cube/MRT/backbuffer
+        bind resets state and can redo backend finalization. FNA compares target identity and
+        cube face and returns early before any of those operations.
+  \item \texttt{RenderTarget2D} passes
+        \texttt{usage == PreserveContents} to its factory, but the shared clear tests
+        \texttt{usage == DiscardContents}. Thus \texttt{PlatformContents} reaches a consuming
+        backend as ``discard'' without receiving CNA's shared black clear. FNA passes every
+        non-discard value as the native preserve request.
+  \item The 2D discard clear requests target and optional depth, never stencil. The cube-target
+        factory has no usage parameter at all. Its plural binding form becomes a null backend
+        pointer despite being public: common consequences include silently targeting the
+        backbuffer, D3D11 binding a null RTV, D3D12 throwing, and Vulkan/D3D9 or multi-target
+        EasyGL dereferencing null. This is not a backend capability that callers can probe
+        safely.
+\end{enumerate}
+
+``Preserve'' in the table means what the implementation retains across separate bind cycles,
+not what a property getter echoes. Every product stores the requested enum correctly. None
+uses the presentation/backbuffer usage. ``P'' below abbreviates \texttt{PreserveContents};
+``Platform'' means \texttt{PlatformContents}.
+
+\begingroup
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.13}
+\begin{longtable}{@{}p{0.13\textwidth}p{0.30\textwidth}p{0.28\textwidth}p{0.22\textwidth}@{}}
+\toprule
+\textbf{Product} & \textbf{2D target behavior} & \textbf{Cube / MRT behavior} &
+\textbf{Evidence boundary} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Product} & \textbf{2D target behavior} & \textbf{Cube / MRT behavior} &
+\textbf{Evidence boundary} \\
+\midrule
+\endhead
+\texttt{SDL\_\allowbreak{}RENDERER}
+  & Persistent SDL target texture. Shared black clear makes Discard differ from P;
+    Platform follows P because the factory Boolean is ignored.
+  & No cube or MRT. Repeated identical binds still reach SDL and repeat shared discard/state
+    work.
+  & Strong sampled-pixel proof for non-MSAA Discard versus P; no Platform/backbuffer test. \\
+\texttt{ASCII}
+  & Explicit 2D targets delegate the SDL behavior above. A null bind is redirected to the
+    persistent private game target, independent of presentation usage.
+  & No cube or MRT; non-empty plural calls delegate, while empty restores the private target.
+  & Exact off-screen readback proves a P target survives redirection; no complete usage pair. \\
+\texttt{EASYGL}
+  & Persistent texture/FBO; factory ignores preserve. Shared clear makes Discard lose
+    color/optional depth (not stencil); P and Platform retain them.
+  & Cube usage is invisible and no implicit cube clear occurs, so single-sample storage
+    generally survives. MRT follows the first 2D target's shared clear, but mip finalization
+    remains separate.
+  & Strong direct-FBO pixels prove non-MSAA 2D color Discard versus P only. \\
+\texttt{VULKAN}
+  & Non-MSAA Discard clears every real attachment; P loads color but discards depth/stencil.
+    Platform is passed as false and discards. P+MSAA is also discard-shaped.
+  & Every cube and MRT pass uses clear/discard load ops regardless of public usage. Binding
+    is deferred; identical calls can still alter global clear/target state.
+  & Strong two-frame partial-draw pixels prove only non-MSAA 2D color Discard versus P. \\
+\texttt{BGFX}
+  & P explicitly sets the target view to \texttt{CLEAR\_NONE}; Discard's shared clear
+    configures color/depth/stencil. Platform is false but receives no shared clear, so a reused
+    view may inherit earlier clear state.
+  & Cube binding never resets its view clear from usage; MRT allocates a view without a
+    P-specific reset. Both can therefore retain or repeat stale clear policy.
+  & The named usage test is smoke/no-crash only; it reads no discriminating pixel. \\
+\texttt{WEBGPU}
+  & A 2D pass loads color/depth/stencil for P. Discard and Platform both force all three clear
+    load ops because only exact P reached the factory as true.
+  & Cube passes always discard. The backend inherits first-target-only MRT fallback rather
+    than implementing simultaneous targets.
+  & Source-proven. Existing 2D/cube pixel tests use Discard; none compare usages. \\
+\texttt{SDL\_GPU}
+  & Factory ignores preserve; per-target load ops follow pending flags. Shared Discard queues
+    color and optional depth but not stencil; P and Platform load all stored attachments.
+  & Every cube usage is load/preserve-like unless the caller explicitly clears. Real MRT
+    follows the first target's shared clear and queues it for all color siblings.
+  & Strong render-target tests exist, but no usage discriminator or stencil-discard check. \\
+\texttt{D3D9}
+  & Persistent native surfaces; shared Discard clears color/optional depth, P and Platform do
+    not. Stencil is omitted from the implicit request.
+  & Cube usage is invisible and persistent. MRT uses the first 2D usage for the shared clear;
+    redundant binds can repeat resolve/rebind work.
+  & Source and broad RT smoke evidence; no usage-specific pixel comparison. \\
+\texttt{D3D11}
+  & Persistent resources; same shared Discard versus P/Platform split, with no implicit
+    stencil clear. Rebinding the same 2D target unbinds/resolves it first.
+  & Cube usage is invisible; the existing public cube-to-null transition also fails to restore
+    the backbuffer. MRT preservation follows the first target's shared clear.
+  & Source-proven; direct target tests do not exercise these public usage transitions. \\
+\texttt{D3D12}
+  & Persistent resources; same shared Discard versus P/Platform split and redundant
+    unbind/rebind/finalization behavior.
+  & Cube usage is invisible; public null restore skips cube resolve/mips. MRT binds real RTVs,
+    while stock draws still write only target~0.
+  & Source-proven; no public usage discriminator. \\
+\texttt{SOFTWARE}
+  & Persistent CPU color/depth arrays. Shared Discard clears both when present; P and Platform
+    retain them. There is no stencil plane.
+  & No cube-target factory; inherited MRT binds only the first 2D target.
+  & Source-proven; current smoke coverage does not compare usage values. \\
+\texttt{HEADLESS}
+  & The enum changes only whether shared code emits a synthetic clear/counter update;
+    target pixels are not rendered and readback repeats one backend-global last-clear color.
+  & Synthetic cube bind has no usage path; inherited MRT uses only its first pointer.
+  & Trace/counter evidence only, never preservation pixels. \\
+\texttt{CANVAS}
+  & Browser off-screen canvas is persistent; shared Discard overwrites black while P/Platform
+    leave it. Native non-Emscripten bodies remain no-ops.
+  & No cube or MRT.
+  & Source/specification audit only; no browser execution in this environment. \\
+\texttt{DX3}
+  & Persistent DirectDraw surface; shared Discard clears black, while P/Platform retain
+    prior color.
+  & No cube or MRT; identical rebind repeats the shared Discard clear.
+  & Exact readback proves Discard rebind becomes black; P and Platform are not tested. \\
+\bottomrule
+\end{longtable}
+\endgroup
+
+The safe portable subset is narrower than the enum names suggest. Use singular 2D bindings;
+do not put a cube in \cnaclass{RenderTargetBinding}; avoid redundant bind calls; explicitly
+clear every attachment whose starting value matters; and treat \texttt{PlatformContents} as
+non-portable until the two comparisons are unified. If old color must survive, use
+\texttt{PreserveContents} with non-MSAA 2D targets and consult the row above: even that does
+not currently preserve Vulkan depth/stencil or repair backend-specific finalization gaps.
+
 \section{ClearOptions: seven shared routes, fourteen execution models}
 \label{sec:backend-clear-matrix}
 

@@ -308,23 +308,65 @@ original scope and covered here for the first time:
 \item[\texttt{void SetRenderTarget(RenderTarget2D* renderTarget)}] binds a single 2D render
   target, or restores the back buffer when \texttt{renderTarget} is \texttt{nullptr}. Every call
   --- including unbinding --- resets \texttt{Viewport} and \texttt{ScissorRectangle} to the new
-  target's (or the back buffer's) full dimensions, matching FNA's own
-  \texttt{SetRenderTargets} behavior exactly (a previously-set viewport or scissor rectangle
-  never survives a render-target switch; see \texttt{ResetViewportAndScissorForRenderTarget} in
-  the private implementation section below).
+  target's (or the back buffer's) full dimensions. This is broader than FNA: FNA performs the
+  reset only after a \emph{non-redundant} change, while CNA has no identical-binding fast path
+  and resets on every call (see \texttt{ResetViewportAndScissorForRenderTarget} in the private
+  implementation section below).
 \item[\texttt{void SetRenderTarget(RenderTargetCube* renderTarget, CubeMapFace cubeMapFace)}]
-  binds one face of a cube render target as the active target.
+  binds one face of a cube render target as the active target. The current implementation
+  retains only a separate ``some render target is bound'' Boolean, not this cube pointer or
+  face.
 \item[\texttt{void SetRenderTargets(const std::vector<RenderTargetBinding>\& renderTargets)}]
   binds multiple render targets simultaneously (multiple render target / MRT rendering) ---
   each \cnaclass{RenderTargetBinding} pairs a render target with which face to use if it's a
-  cube map.
+  cube map. The public shape admits a cube binding, but CNA's conversion to backend bindings
+  currently recognizes only \cnaclass{RenderTarget2D}; the cube form is therefore not a
+  working route despite compiling.
 \item[\texttt{std::vector<RenderTargetBinding> GetRenderTargets() const}] returns the currently
   bound bindings; an empty vector means the back buffer is currently the target. This is the
   allocating counterpart to \texttt{GetRenderTargetsNoAllocEXT}, the one confirmed FNA-parity
   gap named in the audit note above --- FNA's own \texttt{GetRenderTargetsNoAllocEXT} writes
   into a caller-supplied array to avoid a per-call heap allocation; CNA's \texttt{GetRenderTargets}
-  always allocates a fresh \texttt{std::vector}.
+  always allocates a fresh \texttt{std::vector}. The ``empty means backbuffer'' rule has one
+  important exception: the singular cube overload above also leaves this vector empty, even
+  though \texttt{Present()} still observes the separate Boolean and throws.
 \end{description}
+
+\subsection{Binding identity, implicit discard, and the cube-shaped hole}
+\label{sec:graphicsdevice-target-binding-contract}
+
+Current FNA funnels the singular 2D and cube overloads into one
+\texttt{SetRenderTargets} implementation. It first applies sampler/rasterizer state, compares
+the complete new binding set (including cube face) with the current set, and returns when they
+are identical. Only a real change binds native targets, resolves targets that are no longer
+bound, resets viewport/scissor, and optionally performs the discard clear.
+
+CNA instead implements the three overloads separately and has no redundant-binding test.
+Calling \texttt{SetRenderTarget(\&rt)} twice therefore is \emph{not} a harmless state
+confirmation: both calls reach the backend and reset viewport/scissor, and a
+\cnaclass{RenderTargetUsage::DiscardContents} 2D target receives the implicit black clear
+again. Depending on the backend, the second call can also finalize and rebind the same native
+resource. Repeating \texttt{SetRenderTarget(nullptr)} likewise resets the two public
+rectangles. Code that wants to preserve either attachment content or a custom rectangle should
+avoid redundant target calls rather than relying on FNA's no-op behavior.
+
+The 2D implicit clear itself asks for \texttt{Target} plus \texttt{DepthBuffer} only when the
+target reports real depth storage; it never includes \texttt{Stencil}. This differs from FNA's
+discard request, which includes all three flags and then lets the active
+\cnaclass{DepthFormat} mask unavailable planes. ``Discard'' also does not promise that a later
+read sees black: black is CNA's present implementation choice (and FNA's release-build
+performance choice), not the API's preserved-content guarantee. Chapter~\ref{ch:backend-architecture},
+\S\ref{sec:backend-rendertarget-usage-matrix}, shows which deferred backends clear more than
+the shared request and which immediate ones leave stencil untouched.
+
+The cube overload has the inverse problem: it never performs a usage-dependent implicit clear
+at all. The plural overload appears to repair the missing bookkeeping because it copies the
+caller's \cnaclass{RenderTargetBinding} vector into \texttt{currentRenderTargets\_}, but then
+converts each entry with \texttt{dynamic\_cast<RenderTarget2D*>}; a cube becomes a null backend
+entry. The selected product may consequently bind its backbuffer, bind no color attachment,
+throw, or dereference null while the shared device still claims a target is bound. Use the
+dedicated singular cube overload only, and treat \texttt{GetRenderTargets()} as unreliable
+during that bind, until the shared route is unified.
 
 \subsection{Worked example: a render-target round trip, and a real bug it found}
 \label{sec:worked-rendertarget}

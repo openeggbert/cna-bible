@@ -50,8 +50,12 @@ oblique viewing angles; and \texttt{DrawColoredPrimitives} / \texttt{DrawIndexed
 always render through one hardcoded-transform shader program, entirely ignoring whatever
 \cnaclass{GpuDrawParams} the effect layer actually supplied.
 
-Missing features confirmed still open include: the \texttt{preserveContents} flag on render
-target creation (always behaves as \texttt{DiscardContents}); \texttt{Texture2D::SetData}
+Missing features confirmed still open include: the backend-level
+\texttt{preserveContents} factory flag (ignored), although the chapter's old conclusion that
+all targets therefore behave as \texttt{DiscardContents} is stale --- shared
+\cnaclass{GraphicsDevice} code black-clears exact Discard on every CNA bind, while this
+backend's persistent FBO preserves both Preserve and Platform when not explicitly cleared
+(pixel-proven for Discard versus Preserve); \texttt{Texture2D::SetData}
 uploads never regenerating mipmaps (only the render-target-unbind path does, a separate code
 path); \texttt{Texture3D} / \texttt{TextureCube} both ignoring their requested
 \cnaclass{SurfaceFormat} (always RGBA8) and their \texttt{mipMap} request; neither type being

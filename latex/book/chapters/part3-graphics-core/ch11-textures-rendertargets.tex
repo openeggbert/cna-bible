@@ -354,6 +354,52 @@ cube pointer; \cnaclass{RenderTargetCube} supplies no \texttt{Dispose(bool)} ove
 own to compensate. The compatibility gap remains, but the former class-hierarchy explanation
 does not.
 
+\subsection{\cnaclass{RenderTargetUsage}: three values, more than three behaviors}
+\label{sec:rendertarget-usage-contract}
+
+\cnaclass{RenderTargetUsage} has the expected three ordinals:
+\texttt{DiscardContents}, \texttt{PreserveContents}, and \texttt{PlatformContents}.
+\texttt{DiscardContents} says old attachment data need not survive a bind; it does
+\emph{not} promise a readable replacement color. \texttt{PreserveContents} requests survival
+even at a performance or memory cost. \texttt{PlatformContents} permits survival only when
+cheap. In current FNA, both non-discard values are passed to the native layer as a preserve
+request, while the exact enum still controls whether the managed layer issues its discard
+clear.
+
+CNA splits those decisions inconsistently. \cnaclass{RenderTarget2D}'s constructor forwards
+one Boolean to its backend factory, but makes it true only for Preserve. Platform is therefore
+delivered to a backend as ``do not preserve.'' The later shared bind does the opposite
+comparison and issues
+its black implicit clear only for exact \texttt{DiscardContents}. On immediate backends that
+ignore the Boolean, Platform content commonly survives because nothing overwrites the
+persistent resource. Vulkan and WebGPU consume the false Boolean as a discard load operation,
+so the same enum loses content there. BGFX can instead inherit a persistent view-clear
+configuration. This is an observable three-way backend split, not merely an unused hint.
+
+\cnaclass{RenderTargetCube} is less connected still. Its constructor stores and returns the
+requested usage, but \texttt{CreateRenderTargetCube} has no preserve parameter and the
+singular cube bind performs no implicit discard clear. Vulkan and WebGPU compensate in their
+own pass construction by always discarding; SDL GPU loads unless an explicit clear was queued;
+the immediate persistent-resource backends generally retain color. The property therefore
+round-trips correctly while having no portable cube-content meaning.
+
+The backbuffer's corresponding
+\texttt{PresentationParameters.RenderTargetUsage} is currently stored, cloned, and exposed
+only. Returning to the backbuffer never consults it. FNA, by contrast, supplies it to native
+target binding and uses it to choose the unbind-to-backbuffer discard clear. The first 2D
+target's usage controls CNA's MRT implicit clear, which matches FNA's first-target policy in
+shape, but deferred Vulkan MRT passes discard regardless and the public plural cube form
+cannot reach a cube backend at all.
+
+Existing tests justify a deliberately narrow claim. SDL Renderer and EasyGL have
+discriminating non-MSAA 2D color pixels for discard versus preserve; Vulkan has a two-frame
+partial-draw test proving the same color distinction; BGFX's named usage test proves only
+bind/unbind without a crash. No test covers \texttt{PlatformContents}, backbuffer usage,
+cube usage, preserved depth/stencil, preserve plus MSAA, redundant binding, or a cube inside
+\cnaclass{RenderTargetBinding}. The complete source/evidence matrix is
+\S\ref{sec:backend-rendertarget-usage-matrix}; the binding-identity consequences are
+\S\ref{sec:graphicsdevice-target-binding-contract}.
+
 The render-target support ledger once listed five further per-backend divergences here
 (Tasks~877--881) as open gaps, and an earlier pass of this chapter reproduced that list
 faithfully. Reading every backend's own current \texttt{.cpp} directly instead of trusting that

@@ -6,21 +6,83 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **513 physical PDF pages, 49 chapters, 6 appendices**.
-- After the batch commit, the local branch is ahead of `origin/develop` by sixteen coherent
+- Book: **519 physical PDF pages, 49 chapters, 6 appendices**.
+- After the batch commit, the local branch is ahead of `origin/develop` by seventeen coherent
   documentation commits:
   roadmap, ShaderEffect/D3D ABI, general capability matrix, MSAA/anisotropy, buffer
   contracts, volume/cube readback contracts, and RenderTargetCube upload/transition
   contracts, followed by Texture2D update contracts, instancing/vertex binding, and input
   coordinate routing, public backbuffer readback, swap-interval contracts, and presentation
   format/fullscreen contracts, recovery/debug-hook contracts, viewport/scissor contracts, and
-  public `ClearOptions` contracts.
+  public `ClearOptions` contracts, and render-target binding/usage contracts.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
   reviewing `git push`. Its response explicitly rejected the request rather than granting
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: `GraphicsDevice::Clear` / `ClearOptions`
+## Latest completed batch: render-target binding and `RenderTargetUsage`
+
+No CNA source changes were made; the sibling repository remained a read-only authority.
+Findings were verified against the live shared source, all fourteen backend implementations,
+focused tests and plans, Git history, and current FNA source:
+
+- CNA has three separate public binding implementations rather than FNA's one unified route.
+  Rebinding the identical 2D target, cube face, MRT set, or already-active backbuffer is not
+  detected as redundant. Every call resets viewport/scissor; a repeated
+  `DiscardContents` 2D bind also requests another implicit clear. Some backends additionally
+  resolve/regenerate/unbind and rebind the same resource. Current FNA applies sampler/
+  rasterizer state first, then returns early for an identical binding set.
+- The singular 2D path retains a binding and clears black on exact `DiscardContents`, but asks
+  only for target plus optional depth, never stencil. The singular cube path retains neither
+  cube pointer nor face and performs no usage-dependent clear. Thus `GetRenderTargets()` is
+  empty while a cube is bound even though `Present()` still throws through the separate
+  Boolean.
+- The plural path accepts `RenderTargetBinding(Texture*, CubeMapFace)` publicly but converts
+  only `RenderTarget2D`; every cube binding becomes a null backend entry. Depending on the
+  selected product this binds a backbuffer/no target, throws, or dereferences null. FNA stores
+  and binds cube entries normally.
+- `PresentationParameters.RenderTargetUsage` is stored, cloned, and exposed but never used
+  when returning to the backbuffer. `RenderTarget2D` passes only
+  `usage == PreserveContents` to the backend, while shared bind-time clearing tests only
+  `usage == DiscardContents`. Consequently `PlatformContents` is split: most immediate
+  backends preserve because shared code does not clear, but Vulkan/WebGPU receive “not
+  preserve” and discard; BGFX can inherit persistent view-clear state. FNA passes every
+  non-discard usage as the native preserve request.
+- `RenderTargetCube` cannot pass any usage to its backend because
+  `CreateRenderTargetCube` has no preserve argument. Vulkan and WebGPU therefore discard every
+  cube-face pass; SDL GPU and immediate persistent-resource implementations generally load/
+  retain content because the shared cube path issues no implicit clear. No test covers cube
+  usage, `PlatformContents`, backbuffer usage, redundant binding, plural cube binding, or
+  implicit stencil discard.
+- Existing evidence is strongest only for non-MSAA 2D colour: SDL Renderer and EasyGL have
+  discriminating pixel readback, Vulkan has a two-frame partial-draw pixel test, and BGFX has
+  smoke/no-crash coverage only. Vulkan's preserve pass loads colour but discards depth/stencil,
+  and Preserve+MSAA plus all Vulkan MRT/cube passes use discard-shaped render passes. WebGPU
+  preserves all three 2D attachments when requested but always discards cube faces. SDL GPU's
+  per-attachment pending load ops make 2D preserve/discard work through the shared clear, while
+  cube usage is effectively preserve-like for every enum value.
+
+- Ch.9 now distinguishes CNA's unconditional bind/reset work from FNA's identity fast path;
+  Ch.11 documents the three enum values and their actual backend split; Ch.16 adds the
+  complete fourteen-product matrix; Ch.17--25 carry backend-local qualifications; and
+  Appendices A/B add the portability warning and a deliberately narrow feature-grid row.
+- Final validation: forced and subsequent incremental `latexmk` builds produce **519 pages**;
+  targeted undefined-reference and multiply-defined-label checks are empty; makeindex accepts
+  **2,119 entries** with zero rejected and zero warnings; `git diff --check` passes. Rendered
+  physical pages 114--115, 149, 205--207, 219, 226, 236, 243, 257, 265--266, 283--284, 293,
+  299, 481--482, and 489 have no clipping, cell collision, page-edge spill, malformed heading,
+  running-header collision, or folio defect. The new longtable header repeats correctly. The
+  complete set of 492 pre-existing overfull warnings is unchanged from the clean reference
+  build; the eight warnings introduced while drafting were removed.
+- Exact line counts: Ch.9 1,262; Ch.11 572; Ch.16 1,842; Ch.17 417; Ch.18 400; Ch.19 512;
+  Ch.20 424; Ch.21 368; Ch.22 554; Ch.23 888; Ch.24 378; Ch.25 322; Appendix A 410;
+  Appendix B 185.
+
+Next recommended start: reassess the remaining public `GraphicsDevice` surface after this
+commit, beginning with a source/test audit of construction and reset-default behavior rather
+than revisiting the now-closed Clear, viewport/scissor, presentation, or render-target contracts.
+
+## Previous completed batch: `GraphicsDevice::Clear` / `ClearOptions`
 
 No CNA source changes were made; the sibling repository remained a read-only authority.
 Findings were verified against the live shared source, backend implementations, tests,
@@ -85,13 +147,6 @@ Task 1113, and current FNA source:
 - Exact line counts: Ch.9 1,220; Ch.11 526; Ch.14 353; Ch.16 1,697; Ch.17 413; Ch.18 396;
   Ch.19 503; Ch.20 414; Ch.21 360; Ch.22 538; Ch.23 871; Ch.24 367; Ch.25 318; Appendix A
   403; Appendix B 175.
-
-Next recommended start: select another independent public `GraphicsDevice` contract not
-already covered by the recent matrices, while avoiding the actively moving BlendState work in
-the sibling `feature/audit` worktree. A good first candidate is render-target binding/unbinding
-and `RenderTargetUsage` preservation, because the Clear audit exposed target-format and
-pass-lifetime interactions there. Re-read the live sibling source, tests, and plans before
-choosing; do not infer implementation status from old task labels.
 
 ## Previous completed batch: viewport and scissor contract
 

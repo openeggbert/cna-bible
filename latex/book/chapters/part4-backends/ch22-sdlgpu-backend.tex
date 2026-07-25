@@ -362,6 +362,22 @@ closed queued-draw use-after-free above, but it is real ownership debt; the cons
 rule is to keep every active MRT wrapper alive until a subsequent \texttt{SetRender\allowbreak{}Targets()}
 changes or clears the binding.
 
+\section{Usage is encoded as pending load operations, except for cube targets}
+
+The 2D factory ignores its preserve Boolean, but this does not collapse Discard and Preserve.
+The shared Discard bind queues color plus optional depth clear state into the target; Preserve
+and Platform queue nothing. At submission, independent pending Booleans become SDL GPU
+\texttt{CLEAR} or \texttt{LOAD} operations, so color/depth retention follows the shared
+decision. Stencil is a gap: the shared implicit discard request never includes it, so even a
+D24S8 target loads old stencil. MRT applies the first target's shared clear to each color
+sibling, matching the first-target policy in shape.
+
+Cube usage never reaches this backend and shared cube binding queues no implicit clear.
+Every cube enum therefore behaves preserve-like unless the caller explicitly clears that
+face. That is the opposite of Vulkan/WebGPU's always-discard cube passes and is not covered by
+the otherwise-strong SDL GPU cube suite. No usage discriminator, Platform case, or
+backbuffer-usage test exists; see \S\ref{sec:backend-rendertarget-usage-matrix}.
+
 \subsection{A worked example: \cnaclass{Texture3D}'s own \texttt{cycle=true} orphaned-write bug}
 
 \cnaclass{Texture3D} support on this backend --- sub-volume upload/readback plus mipmap generation

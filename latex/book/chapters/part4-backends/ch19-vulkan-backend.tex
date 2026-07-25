@@ -156,6 +156,15 @@ global depth scalar and does not add an otherwise-unused current target to that 
 limits are separate from Task~875's now-fixed ``no pass at all'' defect and are tabulated
 against the other thirteen products in \S\ref{sec:backend-clear-matrix}.
 
+The constructor comparison creates two additional usage boundaries. Only exact
+\texttt{Preserve\allowbreak{}Contents} reaches the backend as true, so
+\texttt{Platform\allowbreak{}Contents} selects the discard pass even though shared code issues
+no matching black clear. The MSAA pass has no load variant at all, so Preserve+MSAA also
+discards. Cube targets cannot convey usage through the common factory, and MRT uses a separate
+always-clear pass; both discard for every enum. The non-MSAA two-frame usage test proves only
+the color Discard/Preserve split, not these depth, MSAA, cube, MRT, or Platform cases. See
+\S\ref{sec:backend-rendertarget-usage-matrix}.
+
 \section{A confirmed non-gap: device-feature gating}
 
 Not every investigation into this backend found a bug. A dedicated check of whether optional

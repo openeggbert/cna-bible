@@ -145,7 +145,11 @@ touches:
         requested \texttt{DepthFormat} itself is honestly acknowledged as emulated: it is
         silently accepted and echoed back, but no functional depth test exists behind it at
         all on this backend. A new \texttt{HasRealDepthBuffer()} check was added specifically
-        so calling code can ask, rather than assume.
+        so calling code can ask, rather than assume. The persistent SDL target texture also
+        makes shared \cnaclass{RenderTargetUsage} behavior unusually direct: Discard is
+        black-cleared on bind, while Preserve and Platform retain color. The strong usage test
+        proves the first two with pixels, but its ``every bind'' wording omits CNA's divergence
+        from FNA: a redundant bind clears again here, while FNA returns early.
   \item \textbf{Present timing (1 fixed runtime bug, 1 remaining construction asymmetry).}
         Runtime \texttt{PresentInterval::Two} used to collapse silently to
         \texttt{One}. \texttt{SetSwapInterval()} now sends the exact value~2 to
