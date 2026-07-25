@@ -232,6 +232,72 @@ with a \texttt{.cnj} file supplying a source-file override and a color key, for 
 well as a full replacement for an asset with no native format of its own --- not only a
 mutually-exclusive alternative to loading the asset directly.
 
+\subsection{\texttt{RootDirectory} is a base, not a sandbox or cache namespace}
+
+The word ``root'' is a convenience, not a containment guarantee. CNA's
+\texttt{BuildAssetPath()} returns the raw asset name when the root is empty and otherwise uses
+\texttt{std::filesystem::path(rootDirectory) / assetName}, without rejecting an absolute name,
+normalizing dot segments, canonicalizing a symlink, or checking that the result remains below the
+configured directory. On the usual path rules, the important cases are:
+
+\begin{lstlisting}
+root = "Content"
+"sprites/logo"     -> "Content/sprites/logo"
+"../shared/logo"   -> "Content/../shared/logo"  // filesystem traversal can escape
+"/srv/game/logo"   -> "/srv/game/logo"          // absolute right side replaces the base
+\end{lstlisting}
+
+An application may deliberately choose an absolute \texttt{RootDirectory} or direct file name,
+but it must not treat either as a security boundary. A caller-controlled \texttt{assetName}, a
+native file symlink below the root, or an in-root path containing \texttt{..} can reach outside
+it. FNA likewise permits a rooted \texttt{RootDirectory} and its raw-asset fallback tries the
+caller-given name, so strict root confinement is not an XNA/FNA compatibility promise. If content
+names come from untrusted data, validate a relative, canonicalized allow-list before calling
+\texttt{Load}; CNA's ordinary resolver is not that validation layer.
+
+Its cache keys are a separate, purely textual rule. \texttt{NormalizeKey()} changes backslashes
+to slashes and lowercases every character, but does not include \texttt{RootDirectory}, remove
+\texttt{.}/\texttt{..}, resolve an extension, or canonicalize the filesystem. Thus
+\texttt{"Sprites\\Logo"} and \texttt{"sprites/logo"} intentionally share a key, while
+\texttt{"textures/../logo"} and \texttt{"logo"} can name the same file yet occupy two cache
+entries. Conversely, on a case-sensitive filesystem two distinct files named \texttt{Logo} and
+\texttt{logo} collapse to one cache identity, with the first loaded value winning. The generic
+cache also keys by requested C\texttt{++} type; Texture2D has the same textual rule in its own
+weak cache; move-only SoundEffect and TextureCube have no cache to alias.
+
+Changing the root is consequently not a content switch for assets already looked up under the
+same logical name. The setter only stores a new string, so this sequence returns the Theme A
+model twice until eviction:
+
+\begin{lstlisting}
+content.setRootDirectoryProperty("ThemeA");
+Model themeA = content.Load<Model>("hero");
+
+content.setRootDirectoryProperty("ThemeB");
+Model stillThemeA = content.Load<Model>("hero"); // generic cache key is still "hero"
+
+content.Unload();
+Model themeB = content.Load<Model>("hero");
+\end{lstlisting}
+
+The same setter does not clear the separately lazy content manifest, so
+\texttt{GetContentManifest()} can also describe the old root until an explicit
+\texttt{RefreshContentManifest()}. This applies independently of the cache cases above; it is
+not a hot-reload mechanism. No located test changes \texttt{RootDirectory}, probes aliasing, or
+loads an absolute/traversing asset name.
+
+The two nested-reference paths need to be distinguished from this broad rule. A \texttt{.cnj}
+\texttt{sourceFile} is robustly narrower: it rejects an absolute field, traversals, symlink
+escapes, another \texttt{.cnj}, and implicit sidecar cycles by comparing weakly-canonical paths;
+the focused safety tests cover each boundary. \texttt{ContentReader::ReadExternalReference<T>()}
+instead rejects only a relative reference whose normalized logical form starts above the root.
+An absolute reference is not rejected before it is passed to \texttt{ContentManager::Load()}, so
+it follows the unrestricted asset-name path just described; the tests cover the relative
+\texttt{..} rejection but not that absolute bypass. Song and Video XNB readers are wider again:
+they normalize their embedded media path lexically but perform no root check, so either traversal
+or an absolute media reference can name a file outside the content root. These are
+source-established boundaries, not failure-injection reproductions.
+
 \section{Direct loading: the shape of Chapter~\ref{ch:first-game}'s smallest program}
 \label{sec:direct-loading}
 

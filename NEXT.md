@@ -7,12 +7,13 @@ session log; this file is the concise live handoff.
 
 - Branch: `develop`.
 - Book: **529 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by twelve documentation commits: `944fa54`
+- The local branch is ahead of `origin/develop` by thirteen documentation commits: `944fa54`
   (render-target binding/usage contracts), the Reset-order contracts batch, the resource-lifecycle
   audit, the construction/SDL-ownership audit, the multisample-backend-rebuild audit, and the
   Game/GraphicsDeviceManager lifecycle and callback/disposal audits, plus the Game
   exit/destruction/component-lifetime and ContentManager cache/disposal and
-  copy/replacement, service-provider/device-resolution, and reader-registration audits below.
+  copy/replacement, service-provider/device-resolution, reader-registration, and root/path audits
+  below.
   The previous seventeen-commit count was accurate before the remote advanced and is retained
   only in the historical session log.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
@@ -20,7 +21,41 @@ session log; this file is the concise live handoff.
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: ContentManager reader-registration ownership and scope
+## Latest completed batch: ContentManager root, asset path, and cache-key boundary
+
+No CNA source changes were made; the sibling repository remained a read-only authority. The live
+path helpers and all Load specializations, root setter/manifest, CNJ and XNB nested-reference
+paths, relevant focused tests, a C++ filesystem join probe, and current FNA ContentManager
+establish:
+
+- `RootDirectory` is a base, not a sandbox. General CNA `Load()` accepts `..` and absolute asset
+  names; native symlinks are not contained. An absolute right operand replaces the base, and no
+  general canonical-path check occurs. FNA likewise allows a rooted root and raw caller-name
+  fallback, so strict root confinement is not an XNA/FNA promise. Untrusted names require an
+  application-level relative/canonical allow-list.
+- Cache normalization is textual only: backslashes become slashes and all characters lowercase;
+  the key excludes the root and does not collapse dot segments. Equivalent physical aliases can
+  cache separately, case-distinct files can collapse to one first-wins entry, and changing root
+  then loading the same generic/Texture2D name returns the old cache until `Unload()`. The root
+  setter also leaves the old lazy content manifest intact until `RefreshContentManifest()`.
+- CNJ `sourceFile` is deliberately safer: it rejects absolute paths, traversal, symlink escape,
+  chaining, and implicit sidecar cycles through weakly-canonical checks, and focused tests cover
+  them. XNB `ReadExternalReference<T>()` rejects a relative escape but does not reject an absolute
+  reference before passing it to general Load; its tests omit that bypass. Song and Video XNB
+  readers perform no root check for their embedded media references, so traversal and absolute
+  paths can leave the root there too.
+- Ch.8 now separates these mechanisms and documents the root-switch/cache example. Validation:
+  incremental `latexmk` succeeded at **529 pages**; targeted undefined-reference and
+  duplicate-label checks are empty; makeindex accepted **2,142** entries with zero rejected and
+  zero warnings; `git diff --check` passes. Rendered physical pages **105--106** are clean. Ch.8
+  is now **642** lines. The plan-consistency validator remains absent from this checkout.
+
+Next recommended start: retain the ContentManager scope and audit its error and type boundary.
+Trace empty/malformed asset names, missing files, reader/type mismatches, `.xnb` root-object
+casts, exceptions from loader callbacks, cache mutation after failures, and comparison with FNA's
+`Load<T>()` diagnostics before expanding the chapter's failure-contract guidance.
+
+## Previous completed batch: ContentManager reader-registration ownership and scope
 
 No CNA source changes were made; the sibling repository remained a read-only authority. The live
 ContentManager registration templates, builtin loaders, XNB reader dispatch and static registry,
@@ -55,10 +90,7 @@ manager establish:
   Rendered physical pages **103--105** are clean. Ch.8 is now **576** lines. The plan-consistency
   validator remains absent from this checkout.
 
-Next recommended start: retain the ContentManager scope and audit asset path/root confinement.
-Trace `BuildAssetPath`, `NormalizeKey`, `ResolveAssetPath`, absolute and `..` paths, symlinks,
-cache aliasing, XNB/external-reference paths, existing source-file safety checks, test coverage,
-and XNA/FNA compatibility before changing the chapter's resolution/security wording.
+The root/path recommendation from this batch has been completed by the newer audit above.
 
 ## Previous completed batch: ContentManager service-provider and graphics-device resolution
 
