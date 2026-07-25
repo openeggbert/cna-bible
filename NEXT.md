@@ -7,10 +7,10 @@ session log; this file is the concise live handoff.
 
 - Branch: `develop`.
 - Book: **523 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by six documentation commits: `944fa54`
+- The local branch is ahead of `origin/develop` by seven documentation commits: `944fa54`
   (render-target binding/usage contracts), the Reset-order contracts batch, the resource-lifecycle
   audit, the construction/SDL-ownership audit, the multisample-backend-rebuild audit, and the
-  current Game/GraphicsDeviceManager lifecycle audit.
+  Game/GraphicsDeviceManager lifecycle and callback/disposal audits.
   The previous seventeen-commit count was accurate before the remote advanced and is retained
   only in the historical session log.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
@@ -18,7 +18,57 @@ session log; this file is the concise live handoff.
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: Game/GraphicsDeviceManager lifecycle and event boundary
+## Latest completed batch: GraphicsDeviceManager resize callback and disposal boundary
+
+No CNA source changes were made; the sibling repository remained a read-only authority. The
+current GraphicsDeviceManager, Game, GameWindow, EventHandler, focused real-window-resize
+example, empty manager unit file, Git history, and bundled FNA reference establish:
+
+- Manager construction registers two type-keyed services and also appends a raw-this lambda to
+  GameWindow::ClientSizeChanged. It refreshes the viewport after either Game's SDL resize-event
+  route or a manager EndScreenDeviceChange(). The registered EasyGL real-window-resize test proves
+  the public window event, but not this callback's necessity because Present() separately refreshes
+  the viewport every frame.
+- The event runtime already provides Add() tokens and Remove(token), but this registration uses
+  operator+= and discards the token. unregisterServices() removes only the two map entries. Thus
+  an explicitly disposed but still-live manager continues to receive resize callbacks; a
+  replacement manager is permitted while that stale listener remains. Destroying the old manager
+  before its still-live game then leaves a lambda with a dangling this, invoked on the next resize.
+  The usual derived-member destruction order avoids a resize after the member dies, but it does not
+  make early reset/replacement safe.
+- FNA currently has the same-looking no-unsubscribe registration, but its C# delegate keeps the
+  target object alive. CNA's raw capture does not, changing an otherwise retained-object issue
+  into possible native use-after-free. No located test destroys/replaces a manager and resizes its
+  game afterward.
+- ownsGraphicsDevice_ starts false and every current assignment writes false, so both
+  DeviceDisposing call sites are unreachable in the game-attached topology. An explicit
+  Game::Dispose() after normal initialization disposes the manager service, but not the game-owned
+  device and not through DeviceDisposing. Game::UnloadContent() has no call site and no
+  service-event subscription in current source; DrawableGameComponent's own
+  Dispose(bool)/UnloadContent() route remains separate.
+- The manager sets disposed_ only after raising Disposed: a re-entrant Dispose() handler recurses
+  and a throwing one leaves it false. The resize callback also ignores that flag. An older
+  reachable history commit (ebf75803) claimed the FNA-style device-event/Game subscriptions were
+  wired, but HEAD lacks them; the book deliberately documents the live implementation, not the
+  historical commit message.
+- Ch.6 now warns that Game-level UnloadContent() is not automatic; Ch.9 documents resize callback
+  lifetime, the unreachable teardown event, and disposal re-entrancy. This is source-established
+  behavior, not failure-injection or a runtime UAF reproduction.
+- Validation: incremental latexmk succeeded at **523 pages**; targeted undefined-reference and
+  duplicate-label checks are empty; makeindex accepted **2,132** entries with zero rejected and
+  zero warnings; git diff --check passes. All drafting overfull boxes were removed. Rendered
+  physical pages 58 and 115--116 are clean. Ch.6 and Ch.9 are now **527** and **1,513** lines;
+  Ch.9 spans printed pages **88--115** (28 pages).
+- The historical plan-consistency command cannot currently run: this repository has no
+  `test/validate_plan_consistency.py` file. This is an absent validator, not a validation failure
+  caused by the documentation batch.
+
+Next recommended start: audit Game's own disposal/destructor, Disposed/Exiting event ordering, and
+component/content teardown after the newly established fact that Game::UnloadContent() is not
+framework-invoked. Keep normal member destruction separate from explicit Game::Dispose() and from
+the manager's independent lifetime.
+
+## Previous completed batch: Game/GraphicsDeviceManager lifecycle and event boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. The
 `Game` and `GraphicsDeviceManager` implementations, event runtime, focused examples/CMake

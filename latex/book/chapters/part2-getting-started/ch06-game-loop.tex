@@ -50,6 +50,15 @@ for that frame entirely, the mechanism \cnaclass{GraphicsDeviceManager}
 available yet. A game can also override \texttt{ShowMissingRequirementMessage(const
 std::exception\&)} and the protected \texttt{Dispose(bool disposing)}.
 
+The presence of \texttt{UnloadContent()} in that list is not a promise that CNA currently calls
+it at ordinary game shutdown. The live \cnaclass{Game} implementation has no call site for its
+own virtual, and its graphics manager's \texttt{DeviceDisposing} route is unreachable for the
+game-owned device topology. An override may still be useful to an application which invokes it
+itself, but it must not be the sole release path for a game's resources. The component-level
+\texttt{UnloadContent()} contract is separate: \cnaclass{DrawableGameComponent::Dispose(bool)}
+does invoke that component virtual. Chapter~\ref{ch:graphicsdevice} traces the manager disposal
+and callback-lifetime consequences in detail.
+
 \subsection{The timing loop, ported wholesale from FNA}
 
 \texttt{Game}'s private implementation carries over FNA's adaptive-sleep-precision timing

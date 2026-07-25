@@ -379,6 +379,70 @@ pair for direct \texttt{Reset()}, not the service bridge. The unit file for
 both subscriptions together, \texttt{PreparingDeviceSettings} persistence, listener exceptions,
 or re-entrancy.
 
+\subsection{The resize subscription outlives service registration}
+
+Constructing a game-attached manager performs one more registration than the two service-map
+entries: it appends a lambda that captures raw \texttt{this} to the window's client-size event.
+That event is named \texttt{ClientSizeChanged}. The lambda refreshes the device viewport when
+the window changes. It runs after the game's SDL resize-event handling and during a
+manager-driven screen-device change. The
+registered EasyGL real-window-resize program proves that a genuine OS resize raises
+\texttt{ClientSizeChanged}; it deliberately does \emph{not} prove this manager callback, because
+each present also refreshes the viewport every frame.
+
+\texttt{System::EventHandler} has a safe removal mechanism. \texttt{Add()} returns a token;
+passing it to \texttt{Remove(token)} removes exactly that listener. The manager instead uses
+\texttt{operator+=}, discards that token, and stores no equivalent token of its own.
+\texttt{unregisterServices()} consequently removes only
+\texttt{IGraphicsDevice}\allowbreak\texttt{Manager} and
+\texttt{IGraphicsDevice}\allowbreak\texttt{Service} from the game's type-keyed map; it does not detach the window
+lambda. Calling \texttt{Dispose()} while the C\texttt{++} object remains alive therefore leaves a
+working-but-disposed callback that can still update the game-owned device. It also permits a new
+manager to register because the service entries are gone, while the old callback remains in the
+window's invocation list.
+
+Destroying that first manager before its \cnaclass{Game} is destroyed is unsafe: the next client
+resize invokes the stored lambda through a dangling \texttt{this} pointer. The usual sample
+shape, a manager member of the derived game, does not itself create a later resize during base
+\cnaclass{Game} destruction: derived members die first, then the base destructor runs, and the
+\cnaclass{GameWindow} member is subsequently destroyed. That narrow ordinary ordering is not a
+general ownership guarantee. A game which deliberately resets a \texttt{unique\_ptr}, replaces a
+manager, or destroys one early must not rely on service removal as event unsubscription.
+
+FNA also subscribes its \texttt{INTERNAL\_OnClientSizeChanged} method without an explicit
+unsubscribe, but the C\# delegate keeps its target object alive while the window holds the
+delegate. CNA's raw capturing lambda supplies no such lifetime retention, so the superficially
+similar port can become native use-after-free instead. No located unit or integration test
+disposes/replaces a manager and then resizes its still-live game window.
+
+\subsection{Disposal does not currently deliver the advertised device teardown path}
+
+\texttt{DeviceDisposing} is present in the manager and in
+\texttt{IGraphicsDeviceService}, but it has no reachable ordinary CNA delivery path. Both of the
+manager's calls to \texttt{OnDeviceDisposing()} require \texttt{ownsGraphicsDevice\_}; that flag
+starts false and the current implementation only assigns it false. A game-attached manager
+therefore does not dispose the game-owned device and does not raise \texttt{DeviceDisposing} when
+the manager is disposed. After normal initialization, an explicit \texttt{Game::Dispose()} does
+call \texttt{Dispose()} on its cached graphics service, but this remains only service
+unregistration plus the manager's \texttt{Disposed} event.
+
+The consequence reaches the familiar game virtual too: the current \cnaclass{Game} has no call
+site for its own \texttt{UnloadContent()}. It also never subscribes that virtual to the service's
+\texttt{DeviceDisposing} event. A \cnaclass{DrawableGameComponent} differs here --- its own
+\texttt{Dispose(bool)} calls its component \texttt{UnloadContent()} --- but a game's override is
+not an automatic shutdown or device-recreation hook in the current code. FNA wires a newly
+created device's disposing/reset events into its manager and has \cnaclass{Game} subscribe to
+the service before loading content; those wires are absent from the current CNA source even
+though an older repository-history change described them. Treat explicitly owned resources and
+application shutdown as requiring their own deterministic cleanup.
+
+Finally, \texttt{GraphicsDeviceManager::Dispose(bool)} sets its private \texttt{disposed\_} flag
+\emph{after} raising \texttt{Disposed}. A handler which calls \texttt{Dispose()} again observes
+false, re-enters the same notification, and can recurse indefinitely; a throwing
+\texttt{Disposed} handler likewise leaves the flag false. The raw window callback has no
+\texttt{disposed\_} check either. These are source-established lifecycle holes, not failure
+injection results.
+
 \begin{sourcenote}
 \textbf{From the FNA-fidelity audit (\texttt{docs/graphicsdevice-fna-audit.md}):} the three
 concrete gaps against FNA's public surface are the \texttt{Present} 3-arg overload, the
