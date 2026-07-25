@@ -557,6 +557,51 @@ layouts, Unicode edge cases, Boolean false/noncanonical true, malformed UTF-8, s
 the enum gap. Treat this family as a transparent binary compatibility layer for the stated
 layouts, not as a validating schema or complete XNB value-type surface.
 
+\subsection{Decimal and calendar readers preserve ticks more reliably than all metadata}
+\label{sec:xnb-decimal-datetime-reader-contract}
+
+\texttt{RegisterDecimalDateTimeXnbReaders()} supplies \texttt{TimeSpanReader} and
+\texttt{DateTimeReader} on every supported C\texttt{++} compiler, but supplies
+\texttt{DecimalReader} only when \texttt{\_MSC\_VER} is absent. That is a real platform
+compatibility boundary, not an optional fast path: sharp-runtime's \cnaclass{Decimal} uses
+\texttt{unsigned \_\_int128}, so its header, reader class, and canonical factory are deliberately
+compiled out for the MSVC family. An XNB that names DecimalReader consequently reaches the ordinary
+unregistered-type-reader error on that build, while the TimeSpan and DateTime names remain
+available. As with the preceding value readers, the three inherit exact serialized version zero
+and require explicit registration (or the umbrella helper) before a manager load.
+
+Decimal consumes sixteen little-endian bytes in .NET wire order: signed Int32 \texttt{lo},
+\texttt{mid}, \texttt{hi}, then \texttt{flags}. The first three are reassembled as an unsigned
+96-bit mantissa; flag bit 31 supplies the sign, and bits 16--23 supply the decimal scale. The
+sharp-runtime \cnaclass{Decimal} constructor correctly rejects a scale above 28, so that failure
+escapes as its argument-range exception rather than as \cnaclass{ContentLoadException}. It does
+\emph{not}, however, validate the remaining reserved flag bits. CNA silently discards them, and
+also canonicalizes a signed zero to an unsigned zero. A small reference run through Mono's
+\texttt{BinaryReader.ReadDecimal()} rejects a flag word with reserved bit 0 set as
+\texttt{IOException} and preserves a negative-zero flag; current FNA delegates to that runtime
+operation. CNA therefore accepts some corrupt Decimal payloads that the reference rejects and
+does not reproduce every observable Decimal bit pattern, even though its ordinary positive
+mantissa/scale layout is correct.
+
+TimeSpan is the uncomplicated case: it is one signed little-endian Int64 count of 100-nanosecond
+ticks, passed directly to \cnaclass{TimeSpan}; every 64-bit signed value is representable. DateTime
+instead reads an unsigned 64-bit word, treats the low 62 bits as ticks and the high two as
+\texttt{DateTimeKind}, then constructs sharp-runtime \cnaclass{DateTime} from ticks alone. The
+constructor still rejects a tick count below zero or above its year-9999 maximum, but the kind is
+lost because sharp-runtime does not store it or offer local/UTC conversion APIs. This loses valid
+Unspecified/UTC/Local distinctions. It also changes malformed input admission: the code masks and
+discards kind value 3, whereas FNA passes it to \texttt{new DateTime(ticks, kind)}; the same Mono
+reference run accepts 0, 1, and 2 but throws \texttt{ArgumentException} for 3. CNA accepts that
+otherwise valid-tick word as an unspecified value.
+
+The focused test shares the direct-writer/direct-\texttt{ReadUntyped()} shape of the primitive
+test: one positive Decimal with only \texttt{lo} and scale checked, one positive TimeSpan, and
+one UTC-bit DateTime. It intentionally conditionalizes Decimal registration on the local compiler,
+but supplies no MSVC build result, external XNB fixture, full 96-bit/sign/negative-zero Decimal,
+reserved flag, invalid scale, negative/extreme TimeSpan, Local/Unspecified/3 DateTime-kind, invalid
+tick, truncation, or version test. These readers make common values usable, but they are not a
+cross-platform, bit-for-bit fidelity guarantee for all XNA temporal and Decimal payloads.
+
 \section{The resolution order, precisely}
 
 The earlier short three-way description is useful, but it hides two consequential facts: a

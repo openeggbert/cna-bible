@@ -7,7 +7,7 @@ session log; this file is the concise live handoff.
 
 - Branch: `develop`.
 - Book: **543 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by twenty-four documentation commits: `944fa54`
+- The local branch is ahead of `origin/develop` by twenty-five documentation commits: `944fa54`
   (render-target binding/usage contracts), the Reset-order contracts batch, the resource-lifecycle
   audit, the construction/SDL-ownership audit, the multisample-backend-rebuild audit, and the
   Game/GraphicsDeviceManager lifecycle and callback/disposal audits, plus the Game
@@ -15,16 +15,51 @@ session log; this file is the concise live handoff.
   copy/replacement, service-provider/device-resolution, reader-registration, root/path, and
   Load-failure/type/cache-mutation, concurrency/reentrancy, content-manifest introspection,
   format-selection/fallback, ResourceContentManager/OpenStream, TitleContainer/TitleLocation,
-  ContentReader, ContentTypeReader, XNB header/decompression, XNB type-reader-name/table, and
-  scalar/math-reader audits below. The previous twenty-three-commit count was accurate before this
-  local batch and is retained only in the
+  ContentReader, ContentTypeReader, XNB header/decompression, XNB type-reader-name/table,
+  scalar/math-reader, and Decimal/DateTime-reader audits below. The previous twenty-four-commit
+  count was accurate before this local batch and is retained only in the
   historical session log.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
   reviewing `git push`. Its response explicitly rejected the request rather than granting
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: scalar/math XNB-reader layouts and generic-enum boundary
+## Latest completed batch: Decimal/TimeSpan/DateTime XNB-reader compatibility boundary
+
+No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
+platform-guarded three-reader family, registration, test and history; sharp-runtime Decimal,
+DateTime, TimeSpan and BinaryReader code; local FNA readers; fixture inventory; and small Mono
+reference runs establish:
+
+- DecimalReader is deliberately absent on the MSVC family because sharp-runtime Decimal requires
+  unsigned __int128; the canonical reader name becomes unregistered there. TimeSpanReader and
+  DateTimeReader remain available. All three otherwise inherit CNA's exact serialized-version-zero
+  rule and require explicit registration.
+- Decimal's 16-byte lo/mid/hi/flags layout is correct for ordinary values and rejects a scale above
+  28, but the reader drops reserved flags and canonicalizes signed zero. Mono BinaryReader rejects
+  a reserved flag and preserves negative zero, so CNA accepts some malformed Decimal encodings and
+  cannot reproduce every bit pattern.
+- TimeSpan is a direct signed Int64 tick count. DateTime masks low 62 tick bits and drops the two
+  Kind bits because sharp-runtime cannot store Kind. This loses Unspecified/UTC/Local identity and
+  accepts kind value 3 after masking it, whereas FNA passes it to DateTime and the Mono reference
+  constructor rejects it.
+- The four direct-reader tests exercise registration, one positive Decimal scale, one positive
+  TimeSpan, and one UTC-bit DateTime only. They have no MSVC run, external XNB, full Decimal
+  fields/sign/invalid flags, temporal boundaries/kinds, truncation, table dispatch, or version
+  coverage.
+
+Ch.8 now states this wire, platform, metadata, exception, FNA, and test boundary. Full latexmk
+succeeded at **543 pages**; targeted undefined-reference and duplicate-label checks are empty;
+makeindex accepted **2,217** entries with zero rejected and zero warnings; git diff --check passes.
+Rendered physical pages **111--112** are clean. Ch.8 is **1,424** lines and Ch.6 is **621** lines.
+The plan-consistency validator remains absent from this checkout.
+
+Next recommended start: retain the XNB scope and audit CurveReader's counted key sequence,
+continuity/loop/tangent enum casts, existing-instance behavior, invalid-value handling, and
+real-fixture/test coverage. Keep the Decimal reserved-flag/signed-zero and DateTime-kind findings
+recorded as current develop behavior; resolving them spans sharp-runtime fidelity and MSVC support.
+
+## Previous completed batch: scalar/math XNB-reader layouts and generic-enum boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. The
 primitive/math reader and registration families, umbrella registration, ContentReader composite
