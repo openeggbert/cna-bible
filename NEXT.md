@@ -147,6 +147,13 @@ not yet put them in a pipeline key. The chapter now names this as its fifth open
 422-line, eight-page isolated PDF compiled twice with zero overfull boxes; the cache section was
 rendered and inspected.
 
+**Ch.22 sampler follow-up:** the sampler audit confirms that point/linear, mipmap mode,
+Wrap/Clamp/Mirror, and dual-texture slots have pixel proofs, while MaxAnisotropy only reaches an
+internal slot field. Queued commands and sampler cache creation omit it, so no SDL_GPU sampler
+actually enables anisotropy. It is now the chapter's sixth open limitation. The 432-line
+nine-page isolated PDF compiled twice with zero overfull boxes; the changed page was rendered
+and inspected.
+
 **Latest continuation: Ch.25 (DX3/free-direct) received a source-grounded fifth pass.** Its
 fixed-output letterbox limitation does not make input mapping ambiguous: the backend's real
 `TransformWindowToLogical()` and inverse query the live SDL window, recompute

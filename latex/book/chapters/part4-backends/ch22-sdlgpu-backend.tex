@@ -168,6 +168,14 @@ the float values in the pipeline-cache key and baking them into each pipeline. T
 not silently pretend otherwise: culling, fill mode, stencil, blend, and scissor have targeted
 pixel proofs, whereas depth bias remains an open state-mapping gap.
 
+The sampler path has a narrower analogous gap. CNA stores the requested anisotropy in each of
+its sixteen XNA sampler slots, but queued commands retain only
+filter and U/V address modes, and \texttt{GetOrCreateSampler()} caches only that three-part key.
+No created \texttt{SDL\_GPUSampler} therefore receives an anisotropy setting. Point/linear,
+mipmap mode, Wrap/Clamp/Mirror, and the two independent dual-texture slots are
+all pixel-tested; anisotropy is stored but unimplemented, rather than another supported sampler
+dimension.
+
 \section{Present timing belongs to the device manager, not a test-only backend poke}
 
 The SDL\_GPU tests establish a small but important rule about CNA's initialization lifecycle.
@@ -359,7 +367,7 @@ separate, write-only swapchain readback limitation described below.
 \section{What remains open}
 \label{sec:sdlgpu-what-remains-open}
 
-Five limits are worth stating precisely rather than glossing over. First, occlusion queries are a
+Six limits are worth stating precisely rather than glossing over. First, occlusion queries are a
 \emph{permanent} limitation of the underlying API, not a task gap: the vendored
 \texttt{SDL\_gpu.h} has no query-pool or occlusion-query type anywhere in it (only
 \texttt{SDL\_GPUFence} for CPU/GPU synchronization), so \texttt{CreateOcclusionQuery()}
@@ -396,7 +404,9 @@ backend's explicit-location, uniform-block binding contract, even though the ded
 open pending either a shared content-dialect migration or a real shader-translation layer.
 Fifth, \cnaclass{RasterizerState}'s depth-bias values remain captured-but-unapplied because
 SDL\_gpu has no dynamic depth-bias command and CNA does not yet bake the float values into its
-pipeline cache. Beyond these five, Windows (D3D12 driver) and macOS/iOS (Metal driver)
+pipeline cache. Sixth, \cnaclass{SamplerState}'s \texttt{MaxAnisotropy} is retained in a slot
+but not included in command or sampler-cache creation, so no SDL\_gpu sampler uses it. Beyond
+these six, Windows (D3D12 driver) and macOS/iOS (Metal driver)
 remain code paths only, not validation claims, until run on real (or Wine/DXVK-class) hardware
 --- the same phased-claim discipline this book already applies to \texttt{D3D11} /
 \texttt{D3D12} (Chapter~\ref{ch:direct3d-backends}) and \texttt{WebGPU}
