@@ -105,6 +105,14 @@ rendered pages 3--4 cleanly. A following layout pass resolved all five formerly 
 Ch.22 overfull boxes; the entire six-page isolated chapter compiled without an overfull warning
 and was rendered as a contact sheet for inspection. Full-book regeneration is still pending.
 
+**Newest Ch.22 addition:** the chapter now distinguishes a null acquired swapchain texture
+(documented non-error, skip the minimized-window frame) from a false hard-acquisition result
+(submit the required command buffer, throw, and retain `framePending_`). The real recovery test
+unclaims its SDL window on frame 10, observes the throw, reclaims it, presents the original queued
+frame, then renders 30 further frames. The new section was isolated-compiled with zero overfull
+warnings and its page 5 was rendered and inspected. The PLAN table's Ch.22 line count must be
+updated from 307 to 326 in the next documentation commit; full-book regeneration remains pending.
+
 This was an unusually long, multi-batch session (author unavailable for many hours, explicit
 "continue autonomously" instruction given partway through, repeated several times). Seven full
 batches landed in total (371 → 452 pages, +81), on top of the earlier SDL_GPU chapter insertion

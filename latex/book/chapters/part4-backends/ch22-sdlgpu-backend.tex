@@ -252,6 +252,25 @@ backend class's own source comment) was applied proactively to
 separate per-face \texttt{SetData()} calls that must all land on the same underlying resource --- caught
 and fixed before shipping rather than found by reproducing the same bug a second time.
 
+\section{A forced swapchain failure must preserve the queued frame}
+
+SDL\_gpu distinguishes two acquisition outcomes that a renderer must not conflate. A successful
+\texttt{SDL\_WaitAndAcquireGPUSwapchainTexture()} call with a null texture is a documented,
+non-error case such as a minimized window: CNA submits the command buffer and simply skips that
+frame. A false return is a hard acquisition failure. SDL forbids cancelling the command buffer
+after this call, so CNA submits it first and then throws with the captured SDL error. Crucially,
+it leaves \texttt{framePending\_} true: a caller which recovers the window must be able to submit
+the same queued clear and draws rather than silently lose them.
+
+\texttt{sdlgpu\_swapchain\_recovery\_test.cpp} proves that latter path without pretending a real
+device loss is easy to reproduce. On frame 10 it calls SDL's own
+\texttt{SDL\_ReleaseWindowFromGPUDevice()}, makes \texttt{Present()} fail, reclaims the identical
+window with \texttt{SDL\_ClaimWindowForGPUDevice()}, and calls \texttt{Present()} again. The test
+requires all five stages: nine ordinary frames, the induced throw, successful reclaim, successful
+presentation of the preserved frame, and 30 further frames without exception. This is a bounded,
+controlled proof of recovery after a hard acquisition failure; it does not claim to solve the
+separate swapchain-texture readback segfault described below.
+
 \section{What remains open}
 \label{sec:sdlgpu-what-remains-open}
 
