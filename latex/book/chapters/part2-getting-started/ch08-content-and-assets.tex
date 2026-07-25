@@ -984,6 +984,82 @@ failure, cache/unload, another producer/platform, or a SpriteFont seed in the co
 Treat the two real fixtures as sound ordinary-layout and compressed-path evidence, not as a
 validation or adversarial-input oracle.
 
+\subsection{SoundEffectReader widens its real WAV support, but its wrapped-loop endpoint can overflow}
+\label{sec:xnb-soundeffect-reader-contract}
+
+The registered \texttt{Microsoft.Xna.Framework.Content.SoundEffectReader} first reads a UInt32
+\texttt{formatLength}, then the six WAVEFORMATEX fields: UInt16 format tag and channel count,
+UInt32 sample rate and average bytes per second, and UInt16 block alignment and bits per sample.
+For a declared length above 16 it consumes a swapped UInt16 \texttt{cbSize}; an XMA2/34-byte
+extension is field-read solely to preserve stream position, while another extension is retained
+as raw bytes. Next come a signed Int32 data length and exact data bytes, signed Int32 loop start
+and length, and a UInt32 stored duration in milliseconds. On Xbox platform \texttt{'x'} only the
+WAVEFORMATEX multi-byte fields are byte-swapped; the outer XNB counts, loop values, and audio data
+remain little-endian. This matches FNA's unusual swap boundary. CNA additionally requires the
+usual serialized reader version zero; FNA's reader table does not enforce that version.
+
+The length word is an account of the format block, not a full structural admission check. CNA
+unconditionally consumes the 16-byte base fields before consulting it, so an underdeclared value
+at or below 16 is not independently rejected. Above 16, a length too small for \texttt{cbSize} or
+too large to represent as the reader's signed exact-read count fails cleanly; the focused tests
+cover the ordinary 16/18/extended sizes and adversarial extremes. The raw audio count likewise
+uses \texttt{ReadBytesExactOrThrow()}, so negative declarations become a content-load error and a
+truncated stream becomes end-of-stream rather than the old pointer/count overread. It has no
+separate decoded-audio or aggregate asset-size budget, however: a physically supplied, valid but
+very large audio body may still be retained and handed to a decoder.
+
+Current format support is wider than several stale local artifacts claim. Six real MonoGame
+fixtures and their direct-reader tests establish 16-bit PCM mono/stereo, 8-bit PCM, 32-bit IEEE
+float, MS-ADPCM, and IMA-ADPCM. PCM16 takes CNA's raw signed-little-endian fast path. The other
+four formats are put in a synthetic WAV and decoded by SDL3 through \texttt{SoundEffect::FromStream};
+for real MonoGame MS-ADPCM whose \texttt{cbSize} is zero, CNA synthesizes the standard seven
+coefficient pairs and a samples-per-block value before calling SDL. Channels other than mono or
+stereo, unknown tag/bit combinations, and XMA2 are rejected with an asset-specific
+\texttt{ContentLoadException}; CNA parses the XMA2 extension only to remain aligned, while FNA
+forwards that form to its own SoundEffect/FAudio path. Thus XMA2 is a genuine CNA format gap, not
+an unrecognized reader name.
+
+The source, header, and tests are authoritative here: the older XNB support page and the four
+PCM8/float/MS-ADPCM/IMA-ADPCM fixture manifests still label those working formats ``rejected.''
+Their status predates the WAV-wrapper change and must not be copied into a current compatibility
+claim. The stored duration also has a CNA-only role. FNA reads then discards it; CNA compares a
+nonzero declaration with the decoded duration and rejects a ratio below 0.5 or above 2.0. That
+generous check catches gross sample-rate/channel errors and accepts observed ADPCM block rounding,
+but it can reject a malformed or unusual asset that FNA would have accepted.
+
+Loop values are nominally decoded sample-frame values and are deliberately not bounded against
+the decoded audio length, matching FNA's internal constructor. The direct PCM16 route stores the
+two signed fields after unsigned conversion, so negative values wrap as they do in FNA. The
+WAV-wrapper route adds a CNA-specific hazard: for a positive \texttt{loopLength},
+\texttt{AppendSmplChunkIfLooped()} computes signed \texttt{loopStart + loopLength} before writing
+the WAV \texttt{smpl} end field. An extreme positive pair can overflow that signed Int32 addition
+(undefined behavior) before the intended unsigned encoding. A normal IMA-ADPCM test proves
+1500/400 frame values survive a roughly 4:1 compressed payload and a loopless test proves zeroes
+stay absent, but no test reaches the overflow or validates loop bounds. Treat malformed wrapped
+loops as an outstanding current-develop safety gap rather than relying on the direct PCM policy.
+
+The reader does not deserialize into an existing object in normal manager dispatch, as FNA also
+advertises. There is a C\texttt{++}-specific direct-path consequence because \cnaclass{SoundEffect}
+is move-only: type erasure accepts a caller's \texttt{shared\_ptr<SoundEffect>} and moves its
+pointed-to value into the optional existing argument, but SoundEffectReader ignores that argument
+and returns a new effect. The caller's pointer consequently refers to a moved-from object. FNA
+also ignores its supplied instance, but its reference object remains intact while it returns a
+new one. Normal \cnaclass{ContentManager} loads avoid this path and create a fresh move-only effect
+on every call rather than using the generic copyable-object cache.
+
+The test matrix is substantial but not a universal compatibility proof. One manager-level test
+loads real 16-bit MonoGame PCM and asserts its name and positive duration. Six focused tests load
+all real supported variants through \texttt{ReadAsset}, and a hand-built XMA2 body proves the
+rejection branch. Further focused cases cover Xbox byte swapping, malformed data/format lengths,
+duration-oracle decisions, mono/stereo admission, normal loops, and decoder error context; a
+deterministic 1,120-combination WAVEFORMATEX boundary sweep accepts only a result or clean
+content/end-of-stream error. The whole-container fuzzer mutates the real PCM16 asset 1,500 times.
+Missing are a real XMA2 or Xbox asset, an external FNA sample-level decode comparison, a true
+LZX-compressed audio XNB (the misleadingly named \texttt{Explosion.xnb} is a Texture2D), extreme
+loop tests, large valid-body limits, direct-existing behavior, and non-MonoGame producers. The
+reader is therefore well exercised for current supported desktop WAV paths, but neither every
+upstream codec nor every hostile metadata combination is established.
+
 \section{The resolution order, precisely}
 
 The earlier short three-way description is useful, but it hides two consequential facts: a

@@ -6,18 +6,59 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **551 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by **ten**
+- Book: **553 physical PDF pages, 49 chapters, 6 appendices**.
+- The local branch is ahead of `origin/develop` by **eleven**
   documentation commits: the ContentTypeReader contract, XNB container, type-name/table,
   scalar/math, Decimal/DateTime, CurveReader, Texture2DReader, Texture3DReader, and
-  TextureCubeReader and SpriteFontReader audits. This count was checked against the current
-  remote-tracking ref; do not reuse older historical ahead-counts.
+  TextureCubeReader, SpriteFontReader, and SoundEffectReader audits. This count was checked
+  against the current remote-tracking ref; do not reuse older historical ahead-counts.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
   reviewing `git push`. Its response explicitly rejected the request rather than granting
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: SpriteFontReader XNB glyph-table, default-character, and fixture boundary
+## Latest completed batch: SoundEffectReader XNB WAVEFORMATEX, decoder, loop, and ownership boundary
+
+No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
+reader, WavWrapper/SoundEffect paths, focused/property/fuzz/manager tests, real fixture manifests,
+current FNA reader, and audio-plan history establish:
+
+- The version-zero payload is formatLength plus WAVEFORMATEX, optional extension, exact signed
+  data blob, signed loop start/length, and stored duration. Only WAVEFORMATEX fields swap for
+  Xbox `x`. A base-format underdeclaration is not independently rejected, while invalid extended
+  lengths and negative/truncated audio bytes fail cleanly; there is no total decoded-audio cap.
+- Current `develop` supports PCM16 directly and PCM8, float32, MS-ADPCM, and IMA-ADPCM by wrapping
+  data as WAV for SDL3. It synthesizes the standard MS-ADPCM extension for the real zero-cbSize
+  MonoGame asset. Mono/stereo only and XMA2/unknown combinations are clearly rejected. The old
+  `xnb-content-pipeline-support.md` matrix and four fixture manifests still incorrectly say the
+  working non-PCM16 forms are rejected.
+- CNA alone treats a nonzero stored duration as a wide 0.5--2.0 decode oracle; FNA discards it.
+  Loop coordinates remain frame values with no decoded-length bound. In the WAV path, a positive
+  loop length causes `AppendSmplChunkIfLooped()` to compute signed `loopStart + loopLength`; an
+  extreme positive pair has undefined signed overflow before encoding the endpoint. No current
+  test covers this defect.
+- Normal manager dispatch never supplies an existing effect. Direct type-erased input moves a
+  caller `shared_ptr<SoundEffect>` object, then the reader ignores it and returns a new result,
+  leaving that caller object moved-from; FNA ignores an existing object without invalidating it.
+- Real MonoGame tests cover six accepted variants and manager loading of PCM16; a hand-built XMA2
+  body, Xbox swap, malformed sizes, loop and duration cases, a 1,120-case WAVEFORMATEX sweep, and
+  a 1,500-iteration PCM16 whole-container fuzzer provide broad targeted coverage. There is no
+  real XMA2/Xbox/LZX-audio asset, sample-level FNA comparison, extreme-loop test, or non-MonoGame
+  producer.
+
+Ch.8 now records the exact wire, current format matrix versus stale artifacts, decoder/error and
+duration policy, loop-overflow gap, direct ownership behavior, and evidence scope. Full latexmk
+succeeded at **553 pages**; targeted undefined-reference and duplicate-label checks are empty;
+makeindex accepted **2,245** entries with zero rejected and zero warnings; `git diff --check`
+passes. Rendered physical pages **119--120** are clean. Ch.8 is **1,882** lines and Ch.6 is
+**621** lines. The plan-consistency validator remains absent from this checkout.
+
+Next recommended start: audit `SongContentTypeReader`'s external-reference wire and path
+normalization, manager requirement, missing-file timing, direct-instance semantics, and real
+companion-audio fixture coverage. Preserve the SoundEffect loop-endpoint overflow and stale
+sibling-artifact finding as current `develop` facts until source/documentation fixes land.
+
+## Previous completed batch: SpriteFontReader XNB glyph-table, default-character, and fixture boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
 SpriteFontReader and generic collection bridge, SpriteFont/SpriteBatch consumers, focused and
