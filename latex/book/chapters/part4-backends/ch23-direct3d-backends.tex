@@ -244,6 +244,43 @@ cases, not redundant screenshots.  By the end of that series the D3D11 smoke exe
 specific paths named here; it is not a license to extrapolate that any arbitrary, untested
 D3D11 state combination must therefore be correct.
 
+\section{An MRT set has to finish every target, not only the first}
+
+An ordinary single \cnaclass{RenderTarget2D} owns a simple end-of-use rule. When it is unbound,
+its \texttt{ResolveAnd\allowbreak{}Generate\allowbreak{}MipsEXT()} helper asks D3D11 to resolve the
+multisampled draw attachment into the separate sampleable texture. If the target
+has a mip chain, it then calls \texttt{GenerateMips()} on the shader-resource view. Thus the
+texture a later sprite samples is the resolved, current image rather than the still-multisampled
+attachment or an old mip level.
+
+That rule was once silently absent for an \(N>1\) MRT bind. The single-target pointer could not
+represent several targets, so the old \texttt{SetRenderTargets()} path bound all their RTVs with
+\texttt{OMSetRenderTargets()} but did not call any target's finalization when the set was
+replaced. A game could clear or draw to two MSAA targets successfully, then sample stale
+single-sample resolve textures without an exception. The repair keeps a non-owning array plus a
+count for the active MRT set. Both \texttt{SetRenderTargets()} and
+\texttt{SetRenderTarget2D()} first run \texttt{Flush\allowbreak{}Pending\allowbreak{}MRT\allowbreak{}ResolveEXT()}, which visits every
+stored target, invokes its \texttt{ResolveAnd\allowbreak{}Generate\allowbreak{}MipsEXT()}, clears the array entry, and only
+then binds the next target or restores the back buffer. This matters for all three transitions:
+MRT to back buffer, MRT directly to one target, and MRT to a different MRT set.
+
+\texttt{D3D11\_Smoke} makes the error observable rather than only reading that loop. It binds
+two distinct \(8\times8\), 4x-MSAA targets, clears the shared MRT pass to
+\((200,30,40,255)\), unbinds it, and reads both targets' \emph{sampleable} textures directly.
+Both must contain that exact color. A repair that resolved only target zero, or that merely left
+the MSAA draw attachment valid, fails the second readback. A second case binds another two-target
+set, clears it to \((5,6,7,255)\), and switches straight to an unrelated single target rather
+than unbinding to null; its first prior target must still read the new value. That separates the
+real state-transition repair from a narrower ``only the null unbind works'' patch.
+
+The shared helper also calls \texttt{GenerateMips()}, but the scope of its proof should remain
+honest. The suite separately reads an \(8\times8\) single-target mipmapped render target's
+\(4\times4\) and \(2\times2\) levels after a solid \((200,90,10,255)\) clear, proving that the
+normal unbind path creates non-garbage downstream levels. The \emph{combination} of \(N>1\)
+MRT and \texttt{mipMap=true} uses the same helper and is therefore wired, but is not independently
+pixel-tested yet. That is a verification boundary, not a claim that the two mechanisms are
+magically proven together.
+
 \section{D3D12: built on D3D11's own foundation, and an honest split verification story}
 
 \texttt{D3D12} deliberately reuses \texttt{D3D11}'s own HLSL/DXBC bytecode, format and state

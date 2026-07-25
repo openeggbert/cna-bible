@@ -57,6 +57,17 @@ The 490-line chapter compiled twice as a ten-page isolated PDF with zero `Overfu
 warnings; physical page 7 was rendered and inspected. This is isolated validation only; a fresh
 full-book rebuild remains unavailable in this environment.
 
+**Current autonomous continuation — Ch.23 D3D11 MRT finalization audit:** The chapter now
+explains why an MRT set cannot reuse the single-target unbind path: it tracks every active target
+and flushes each one's MSAA resolve/mip-generation helper before an MRT-to-null, MRT-to-single,
+or MRT-to-MRT transition. The real two-target 4x-MSAA readback requires both resolved textures
+to contain `(200,30,40,255)` and separately proves the direct transition with `(5,6,7,255)`.
+Ordinary single-target mip generation is directly read back at levels 1 and 2; the combined
+`N > 1` MRT + `mipMap=true` path is source-wired through the same helper but not independently
+pixel-tested, and is recorded only at that scope. The 503-line chapter compiled twice as a
+ten-page isolated PDF; the new pages were rendered and checked. It introduced zero overflows;
+seven pre-existing standalone overflow warnings remain. Full-book verification remains pending.
+
 **Later continuation, also isolated-verified:** Ch.23 gained a ninth, source-grounded D3D11
 verification-ladder subsection. Its minimal document compiled successfully and the affected page
 was rendered and read after a right-edge audit; it is therefore marked isolated LaTeX/PDF clean,
