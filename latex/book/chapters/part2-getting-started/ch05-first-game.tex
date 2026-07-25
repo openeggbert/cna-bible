@@ -77,20 +77,24 @@ before can read this file without learning a single CNA-specific concept first.
 
 \textbf{\texttt{MyGame} inherits \cnaclass{Game}, and owns a
 \cnaclass{GraphicsDeviceManager} constructed against itself.} This is the standard XNA
-ownership pattern: \cnaclass{GraphicsDeviceManager} is what actually creates and owns the
-\cnaclass{GraphicsDevice}, negotiating with the platform window and the selected graphics
-backend on the game's behalf; the game class itself never constructs a
-\cnaclass{GraphicsDevice} directly. Chapter~\ref{ch:game-loop} covers
-\cnaclass{GraphicsDeviceManager}'s role in the boot sequence in full, and
-Chapter~\ref{ch:graphicsdevice} covers what the resulting \cnaclass{GraphicsDevice} exposes.
+source-level pattern, but CNA's C++ ownership differs from FNA's: the \cnaclass{Game} base
+already default-constructs its own \cnaclass{GraphicsDevice} before the derived constructor
+creates this manager. The manager registers the lifecycle services and, during
+\texttt{Game::DoInitialize()}, applies the preferred settings by resetting that same game-owned
+object; it does not construct or own a second device. Chapter~\ref{ch:game-loop} covers that
+boot sequence in full, and Chapter~\ref{ch:graphicsdevice} covers what the resulting
+\cnaclass{GraphicsDevice} exposes.
 
 \textbf{\texttt{LoadContent()} is where GPU-backed resources are created, not the
 constructor.} By the time \texttt{LoadContent()} runs, the graphics backend has already been
-selected and initialized by \cnaclass{GraphicsDeviceManager}, so it is safe to construct a
-\cnaclass{SpriteBatch} against \texttt{getGraphicsDeviceProperty()} and to load a
-\cnaclass{Texture2D} from a file path. Constructing either of these in \texttt{MyGame}'s own
-constructor would run before a graphics backend exists to own them. This ordering
-constraint --- and CNA's raw-asset-plus-JSON-descriptor content model that makes
+constructed by the base \cnaclass{Game} and then configured by
+\cnaclass{GraphicsDeviceManager}, so it is safe to construct a \cnaclass{SpriteBatch} against
+\texttt{getGraphicsDeviceProperty()} and to load a \cnaclass{Texture2D} from a file path. A
+derived constructor can technically already see CNA's default backend, but it precedes the
+manager's preferred-setting reset and is the wrong lifecycle point for content. Defer resources
+to \texttt{LoadContent()} for the stable, configured device rather than relying on the old,
+incorrect claim that no backend exists yet. This ordering constraint --- and CNA's
+raw-asset-plus-JSON-descriptor content model that makes
 \texttt{"assets/logo.png"} a literal, directly loadable file path rather than a compiled
 \texttt{.xnb} content-pipeline output --- is covered fully in
 Chapter~\ref{ch:content-and-assets}.

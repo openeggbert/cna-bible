@@ -24,8 +24,11 @@ is non-copyable and non-movable, and offers exactly two constructors:
   \cnaclass{GraphicsAdapter} in full); \texttt{graphicsProfile} is \texttt{Reach} or
   \texttt{HiDef}; \texttt{presentationParameters} carries back-buffer width/height/format,
   depth-stencil format, multisample count, and presentation interval. This is the constructor
-  \cnaclass{GraphicsDeviceManager} calls internally when your \cnaclass{Game} subclass first
-  creates its device --- ordinary game code essentially never calls it directly.
+  the normal XNA/FNA manager path uses when it first creates a device. CNA's ordinary C++
+  \cnaclass{Game} path is deliberately different: \cnaclass{Game} default-constructs its own
+  device before the derived game's manager member exists, and the manager later reconfigures that
+  same object through \texttt{Reset()} during \texttt{Game::DoInitialize()}. Ordinary game code
+  still essentially never calls this constructor directly.
 \item[\texttt{GraphicsDevice()}]
   \texttt{NOXNA} --- a convenience constructor which delegates to the real constructor with the
   default adapter, \texttt{Reach}, and default \cnaclass{PresentationParameters}. It is
@@ -322,6 +325,59 @@ custom viewport eventually becomes full-size after an actual resize. Neither tes
 same-size reset behavior, a scissor reset, adapter replacement, or that the native presentation
 request was accepted. In particular, CNA's same-size reset preserves custom viewport/scissor
 state; see \S\ref{sec:graphicsdevice-viewport-scissor} for that separate, caller-visible gap.
+
+\subsection{The manager is a separate lifecycle service, not a device-event forwarder}
+
+The familiar XNA declaration \texttt{GraphicsDeviceManager graphics(this)} does not give this
+manager C++ ownership of the native device in CNA. The \cnaclass{Game} base has already
+default-constructed its \texttt{GraphicsDevice\_} member before the derived-game constructor
+runs. The manager registers itself as both \texttt{IGraphicsDeviceManager} and
+\texttt{IGraphicsDeviceService}, but deliberately does not call \texttt{ApplyChanges()} from
+its constructor; then \texttt{Game::DoInitialize()} calls \texttt{CreateDevice()}.
+
+That initial call builds a fresh settings record, raises \texttt{PreparingDeviceSettings}, and
+reconfigures the existing game-owned device through \texttt{Reset()}; it raises the manager's
+\texttt{DeviceCreated} afterward. It does \emph{not} raise the manager's
+\texttt{DeviceResetting} or \texttt{DeviceReset} for this initial configuration.
+
+Later, a preference-changing \texttt{ApplyChanges()} has two distinct event layers. It first
+constructs and offers the mutable settings object, performs the game-window's begin/end screen
+change, raises the \emph{manager}'s \texttt{DeviceResetting}, and calls the device's
+\texttt{Reset()}. The latter raises the \emph{device}'s own resetting/reset pair; only after it
+returns does the manager raise its \texttt{DeviceReset} and clear its preference-dirty flag.
+Thus a program subscribed to both objects sees the four callbacks in this order:
+\texttt{manager Resetting}, \texttt{device Resetting}, \texttt{device Reset},
+\texttt{manager Reset}. They are not duplicate deliveries through one subscription: CNA never
+subscribes the manager to the device events. A direct public \texttt{GraphicsDevice::Reset()}
+therefore reaches device listeners only, not listeners obtained through
+\texttt{IGraphicsDeviceService}.
+
+\texttt{PreparingDeviceSettings} is the supported opportunity to alter the candidate settings
+record for that one operation. It is raised after all manager preference fields have been copied
+into the candidate but before the window change and reset. Its edits reach the current device,
+yet are not copied back into the manager's preferred fields; unless the handler performs the
+same edit on every invocation, a later manager preference change rebuilds a candidate from those
+old fields. There is also no post-handler validation: a handler
+that replaces the otherwise non-null adapter pointer with \texttt{nullptr} reaches the later
+dereference in \texttt{applyToExistingBackend()}. Use this event to refine valid settings, not
+to manufacture an absent adapter.
+
+All these event invocations propagate listener exceptions. A throw before the final manager
+reset notification leaves \texttt{prefsChanged\_} true, so a later \texttt{ApplyChanges()} tries
+again after whatever window/device work already occurred. A throw from the final manager-reset
+listener occurs after the device reset but before that flag is cleared, and therefore causes the
+next call to repeat the completed reset. Similarly, setting a manager preference from any of
+these callbacks is not durable: the outer call clears the flag afterward. There is no re-entrancy
+guard, so a handler must not call \texttt{ApplyChanges()} recursively.
+
+The registered EasyGL program proves only the manager-level pair and its order after an explicit
+width preference change. Its comment still says the constructor performed an implicit apply; the
+test actually subscribes in \texttt{Initialize()}, after \texttt{DoInitialize()} has already
+performed the one startup configuration. The SDL Renderer program proves the separate device
+pair for direct \texttt{Reset()}, not the service bridge. The unit file for
+\cnaclass{GraphicsDeviceManager} has no live test, and no located test covers startup routing,
+both subscriptions together, \texttt{PreparingDeviceSettings} persistence, listener exceptions,
+or re-entrancy.
 
 \begin{sourcenote}
 \textbf{From the FNA-fidelity audit (\texttt{docs/graphicsdevice-fna-audit.md}):} the three

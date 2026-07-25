@@ -216,12 +216,13 @@ freely but never falsify.
 processed in a stable, predictable sequence rather than insertion order.
 \cnaclass{DrawableGameComponent} layers \texttt{IDrawable} on top, adding
 \texttt{GraphicsDevice} (get-only), \texttt{DrawOrder}, and \texttt{Visible}, and --- notably
---- overrides \texttt{Initialize()} specifically so that content loads lazily once a graphics
-device actually exists, via a private \texttt{OnDeviceCreated} handler hooked to graphics
-device creation. This mirrors the same ordering constraint from
-Chapter~\ref{ch:first-game}: GPU-backed resources can only be created once a device exists,
-and \cnaclass{DrawableGameComponent} enforces that automatically for components instead of
-leaving it to each component author to get right.
+--- overrides \texttt{Initialize()} and calls \texttt{LoadContent()} there. In the ordinary
+game loop that occurs after \texttt{Game::DoInitialize()} has configured the already-existing
+device, so it is a suitable first content-load point. The private \texttt{OnDeviceCreated}
+method exists but is not subscribed to \texttt{IGraphicsDeviceService}; the component does
+\emph{not} automatically reload content on a later manager \texttt{DeviceCreated} event.
+Component authors must therefore treat this as one initial-load convenience, not a complete
+device-lifecycle subscription.
 
 \cnaclass{IGameComponent} itself is minimal --- one pure-virtual \texttt{Initialize()} ---
 and \texttt{IUpdateable} / \texttt{IDrawable} are the interface pair that
@@ -386,17 +387,21 @@ XNA-shaped class, kept visually distinct from the XNA members around them.
 \section{GraphicsDeviceManager's role in the loop}
 \label{sec:graphicsdevicemanager-in-loop}
 
-\cnaclass{GraphicsDeviceManager} --- already seen owning device creation in
+\cnaclass{GraphicsDeviceManager} --- already seen configuring the game-owned device in
 Chapter~\ref{ch:first-game} --- implements \cnaclass{IGraphicsDeviceManager}'s two-method
 contract (\texttt{BeginDraw() -> bool}, \texttt{CreateDevice()}, plus \texttt{EndDraw()}),
 which is exactly what \cnaclass{Game::BeginDraw()} / \texttt{EndDraw()} delegate to: if
 \texttt{GraphicsDeviceManager::BeginDraw()} returns \texttt{false} (no device available yet),
 \texttt{Game} skips \texttt{Draw} / \texttt{EndDraw} for that frame rather than crashing on a
 null device. Its five events (\texttt{DeviceCreated}, \texttt{DeviceDisposing},
-\texttt{DeviceReset}, \texttt{DeviceResetting}, \texttt{PreparingDeviceSettings}) and its
-protected \texttt{FindBestDevice} / \texttt{RankDevices} / \texttt{CanResetDevice} virtuals
-preserve FNA/XNA's device-selection extensibility hooks --- a subclass can override
-\texttt{RankDevices} to prefer, say, a higher-resolution adapter, exactly as in real XNA.
+\texttt{DeviceReset}, \texttt{DeviceResetting}, \texttt{PreparingDeviceSettings}) retain the
+FNA-shaped service surface, but its selection virtuals are currently not a real selection
+pipeline: no manager path invokes \texttt{FindBestDevice}, \texttt{RankDevices}, or
+\texttt{CanResetDevice}; the defaults respectively build a new default record, do nothing, and
+answer only whether a device pointer exists. A subclass override of \texttt{RankDevices} cannot
+therefore choose a higher-resolution adapter in today's CNA. The detailed event ordering,
+manager/device distinction, and the one-operation nature of \texttt{PreparingDeviceSettings}
+are documented in Chapter~\ref{ch:graphicsdevice}.
 
 One CNA-specific extension lives directly alongside this class rather than inside it: a
 \texttt{NOXNA enum class PresentationMode} with five values ---

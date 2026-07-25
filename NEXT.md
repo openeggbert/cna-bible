@@ -6,10 +6,11 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **521 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by five documentation commits: `944fa54`
+- Book: **523 physical PDF pages, 49 chapters, 6 appendices**.
+- The local branch is ahead of `origin/develop` by six documentation commits: `944fa54`
   (render-target binding/usage contracts), the Reset-order contracts batch, the resource-lifecycle
-  audit, the construction/SDL-ownership audit, and the current multisample-backend-rebuild audit.
+  audit, the construction/SDL-ownership audit, the multisample-backend-rebuild audit, and the
+  current Game/GraphicsDeviceManager lifecycle audit.
   The previous seventeen-commit count was accurate before the remote advanced and is retained
   only in the historical session log.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
@@ -17,7 +18,56 @@ session log; this file is the concise live handoff.
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: multisample backend rebuild and failure state
+## Latest completed batch: Game/GraphicsDeviceManager lifecycle and event boundary
+
+No CNA source changes were made; the sibling repository remained a read-only authority. The
+`Game` and `GraphicsDeviceManager` implementations, event runtime, focused examples/CMake
+registrations, unit-test coverage, Git history, and bundled FNA reference establish:
+
+- CNA's standard C++ `Game` topology differs from FNA's manager-owned construction. `Game`
+  default-constructs its `GraphicsDevice_` before a derived game constructs its manager; the
+  manager only registers services, then `Game::DoInitialize()` calls `CreateDevice()` to apply
+  its first settings through `Reset()` on that same object. The book's previous claims that the
+  manager creates/owns a device and that a derived constructor has no backend were stale.
+- Startup raises the manager's `PreparingDeviceSettings` and then `DeviceCreated`, but not its
+  manager-level resetting/reset pair. A later preference-changing `ApplyChanges()` instead
+  orders manager `DeviceResetting`, device `DeviceResetting`, device `DeviceReset`, and manager
+  `DeviceReset`, after preparing the candidate and performing the window transition. These are
+  distinct subscriptions: CNA never forwards a device's events into `IGraphicsDeviceService`, so
+  direct `GraphicsDevice::Reset()` reaches only device listeners.
+- `PreparingDeviceSettings` mutates only the one local candidate record. Its edits reach the
+  current reset but never become manager preference fields; its handler must reproduce an intended
+  override on each invocation. There is no post-handler adapter validation, so replacing the
+  default non-null pointer with null reaches a later dereference.
+- Event handlers run without exception containment or an `ApplyChanges()` re-entrancy guard.
+  A throw before the last manager event leaves the dirty flag set; a throw from that last event
+  repeats an already-successful reset next time. A preference assignment from a lifecycle handler
+  is similarly erased by the outer call's final dirty-flag clear. These outcomes are
+  source-established, not injected runtime reproductions.
+- The sole registered manager event program proves only manager resetting-before-reset after an
+  explicit EasyGL width change; its statement that the constructor implicitly applies settings is
+  stale, though subscribing in `Initialize()` still excludes startup. The SDL Renderer program
+  proves the separate direct-device pair. The unit file has no live manager test; no located test
+  covers startup routing, both subscriptions, preparing-event persistence, listener exceptions,
+  or re-entrancy.
+- Ch.5/6 correct the ownership/constructor wording, the unusable selection virtuals, and
+  `DrawableGameComponent`'s false implied service subscription; Ch.9 documents the complete
+  event order, transient settings record, failure behavior, and evidence boundary.
+- Validation: incremental `latexmk` succeeded at **523 pages**; targeted undefined-reference
+  and duplicate-label checks are empty; makeindex accepted **2,124** entries with zero rejected
+  and zero warnings; `git diff --check` passes. All newly introduced manager-audit overfull boxes
+  were removed. Physical pages 50, 60, 63--64, and 114--115 were rendered and are clean. Ch.5,
+  Ch.6, and Ch.9 are now **379**, **518**, and **1,449** lines; Ch.9 spans printed pages
+  **87--114** (28 pages).
+
+Next recommended start: trace `GraphicsDeviceManager` registration/disposal against
+`GameWindow::ClientSizeChanged`. The manager adds a lambda capturing `this` but its service
+unregistration does not visibly remove that listener; determine its token/lifetime behavior,
+whether deleting a manager while its game stays alive can leave a dangling callback, and how
+manager/game/device disposal events interact. Keep that audit separate from the completed reset
+ordering work.
+
+## Previous completed batch: multisample backend rebuild and failure state
 
 No CNA source changes were made; the sibling repository remained a read-only authority. The
 legacy hook, the normal `GraphicsDeviceManager` route, all direct callers, their registrations,
