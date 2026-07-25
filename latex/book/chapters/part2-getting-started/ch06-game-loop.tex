@@ -414,6 +414,36 @@ internal virtual-resolution machinery (Chapter~\ref{ch:graphicsdevice} covers
 \texttt{SetVirtualResolution}, the private method this setting ultimately reaches) scales and
 letterboxes on the game's behalf.
 
+\subsection{Vertical retrace is a presentation preference, not the fixed timestep}
+
+\texttt{SynchronizeWithVerticalRetrace} defaults to \texttt{true}. During device selection,
+the manager translates that Boolean into
+\texttt{PresentationParameters.PresentationInterval}: true means \texttt{One}, false means
+\texttt{Immediate}. \texttt{ApplyChanges()} then resets CNA's already-existing device and
+forwards the integer 1 or~0 to the backend. This is independent of
+\cnaclass{Game}\texttt{::IsFixedTimeStep}. The fixed timestep controls how many
+\texttt{Update()} calls the accumulator schedules; VSync can separately block
+\texttt{Present()} at the display boundary. Turning one off does not turn the other off.
+
+XNA's third public choice, \texttt{PresentInterval::Two}, cannot be expressed through this
+Boolean property. A port that genuinely needs half-refresh presentation must set the
+interval on explicit \cnaclass{PresentationParameters}, for example in a
+\texttt{PreparingDeviceSettings} handler, and must still check the backend result described
+in \S\ref{sec:backend-swap-interval-matrix}. That matrix matters: SDL Renderer and EasyGL
+submit the numeric~2 but cannot guarantee driver acceptance; D3D9 has a literal native
+interval~2 but it is fullscreen- and capability-dependent. Several other products reduce
+every positive value to ordinary VSync.
+
+\begin{sourcenote}
+The Vulkan backend consumes its present-mode choice only when its swapchain is first
+constructed and inherits the runtime \texttt{SetSwapInterval()} no-op. CNA constructs a
+\cnaclass{Game}'s device before the derived game can configure its manager, so the ordinary
+request to disable the manager's vertical-retrace property, followed by
+\texttt{ApplyChanges()}, leaves Vulkan on the default FIFO VSync mode. The public property
+still reports the requested \texttt{Immediate}; it is not an observation of the active
+swapchain mode.
+\end{sourcenote}
+
 \section{Supporting cast: LaunchParameters, TitleContainer, TitleLocation, FrameworkDispatcher}
 
 Four smaller types round out the framework layer. \cnaclass{LaunchParameters} parses process

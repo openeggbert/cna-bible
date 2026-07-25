@@ -6,19 +6,54 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **496 physical PDF pages, 49 chapters, 6 appendices**.
-- After the batch commit, the local branch is ahead of `origin/develop` by eleven coherent
+- Book: **502 physical PDF pages, 49 chapters, 6 appendices**.
+- After the batch commit, the local branch is ahead of `origin/develop` by twelve coherent
   documentation commits:
   roadmap, ShaderEffect/D3D ABI, general capability matrix, MSAA/anisotropy, buffer
   contracts, volume/cube readback contracts, and RenderTargetCube upload/transition
   contracts, followed by Texture2D update contracts, instancing/vertex binding, and input
-  coordinate routing, then public backbuffer readback.
+  coordinate routing, public backbuffer readback, and swap-interval contracts.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
   reviewing `git push`. Its response explicitly rejected the request rather than granting
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
 ## Latest completed batch
+
+The `PresentationParameters.PresentationInterval` /
+`IGraphicsBackend::SetSwapInterval()` audit is complete:
+
+- The public conversion is exact (`Immediate` to 0, `Default`/`One` to 1, `Two` to 2).
+  `GraphicsDeviceManager::SynchronizeWithVerticalRetrace` itself selects only `One` or
+  `Immediate`; callers need explicit `PresentationParameters` or
+  `PreparingDeviceSettings` to request `Two`.
+- Both backend construction and the ordinary `GraphicsDevice::Reset()` path now receive the
+  selected value. The latter forwarding was a real prior cross-backend repair, but the
+  interface default is still a silent no-op.
+- Nine products override the runtime hook: SDL_RENDERER, ASCII, EASYGL, BGFX, WEBGPU,
+  SDL_GPU, and D3D9/11/12. VULKAN, CANVAS, DX3, SOFTWARE, and HEADLESS inherit the no-op.
+  Vulkan uniquely consumes the initial construction value while ignoring later resets.
+- The semantic split is wider than override/no-override: D3D9 maps interval 2 literally;
+  SDL Renderer attempts it at runtime with a fallback to 1; EasyGL submits the exact value
+  but ignores driver rejection. BGFX, WebGPU, SDL GPU, and D3D11/12 collapse every positive
+  interval to ordinary VSync. SDL Renderer's constructor also collapses `Two`, even though
+  its runtime handler no longer does. Vulkan's initial `Two` means FIFO_RELAXED, not
+  half-refresh pacing.
+- D3D9's exact mapping is incomplete and unsafe: it checks neither
+  `D3DCAPS9::PresentationIntervals` nor the native rule that windowed mode supports only
+  Default/Immediate/One. A rejected reset is logged and retried on every present while the
+  public property remains `Two`. D3D11/12 could pass 2 directly because DXGI supports
+  intervals 1--4; their Boolean collapse is CNA-imposed.
+- Validation evidence is uneven. EasyGL proves real 0/positive context state for the public
+  manager/reset path; SDL Renderer proves routing and stored parameters but has no public
+  actual-state query. The SDL GPU suite's old roughly-one-second-per-frame virtual-display
+  timeout demonstrates that public VSync selection affects real presentation, but no located
+  test proves interval 2. Most other rows remain source-proven only.
+- Ch.6 separates fixed timestep from presentation blocking; Ch.9 distinguishes requested
+  from applied state; Ch.16 carries the complete fourteen-product construction/runtime/
+  evidence matrix; Ch.17, Ch.19, Ch.23, and Appendix A now agree with it.
+
+## Previous backbuffer-readback batch
 
 The public `GraphicsDevice::GetBackBufferData()` /
 `IGraphicsBackend::ReadBackbuffer()` audit is complete:
@@ -46,7 +81,7 @@ The public `GraphicsDevice::GetBackBufferData()` /
   Ch.22 and Ch.23 distinguish resource readback from the missing SDL GPU/D3D12 public
   bridge; Appendix A has the concise warning.
 
-## Previous completed batch
+## Previous input-coordinate batch
 
 The logical/window input-coordinate audit is complete:
 
@@ -185,24 +220,26 @@ latexmk -pdf -interaction=nonstopmode -halt-on-error -file-line-error -g main.te
 
 Results:
 
-- `main.pdf`: 496 pages.
+- `main.pdf`: 502 pages.
 - Targeted undefined-reference check: no matches.
 - Duplicate-label check: no matches.
-- `makeindex`: 2,039 accepted, 0 rejected, 0 warnings.
-- Rendered and inspected Ch.9 physical pages 111--112 and 117, Ch.16 pages 186--188,
-  Ch.22 pages 251--252, Ch.23 page 259, and Appendix A page 461.
+- `makeindex`: 2,056 accepted, 0 rejected, 0 warnings.
+- Rendered and inspected Ch.6 physical page 64, Ch.9 pages 112--113, Ch.16 pages
+  188--190, Ch.17 page 207, Ch.19 page 226, Ch.23 pages 261--262, and Appendix A page 467.
 - No clipping, table collision, page-edge spill, malformed heading, running-header collision,
-  or folio defect was found. The new Ch.16 matrix repeats its header cleanly across both page
-  breaks. All overfull warnings introduced by this batch were removed before the final build;
+  or folio defect was found. The new Ch.16 matrix repeats its header cleanly after the page
+  break. All overfull warnings introduced by this batch were removed before the final build;
   older warnings remain elsewhere.
 - `git diff --check`: pass.
 
 Useful verification commands:
 
 ```bash
-wc -l latex/book/chapters/part3-graphics-core/ch09-graphicsdevice.tex \
+wc -l latex/book/chapters/part2-getting-started/ch06-game-loop.tex \
+      latex/book/chapters/part3-graphics-core/ch09-graphicsdevice.tex \
       latex/book/chapters/part4-backends/ch16-backend-architecture.tex \
-      latex/book/chapters/part4-backends/ch22-sdlgpu-backend.tex \
+      latex/book/chapters/part4-backends/ch17-sdl-renderer.tex \
+      latex/book/chapters/part4-backends/ch19-vulkan-backend.tex \
       latex/book/chapters/part4-backends/ch23-direct3d-backends.tex \
       latex/book/chapters/appendices/appendix-a-core-graphics-quick-reference.tex
 git diff --check
@@ -210,11 +247,11 @@ git diff --check
 
 ## Documentation synchronized
 
-- `PLAN.md` records 496 total pages and exact current line counts: Ch.9 1,126; Ch.16 1,066;
-  Ch.22 511; Ch.23 749; Appendix A 369.
-- Its durable session log records the four readback result classes, shared pointer-safety
-  gaps, logical/physical coordinate mismatches, per-backend evidence strength, FNA contrast,
-  and PDF inspection.
+- `PLAN.md` records 502 total pages and exact current line counts: Ch.6 473; Ch.9 1,141;
+  Ch.16 1,192; Ch.17 390; Ch.19 473; Ch.23 786; Appendix A 378.
+- Its durable session log records the construction/runtime split, exact/collapsed/no-op
+  interval semantics, D3D9 native-validity defect, Vulkan eager-construction trap, evidence
+  strength, FNA contrast, and PDF inspection.
 - `README.md` has build/navigation guidance; `CLAUDE.md` says 49 chapters.
 
 ## Repository safety
@@ -239,9 +276,9 @@ Sibling repositories remain read-only source authorities for ordinary book work.
 ## Recommended next starting point
 
 Continue Ch.16's backend-interface-default audit. Buffer defaults, volume/cube readback,
-RenderTargetCube upload/transitions, Texture2D updates, and draw/instancing fallbacks are
-closed; coordinate transforms and backbuffer readback are now closed as well. Re-inventory
-the remaining defaults; swap-interval forwarding is the strongest known next candidate, but
-choose by public reachability and documentation gap after rechecking the live source. Trace
-the caller, override matrix, state transitions, and actual assertion layer before writing.
-Do not modify CNA itself; sibling repositories remain read-only source authorities.
+RenderTargetCube upload/transitions, Texture2D updates, draw/instancing fallbacks,
+coordinate transforms, backbuffer readback, and swap intervals are closed. Re-inventory the
+remaining defaults and choose the strongest public, non-duplicate gap by reachability and
+documentation value. Trace the caller, override matrix, state transitions, and actual
+assertion layer before writing. Do not modify CNA itself; sibling repositories remain
+read-only source authorities.

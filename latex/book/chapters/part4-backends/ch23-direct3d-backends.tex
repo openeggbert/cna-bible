@@ -266,6 +266,43 @@ not an XNA-compatibility promise: the enum itself is a CNA extension, and there 
 could honestly pixel-prove a mode-specific result until a logical render target plus final
 composite/scaling path exists.
 
+\subsection{One \texttt{PresentInterval::Two}, two opposite Direct3D mistakes}
+
+The three backends do not share one presentation-interval policy. D3D9 preserves CNA's
+0/1/2 conversion in \texttt{D3DPRESENT\_}\allowbreak\texttt{PARAMETERS}: Immediate becomes
+\texttt{D3DPRESENT\_}\allowbreak\texttt{INTERVAL\_}\allowbreak\texttt{IMMEDIATE}, Two becomes
+\texttt{D3DPRESENT\_}\allowbreak\texttt{INTERVAL\_}\allowbreak\texttt{TWO}, and everything
+else becomes \texttt{D3DPRESENT\_}\allowbreak\texttt{INTERVAL\_}\allowbreak\texttt{ONE}.
+A runtime change marks presentation state dirty and
+immediately calls the same device-reset path used for a resize. This is the only CNA backend
+in the Direct3D family whose source requests a literal native two-retrace interval.
+
+It is not yet a safe implementation. Microsoft's D3D9 contract says interval Two must be
+present in \texttt{D3DCAPS9::PresentationIntervals}, and windowed mode supports only Default,
+Immediate, and One.\footnote{\url{https://learn.microsoft.com/en-us/windows/win32/direct3d9/d3dpresent}}
+CNA checks neither condition. Its ordinary game window is windowed, so requesting Two can
+make \texttt{IDirect3DDevice9::Reset()} return failure. The backend logs that result, restores
+its previous dimensions, leaves \texttt{presentationDirty\_} true, and retries at each later
+\texttt{Present()}; the public \cnaclass{PresentationParameters} still reports Two. No
+dedicated test exercises this route, and DXVK's synthesized capability structure would not
+replace the still-needed real-Windows check anyway.
+
+D3D11 and D3D12 make the opposite mistake. Both reduce the construction argument and every
+later setter call to \texttt{vsyncEnabled\_ = interval > 0}; their
+\texttt{Present()} then passes only sync interval~1 or~0 to DXGI. DXGI itself accepts
+1 through~4 and defines them as waiting for at least the corresponding number of vertical
+blanks,\footnote{\url{https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-present}}
+so nothing in the native API forces CNA to collapse Two. The real windowed smoke paths prove
+that default presentation succeeds, but the D3D plans explicitly say the no-VSync/tearing
+branch is untested; no located test distinguishes sync interval~2 either.
+
+The useful porting conclusion is deliberately narrow. D3D9 has the correct representation
+but incomplete validation and failure reporting; D3D11/12 have robust per-present selection
+but an unnecessarily Boolean representation. A successful reset or a stored
+\texttt{PresentInterval::Two} is not yet evidence of half-refresh pacing on any of the three.
+The cross-backend table in \S\ref{sec:backend-swap-interval-matrix} places these results beside
+the other eleven products.
+
 \subsection{A proof ladder for real D3D11 3D draws, not a blanket ``3D works'' claim}
 
 The D3D11 plan's own 3D work is unusually useful as a verification example because it did not

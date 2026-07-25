@@ -146,8 +146,15 @@ touches:
         silently accepted and echoed back, but no functional depth test exists behind it at
         all on this backend. A new \texttt{HasRealDepthBuffer()} check was added specifically
         so calling code can ask, rather than assume.
-  \item \textbf{Viewport (1 bug).} \texttt{PresentInterval::Two} silently collapsed to
-        \texttt{PresentInterval::One} rather than being honored or rejected.
+  \item \textbf{Present timing (1 fixed runtime bug, 1 remaining construction asymmetry).}
+        Runtime \texttt{PresentInterval::Two} used to collapse silently to
+        \texttt{One}. \texttt{SetSwapInterval()} now sends the exact value~2 to
+        \texttt{SDL\_SetRenderVSync()} and falls back to~1 if the driver rejects it. The
+        constructor still uses \texttt{swapInterval > 0 ? 1 : 0}, despite SDL3 supporting
+        integer intervals there too. This usually stays hidden because \cnaclass{Game}
+        constructs with the default~1 and later requests arrive through the repaired reset
+        path; direct \cnaclass{GraphicsDevice} construction with \texttt{Two} still loses the
+        distinction. ASCII wraps this same renderer and inherits both behaviors.
   \item \textbf{Disposed-resource guards (3 bugs).} A missing disposed-texture check inside
         the internal sprite-push path; a missing equivalent check in
         \texttt{SetRenderTargets}; and a dangling backend pointer left behind after

@@ -285,6 +285,22 @@ Relaxed's own, different throughput/latency tradeoff instead, worth checking exp
 a real target frame-rate requirement before assuming interval semantics carried over unchanged
 from a Direct3D background.
 
+\begin{sourcenote}
+That switch runs only in \texttt{CreateSwapchain()}, from the interval captured by the
+backend constructor. \texttt{VulkanGraphics\allowbreak Backend} does not override
+\texttt{IGraphicsBackend::SetSwap\allowbreak Interval()}, so a later
+\cnaclass{GraphicsDevice}\texttt{::Reset()} stores the new public value but cannot update
+\texttt{swapInterval\_} or recreate the swapchain for it. This is especially visible through
+\cnaclass{Game}: its device is eagerly built with default \texttt{PresentInterval::Default}
+before the derived constructor can set
+\texttt{GraphicsDevice\allowbreak Manager.SynchronizeWith\allowbreak VerticalRetrace=false}.
+The subsequent
+\texttt{ApplyChanges()} therefore still leaves Vulkan in FIFO mode. Only constructing a
+\cnaclass{GraphicsDevice} directly with the desired parameters (or using CNA's separate
+test-only full-backend recreation helper) can currently change that initial choice. No
+dedicated test queries or times the real Vulkan present mode.
+\end{sourcenote}
+
 \section[Two frames in flight, and the deferred-present trick]{Two frames in flight, and
 the deferred-present trick that makes readback pixel-safe}
 \label{sec:vulkan-frames-in-flight}

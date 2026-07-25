@@ -292,6 +292,15 @@ last clear, and SDL GPU/D3D12 throw. The pointer API also does not validate nega
 \texttt{startIndex}, capacity after the offset, rectangle bounds, or multiplication overflow;
 the caller must do so. See \S\ref{sec:backend-readback-matrix} for the exact source-image,
 coordinate-space, and test-evidence matrix.
+
+\textbf{Present-interval warning:} a stored
+\texttt{PresentationParameters.\allowbreak PresentationInterval} is requested state, not a query of the
+driver. The manager's VSync Boolean selects only One/Immediate; five products including
+Vulkan inherit the empty runtime hook, and BGFX/WebGPU/SDL GPU/D3D11/D3D12 collapse Two to
+ordinary VSync. SDL Renderer attempts~2 only on the runtime path, EasyGL
+submits it without checking driver acceptance, and D3D9's literal mapping is invalid in
+windowed mode. See \S\ref{sec:backend-swap-interval-matrix}.
+
 \texttt{SupportsCapability\allowbreak{}(GraphicsCapability)} (Chapter~\ref{ch:backend-architecture}) is the
 one method worth remembering is a query, not a
 guarantee --- it answers honestly for most values but is not yet wired for every one of them.

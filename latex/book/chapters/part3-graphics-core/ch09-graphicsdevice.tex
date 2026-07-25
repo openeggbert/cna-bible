@@ -218,6 +218,21 @@ knowing about if you are relying on the \texttt{NOXNA} build check to catch ever
 member mechanically.
 \end{sourcenote}
 
+\begin{sourcenote}
+\textbf{\texttt{PresentationParameters} is requested state, not proof of active presentation
+timing.} Both \texttt{Reset(pp)} and the separate presentation-parameter setter store the
+caller's interval. Immediate maps to~0, One to~1, and Two to~2. Each path calls the backend's
+swap-interval hook, but that virtual is allowed to do nothing. Vulkan inherits the no-op
+after construction; four non-presenting or
+browser/legacy products also ignore it, while several active GPU backends collapse
+\texttt{Two} to ordinary VSync. D3D9 is the only Direct3D exact mapping, but interval~2 is
+invalid in windowed D3D9 and CNA does not preflight that restriction. SDL Renderer and
+EasyGL submit the numeric~2 without being able to guarantee that the driver accepts it. A
+successful property round trip therefore establishes only what CNA retained, not what the
+driver or compositor accepted. The complete fourteen-product matrix and actual test boundary
+are in \S\ref{sec:backend-swap-interval-matrix}.
+\end{sourcenote}
+
 \section{Render targets}
 \label{sec:render-targets}
 

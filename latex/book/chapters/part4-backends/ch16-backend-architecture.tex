@@ -182,6 +182,132 @@ uses the inverse ratios. CNA's richer five-mode presentation model needs offsets
 mode-specific viewport math that FNA's simple faux-backbuffer scale does not represent, but
 the table shows that this additional mechanism is not yet uniform or uniformly tested.
 
+\subsection{\texttt{SetSwapInterval}: exact public enum, four backend meanings}
+\label{sec:backend-swap-interval-matrix}
+
+The default swap-interval body is empty. Its comment defines
+\texttt{0=Immediate}, \texttt{1=VSync}, and \texttt{2=half-rate}, but neither the type system
+nor \cnaclass{GraphicsCapability} can tell a caller whether a backend implements that
+contract. The public conversion itself loses nothing:
+\texttt{Immediate} becomes~0, \texttt{Two} becomes~2, and
+\texttt{Default}/\texttt{One} become~1. Both backend construction and
+\cnaclass{GraphicsDevice}\texttt{::Reset()} receive the result. The reset forwarding is a
+real repaired path; older CNA builds updated the stored
+\cnaclass{PresentationParameters} but never called this virtual from
+\texttt{GraphicsDevice\allowbreak Manager::ApplyChanges()}.
+
+Two lifecycle details are necessary to read the matrix correctly. First, the device
+manager's vertical-retrace preference is a Boolean and therefore selects only
+\texttt{One} or \texttt{Immediate}; \texttt{Two} requires explicit
+\cnaclass{PresentationParameters}, commonly through
+\texttt{Preparing\allowbreak DeviceSettings}.
+Second, CNA's \cnaclass{Game} eagerly constructs its \cnaclass{GraphicsDevice} and backend
+with default parameters before the derived game can configure its device manager. A backend
+that consumes the construction argument but inherits the runtime no-op therefore does
+\emph{not} honor the ordinary game-level preference.
+
+\begingroup
+\small
+\setlength{\tabcolsep}{3.0pt}
+\renewcommand{\arraystretch}{1.13}
+\begin{longtable}{@{}p{0.13\textwidth}p{0.20\textwidth}p{0.29\textwidth}p{0.30\textwidth}@{}}
+\toprule
+\textbf{Backend} & \textbf{Construction} & \textbf{Reset/runtime and \texttt{Two}} &
+  \textbf{Located evidence and failure boundary} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Backend} & \textbf{Construction} & \textbf{Reset/runtime and \texttt{Two}} &
+  \textbf{Located evidence and failure boundary} \\
+\midrule
+\endhead
+\texttt{SDL\_\allowbreak RENDERER}, \texttt{ASCII}
+  & Their shared SDL renderer converts every positive initial value to~1.
+  & Runtime passes the exact integer to \texttt{SDL\_SetRenderVSync}; if a value above~1 is
+    rejected it tries~1. Thus \texttt{Two} is attempted only after construction.
+  & Public test proves reset routing, parameter round-trip, and continued pixels, not actual
+    renderer state. A raw local probe rejected~2. ASCII has no separate interval test. \\
+\texttt{EASYGL}
+  & Stores and submits the exact integer through
+    \texttt{SDL\_GL\_SetSwap\allowbreak Interval}.
+  & Repeats the exact call, including~2, but ignores its success result and has no fallback.
+  & Public manager/reset test queries the real GL context and proves 0 versus nonzero.
+    A second test only proves that all enum values round-trip without a crash; no test proves~2. \\
+\texttt{VULKAN}
+  & 0 prefers Immediate then Mailbox; 1 uses FIFO; 2 prefers FIFO Relaxed, then FIFO.
+  & Inherits the no-op. FIFO Relaxed is adaptive late tearing, not half-refresh pacing.
+  & Source only. In an ordinary \cnaclass{Game}, the eager default construction fixes FIFO;
+    later manager/reset changes, including disabling VSync, do not alter the present mode. \\
+\texttt{BGFX}
+  & Any positive value sets \texttt{BGFX\_RESET\_VSYNC}.
+  & Repeats that Boolean mapping and calls \texttt{bgfx::reset}; \texttt{Two} equals
+    \texttt{One}.
+  & Source only; no dedicated interval or timing assertion was found. \\
+\texttt{WEBGPU}
+  & 0 prefers Immediate then Mailbox; positive values select FIFO.
+  & Stores a nonnegative value and reconfigures the surface when it changes; \texttt{Two}
+    still selects FIFO.
+  & Source only. Unsupported immediate modes fall back to the initial FIFO choice; no
+    half-rate WebGPU present mode is requested. \\
+\texttt{SDL\_GPU}
+  & Calls the same runtime handler: 0 prefers Immediate then Mailbox, positive means VSync.
+  & Reconfigures swapchain parameters; \texttt{Two} equals \texttt{One}. Failure is only
+    logged while the requested integer remains stored.
+  & Nineteen tests had to use the public manager property after real VSync caused roughly
+    one-second virtual-display frames. This proves observable on/off routing, not
+    half-refresh behavior. \\
+\texttt{D3D9}
+  & Maps 0/1/2 to the matching native D3D9 presentation interval.
+  & A change immediately resets the device. \texttt{Two} is literal, but CNA neither checks
+    the driver capability bit nor restricts it to fullscreen.
+  & Source plus the official D3D9 contract: windowed mode permits only Default, Immediate,
+    and One. A rejected reset is logged and retried every present; no dedicated interval
+    test or real-Windows proof was found. \\
+\texttt{D3D11}, \texttt{D3D12}
+  & Store only \texttt{args.swapInterval > 0}.
+  & Runtime stores the same Boolean; \texttt{Present()} passes DXGI sync interval 1 or~0.
+    \texttt{Two} therefore collapses despite DXGI accepting values 1--4.
+  & Real windowed present smoke tests exercise only the default VSync branch. No dedicated
+    on/off, tearing, or interval-2 assertion was found; D3D12 headless mode cannot present. \\
+\texttt{CANVAS}
+  & Factory discards the argument.
+  & Inherits the no-op; browser composition paints the canvas automatically.
+  & Source only. \texttt{Present()} itself is empty, so no swap interval exists at this
+    abstraction layer. \\
+\texttt{DX3}
+  & Constructor ignores the argument.
+  & Inherits the no-op. Present is a waiting DirectDraw \texttt{Blt} into free-direct's
+    primary surface, with no interval selection.
+  & Source only; no timing or interval test was found. \\
+\texttt{SOFTWARE}
+  & Factory discards the argument.
+  & Inherits the no-op and has an empty \texttt{Present()}.
+  & Source-proven non-applicability: there is no window or display pacing. \\
+\texttt{HEADLESS}
+  & Factory discards the argument.
+  & Inherits the no-op. \texttt{Present()} advances trace counters, never time.
+  & Source-proven diagnostic behavior; no window or retrace exists. \\
+\bottomrule
+\end{longtable}
+\endgroup
+
+The D3D rows make the difference between an API limitation and a CNA narrowing especially
+clear. DXGI's own \texttt{Present(SyncInterval,\ldots)} accepts 1 through~4, so D3D11/12
+could represent \texttt{Two}; CNA throws the distinction away in its Boolean
+\texttt{vsyncEnabled\_}. D3D9 preserves the integer but omits the native validity checks,
+which can be worse than a clean downgrade: a normal windowed game can retain
+\texttt{PresentInterval::Two} in its public property while the device repeatedly keeps its
+previous presentation configuration.
+
+Test names also need careful interpretation. The SDL Renderer regression cycles all four
+values and reads a pixel afterward, but the backend exposes no public actual-VSync query;
+that assertion proves a safe route, not the driver's accepted interval. EasyGL's stronger
+manager test calls \texttt{SDL\_GL\_GetSwapInterval()} and therefore proves real off/on
+state, but still never requests~2. No located timing test distinguishes half refresh from
+ordinary VSync on any product. FNA's shared path instead sends the complete
+\cnaclass{PresentationParameters} to \texttt{FNA3D\_ResetBackbuffer}; it does not expose
+CNA's per-backend empty virtual at all.
+
 \subsection{\texttt{ReadBackbuffer}: one name, four observable contracts}
 \label{sec:backend-readback-matrix}
 
