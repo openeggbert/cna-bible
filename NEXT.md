@@ -135,11 +135,18 @@ fixed-output letterbox limitation does not make input mapping ambiguous: the bac
 `min(physical/logical)` scale plus centered offsets, and correctly map through the bars without
 reaching into free-direct's private renderer. The dedicated `Dx3_LogicalTransform` test checks
 round trips, geometric centering, equal horizontal/vertical scale, and the fit-largest formula
-against whatever physical size the environment actually provides. The updated 251-line chapter
+against whatever physical size the environment actually provides. The 251-line version of the chapter
 compiled twice as a minimal five-page PDF; its new page was rendered and inspected, and all seven
 pre-existing isolated-Ch.25 `Overfull \hbox` warnings were resolved. This is isolated
 LaTeX/PDF verification only; a fresh full-book rebuild remains pending for the same environment
 constraint recorded above.
+
+**Ch.25 follow-up:** the same source audit then documented the still-open virtual-resolution
+resize defect. After the first present, a resolution change rebuilds CNA's primary/shadow
+surfaces but free-direct retains its already-configured logical-presentation rectangle. Output
+can therefore use the old scale while CNA's bidirectional input transform recomputes against the
+new logical size. The 264-line chapter again compiled twice with zero overfull boxes; pages 3--4
+were rendered and inspected. This is a free-direct-side fix, not a safe unilateral CNA change.
 
 This was an unusually long, multi-batch session (author unavailable for many hours, explicit
 "continue autonomously" instruction given partway through, repeated several times). Seven full

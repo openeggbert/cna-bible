@@ -145,7 +145,20 @@ and \texttt{SetPresentationMode()} is honestly downgraded from an earlier full-p
 partial: it stores the requested presentation mode but never changes the actual physical
 output scale, always presenting in letterbox regardless --- a real, acknowledged limitation
 that would require a change inside \texttt{free-direct} itself to close, not something fixable
-from CNA's side alone. \texttt{DirectSound} / \texttt{DirectPlay} networking are explicitly out
+from CNA's side alone.
+
+There is a related resize defect that is easier to miss because the new logical surfaces
+\emph{are} created correctly. Once the first \texttt{Present()} has configured
+\texttt{free-direct}'s internal renderer, a later \texttt{SetVirtualResolution()} replaces CNA's
+primary and shadow surfaces but cannot reset the library's private
+\texttt{logicalPresentationSet\_} flag. The next frame therefore uploads the new-sized primary
+texture into the \emph{old} logical-presentation rectangle. CNA's input-transform methods
+correctly recompute their scale from the new logical dimensions, so after such a resize their
+coordinate conversion and the physical presentation can disagree. Closing that gap needs
+\texttt{free-direct} to reapply logical presentation when the primary changes, not an
+unilateral CNA-side approximation.
+
+\texttt{DirectSound} / \texttt{DirectPlay} networking are explicitly out
 of scope for this backend by the project owner's own instruction --- CNA's own audio and
 networking go through the ordinary backend-agnostic paths from Chapter~\ref{ch:audio-system}
 and Chapter~\ref{ch:networking} of this book, not through \texttt{free-direct} at all.
