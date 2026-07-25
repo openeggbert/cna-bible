@@ -27,9 +27,13 @@ is non-copyable and non-movable, and offers exactly two constructors:
   \cnaclass{GraphicsDeviceManager} calls internally when your \cnaclass{Game} subclass first
   creates its device --- ordinary game code essentially never calls it directly.
 \item[\texttt{GraphicsDevice()}]
-  \texttt{NOXNA} --- a parameterless constructor for headless/no-window contexts (unit tests,
-  the golden-image screenshot tooling this chapter itself uses, and any tool that needs a real
-  \cnaclass{GraphicsDevice} without a real \cnaclass{Game} driving it).
+  \texttt{NOXNA} --- a convenience constructor which delegates to the real constructor with the
+  default adapter, \texttt{Reach}, and default \cnaclass{PresentationParameters}. It is
+  headless only in a compile-time \texttt{HEADLESS} or \texttt{SOFTWARE} build. In every other
+  build the default \texttt{HeadlessEXT} value is \texttt{false}, so it initializes SDL video
+  and creates the ordinary default window (normally $1024\times768$). A no-window D3D12 device
+  requires the three-argument constructor and an explicit \texttt{HeadlessEXT=true}; a tool or
+  test must not infer headlessness from this overload alone.
 \end{description}
 
 Six events match FNA's surface exactly: \texttt{Disposing}, \texttt{DeviceLost} (never actually
@@ -105,6 +109,37 @@ backend.
   which is why \S\ref{sec:property-surface}'s \texttt{SamplerStates} property never needs an
   explicit ``apply'' call of its own from game code.
 \end{description}
+
+\subsection{Construction rollback and SDL ownership are not yet balanced}
+
+The successful path has a real ownership boundary that the compact constructor signatures hide.
+For a normal windowed device, CNA calls
+\texttt{SDL\_Init\allowbreak{}SubSystem(}\allowbreak{}\texttt{SDL\_INIT\_VIDEO)} before
+creating or attaching a window; its eventual \texttt{Dispose()} performs the matching video
+subsystem shutdown after destroying native resources. SDL documents
+that subsystem initialization is reference-counted and requires one matching quit for each init;
+the authoritative SDL3 wording is available at
+\url{https://wiki.libsdl.org/SDL3/SDL_Init}.
+
+That pairing is currently conditional only on construction, not on teardown. Compile-time
+\texttt{HEADLESS}/\texttt{SOFTWARE} builds and runtime \texttt{HeadlessEXT=true} deliberately
+skip the video init, yet \texttt{GraphicsDevice::Dispose()} still calls the video quit
+unconditionally. Consequently, while a normal windowed device or another SDL client holds the
+only video reference, disposing an otherwise-headless CNA device can release that unrelated
+reference. The existing Headless and Software smoke tests prove that video is absent \emph{while}
+their device is alive; the D3D12 smoke test proves windowless construction. None checks the
+post-disposal reference count or mixes a headless device with a live windowed one.
+
+There is a second, independent exception-safety hole. Once video initialization succeeds, later
+\texttt{SDL\_CreateWindow}, \texttt{SDL\_SetWindowSize}, backend construction, or initial
+state application may throw. C\texttt{++} then destroys already-constructed member objects, but
+does not call \cnaclass{GraphicsDevice}'s destructor: its raw owned \texttt{window\_}, the
+published \texttt{TextInputEXT}/\texttt{Mouse} handles, and its SDL video reference have no
+rollback guard. A backend held by \texttt{unique\_ptr} is cleaned up, but the window and video
+lease are not. The common pixel-test preflight detects a completely unavailable display before
+construction; it does not inject any failure after a successful init/window creation. Treat
+direct construction failure as process-contaminating until this ownership is made RAII or a
+constructor catch path destroys native state and quits only when this device acquired video.
 
 \section{The property surface}
 \label{sec:property-surface}

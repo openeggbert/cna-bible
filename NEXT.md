@@ -6,10 +6,10 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **519 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by three documentation commits: `944fa54`
-  (render-target binding/usage contracts), the Reset-order contracts batch, and the current
-  resource-lifecycle audit.
+- Book: **521 physical PDF pages, 49 chapters, 6 appendices**.
+- The local branch is ahead of `origin/develop` by four documentation commits: `944fa54`
+  (render-target binding/usage contracts), the Reset-order contracts batch, the resource-lifecycle
+  audit, and the current construction/SDL-ownership audit.
   The previous seventeen-commit count was accurate before the remote advanced and is retained
   only in the historical session log.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
@@ -17,7 +17,42 @@ session log; this file is the concise live handoff.
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: resource registration, events, and disposal
+## Latest completed batch: construction defaults, rollback, and SDL video ownership
+
+No CNA source changes were made; the sibling repository remained a read-only authority.
+The constructor path, focused Headless/Software/D3D12 examples, generic pixel-test preflight,
+and current SDL3 documentation establish:
+
+- The parameterless `GraphicsDevice()` is a convenience delegation, not a general headless
+  constructor. It is windowless only in compile-time Headless/Software builds. Elsewhere the
+  default `HeadlessEXT` is false and it initializes video and creates the standard default window;
+  a no-window D3D12 device requires the three-argument form with `HeadlessEXT=true`.
+- SDL video initialization is reference-counted and must be paired once per successful init. CNA
+  skips that init for compile-time Headless/Software and runtime `HeadlessEXT`, but always issues
+  the video quit in `Dispose()`. A headless device can therefore release the last video reference
+  held by a live normal device or another SDL client. Existing Headless/Software smoke tests only
+  prove absence during the device lifetime; D3D12 proves construction without a window. None
+  checks reference state after disposal or the mixed-device case.
+- Construction is not rollback-safe after a successful video init. `SDL_CreateWindow`, window
+  sizing, backend creation, or default-state application may throw. Member-owned backends unwind,
+  but the raw owned window, published text/mouse window handles, and this device's video reference
+  do not: a C++ destructor is not run for a failed constructor. The pixel-test preflight only
+  detects a completely unavailable display before construction and injects no later failure.
+- Ch.9 corrects the parameterless-constructor claim and records both ownership defects, the
+  test boundaries, and the official SDL3 reference-count rule. This is source-established, not
+  an injected runtime reproduction; the sibling source was not modified.
+- Validation: incremental `latexmk` succeeded at **521 pages**; targeted undefined-reference
+  and duplicate-label checks are empty; makeindex accepted **2,123** entries with zero rejected
+  and zero warnings; `git diff --check` passes. The one overfull box introduced while drafting
+  was removed. Current physical pages 110--111 (printed 88--89) and 126--127 (printed 104--105)
+  were rendered and are clean. Ch.9 is now **1,373** lines and spans printed pages **87--112**.
+
+Next recommended start: trace `RecreateBackendForMultiSampleCount()` and the reset-side backend
+replacement path. It first destroys the current backend and then constructs a replacement, so
+determine whether a failed replacement leaves a device that is safely recoverable, how state is
+reapplied, and which focused tests actually prove it.
+
+## Previous completed batch: resource registration, events, and disposal
 
 No CNA source changes were made; the sibling repository remained a read-only authority.
 The implementation, focused examples/CMake registration, and current FNA source establish:
