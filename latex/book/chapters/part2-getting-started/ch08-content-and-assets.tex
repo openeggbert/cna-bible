@@ -619,6 +619,58 @@ only delegates to the same base constructor and its embedded-resource stream ope
 documented CNA stub. No located test supplies a non-null provider to \texttt{ContentManager} or
 proves provider-based device discovery.
 
+\subsection{\cnaclass{ResourceContentManager} is a surface-only stub, not an alternate content root}
+
+The similarly named derived class deserves a sharper warning than that final sentence gives it.
+In current CNA it is \emph{not} a working way to load an embedded asset and it is not a stream
+back-end selected by ordinary \texttt{Load<T>()}. Its whole C\texttt{++} surface is one public
+constructor, \texttt{ResourceContentManager(IServiceProvider*)}, and one protected virtual
+\texttt{OpenStream} overload taking a const string reference. The constructor stores the same raw,
+unconsulted provider through \cnaclass{ContentManager}; it accepts null, supplies no resource
+object or resource name, retains the base \texttt{"Content"} root, and has no member state of its
+own. Its only method ignores \texttt{assetName} and unconditionally throws:
+
+\begin{lstlisting}
+throw std::runtime_error(
+    "ResourceContentManager::OpenStream is not implemented in CNA.");
+\end{lstlisting}
+
+That exception is intentionally not \cnaclass{ContentLoadException}; it reports an unimplemented
+API surface, not a missing or malformed asset. Since the method is protected, ordinary game code
+cannot call it directly. A derived class may call or override it, but that alone cannot turn the
+object into a content source.
+
+The reason is visible in the complete CNA call graph: no source path calls the derived class's
+\texttt{OpenStream()}, and none of \cnaclass{ContentManager}'s generic or specialized
+\texttt{Load} paths calls a virtual stream hook. They use the filesystem candidate sequence from
+\S8.4 and open their own file streams directly.
+Thus a \texttt{ResourceContentManager} instance can still load an ordinary loose file exactly as
+its base class can (subject to the same reader, root, device, cache, and disposal rules), because
+that inherited load does \emph{not} reach the throwing method. Conversely, overriding
+\texttt{OpenStream()} in a subclass does not redirect an inherited \texttt{Load<T>()}; those
+templates are not virtual stream consumers. A subclass would need a separate loading API or an
+intentional change to the base loading architecture.
+
+This is materially unlike the current FNA/XNA-shaped implementation. FNA requires both an
+\texttt{IServiceProvider} and a non-null \texttt{System.Resources.ResourceManager}; its override
+looks up the exact logical resource name, accepts only a \texttt{byte[]} value, and returns a
+buffer-visible \texttt{MemoryStream}. Missing or non-binary entries become
+\texttt{ContentLoadException}. FNA's ordinary \texttt{ReadAsset<T>()} reaches the virtual
+\texttt{OpenStream()} first (then its own raw-file fallback), so its
+\cnaclass{ResourceContentManager} really does participate in normal \texttt{Load<T>()}. CNA has
+neither the required resource-manager constructor nor that virtual dispatch seam; its earlier
+API-coverage document correctly labels the class a stub, despite the class itself compiling.
+
+No CNA test constructs this class, calls the throwing method through a test-only derived probe,
+or proves that inherited loose loads bypass it. Treat embedded-resource support as
+\texttt{needs\_human}, not as an opportunistic reader-registration task: a real C\texttt{++}
+implementation must choose an embedded-resource abstraction and ownership model, decide whether
+to add the FNA-compatible resource-manager constructor or a deliberately NOXNA equivalent, wire
+the base loader through a stream abstraction without regressing live filesystem behavior, and add
+binary/missing/non-binary/lifetime tests. Until that public architectural decision is made, use an
+ordinary \cnaclass{ContentManager} for CNA's supported loose, CNJ, and XNB paths rather than
+instantiating this subclass for a capability it does not provide.
+
 \subsection{\texttt{Unload()} evicts manager caches; it is not a universal asset destructor}
 
 The shortened comment in many XNA examples --- ``unload the content'' --- is useful only if its

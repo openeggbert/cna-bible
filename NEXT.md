@@ -7,14 +7,14 @@ session log; this file is the concise live handoff.
 
 - Branch: `develop`.
 - Book: **535 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by seventeen documentation commits: `944fa54`
+- The local branch is ahead of `origin/develop` by eighteen documentation commits: `944fa54`
   (render-target binding/usage contracts), the Reset-order contracts batch, the resource-lifecycle
   audit, the construction/SDL-ownership audit, the multisample-backend-rebuild audit, and the
   Game/GraphicsDeviceManager lifecycle and callback/disposal audits, plus the Game
   exit/destruction/component-lifetime and ContentManager cache/disposal and
   copy/replacement, service-provider/device-resolution, reader-registration, root/path, and
-  Load-failure/type/cache-mutation, concurrency/reentrancy, content-manifest introspection, and
-  format-selection/fallback audits below.
+  Load-failure/type/cache-mutation, concurrency/reentrancy, content-manifest introspection,
+  format-selection/fallback, and ResourceContentManager/OpenStream audits below.
   The previous seventeen-commit count was accurate before the remote advanced and is retained
   only in the historical session log.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
@@ -22,7 +22,43 @@ session log; this file is the concise live handoff.
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: ContentManager exact format selection and fallback boundary
+## Latest completed batch: ResourceContentManager and virtual OpenStream boundary
+
+No CNA source changes were made; the sibling repository remained a read-only authority. The live
+stub/header, every in-repository reference and test path, API-coverage records, and current FNA
+`ResourceContentManager`/`ContentManager` source establish:
+
+- CNA's public subclass has only `ResourceContentManager(IServiceProvider*)` and protected virtual
+  `OpenStream(string)`. It has no resource-manager argument or storage, accepts the same passive
+  nullable provider as its base, preserves the base `"Content"` root and builtin readers, and its
+  sole method ignores the name and unconditionally throws `std::runtime_error`. That is a stub
+  signal, not a normalized `ContentLoadException` for a bad embedded asset.
+- No CNA source calls that virtual method. Every inherited generic or special `Load<T>()` takes
+  the normal filesystem/XNB/CNJ path and opens file streams directly, so a ResourceContentManager
+  can incidentally load loose files like ContentManager but cannot load embedded content. An
+  override in a further derived class does not redirect inherited Load templates; it needs a
+  separate loader or a deliberate base architecture change. No CNA test constructs the class,
+  probes its protected throw, or proves the inherited bypass.
+- Current FNA instead requires a non-null `System.Resources.ResourceManager`, uses it to retrieve
+  an exact-name binary resource as a buffer-visible memory stream, converts missing/non-binary
+  entries to `ContentLoadException`, and reaches virtual OpenStream from normal `ReadAsset<T>()`
+  before its raw-file fallback. CNA therefore lacks both the source abstraction and dispatch seam,
+  not just one method body.
+- Embedded-resource support is explicitly **needs_human**: it needs a public choice between an
+  FNA-shaped resource-manager constructor and a deliberate NOXNA C++ abstraction, plus ownership,
+  stream, fallback, compatibility, and test decisions. Do not fill this gap through loose-reader
+  registration or silently change base Load behavior.
+- Full `latexmk` succeeded at **535 pages**; targeted undefined-reference and duplicate-label
+  checks are empty; makeindex accepted **2,166** entries with zero rejected and zero warnings;
+  `git diff --check` passes. Rendered physical pages **112--113** are clean. Ch.8 is now **972**
+  lines. The plan-consistency validator remains absent from this checkout.
+
+Next recommended start: retain the content/I/O scope but keep the embedded-resource decision
+blocked. Audit the independent `TitleContainer::OpenStream` / title-location path contract,
+including its relation to ContentManager's direct filesystem loading, error behavior, and tests;
+do not imply it implements ResourceContentManager.
+
+## Previous completed batch: ContentManager exact format selection and fallback boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. The
 generic template and all three bespoke Load specializations, every built-in loose reader and its
