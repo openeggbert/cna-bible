@@ -121,6 +121,14 @@ isolated chapter still compiles with zero overfull warnings; the added material 
 4 was rendered and inspected. Its line count is now 350 and needs propagation to the PLAN matrix
 before committing this pass.
 
+**Newest Ch.22 correction:** the former wording called swapchain readback an unresolved segfault.
+The live SDL_GPU contract proves instead that acquired swapchain textures are write-only. The
+chapter now identifies the only viable `GetBackBufferData` design (always render into and read a
+self-owned proxy, then blit to the swapchain) and records why it remains deliberately unchosen:
+its extra texture and blit would cost every frame. The corrected page 6 was rendered and inspected
+after a zero-overfull isolated compile. The chapter is 354 lines; propagate that count to PLAN
+before committing this correction.
+
 This was an unusually long, multi-batch session (author unavailable for many hours, explicit
 "continue autonomously" instruction given partway through, repeated several times). Seven full
 batches landed in total (371 → 452 pages, +81), on top of the earlier SDL_GPU chapter insertion

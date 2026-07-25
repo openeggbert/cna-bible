@@ -293,22 +293,26 @@ window with \texttt{SDL\_ClaimWindowForGPUDevice()}, and calls \texttt{Present()
 requires all five stages: nine ordinary frames, the induced throw, successful reclaim, successful
 presentation of the preserved frame, and 30 further frames without exception. This is a bounded,
 controlled proof of recovery after a hard acquisition failure; it does not claim to solve the
-separate swapchain-texture readback segfault described below.
+separate, write-only swapchain readback limitation described below.
 
 \section{What remains open}
 \label{sec:sdlgpu-what-remains-open}
 
-Three gaps are worth stating precisely rather than glossing over. First, occlusion queries are a
+Three limits are worth stating precisely rather than glossing over. First, occlusion queries are a
 \emph{permanent} limitation of the underlying API, not a task gap: the vendored
 \texttt{SDL\_gpu.h} has no query-pool or occlusion-query type anywhere in it (only
 \texttt{SDL\_GPUFence} for CPU/GPU synchronization), so \texttt{CreateOcclusionQuery()}
 correctly returns \texttt{nullptr} on this backend, the identical posture \texttt{HEADLESS} and
 \texttt{SOFTWARE} already take for their own, unrelated reasons --- worth re-opening only if a
-future SDL3 release adds real query support, not before. Second, one genuine, unresolved bug
-remains at the time of writing: a real segfault in the swapchain-acquisition leg of
-\texttt{RenderTarget2D} / \texttt{RenderTargetCube} handling, tracked openly in
-\texttt{plan\_sdlgpu.md} rather than hidden behind the render-target work that is otherwise
-complete. Third, a real \emph{possible} gap that is explicitly, honestly unresolved rather than
+future SDL3 release adds real query support, not before. Second, swapchain readback is a
+documented permanent restriction: SDL\_gpu documents its acquired swapchain texture as write-only, so it
+cannot be the source of \texttt{SDL\_DownloadFromGPUTexture}, a GPU copy, or a blit. The old
+segfault was this API contract being violated, not a driver bug that another acquisition retry
+could repair. CNA's only viable design for \texttt{GetBackBufferData} is to render every frame
+into a self-owned, swapchain-sized proxy texture, blit that proxy to the real swapchain only for
+presentation, and read the proxy back. That is deliberately not implemented: it imposes one
+extra texture and blit on every frame even for games that never request readback. Third, a real
+\emph{possible} gap that is explicitly, honestly unresolved rather than
 either claimed fixed or claimed broken: \texttt{plan\_sdlgpu.md} records real Vulkan validation
 errors (\texttt{vkCmdBlitImage} / \texttt{vkCreateImageView} range violations along the depth
 dimension) surfacing from \cnaclass{Texture3D}'s own generated-mipmap path once debug validation
