@@ -113,6 +113,14 @@ frame, then renders 30 further frames. The new section was isolated-compiled wit
 warnings and its page 5 was rendered and inspected. The PLAN table's Ch.22 line count must be
 updated from 307 to 326 in the next documentation commit; full-book regeneration remains pending.
 
+**Newest validation continuity pass in Ch.22:** the debug-build SDL_GPU validation toggle now
+documents two concrete fixes it exposed: MSAA cannot use a six-layer 2D-array attachment, and
+generated mipmaps require `SAMPLER | COLOR_TARGET` usage. It also points back to the still-open
+Texture3D depth-mipmap issue rather than treating validation as a completed binary state. The
+isolated chapter still compiles with zero overfull warnings; the added material on physical page
+4 was rendered and inspected. Its line count is now 350 and needs propagation to the PLAN matrix
+before committing this pass.
+
 This was an unusually long, multi-batch session (author unavailable for many hours, explicit
 "continue autonomously" instruction given partway through, repeated several times). Seven full
 batches landed in total (371 → 452 pages, +81), on top of the earlier SDL_GPU chapter insertion

@@ -143,6 +143,30 @@ choice, not a claim that games should globally disable synchronization: it uses 
 property a game would use, at the phase of the lifecycle where CNA will not subsequently replace
 it.
 
+\section{Validation mode turned two tolerated violations into real fixes}
+
+This backend now passes SDL\_gpu's \texttt{debug\_mode} flag from CNA's ordinary build mode:
+debug builds request validation and release builds do not. That deliberately modest toggle paid
+for itself immediately. With validation previously hardcoded off, two API-contract violations
+had appeared to work; with it on, each could hang the Vulkan driver rather than merely print a
+warning. The lesson is more useful than a generic ``enable validation'' recommendation: a
+backend's release-mode pixels can look plausible while resource descriptions are still invalid.
+
+First, the MSAA implementation for \cnaclass{RenderTargetCube} used a six-layer 2D-array
+texture. SDL\_gpu forbids multisampling on an array texture. CNA now uses one single-layer,
+multisampled 2D attachment for whichever cube face is currently rendering and resolves it into
+the actual cube texture; cycling is permitted only for that temporary attachment, never for the
+cube texture that must retain all six faces. Second, generated mipmaps for \cnaclass{Texture3D}
+and \cnaclass{TextureCube} originally requested only \texttt{SAMPLER} usage. SDL\_gpu requires
+\texttt{SAMPLER | COLOR\_TARGET} for its mip-generation operation, so CNA adds
+\texttt{COLOR\_TARGET} when a mip chain is requested and leaves non-mipmapped textures unchanged.
+
+The same validation run also produced the still-open depth-dimension errors for generated
+\cnaclass{Texture3D} mipmaps discussed in Section~\ref{sec:sdlgpu-what-remains-open}. That is why
+the chapter treats validation as evidence with scope, not a binary badge: it closed two concrete
+violations while exposing a third one whose current uniform-color test cannot yet decide
+correctness.
+
 \section{Render targets: a real use-after-free, closed before it ever shipped}
 
 \cnaclass{RenderTarget2D} and \cnaclass{RenderTargetCube} support (with real multisampling and
