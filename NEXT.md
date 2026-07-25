@@ -1,130 +1,123 @@
 # Next session — start here
 
 Read this file first, then `PLAN.md`. `PLAN.md` is the durable expansion plan and historical
-session log; this file is the concise, current handoff and is rewritten as the state changes.
+session log; this file is the concise live handoff.
 
 ## Current state (2026-07-25)
 
-- Branch: `develop`, based on `c714cc4` when this autonomous session started. The tree was clean
-  and synchronized with `origin/develop`.
-- Book: **468 physical PDF pages, 49 chapters, 6 appendices**.
-- Full validation: a forced full-book rebuild completed successfully with:
+- Branch: `develop`.
+- Book: **470 physical PDF pages, 49 chapters, 6 appendices**.
+- The book repository started this autonomous session clean. The local branch is now ahead of
+  `origin/develop`: the roadmap correction (`a8b38ae`, `docs: correct roadmap source drift`)
+  and the current ShaderEffect batch are local.
+- `a8b38ae` could not be pushed because the escalation approval service disconnected while
+  reviewing `git push`. Its response explicitly rejected the request rather than granting
+  permission. Do not bypass that control; retry only when approval is available or the user
+  explicitly authorizes another attempt.
 
-  ```bash
-  cd latex/book
-  latexmk -pdf -interaction=nonstopmode -halt-on-error -file-line-error -g main.tex
-  ```
+## Latest completed batch
 
-- The final `main.log` has no matches for either targeted check:
+### Ch.15: correct the real ShaderEffect backend boundary
 
-  ```bash
-  grep -iE 'Warning.*undefined|undefined reference|undefined control' main.log
-  grep -iE 'multiply defined|multiply-defined' main.log
-  ```
+The previous chapter text treated a `CreateEffectBackend()` override as proof of working
+cross-backend custom shading. The live implementations show a much narrower matrix:
 
-- `makeindex` accepted 1,953 entries, rejected 0, and reported 0 warnings.
-- This is the first successful fresh full-book build after commit `87fb144`, whose verified
-  baseline was 454 pages. The 14-page increase comes from the isolated continuation work that
-  followed that baseline.
+- EasyGL compiles GLSL, supports real named uniforms/arrays and 2D/cube/volume texture binds,
+  and alone consumes `GpuDrawParams::customEffectBackend` in general 3D draws.
+- SDL GPU compiles GLSL to SPIR-V through `libshaderc`, then uses a fixed-layout SpriteBatch
+  path (including its tested MRT shader).
+- Vulkan expects raw precompiled SPIR-V bytes inside the two constructor strings; it does not
+  compile GLSL. Its working custom path is fixed-layout SpriteBatch.
+- D3D9 compiles HLSL to the active SM2/SM3 profile. D3D11 and D3D12 compile
+  `vs_5_0`/`ps_5_0`; all three tested public paths are SpriteBatch facilities.
+- BGFX's `CompileProgram()` always returns false. The object reports that binary shaders are
+  required, but `ShaderEffect` exposes no binary-loading route.
+- Software accepts non-empty strings and reports validity but renders through its fixed CPU
+  shader. Headless records compilation/binds/uniforms/2D textures without producing pixels.
+- WebGPU and DX3 inherit the null factory and reject a non-null SpriteBatch effect.
+  SDL_Renderer construction is harmless and invalid; passing the non-null object to
+  `SpriteBatch::Begin()` is what throws. Canvas also rejects it.
 
-## Visual verification closed in this session
+Ch.15 now states these distinctions explicitly and corrects its prior “Vulkan takes GLSL”
+claim. It also labels the general-3D and arbitrary-vertex-layout worked paths as EasyGL-only.
 
-Every physical page in each post-`87fb144` content file was rendered from the new full PDF at
-110 dpi and inspected directly:
+### Ch.23: document the D3D11/D3D12 fixed custom-effect ABI
 
-- Ch.20 BGFX: physical pages 207–214.
-- Ch.21 WebGPU: 215–222.
-- Ch.22 SDL GPU: 223–232.
-- Ch.23 Direct3D: 233–244.
-- Ch.25 DX3/free-direct: 251–256.
-- Ch.34 Sharp Runtime overview: 329–334.
-- Ch.35 Sharp Runtime namespaces: 335–346.
-- Appendix E: 451–456.
-- Appendix F: 457–462.
+The new section is grounded in `D3D11EffectBackend`, `D3D12EffectBackend`, and the real smoke
+tests:
 
-All are visually clean: no page-edge overflow, listing spill, running-header/folio collision,
-or malformed page was found. Ch.5, whose PLAN row had remained incorrectly marked “pending
-batch verification,” was also rendered in full (physical pages 49–56) and is clean.
+- fixed 32-byte SpriteBatch vertex: `float2 POSITION0` at byte 0, `float2 TEXCOORD0` at byte 8,
+  and `float4 COLOR0` at byte 16;
+- fixed 128-byte block: backend `vpSize` at 0--15, one matrix at 16--79, one overlapping vector
+  at 80--95, one float-converted scalar/int at 96--99, and padding thereafter;
+- uniform names are ignored; array setters and all three extra-texture hooks remain inherited
+  no-ops; SpriteBatch supplies only the primary `t0`/`s0` pair;
+- D3D11 binds separate shader/input/buffer context state; D3D12 constructs one prebuilt PSO for
+  a single-sample RGBA8 target with fixed pipeline state;
+- both public smoke tests compile the documented HLSL and require solid red to read back as
+  exact cyan. D3D11 runs windowed under Wine/DXVK; D3D12 uses `HeadlessEXT` off-screen.
 
-## Work completed before this session, now fully verified
+## Validation
 
-- Ch.20 documents BGFX Texture3D/TextureCube readback and mip allocation.
-- Ch.21 corrects stale WebGPU readback, culling, scissor, and viewport limitations.
-- Ch.22 covers SDL GPU lifetime, present timing, validation, swapchain recovery/readback,
-  custom shaders, pipeline/sampler state, draw ordering, MRT, and remaining limits.
-- Ch.23 covers the D3D11 verification ladder and MRT finalization, the D3D11/D3D12
-  PresentationMode limitation, and corrected D3D9 Texture3D/render-target coverage.
-- Ch.25 covers the real letterbox input transform and the still-open resize/presentation
-  mismatch that requires a free-direct-side fix.
-- Ch.34 documents the real local CI gate and absent hosted CI.
-- Ch.35 documents generic-task continuation scope and MemoryStream close semantics.
-- Appendices E/F cover SkinnedPbrEffect/AnimationPlayer and MemoryStream respectively.
+The final forced build succeeded:
 
-## Current focus
+```bash
+cd latex/book
+latexmk -pdf -interaction=nonstopmode -halt-on-error -file-line-error -g main.tex
+```
 
-1. Continue the highest-value source-grounded expansion work in logical dependency order,
-   starting from the active graphics/backend area unless a fresher source audit reveals a
-   more important correctness correction.
+Results:
 
-## Documentation correction closed in this session
+- `main.pdf`: 470 pages.
+- Targeted undefined-reference check: no matches.
+- Duplicate-label check: no matches.
+- `makeindex`: 1,969 accepted, 0 rejected, 0 warnings.
+- Ch.15 physical pages 167--172 rendered at 120 dpi and inspected in full.
+- Ch.23 new/reflowed physical pages 240--246 rendered at 140 dpi and inspected; page 246 is
+  the intentional open-right blank before Ch.24.
+- No page-edge overflow, malformed table, listing spill, running-header collision, or folio
+  defect was found. The new Ch.23 section emits no local overfull warning. Ch.15 retains older
+  logged overfull lines, but every final rendered page was inspected and remains visually
+  inside the page geometry.
 
-- Ch.49 now describes the real Phase-G-complete XNB reader pipeline rather than saying it is
-  under consideration.
-- Its obsolete seven-backend Texture3D/TextureCube table is replaced with the narrower live
-  boundary: both classes inherit `Texture`, both have real collection/slot regression tests,
-  and EasyGL alone overrides the typed custom-`ShaderEffect` cube/volume hooks.
-- All known `PLAN.md` line-count mismatches are fixed, `CLAUDE.md` now says 49 chapters, and
-  the formerly empty `README.md` contains build and repository guidance.
-- Validation: full PDF remains 468 pages; reference/duplicate-label checks are empty;
-  makeindex accepted 1,953 entries with no warning; Ch.49 physical pages 427–430 were rendered
-  at 140 dpi and inspected clean. A newly exposed 8.08pt Ch.49 overflow was fixed before the
-  final render, leaving no chapter-local overfull box.
+Run before the next commit:
 
-## Source findings from the active correction
+```bash
+wc -l latex/book/chapters/part3-graphics-core/ch15-shader-fx-gap.tex \
+      latex/book/chapters/part4-backends/ch23-direct3d-backends.tex
+git diff --check
+```
 
-- `Texture3D.hpp` and `TextureCube.hpp` both derive from `Texture`; their tests cover
-  `TextureCollection` and a real `GraphicsDevice.Textures` slot.
-- `ShaderEffect` exposes typed `SetTexture` overloads for 2D, cube, and volume textures.
-  EasyGL implements all three backend hooks and registers dedicated cube/volume shader pixel
-  tests. Other effect backends inherit the cube/volume no-op defaults.
-- `GraphicsDevice.Textures` is currently storage/disposal plumbing: no draw path consumes the
-  collection for any texture type. This is not a remaining Texture3D/TextureCube inheritance
-  defect.
-- `plan_xnb.md` records phases through G complete. `RegisterAllBuiltInXnbReaders()` registers
-  the built-in read-side pipeline; the main deliberate limits are general compiled
-  `EffectReader`, implicit `ReflectiveReader<T>`, unregistered closed generic combinations,
-  and LZ4. Phase I's official-sample inventory remains deferred.
-- CNA's own README and `docs/graphics-backend-feature-matrix.md` still repeat the superseded
-  no-XNB/no-texture-inheritance descriptions. The chapter now calls out that documentation
-  drift rather than treating it as authoritative.
+## Documentation synchronized
 
-## Repository-safety notes
+- `PLAN.md` now records 470 total pages and exact line counts: Ch.15 is 327 lines; Ch.23 is
+  696 lines.
+- Ch.49 describes the real Phase-G-complete XNB read pipeline, current Texture hierarchy, and
+  typed EasyGL custom-effect texture support.
+- `README.md` has build/navigation guidance; `CLAUDE.md` says 49 chapters.
 
-- Existing sibling-repository changes are user-owned and must be preserved:
-  - `cna`: the reusable Xvfb screenshot registration/source changes documented under
-    `tools/cna-screenshot-infra/`;
-  - `cna-samples`: a modified `samples/SimpleAnimation/Content/tank.model.json`.
-- Do not edit sibling repositories as part of ordinary book work. Read them as authoritative
-  sources; make book changes only in this repository unless a future task explicitly expands
-  scope.
-- The active book repository itself started clean.
+## Repository safety
+
+Do not modify the existing user-owned sibling-repository changes:
+
+- `cna`: `cmake/Tests/EasyGLTests.cmake`, `cmake/Tests/SdlRendererTests.cmake`, and
+  `examples/xvfb_screenshot_demo.cpp`;
+- `cna-samples`: `samples/SimpleAnimation/Content/tank.model.json`.
+
+Sibling repositories remain read-only source authorities for ordinary book work.
 
 ## Blockers and `needs_human`
 
-No current book task is blocked on a human decision. The long-standing authenticity limit
-remains: Wine/DXVK provides real execution but synthesizes D3D9 capability values, so only
-real Windows/D3D9-era hardware can close that narrow claim. Keep it recorded as
-`needs_human`; it does not block independent writing or validation work.
+- No book-writing task currently needs a human decision.
+- Push is operationally blocked by the failed approval-service review described above; local
+  work and commits can continue safely.
+- Real Windows/D3D9-era hardware remains the only way to close the narrow authenticity limit
+  around capability values synthesized by DXVK. Keep that marked `needs_human`; it does not
+  block independent work.
 
-## Reusable validation rules
+## Recommended next starting point
 
-- A successful LaTeX build is necessary but not sufficient. Render every touched physical PDF
-  page and inspect it directly.
-- Use the targeted undefined-reference expression above; a plain `grep -i undefined` can match
-  ordinary prose.
-- Printed page numbers differ from physical PDF pages because of front matter. Locate pages by
-  extracted title text.
-- Never place raw non-ASCII bytes inside an `lstlisting`.
-- Run `git diff --check` before each commit.
-- Keep content commits small and descriptive; update `PLAN.md` and this file whenever state
-  changes materially.
+Audit the cross-backend summaries that consume the corrected ShaderEffect facts, especially
+Appendix B's feature matrix and Ch.16's `IEffectBackend` description. Correct only claims that
+the live source disproves, then continue with the next source-grounded chapter expansion in
+the active graphics/backend area.

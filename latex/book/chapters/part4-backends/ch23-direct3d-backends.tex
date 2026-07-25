@@ -420,6 +420,155 @@ closed --- with the documentation's own closing line telling a reader to re-veri
 \emph{other} specific claim against the project's own live tracking file before trusting it,
 rather than this book's snapshot alone.
 
+\section{One public \texttt{ShaderEffect} API, two fixed Direct3D contracts}
+
+Chapter~\ref{ch:shader-fx-gap} now draws an important boundary: D3D11 and D3D12 really do
+compile custom HLSL at runtime, but their implementations are \cnaclass{SpriteBatch} custom
+shader facilities, not general replacements for XNA's compiled \texttt{Effect}. The two
+backends accept the same constructor strings, compile the same \texttt{main} entry points as
+\texttt{vs\_5\_0} and \texttt{ps\_5\_0}, and expose the same public setters. Under that shared
+surface, both require one exact 32-byte vertex:
+
+\begin{longtable}{@{}p{0.22\textwidth}p{0.18\textwidth}p{0.46\textwidth}@{}}
+\toprule
+\textbf{Semantic} & \textbf{Byte offset} & \textbf{Required HLSL type} \\
+\midrule
+\endhead
+\texttt{POSITION0} & 0  & \texttt{float2}: pixel-space X and Y \\
+\texttt{TEXCOORD0} & 8  & \texttt{float2}: texture U and V \\
+\texttt{COLOR0}    & 16 & \texttt{float4}: sprite tint \\
+\bottomrule
+\end{longtable}
+
+This is \cnaclass{SpriteBatch}'s own vertex, not an inferred convention. D3D11 creates a
+three-element \texttt{ID3D11InputLayout} from the compiled vertex blob; D3D12 embeds the same
+three elements in the custom effect's pipeline-state object. A shader declaring
+\texttt{float3 POSITION}, a tangent, or a game-specific stride therefore cannot be made
+compatible by supplying a matching \cnaclass{VertexDeclaration}: unlike EasyGL's separately
+tested general-3D path, neither Direct3D backend reads
+\texttt{GpuDrawParams::customEffectBackend} from its 3D draw dispatch.
+
+\subsection{The names are documentation; the byte offsets are the API}
+
+Both implementations store public uniform writes in the same 128-byte block. The caller's
+\texttt{name} argument is deliberately ignored. What selects a value is which setter was
+called:
+
+\begin{longtable}{@{}p{0.19\textwidth}p{0.25\textwidth}p{0.48\textwidth}@{}}
+\toprule
+\textbf{Bytes} & \textbf{Writer} & \textbf{Meaning} \\
+\midrule
+\endhead
+0--15 &
+backend only &
+\texttt{vpSize}; \cnaclass{SpriteBatch} writes width and height before binding the effect. \\
+16--79 &
+\texttt{SetUniformMat4} &
+one 64-byte matrix, regardless of the supplied name. \\
+80--95 &
+\texttt{SetUniformVec2/3/4} &
+one overlapping vector slot; a later vector setter overwrites the components it supplies. \\
+96--99 &
+\texttt{SetUniformFloat/Int} &
+one scalar slot. The integer overload stores a floating-point conversion, not integer bits. \\
+100--127 &
+none &
+reserved padding in the current implementation. \\
+\bottomrule
+\end{longtable}
+
+There are two further consequences that the common public surface does not make obvious.
+\texttt{SetUniformFloatArray()} and \texttt{SetUniformVec2Array()} inherit
+\cnaclass{IEffectBackend}'s no-op defaults on both backends. So do all three
+\texttt{SetTexture()} backend hooks. The sprite's primary resource still works because
+\cnaclass{SpriteBatch} itself binds its texture and sampler to \texttt{t0}/\texttt{s0}; a
+second 2D texture, cube map, or volume texture set through \cnaclass{ShaderEffect} does not.
+Effect authors should therefore treat the layout above as a tiny fixed ABI, not as
+name-reflected HLSL constants.
+
+\subsection{Where D3D11 and D3D12 stop being the same}
+
+D3D11 can bind the compiled vertex shader, pixel shader, input layout, and dynamic constant
+buffer as separate context state. Every \texttt{Bind()} performs a write-discard map, copies
+the 128 bytes, and attaches the buffer to \texttt{b0} for both shader stages. The native map
+mode is \texttt{D3D11\_MAP\_WRITE\_DISCARD}.
+
+D3D12 has no equivalent independent shader bind. Its effect constructor must build a complete
+\texttt{ID3D12PipelineState} up front, using the same cached root-signature shape as the stock
+sprite path: one CBV at \texttt{b0}, one SRV table at \texttt{t0}, and one sampler table at
+\texttt{s0}. The 128-byte constant buffer lives in a persistently mapped upload resource;
+\texttt{Bind()} only copies the current values, while
+\texttt{D3D12SpriteBatchBackend::FlushBatch()} binds the resource and the prebuilt PSO inside
+its command list.
+
+That PSO also makes D3D12's boundary stricter and directly visible in source: it is compiled
+for one \texttt{DXGI\_FORMAT\_R8G8B8A8\_UNORM}, single-sample color target, with blending,
+depth, and stencil disabled and culling set to none. Those choices match the real custom-effect
+pixel test. They do not form a dynamic promise that the same object can be reused for an MRT
+set, an MSAA target, another color format, or caller-selected pipeline state; those dimensions
+would require separate PSOs and a cache key that the current effect backend does not build.
+
+\subsection{A worked example shared by the D3D11 and D3D12 pixel tests}
+
+The two smoke tests use byte-for-byte equivalent HLSL to turn a solid red texture into exact
+cyan. The vertex shader's \texttt{vpSize} field is at byte zero because the backend fills it;
+the four padding vectors advance the next public vector slot to byte 80:
+
+\begin{lstlisting}
+const char* vertexHlsl = R"(
+struct VSIn  { float2 pos : POSITION0;
+               float2 uv  : TEXCOORD0;
+               float4 col : COLOR0; };
+struct VSOut { float4 pos : SV_Position;
+               float2 uv  : TEXCOORD0;
+               float4 col : TEXCOORD1; };
+cbuffer CB : register(b0) {
+    float4 vpSize;
+    float4 pad1[4];
+    float4 uColor;
+    float4 uFloat0;
+};
+VSOut main(VSIn input) {
+    VSOut output;
+    float2 ndc = (input.pos / vpSize.xy) * 2.0 - 1.0;
+    output.pos = float4(ndc.x, -ndc.y, 0.0, 1.0);
+    output.uv  = input.uv;
+    output.col = input.col;
+    return output;
+})";
+
+const char* pixelHlsl = R"(
+Texture2D texSampler : register(t0);
+SamplerState texSamplerSampler : register(s0);
+struct PSIn { float4 pos : SV_Position;
+              float2 uv  : TEXCOORD0;
+              float4 col : TEXCOORD1; };
+float4 main(PSIn input) : SV_Target {
+    float4 source = texSampler.Sample(texSamplerSampler, input.uv);
+    return float4(1.0 - source.rgb, 1.0);
+})";
+
+ShaderEffect invert(device, vertexHlsl, pixelHlsl);
+if (!invert.IsEffectValid()) {
+    throw std::runtime_error("custom HLSL did not compile");
+}
+
+SamplerState pointClamp = SamplerState::PointClamp;
+SpriteBatch batch(device);
+batch.Begin(SpriteSortMode::Deferred, BlendState::Opaque,
+            &pointClamp, nullptr, nullptr, &invert);
+batch.Draw(redTexture, destination, Color::White);
+batch.End();
+\end{lstlisting}
+
+D3D11 runs this through a windowed Wine/DXVK device and reads the sprite's top-left region.
+D3D12 runs the same public \cnaclass{GraphicsDevice}/\cnaclass{SpriteBatch} sequence against a
+\texttt{HeadlessEXT} off-screen device, then reads the render target. In both cases solid
+\((255,0,0,255)\) must become exactly \((0,255,255,255)\). That result proves more than
+successful compilation: the fixed input layout, automatic viewport slot, \texttt{b0}
+constant-buffer/root binding, \texttt{t0}/\texttt{s0} resource path, custom pixel shader, and
+GPU readback all participated in one observable public-API draw.
+
 \section{A reopened feature, and a real architectural divergence hiding under a shared foundation}
 
 \texttt{D3DCommon}'s shared HLSL/DXBC and state-mapping tables, named above, make it easy to
