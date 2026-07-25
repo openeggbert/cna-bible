@@ -153,6 +153,17 @@ does not hash its six blend factors/functions; disabled stencil does not hash op
 and disabled two-sided stencil does not hash the counter-clockwise fields. Two commands that
 produce the same pipeline consequently share it even if their irrelevant XNA state-object fields
 differ, while a meaningful state change cannot reuse a pipeline with stale SDL\_gpu descriptors.
+
+\begin{sourcenote}
+The target format included in that key is not the public backbuffer-format field. Each frame
+queries SDL for the swapchain texture's actual format and builds the matching pipeline.
+Independently, construction chooses D24S8 or D32S8 by a real device-support query and later allocates that
+combined attachment whenever a backbuffer frame needs it. A public
+\texttt{DepthFormat::None} does not suppress it; absence means the device supported neither
+combined format. Fullscreen remains an SDL-window operation outside this backend hook, and
+swapchain acquisition follows the resulting window without selecting formats from the public
+enums.
+\end{sourcenote}
 Stencil reference itself is intentionally \emph{not} pipeline state: the captured value is sent
 per draw through \texttt{SDL\_SetGPUStencilReference()}, the missing call that an adversarial
 pixel test once exposed. A left-half stencil write followed by an Equal-reference reveal now

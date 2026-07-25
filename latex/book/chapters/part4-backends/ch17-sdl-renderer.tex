@@ -155,6 +155,14 @@ touches:
         constructs with the default~1 and later requests arrive through the repaired reset
         path; direct \cnaclass{GraphicsDevice} construction with \texttt{Two} still loses the
         distinction. ASCII wraps this same renderer and inherits both behaviors.
+  \item \textbf{Presentation formats (stored, not selected).} Neither the constructor nor a
+        later reset receives the requested backbuffer/depth format: the factory passes only
+        window, logical-presentation, and swap-interval fields. SDL chooses the renderer's
+        window output, while every CNA-created SDL texture is RGBA32 and no depth/stencil
+        attachment exists. Fullscreen is different: shared device code still makes SDL's
+        window transition request before the backend's empty format hook.
+        The dedicated fullscreen test therefore proves stored state, no throw, and continued
+        pixels --- not display acceptance under Xvfb. ASCII inherits this complete split too.
   \item \textbf{Disposed-resource guards (3 bugs).} A missing disposed-texture check inside
         the internal sprite-push path; a missing equivalent check in
         \texttt{SetRenderTargets}; and a dangling backend pointer left behind after

@@ -6,19 +6,71 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **502 physical PDF pages, 49 chapters, 6 appendices**.
-- After the batch commit, the local branch is ahead of `origin/develop` by twelve coherent
+- Book: **505 physical PDF pages, 49 chapters, 6 appendices**.
+- After the batch commit, the local branch is ahead of `origin/develop` by thirteen coherent
   documentation commits:
   roadmap, ShaderEffect/D3D ABI, general capability matrix, MSAA/anisotropy, buffer
   contracts, volume/cube readback contracts, and RenderTargetCube upload/transition
   contracts, followed by Texture2D update contracts, instancing/vertex binding, and input
-  coordinate routing, public backbuffer readback, and swap-interval contracts.
+  coordinate routing, public backbuffer readback, swap-interval contracts, and presentation
+  format/fullscreen contracts.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
   reviewing `git push`. Its response explicitly rejected the request rather than granting
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
 ## Latest completed batch
+
+The `PresentationParameters.BackBufferFormat` / `DepthStencilFormat` / `IsFullScreen` and
+`IGraphicsBackend::UpdatePresentationFormatEXT()` audit is complete:
+
+- `GraphicsDevice::Reset()` first stores the whole requested object, applies fullscreen and
+  non-Android size to the SDL window, reapplies virtual resolution/MSAA/interval, and calls
+  the presentation-format hook last. SDL fullscreen failure is cleared and non-fatal; size
+  failure throws. Stored state therefore cannot be used as an actual window query.
+- Only D3D9 overrides the otherwise-empty hook. It maps color/depth enums into real D3D9
+  presentation parameters, sets `Windowed = !IsFullScreen`, and immediately resets the
+  device. The smoke suite observes a real D24S8 surface after manager-driven setup. An
+  unsupported combination can nevertheless fail after public requested state changed.
+- The other thirteen products do not provide per-field runtime format selection. Their
+  native results range from no attachments (the 2D-only and Headless products), through
+  fixed CPU/DirectX/WebGPU formats, to driver/platform-selected SDL, GL, bgfx, Vulkan,
+  SDL_gpu, or Canvas targets. Several allocate real depth even for public `None`; WebGPU
+  can select an sRGB surface while public state reports `Color`.
+- Fullscreen remains a separate SDL-window route for windowed products, even with an empty
+  backend hook. D3D11/12 may acquire a fullscreen-sized SDL window but never call DXGI
+  `SetFullscreenState`; DX3 remains at `DDSCL_NORMAL`. Software and Headless have no window.
+- Eager `Game` construction starts with bare `Color`/`None`/windowed parameters before the
+  manager's `Color`/`Depth24`/windowed defaults are applied. D3D9's hook upgrades the native
+  device; the remaining products keep their independent attachment policies.
+- Existing EasyGL depth/fullscreen and SDL Renderer fullscreen tests explicitly prove stored
+  round-trip/no-throw/continued rendering, not native format or display acceptance. D3D9 is
+  the strong native exception. No dedicated test was found that requests two different
+  backbuffer formats and queries the resulting native formats. FNA instead submits one
+  complete native presentation structure to `FNA3D_ResetBackbuffer`.
+- Ch.6 and Ch.9 now explain the caller-visible requested/actual split. Ch.16 contains the
+  complete fourteen-product color/depth/window/evidence matrix. Ch.17--23 and Ch.25 record
+  the applicable native policy, Ch.21's stale Vulkan render-target comparison is corrected,
+  and Appendix A carries the concise warning.
+- Final validation: a forced `latexmk` rebuild produces **505 pages**; targeted undefined-
+  reference and duplicate-label checks are empty; makeindex accepts **2,069 entries** with
+  zero rejected and zero warnings; `git diff --check` passes and the recorded chapter counts
+  match `wc -l`.
+  Rendered pages 64, 113, 190--192, 209, 216, 227, 233, 243, 252, 264, 287, and 470 have no
+  clipping, cell collision, page-edge spill, malformed heading, running-header collision, or
+  folio defect. The matrix header repeats correctly on both continuation pages.
+
+## Recommended next starting point
+
+Re-inventory the remaining live defaults in
+`include/CNA/Internal/Backends/Common/IGraphicsBackend.hpp` against the now-large Ch.16
+coverage. Prefer a contract with a real public caller and divergent native effects over an
+already-covered factory/null/default. The state-application and dynamic-state families are
+the first candidates to compare against Ch.14; avoid repeating its existing
+`SetReferenceStencil` finding. Record any selected method and preliminary backend inventory
+here before changing prose.
+
+## Previous swap-interval batch
 
 The `PresentationParameters.PresentationInterval` /
 `IGraphicsBackend::SetSwapInterval()` audit is complete:

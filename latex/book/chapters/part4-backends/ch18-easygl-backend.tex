@@ -71,6 +71,17 @@ already-tested contract on \texttt{Texture::ValidateFormat} (Chapter~\ref{ch:tex
 --- closing this gap would require revisiting a decision the project has already committed
 tests against, not simply writing new code.
 
+The default backbuffer has a related but distinct selection gap. The backend factory never
+receives \texttt{BackBufferFormat}, \texttt{DepthStencilFormat}, or
+\texttt{IsFullScreen}; SDL/GL chooses framebuffer~0 after CNA asks only for an ES~3.0 context
+and eight stencil bits. When backbuffer MSAA is active, CNA replaces that path with its own
+fixed RGBA8 plus Depth24 renderbuffers --- still not the requested enums, and with no stencil
+attachment in that MSAA FBO. \texttt{easygl\_depth\_format\_test} is intentionally honest
+about this: it cycles all four public depth values and proves only storage/no throw. The
+window can separately change through the shared SDL fullscreen call, whose failure is
+non-fatal. The full requested/native distinction is in
+\S\ref{sec:backend-presentation-format-matrix}.
+
 \subsection{A worked example: finding the real SpriteBatch quad ceiling}
 
 The \texttt{uint16\_t} index-type finding above is worth turning into an actual number, since

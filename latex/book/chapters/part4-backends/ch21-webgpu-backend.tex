@@ -105,7 +105,8 @@ GPU skinning through this effect rather than through \cnaclass{SkinnedEffect} at
 \section{Render targets, environment mapping, instancing, and mip generation}
 
 \cnaclass{RenderTarget2D} support combines depth and stencil into a single format regardless
-of what was requested (the same simplification Vulkan makes, Chapter~\ref{ch:vulkan-backend}),
+of what was requested (unlike Vulkan's newer per-render-target depth-format selection,
+Chapter~\ref{ch:vulkan-backend}),
 and needed a real type-safety fix when sampling a render target back as an ordinary texture.
 MSAA support, once implemented, initially appeared to fail its own dedicated test --- but
 investigation found the infrastructure was already correct, and the reported failure was a
@@ -127,6 +128,17 @@ render-target unbind). This is documented explicitly as a deliberate divergence 
 this specific behavior strictly \emph{better} than every other backend's, while still being
 genuinely different --- worth knowing if you are relying on mip regeneration timing to match
 across backends.
+
+\begin{sourcenote}
+The default surface is equally independent of public presentation-format fields, but its
+choice is unusually visible. \texttt{ConfigureSurface()} prefers BGRA8-sRGB, then
+RGBA8-sRGB, before either UNORM variant. Thus a public \texttt{Color} request can accompany
+a native sRGB swapchain, the opposite default-color policy from Vulkan. Its fixed depth
+texture uses \texttt{Depth24PlusStencil8}. The backend recreates it for every non-minimized
+surface, including when the public depth value is \texttt{None}. SDL performs any fullscreen window transition;
+the next frame detects its physical size and reconfigures the surface, but neither requested
+format enum participates.
+\end{sourcenote}
 
 \subsection{A worked example: the still-open render-target-size trap}
 

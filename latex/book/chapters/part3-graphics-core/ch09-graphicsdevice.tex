@@ -233,6 +233,21 @@ driver or compositor accepted. The complete fourteen-product matrix and actual t
 are in \S\ref{sec:backend-swap-interval-matrix}.
 \end{sourcenote}
 
+\begin{sourcenote}
+\textbf{The same warning applies independently to color format, depth/stencil format, and
+fullscreen.} \texttt{Reset(pp)} stores the complete object first. It then attempts the SDL
+window's fullscreen and size changes, reapplies virtual resolution/MSAA/present interval, and
+calls \texttt{UpdatePresentationFormatEXT()} last. That virtual has an empty default; D3D9 is
+its only override. Thus a later read of
+\texttt{PresentationParameters.BackBufferFormat} or \texttt{DepthStencilFormat} proves what
+the caller requested, not what native attachment exists. \texttt{DepthFormat::None}, for
+example, still leaves an always-allocated depth attachment on Software, Vulkan, WebGPU, SDL
+GPU (when a combined format is supported), and D3D11/12. Likewise,
+\texttt{IsFullScreen == true} survives even when SDL rejected the window transition. See
+\S\ref{sec:backend-presentation-format-matrix} before using these properties as capability
+queries.
+\end{sourcenote}
+
 \section{Render targets}
 \label{sec:render-targets}
 

@@ -308,6 +308,160 @@ ordinary VSync on any product. FNA's shared path instead sends the complete
 \cnaclass{PresentationParameters} to \texttt{FNA3D\_ResetBackbuffer}; it does not expose
 CNA's per-backend empty virtual at all.
 
+\subsection{\texttt{UpdatePresentationFormatEXT}: stored fields, window state, and native attachments}
+\label{sec:backend-presentation-format-matrix}
+
+Three fields travel together through this \texttt{NOXNA} backend hook:
+\cnaclass{SurfaceFormat} for the back buffer, \cnaclass{DepthFormat} for its depth/stencil
+attachment, and \texttt{IsFullScreen}. They must be audited separately. On every
+\cnaclass{GraphicsDevice}\texttt{::Reset()}, CNA first copies the whole requested object into
+its public \cnaclass{PresentationParameters}. It then calls
+\texttt{SDL\_SetWindowFullscreen()} and, outside Android,
+\texttt{SDL\_SetWindowSize()}. Fullscreen failure is cleared and ignored; size failure throws.
+Only after that window work does the device reapply virtual resolution, MSAA, and swap
+interval, then call \texttt{UpdatePresentationFormatEXT()}.
+
+Only D3D9 overrides the empty interface body. This matters during ordinary \cnaclass{Game}
+construction. A bare presentation-parameter object initially means
+\texttt{Color}/\texttt{None}/windowed, so the game eagerly creates its backend with those
+values. The subsequently-created manager defaults instead to
+\texttt{Color}/\texttt{Depth24}/windowed and delivers that combination through
+\texttt{ApplyChanges()} and \texttt{Reset()}. D3D9 needed the runtime hook so its initial
+no-depth device became the requested Depth24 device. Every other product either never
+consults the three constructor fields or keeps its independently-chosen attachments.
+
+\begingroup
+\small
+\setlength{\tabcolsep}{2.8pt}
+\renewcommand{\arraystretch}{1.12}
+\begin{longtable}{@{}p{0.13\textwidth}p{0.25\textwidth}p{0.26\textwidth}p{0.28\textwidth}@{}}
+\toprule
+\textbf{Backend} & \textbf{Native color target} & \textbf{Native depth/stencil} &
+  \textbf{Fullscreen/reset behavior and evidence} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Backend} & \textbf{Native color target} & \textbf{Native depth/stencil} &
+  \textbf{Fullscreen/reset behavior and evidence} \\
+\midrule
+\endhead
+\texttt{SDL\_\allowbreak RENDERER}, \texttt{ASCII}
+  & SDL chooses the window renderer's output format. CNA does not pass
+    \texttt{BackBufferFormat}; its owned textures are fixed RGBA32.
+  & None. Both are 2D-only; the renderer target's
+    \texttt{HasRealDepthBuffer()} is always false.
+  & The shared SDL window call is the only fullscreen mechanism. Tests prove parameter
+    round-trip/no throw and post-toggle pixels under Xvfb, explicitly not that the display
+    accepted fullscreen. ASCII wraps the same renderer. \\
+\texttt{EASYGL}
+  & The default framebuffer is chosen by SDL/GL. CNA requests no PP-derived color sizes.
+    With MSAA it instead renders through a fixed RGBA8 renderbuffer.
+  & The context request asks for 8 stencil bits but does not derive attachment sizes from
+    \cnaclass{DepthFormat}. The MSAA FBO is fixed Depth24 with no stencil attachment.
+  & SDL handles the window. Dedicated depth/fullscreen examples assert stored fields and
+    no-throw behavior only; their comments explicitly disclaim native reconfiguration. \\
+\texttt{VULKAN}
+  & Prefers \texttt{B8G8R8A8\_UNORM} with the ordinary nonlinear display color space, else
+    takes the first surface format. The requested \cnaclass{SurfaceFormat} is never read.
+  & Always allocates one device-selected backbuffer depth image, preferring D24S8, then
+    D32S8, then D32. Even \texttt{None} does not remove it.
+  & SDL changes the window; normal out-of-date/resize handling rebuilds the swapchain.
+    Format/depth conclusions are source-only. Render-target depth fidelity is separate. \\
+\texttt{BGFX}
+  & bgfx owns the implicit platform backbuffer; CNA supplies dimensions and reset flags, not
+    the requested pixel format.
+  & The platform backbuffer's depth/stencil allocation is likewise bgfx-owned. CNA submits
+    depth/stencil clears but neither selects nor queries its exact format.
+  & SDL changes the window; the next size check calls \texttt{bgfx::reset}. No dedicated
+    format/fullscreen assertion was found. \\
+\texttt{WEBGPU}
+  & Chooses from surface capabilities, preferring BGRA8-sRGB, then RGBA8-sRGB, then their
+    UNORM variants. Thus public \texttt{Color} can accompany a real sRGB swapchain.
+  & Always creates \texttt{Depth24PlusStencil8}, regardless of
+    \texttt{DepthStencilFormat}, and recreates it with the physical surface size.
+  & SDL changes the window; the next frame detects physical-size changes and reconfigures the
+    surface. Existing depth tests prove the fixed attachment works, not format selection. \\
+\texttt{SDL\_GPU}
+  & Reads the swapchain texture format selected by SDL\_gpu on every frame; the PP color
+    format never participates.
+  & At construction, chooses D24S8 or D32S8 by device support and allocates it whenever a
+    frame needs the backbuffer. It is absent only if neither combined format is supported,
+    not because the caller requested \texttt{None}.
+  & SDL owns the window and swapchain acquisition follows it. No discriminating default
+    attachment/fullscreen test was found. \\
+\texttt{D3D9}
+  & Maps the requested enum to \texttt{D3DFORMAT}. \texttt{Color}'s texture-native
+    A8B8G8R8 is specially substituted with display-compatible A8R8G8B8; unknown values fall
+    back to that color format.
+  & Exact None/D16/D24X8/D24S8 mapping. A runtime change immediately performs a real device
+    \texttt{Reset()}.
+  & The same native parameters set \texttt{Windowed = !IsFullScreen}. Mapping tests and the
+    smoke test prove D24S8 exists after the manager reset. Unsupported combinations can still
+    fail while public requested state remains changed. \\
+\texttt{D3D11}
+  & Always R8G8B8A8 UNORM.
+  & Always D24S8, including a public \texttt{None} or Depth24 request.
+  & SDL may change the containing window, but the flip-model swapchain is always created
+    windowed; CNA never calls \texttt{SetFullscreenState}. Native formats are source-proven. \\
+\texttt{D3D12}
+  & A windowed swapchain is fixed R8G8B8A8 UNORM. In \texttt{HeadlessEXT} mode there is no
+    swapchain/backbuffer at all.
+  & A windowed swapchain gets fixed D24S8. Headless mode has no default attachment; only
+    explicitly-created render targets can have one.
+  & Same SDL-window-only fullscreen semantics as D3D11; no DXGI exclusive transition.
+    Ordinary Linux/Wine tests predominantly exercise the off-screen path. \\
+\texttt{CANVAS}
+  & The browser's Canvas2D main canvas is the color target; the XNA surface format is ignored.
+  & None. \texttt{SupportsDepthStencil()} and every target's
+    \texttt{HasRealDepthBuffer()} return false.
+  & CNA still tries the SDL fullscreen call, but no real browser/DOM acceptance assertion was
+    found. The public PP can change independently. \\
+\texttt{DX3}
+  & Always creates a 32-bpp DirectDraw primary plus a 32-bpp shadow backbuffer; no
+    \cnaclass{SurfaceFormat} is read.
+  & None; all 3D/depth methods throw.
+  & SDL changes the window, while free-direct remains in
+    \texttt{DDSCL\_NORMAL}; CNA never requests an exclusive DirectDraw cooperative level.
+    Existing resize/pixel tests do not discriminate fullscreen. \\
+\texttt{SOFTWARE}
+  & Always a CPU RGBA8 vector.
+  & Always a float depth vector; stencil operations are no-ops. The PP depth enum cannot
+    add or remove either.
+  & No SDL window and empty \texttt{Present()}; fullscreen is stored state only. Source and
+    pixel tests prove the fixed CPU storage. \\
+\texttt{HEADLESS}
+  & No pixel attachment; readback synthesizes the last clear color.
+  & No attachment; depth/stencil calls only validate/record trace state.
+  & No window. All three fields are diagnostic stored state with no presentation object to
+    change. \\
+\bottomrule
+\end{longtable}
+\endgroup
+
+The most counterintuitive row is not necessarily the least capable one. Software, Vulkan,
+WebGPU, SDL GPU, and D3D11/12 can perform real depth testing while ignoring the requested
+depth format; their problem is \emph{selection fidelity}. Asking for \texttt{None} does not
+save the allocation, and asking for Depth16 does not create 16-bit depth. Conversely SDL
+Renderer, ASCII, Canvas, and DX3 honestly have no default depth attachment at all, regardless
+of the stored manager default.
+
+Fullscreen also cannot be collapsed into a Boolean capability mark. SDL can change an
+ordinary window before the backend hook, and resize-sensitive swapchains can follow its new
+dimensions without consuming \texttt{isFullScreen}. That produces borderless/window-manager
+fullscreen on many rows, not necessarily the exclusive native mode implied by D3D9's
+\texttt{Windowed} field. Because CNA swallows an SDL fullscreen failure, the public property
+never becomes an actual-state query on any row.
+
+The located tests reinforce that boundary rather than closing it. The EasyGL depth-format
+test deliberately cycles all four enums and checks only the stored PP; the EasyGL and SDL
+Renderer fullscreen tests state that virtual displays may reject the transition and assert
+round-trip/no-throw behavior. D3D9 is the exception with a native
+\texttt{D3DFMT\_D24S8} surface assertion after manager-driven setup. No dedicated test was
+found that requests two distinct \cnaclass{SurfaceFormat} backbuffers and queries the native
+result. FNA passes the complete native presentation structure to
+\texttt{FNA3D\_ResetBackbuffer}; CNA's empty per-field hook is its own architecture, not an
+FNA behavior to infer from a successful public reset.
+
 \subsection{\texttt{ReadBackbuffer}: one name, four observable contracts}
 \label{sec:backend-readback-matrix}
 

@@ -444,6 +444,29 @@ still reports the requested \texttt{Immediate}; it is not an observation of the 
 swapchain mode.
 \end{sourcenote}
 
+\subsection{Format and fullscreen preferences: three fields, three kinds of truth}
+
+The manager's backbuffer format starts as \texttt{Color}, its depth/stencil format as
+\texttt{Depth24}, and fullscreen as false. FNA's manager uses the same defaults. A bare
+presentation object differs: its depth format begins as \texttt{None}. During device
+selection the manager copies all three preferences into the reset parameters, just as it
+does size and interval.
+
+They do not have one uniform meaning after \texttt{ApplyChanges()}. CNA first stores all
+three values. It then asks SDL to change fullscreen state and window size, and finally calls
+the backend's \texttt{UpdatePresentationFormatEXT()} hook with the requested color format,
+depth/stencil format, and fullscreen Boolean. Only D3D9 overrides that hook. The other
+thirteen products may therefore report a successful preference round trip while keeping
+fixed, driver-selected, or nonexistent native attachments.
+
+Fullscreen is a separate layer from those attachments. An SDL-backed product can change its
+real window before its empty backend hook is reached. A failed SDL fullscreen request,
+however, is cleared and treated as non-fatal. Thus a true public fullscreen property is
+requested state, not proof that the window manager or browser accepted the transition.
+D3D11 and D3D12 add another distinction: SDL may enlarge their window, but CNA never asks
+DXGI for exclusive mode. The complete color/depth/window matrix is
+\S\ref{sec:backend-presentation-format-matrix}.
+
 \section{Supporting cast: LaunchParameters, TitleContainer, TitleLocation, FrameworkDispatcher}
 
 Four smaller types round out the framework layer. \cnaclass{LaunchParameters} parses process

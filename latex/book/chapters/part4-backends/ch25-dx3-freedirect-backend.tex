@@ -259,6 +259,17 @@ gaps remain real and worth knowing about for anyone embedding \texttt{free-direc
 (outside CNA, targeting original DirectDraw code that does request 8-bit surfaces) --- they are
 simply gaps this specific backend's own architecture can never trigger.
 
+\begin{sourcenote}
+\cnaclass{PresentationParameters} cannot change that decision. The DX3 factory reads the
+window, virtual size, and presentation mode, but discards
+\texttt{BackBuffer\allowbreak Format}, \texttt{DepthStencil\allowbreak Format}, and
+\texttt{IsFull\allowbreak Screen}. Shared device code may still ask SDL to change the window, while
+free-direct remains at \texttt{DDSCL\_NORMAL}; there is no exclusive DirectDraw transition.
+The primary and shadow buffers stay fixed 32-bpp, and no depth attachment exists. Thus the
+public fields can round-trip while the native answer remains unchanged, exactly as the
+cross-backend matrix in \S\ref{sec:backend-presentation-format-matrix} records.
+\end{sourcenote}
+
 \subsection{A worked example: why matching raw factors is not enough to detect a preset}
 
 The blend-preset misdetection bug above is worth working through with real factor values,

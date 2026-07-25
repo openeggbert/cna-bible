@@ -303,6 +303,31 @@ but an unnecessarily Boolean representation. A successful reset or a stored
 The cross-backend table in \S\ref{sec:backend-swap-interval-matrix} places these results beside
 the other eleven products.
 
+\subsection{Only D3D9 consumes the presentation format/fullscreen hook}
+
+D3D9 likewise stands apart for the other three presentation fields. It maps the requested
+backbuffer enum to \texttt{D3DFORMAT} (with a required Color-specific A8B8G8R8-to-A8R8G8B8
+display substitution), maps None/Depth16/Depth24/Depth24Stencil8 to no attachment,
+D16, D24X8, and D24S8 respectively, and writes
+\texttt{D3DPRESENT\_PARAMETERS.Windowed = !IsFullScreen}. A later manager reset reaches
+\texttt{UpdatePresentationFormatEXT()} and immediately resets the native device. The smoke
+suite observes a real D24S8 surface after manager-driven setup, so this is more than a stored
+field.
+
+D3D11 and D3D12 ignore all three backend arguments. Their windowed swapchains are fixed
+R8G8B8A8 UNORM and their default depth attachments fixed D24S8, even when public state says
+Depth24 or None. Shared SDL code may still enlarge the containing window for fullscreen.
+Both \texttt{CreateSwapChainForHwnd} calls omit a fullscreen descriptor, and neither backend
+calls DXGI \texttt{SetFullscreenState}; their \texttt{exclusiveFullscreen\_} fields remain false.
+D3D12's \texttt{HeadlessEXT} route is a third case: no window means no swapchain and no
+default depth attachment at all. It can render only into explicitly-created targets.
+
+These distinctions prevent two tempting overclaims. D3D9's enum mapping is not a guarantee
+that every mapped format is a legal display mode; failed native reset can leave the previous
+attachments active while public state has already changed. And an SDL fullscreen window on
+D3D11/12 is not DXGI exclusive fullscreen. The fourteen-product comparison and test boundary
+are in \S\ref{sec:backend-presentation-format-matrix}.
+
 \subsection{A proof ladder for real D3D11 3D draws, not a blanket ``3D works'' claim}
 
 The D3D11 plan's own 3D work is unusually useful as a verification example because it did not

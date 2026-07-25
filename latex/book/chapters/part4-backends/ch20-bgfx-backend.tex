@@ -7,6 +7,16 @@ same contract every other backend implements, using bgfx's own native API --- wi
 platform initialization, texture creation, sprite draws, frame submission --- rather than
 routing through SDL\_Renderer.
 
+\begin{sourcenote}
+The abstraction boundary also owns this backend's default attachments. CNA passes bgfx a
+window, dimensions, renderer selection, and reset flags, but neither the requested
+\cnaclass{SurfaceFormat} nor \cnaclass{DepthFormat}. The exact platform backbuffer and
+depth/stencil format are therefore bgfx choices which CNA neither selects nor queries, even
+though it submits depth/stencil clear flags. A shared SDL fullscreen call can still resize or
+restyle the window, after which \texttt{EnsureViewState()} notices the dimensions and calls
+\texttt{bgfx::reset}; the empty presentation-format hook does not prevent that window route.
+\end{sourcenote}
+
 \section{Test baseline and the Phase 72 closure}
 
 At the time of writing, the full unit suite passes 4{,}375 of 4{,}377 tests (two hardware

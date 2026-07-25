@@ -250,6 +250,18 @@ free-associates ``SRGB'' with ``correct color space, always prefer it'' and swap
 line risks introducing a real, visible darkening regression across every scene in the game,
 not just an edge case.
 
+\begin{sourcenote}
+That deliberate UNORM choice is fixed backend policy, not a response to the caller's current
+\texttt{BackBufferFormat}. The Vulkan factory discards both presentation format ordinals:
+it prefers this same B8G8R8A8 UNORM pair even when public
+\cnaclass{PresentationParameters} reports something else, and always creates a
+device-selected depth image (D24S8, then D32S8, then D32) even for
+\texttt{DepthFormat::None}. Render-target depth formats use a newer, genuinely per-target
+selection path and must not be confused with this default-backbuffer behavior. SDL can still
+change the window to fullscreen; a later out-of-date/resize rebuild follows the surface size
+without consuming \texttt{isFullScreen} itself.
+\end{sourcenote}
+
 \subsection{SwapInterval to VkPresentModeKHR: the same three-way switch Chapter~\ref{ch:game-loop} introduced}
 
 \cnaclass{PresentationMode}'s \texttt{PresentInterval} (Immediate / Default-a.k.a.-One / Two,

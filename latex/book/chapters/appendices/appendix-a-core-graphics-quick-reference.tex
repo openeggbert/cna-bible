@@ -301,6 +301,15 @@ ordinary VSync. SDL Renderer attempts~2 only on the runtime path, EasyGL
 submits it without checking driver acceptance, and D3D9's literal mapping is invalid in
 windowed mode. See \S\ref{sec:backend-swap-interval-matrix}.
 
+\textbf{Presentation-format warning:} the stored backbuffer, depth/stencil, and fullscreen
+fields are requested state too. Only D3D9 overrides the runtime format/fullscreen hook. The
+shared code separately attempts the SDL window transition, so an empty hook does not imply
+``fullscreen never changes''; however, that SDL failure is swallowed and the stored Boolean
+is still not proof of actual fullscreen. Several 3D backends always allocate fixed
+depth/stencil even when the public value is \texttt{None}; WebGPU may choose an sRGB surface
+while reporting \texttt{Color}. See
+\S\ref{sec:backend-presentation-format-matrix}.
+
 \texttt{SupportsCapability\allowbreak{}(GraphicsCapability)} (Chapter~\ref{ch:backend-architecture}) is the
 one method worth remembering is a query, not a
 guarantee --- it answers honestly for most values but is not yet wired for every one of them.
