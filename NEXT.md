@@ -101,8 +101,9 @@ private `SetSwapInterval(0)` workaround was correctly overwritten by `GraphicsDe
 once its missing public-interval forwarding was fixed. The chapter now documents this ordering,
 SDL_GPU's Immediate-then-Mailbox fallback for interval zero, and the fact that positive intervals
 (including XNA's `PresentInterval::Two`) select VSync. Its isolated document compiled and
-rendered pages 3--4 cleanly; the same five older, unrelated overflow warnings remain. Full-book
-regeneration is still pending.
+rendered pages 3--4 cleanly. A following layout pass resolved all five formerly pre-existing
+Ch.22 overfull boxes; the entire six-page isolated chapter compiled without an overfull warning
+and was rendered as a contact sheet for inspection. Full-book regeneration is still pending.
 
 This was an unusually long, multi-batch session (author unavailable for many hours, explicit
 "continue autonomously" instruction given partway through, repeated several times). Seven full

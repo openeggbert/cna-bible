@@ -17,11 +17,12 @@ already a vendored dependency of this project (\texttt{third\_party/SDL}), and
 \texttt{SDL\_gpu.c} is already compiled into every prebuilt SDL3 package this repository
 produces --- unlike Vulkan (the Vulkan SDK/loader) or WebGPU (\texttt{wgpu-native}, a separate
 library), standing this backend up required zero new third-party dependency, only new CNA-side
-code against an API already sitting in the build. The backend follows the identical naming and
-structure convention every other backend chapter in this Part has already established: main
-class \cnaclass{CNA::Internal::Backends::SdlGpuGraphicsBackend}
-(\texttt{src/\allowbreak{}CNA/\allowbreak{}Internal/\allowbreak{}Backends/\allowbreak{}SdlGpu/}), CMake target
-\texttt{cna\_backend\_graphics\_sdl\_gpu}, selected via \texttt{-DCNA\_GRAPHICS\_BACKEND=SDL\_GPU}.
+code against an API already sitting in the build. The main class follows the established backend
+naming convention: \texttt{CNA::\allowbreak{}Internal::\allowbreak{}Backends::\allowbreak{}SdlGpuGraphicsBackend}
+\index{CNA::Internal::Backends::SdlGpuGraphicsBackend}. Its source lives under
+\texttt{src/\allowbreak{}CNA/\allowbreak{}Internal/\allowbreak{}Backends/\allowbreak{}SdlGpu/}. Build the target
+\texttt{cna\_\allowbreak{}backend\_\allowbreak{}graphics\_\allowbreak{}sdl\_\allowbreak{}gpu}. Select this backend with
+\texttt{-DCNA\_\allowbreak{}GRAPHICS\_\allowbreak{}BACKEND=SDL\_\allowbreak{}GPU}.
 The project's own naming table is explicit that this class name is deliberately distinct from
 the pre-existing \cnaclass{SdlGraphicsBackend} in \texttt{SdlRenderer/} --- the older
 \texttt{SDL\_Renderer} 2D API and the newer \texttt{SDL\_gpu} API are unrelated, and this project
@@ -91,10 +92,12 @@ Since \texttt{SDL\_gpu} accepts only precompiled bytecode, \cnaclass{SdlGpuEffec
 merely invoked at build time. Reading \texttt{SdlGpuGraphicsBackend.cpp} directly shows a small,
 telling detail: this dev environment has no \texttt{libshaderc-dev} package installed, so there
 is no real \texttt{shaderc.h} to include --- the backend's own source hand-declares the exact
-handful of \texttt{shaderc\_*} C entry points it needs (\texttt{shaderc\_compiler\_initialize},
-\texttt{shaderc\_compile\_into\_spv}, \texttt{shaderc\_result\_get\_bytes}, and their siblings) as
-plain \texttt{extern "C"} function signatures, with the shader-kind and optimization-level enum
-values it needs inlined as named integer constants rather than pulled from a missing header.
+handful of \texttt{shaderc\_*} C entry points it needs. These include
+\texttt{shaderc\_\allowbreak{}compiler\_\allowbreak{}initialize},
+\texttt{shaderc\_\allowbreak{}compile\_\allowbreak{}into\_\allowbreak{}spv}, and
+\texttt{shaderc\_\allowbreak{}result\_\allowbreak{}get\_\allowbreak{}bytes}. Their
+\texttt{extern "C"} function signatures, shader-kind values, and optimization-level values are
+hand-authored as named constants rather than pulled from a missing header.
 This is a real, working engineering accommodation to a genuinely constrained dev environment,
 not a shortcut around the feature itself --- the compiled shader still goes through the real
 linked \texttt{libshaderc.so}, only the header describing its C ABI is hand-authored instead of
@@ -198,16 +201,17 @@ which an unsubmitted command still names.
 
 \subsection{A worked example: \cnaclass{Texture3D}'s own \texttt{cycle=true} orphaned-write bug}
 
-\cnaclass{Texture3D} support on this backend --- sub-volume upload/readback via
-\texttt{SDL\_UploadToGPUTexture}, plus mipmap generation --- surfaced a real data-corruption
-bug of exactly the kind this book keeps returning to: code that compiles cleanly, throws
-nothing, and produces a wrong answer silently. \texttt{SDL\_UploadToGPUTexture}'s own
-\texttt{cycle} parameter offers a real performance trade-off SDL3's own documentation states
-plainly: \texttt{cycle=true} swaps the texture to a fresh, separate underlying GPU resource on
-each call, avoiding a stall if the GPU is still reading the previous resource's content ---
-correct and desirable for \cnaclass{Texture2D}'s own single-full-texture-replace
-\texttt{SetData()} pattern (\cnaclass{SdlGpuTextureBackend::UpdatePixels}), which this backend's
-own code copied \texttt{cycle=true} from when \cnaclass{Texture3D} support was first written.
+\cnaclass{Texture3D} support on this backend --- sub-volume upload/readback plus mipmap generation
+--- surfaced a real data-corruption bug of exactly the kind this book keeps returning to: code that compiles cleanly, throws
+nothing, and produces a wrong answer silently. The relevant upload operation is
+\texttt{SDL\_UploadToGPUTexture}. Its \texttt{cycle} parameter offers a real performance
+trade-off SDL3's own documentation states plainly: \texttt{cycle=true} swaps the texture to a
+fresh, separate underlying GPU resource on each call, avoiding a stall if the GPU is still
+reading the previous resource's content. That is correct and desirable for \cnaclass{Texture2D}'s
+single-full-texture-replace \texttt{SetData()} path. CNA's SDL\_GPU texture backend calls that
+path \texttt{UpdatePixels}; it deliberately retains \texttt{cycle=true}. The first
+\cnaclass{Texture3D} implementation copied that choice without accounting for a 3D texture's
+multiple writes.
 The assumption breaks for \cnaclass{Texture3D} specifically, because its content is built up
 through \emph{multiple independent} sub-volume and per-level \texttt{SetData()} calls that all
 need to land on the \emph{same} underlying resource --- with \texttt{cycle=true}, an earlier
@@ -238,7 +242,8 @@ than reusing one color for the whole volume --- a uniform-color test cannot tell
 -downsampled or correctly-retained content apart from an out-of-range read that happens to
 land on more of that same color, the identical discriminating-test principle
 Section~\ref{sec:sdlgpu-what-remains-open}'s own generated-mipmap gap needs applied to close it.
-The fix, confirmed against the real \texttt{SdlGpuTexture3DBackend::SetData} implementation
+The fix, confirmed against the real
+\texttt{SdlGpuTexture3DBackend::\allowbreak{}SetData} implementation
 directly, is a one-word change: pass \texttt{cycle=false} for every \cnaclass{Texture3D}
 upload, leaving \cnaclass{Texture2D}'s own \texttt{cycle=true} single-replace path untouched
 and correct as-is. The identical fix (and the identical reasoning, cited by name in that
