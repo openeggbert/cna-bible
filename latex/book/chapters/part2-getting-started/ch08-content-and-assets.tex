@@ -278,6 +278,52 @@ rather than rely solely on scope exit. The manifest is intentionally independent
 \texttt{RefreshContentManifest()} is requested; neither method checks the disposed flag in the
 current source. Treat those \texttt{NOXNA} methods as diagnostics, not as a cache-lifetime API.
 
+\subsection{\texttt{Game::Content} replacement copies a manager; it does not replace one}
+
+There is one deceptively ordinary setter in \cnaclass{Game} whose C\texttt{++} translation has a
+much stronger consequence than its C\# name suggests. Game constructs its member
+\texttt{Content\_}, then calls \texttt{Content\_.setGraphicsDevice(GraphicsDevice\_)}. Its public
+\texttt{setContentProperty(const ContentManager\& value)} is only this assignment:
+
+\begin{lstlisting}
+void Game::setContentProperty(const ContentManager& value)
+{
+    Content_ = value;
+}
+\end{lstlisting}
+
+\texttt{ContentManager} declares no copy or assignment operation of its own, so C\texttt{++}
+generates memberwise copying here. The root directory, disposed flag, manifest snapshot, generic
+asset values, weak texture entries, and reader/loader tables are all copied; a reader table holds
+shared pointers, while its graphics-device and service-provider fields are raw pointers copied as
+raw addresses. This is not a transfer of manager identity or ownership. In particular, assigning
+a newly constructed standalone \texttt{ContentManager} overwrites Game's already-configured
+graphics-device pointer with null; the next \texttt{Load<Texture2D>()} or
+\texttt{Load<TextureCube>()} reaches \texttt{getGraphicsDeviceInternal()} and throws. Assigning a
+manager configured for a different device instead leaves Game's content pointing at that external
+device, which can become dangling if its owner goes away. Assigning a disposed manager transfers
+the disposed flag too, so all subsequent loads fail immediately.
+
+Current FNA makes a materially different operation: its \texttt{Game.Content} property rejects
+null, then stores the supplied \texttt{ContentManager} reference. No cache or raw device pointer
+is cloned. CNA's reference parameter naturally cannot be null, but its assignment is still not
+the same replacement operation. A repository-wide search found no CNA call site for this setter
+and no test that copies a content manager, replaces a game's content, checks an assigned device,
+or assigns a disposed manager. Treat it as an untested compatibility boundary rather than an
+ordinary way to switch content roots.
+
+For the common configuration task, preserve Game's existing manager and configure it in place:
+
+\begin{lstlisting}
+auto& content = getContentProperty();
+content.setRootDirectoryProperty("OtherContent"); // keeps Game's GraphicsDevice association
+\end{lstlisting}
+
+Use a separate \texttt{ContentManager} directly only when its graphics-device lifetime and its
+asset ownership are deliberately controlled by the caller. Do not use
+\texttt{setContentProperty()} merely to change \texttt{RootDirectory}; it creates a snapshot with
+the source manager's pointer and cache state instead of preserving the target game's live state.
+
 \begin{sourcenote}
 \textbf{A worked example: asking the content root what it would actually resolve.} Rather than
 just describing the three-way resolution order in the abstract, CNA ships a real,

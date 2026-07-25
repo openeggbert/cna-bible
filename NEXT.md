@@ -6,12 +6,13 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **525 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by nine documentation commits: `944fa54`
+- Book: **527 physical PDF pages, 49 chapters, 6 appendices**.
+- The local branch is ahead of `origin/develop` by ten documentation commits: `944fa54`
   (render-target binding/usage contracts), the Reset-order contracts batch, the resource-lifecycle
   audit, the construction/SDL-ownership audit, the multisample-backend-rebuild audit, and the
   Game/GraphicsDeviceManager lifecycle and callback/disposal audits, plus the Game
-  exit/destruction/component-lifetime and ContentManager cache/disposal audits below.
+  exit/destruction/component-lifetime and ContentManager cache/disposal and
+  copy/replacement audits below.
   The previous seventeen-commit count was accurate before the remote advanced and is retained
   only in the historical session log.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
@@ -19,7 +20,42 @@ session log; this file is the concise live handoff.
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: ContentManager cache ownership and disposal boundary
+## Latest completed batch: ContentManager copy assignment and `Game::Content` replacement
+
+No CNA source changes were made; the sibling repository remained a read-only authority. The live
+`Game` constructor/setter, `ContentManager` object layout and load paths, all setter call sites,
+focused tests, and current FNA `Game` establish:
+
+- `Game` constructs its own `Content_`, then attaches `GraphicsDevice_`. Its public
+  `setContentProperty(const ContentManager&)` performs only `Content_ = value`. Because
+  `ContentManager` declares no copy constructor or assignment operator, C++ memberwise-copies the
+  root, disposed flag, manifest snapshot, generic cache, weak Texture2D entries, reader/loader
+  tables, and raw graphics-device/service-provider addresses. This is a state snapshot, not
+  replacement of one manager identity with another.
+- Assigning a fresh standalone `ContentManager` replaces the game-configured device pointer with
+  null; the next Texture2D or TextureCube load reaches `getGraphicsDeviceInternal()` and throws.
+  A source manager configured for another device instead leaves the copied raw address dependent
+  on that external device's lifetime. A disposed source transfers its guard and makes later loads
+  fail. Reader-table shared pointers and cached values are copied as well.
+- Current FNA's `Game.Content` rejects null and stores the supplied manager reference. It does not
+  clone caches or raw device pointers, so CNA's C++ assignment is materially different even though
+  the public property name resembles FNA. The reference parameter itself naturally excludes null
+  in CNA, but it does not restore reference-replacement semantics.
+- No CNA call site of this setter and no test covering manager copy, game-content replacement,
+  assigned-device use, or disposed-manager assignment was found. Ch.8 now recommends configuring
+  the game's existing manager in place for ordinary root changes and using a separate manager only
+  when the caller deliberately owns its device and asset lifetimes.
+- Validation: incremental `latexmk` succeeded at **527 pages**; targeted undefined-reference and
+  duplicate-label checks are empty; makeindex accepted **2,141** entries with zero rejected and
+  zero warnings; `git diff --check` passes. Rendered physical pages **106--107** are clean. Ch.8
+  is now **479** lines. The plan-consistency validator remains absent from this checkout.
+
+Next recommended start: retain the ContentManager scope and audit the `IServiceProvider`
+constructor contract. The class stores that pointer, while current load paths appear to require a
+separately assigned graphics device; verify every lookup/call site, constructor documentation,
+tests, and FNA/XNA compatibility before correcting any potentially stale wording.
+
+## Previous completed batch: ContentManager cache ownership and disposal boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. The live
 ContentManager header/source, its Texture2D/SoundEffect/TextureCube specializations, focused
@@ -51,10 +87,7 @@ tests, and the real avatar wardrobe-hotswap example establish:
   zero warnings; `git diff --check` passes. Rendered physical pages **105--106** are clean. Ch.8
   is now **433** lines. The plan-consistency validator remains absent from this checkout.
 
-Next recommended start: retain the ContentManager scope and audit its implicit copy/assignment
-semantics, especially `Game::setContentProperty(const ContentManager&)`. It publicly copies a
-manager containing raw device/service pointers and cached values; determine the live behavior,
-call sites, test coverage, and FNA/API compatibility before documenting or changing anything.
+The copy/assignment recommendation from this batch has been completed by the newer audit above.
 
 ## Previous completed batch: Game exit, disposal, destructor, and component lifetime
 
