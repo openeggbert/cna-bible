@@ -1,21 +1,24 @@
 \chapter{Roadmap and Open Gaps}
 \label{ch:roadmap}
 
-This closing chapter gathers the open threads left throughout both volumes into one place,
-organized the same way CNA's own README states its roadmap: incremental API coverage first,
-then the specific named gaps, then cross-platform strengthening.
+This closing chapter gathers the open threads left throughout both volumes into one place:
+incremental API coverage first, then the specific named gaps, then cross-platform
+strengthening. It also illustrates one final project lesson: a roadmap is a dated snapshot.
+CNA's own top-level README and graphics feature matrix both still contain claims that newer
+plans, tests, and implementation have superseded. The source and executable evidence win.
 
 \section{Continued API coverage, class by class}
 
 The largest item on CNA's own roadmap is also its least dramatic: continuing to expand XNA
 API coverage and behavior parity incrementally, class by class, rather than in one large
-push. Chapter~\ref{ch:what-is-cna} already gave the headline numbers --- 227 of 245 public
-FNA types present (92.7\%), with \texttt{.Content} (four of twelve types, by design, per
-Chapter~\ref{ch:content-and-assets}) and \texttt{.Media}'s fourteen previously-shell types
-(now largely closed, per Chapter~\ref{ch:media-system}'s own correction to that figure) as the
-two namespaces furthest from full presence. This kind of gap closes the way most of this
-book's own bug histories closed: one class, one audit, one fix at a time, tracked through the
-\texttt{plan\_*.md} / \texttt{AUDIT.md} mechanism from Chapter~\ref{ch:project-practice}.
+push. Chapter~\ref{ch:what-is-cna} gave the dated headline count --- 227 of 245 public FNA
+types present (92.7\%, computed 2026-07-11). That is a raw public-type-presence count, not a
+behavioral score: it cannot express the later binary-content work implemented under internal
+\texttt{CNA::Internal::Xnb} readers, and its accompanying README prose still describes
+\texttt{.Media} shells that Chapter~\ref{ch:media-system}'s later audit closed. This kind of
+gap closes the way most of this book's own bug histories closed: one class, one audit, one
+fix at a time, tracked through the \texttt{plan\_*.md} / \texttt{AUDIT.md} mechanism from
+Chapter~\ref{ch:project-practice}.
 
 \section{The single biggest named gap: compiled .fx bytecode}
 
@@ -29,19 +32,30 @@ a real, measured cost of 23 of the 86 official XNA samples in \texttt{cna-sample
 shaders, but is not bytecode compatibility, and closing this gap for real would mean building
 something comparable in scope to a second MojoShader-style bytecode cross-compiler.
 
-\section{The .xnb content pipeline: a design choice under active reconsideration}
+\section{The .xnb content pipeline: real, with explicit boundaries}
 
-Chapter~\ref{ch:content-and-assets} covered CNA's raw-asset-plus-JSON-descriptor content
-model as a deliberate design choice, not an oversight --- and the roadmap frames a real,
-binary-compatible \texttt{.xnb} reader as something the project is actively considering
-rather than something ruled out permanently. Chapter~\ref{ch:models-meshes}'s account of the
-real, already-shipped \texttt{.xnb} \cnaclass{Model} reader is a concrete sign of where this
-is already heading incrementally, class by class, rather than as one large content-pipeline
-rewrite.
+The ``active reconsideration'' described by an earlier version of this chapter is over.
+Every planned phase through G is complete, and the implementation contains a
+real read-side pipeline: container and primitive parsing, LZX decompression, textures,
+\cnaclass{SpriteFont}, audio and video references, all five stock effects, and the
+\cnaclass{Model} object graph. A single idempotent registration helper gives a game one
+startup call, while \cnaclass{ContentManager} resolves \texttt{.xnb} ahead of a
+literal path and \texttt{.cnj}. Chapter~\ref{ch:content-and-assets} covers the reader set,
+real external fixtures, fuzzing findings, and custom-reader extension point in detail.
+
+What remains is bounded rather than architectural uncertainty. CNA deliberately consumes but
+does not produce \texttt{.xnb}; the general \texttt{EffectReader} still rejects compiled
+platform shader bytecode, tying directly to the preceding \texttt{.fx} gap; implicit
+\texttt{ReflectiveReader<T>} content must be rebuilt around an explicit writer/reader pair;
+unregistered closed generic-reader combinations remain unsupported; and LZ4-compressed
+MonoGame content has a recognized but unimplemented decoder path. The broader official-sample
+compatibility inventory is \texttt{plan\_xnb.md}'s deliberately deferred Phase~I. Those are
+specific compatibility boundaries around a working pipeline, not evidence that the pipeline
+itself is merely being considered.
 
 \section{Named architecture-decision gaps}
 
-Four specific gaps recur across this book's backend chapters, each requiring a project-owner
+Three specific gaps recur across this book's backend chapters, each requiring a project-owner
 decision rather than more engineering effort on its own:
 
 \begin{itemize}
@@ -55,53 +69,47 @@ decision rather than more engineering effort on its own:
         (Chapter~\ref{ch:easygl-backend}) --- blocked because it conflicts with an
         already-shipped \texttt{Texture::ValidateFormat} contract the project has already
         committed tests against.
-  \item \cnaclass{Texture3D} / \cnaclass{TextureCube}'s sampler-bind architecture
-        (Chapter~\ref{ch:textures-rendertargets}) --- the structural deviation from FNA
-        where neither type participates in the generic texture-slot binding mechanism at
-        all, so only stock effects with a dedicated field (\cnaclass{EnvironmentMapEffect}'s
-        cube map) can use one.
 \end{itemize}
 
-\section{The last item, compared across all seven backends}
+\section{A closed texture-architecture gap, and the narrower remainder}
 
-The \cnaclass{Texture3D} / \cnaclass{TextureCube} sampler-bind gap above is worth seeing at its
-full, real width rather than as a single bullet, since the project's own internal feature
-matrix
-(\texttt{docs/\allowbreak{}graphics-\allowbreak{}backend-\allowbreak{}feature-\allowbreak{}matrix.md})
-tracks it across every backend this
-book has covered, not just the two it happens to name most often:
+The removed fourth item is not an editorial omission. It was closed in the implementation,
+and keeping it would repeat a stale row in
+\texttt{docs/\allowbreak{}graphics-\allowbreak{}backend-\allowbreak{}feature-\allowbreak{}matrix.md}.
+The current source separates four facts that the old summary collapsed:
 
 \begin{center}
 \small
-\begin{tabular}{lp{9.3cm}}
+\begin{tabular}{lp{9.0cm}}
 \toprule
-\textbf{Backend} & \textbf{Texture3D/TextureCube sampled in a shader} \\
+\textbf{Layer} & \textbf{Current implementation} \\
 \midrule
-\texttt{EASYGL} & Blocked --- neither type inherits \cnaclass{Texture} at all; this is the
-  architectural root cause every other backend's own status traces back to. \\
-\texttt{VULKAN} & Same architectural block. \\
-\texttt{BGFX} & Same architectural block. \\
-\texttt{SDL\_RENDERER} & Not applicable --- a 2D-only backend with no 3D-only resource types
-  to begin with. \\
-\texttt{D3D9} & Partial --- \cnaclass{TextureCube} is sampled and oracle-verified byte-exact
-  via \cnaclass{EnvironmentMapEffect}; \cnaclass{Texture3D} has no consuming shader variant
-  tested at all. \\
-\texttt{D3D11} & Partial, the same shape --- \cnaclass{TextureCube} pixel-verified via a real
-  environment-map scene; \cnaclass{Texture3D} untested in any shader. \\
-\texttt{D3D12} & Partial, the same shape again, though \cnaclass{Texture3D} at least has a
-  real, working backend implementation behind it (Chapter~\ref{ch:direct3d-backends}) --- it
-  is specifically the shader-sampling path that remains unverified, not the resource itself. \\
+Public hierarchy &
+  \cnaclass{Texture3D} and \cnaclass{TextureCube} both derive from \cnaclass{Texture}, matching
+  FNA. Their regression suites assign each type into a real
+  \cnaclass{GraphicsDevice::Textures} slot. \\
+Generic texture collection &
+  \cnaclass{TextureCollection} currently stores, returns, and removes disposed resources; no
+  draw path consumes the collection for \emph{any} texture type. This is broader unfinished
+  plumbing, not a cube/volume inheritance block. \\
+Custom \cnaclass{ShaderEffect} &
+  Typed 2D, cube, and volume overloads exist. EasyGL overrides all three backend hooks and has
+  dedicated cube/volume shader pixel tests; the other effect backends inherit no-op
+  cube/volume hooks. This is the real, narrower backend-coverage remainder. \\
+Stock effects &
+  Their typed draw parameters are independent of the generic collection. In particular,
+  \cnaclass{EnvironmentMapEffect} already drives real cube sampling on the Direct3D paths
+  covered earlier in this book. \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-The pattern across all seven rows is itself the finding: this is not a gap unique to one
-backend's own maturity, but a single architectural decision (Chapter~\ref{ch:textures-rendertargets}'s
-account of why neither type participates in the generic texture-slot binding mechanism)
-propagating an identical shape of limitation into every backend that implements it, with
-each Direct3D backend's own \cnaclass{TextureCube} support proving the underlying resource and
-GPU sampling both already work correctly --- the missing piece is specifically the generic
-binding path, not GPU capability.
+Chapter~\ref{ch:textures-rendertargets} already records the Task~863 inheritance correction.
+The lesson here is about roadmap maintenance: an attractive seven-backend comparison was still
+wrong because its premise had expired. The actionable work is to wire and verify typed custom
+effect binding on additional programmable backends, or separately decide whether
+\cnaclass{GraphicsDevice::Textures} should become a real draw-time binding source for all
+texture types.
 
 \section{Strengthening cross-platform execution and validation}
 
@@ -143,10 +151,11 @@ the real content actually landed.
 
 \section{A closing note on how to use this chapter}
 
-Every gap named in this chapter is named because a specific, dated source said so ---
-\texttt{NEXT.md}, a \texttt{plan\_*.md} file, or a backend's own documentation, per the
-practice conventions from Chapter~\ref{ch:project-practice}. As with every dated claim this
-book has made, the right way to use this chapter is not to trust it indefinitely, but to use
-it as a map: go to the source it cites, check whether the gap is still open, and update your
-own understanding from there. That is the same discipline this project asks of itself, and
-the same discipline this book has tried to model throughout both volumes.
+Every gap named in this chapter began with a specific, dated source --- \texttt{NEXT.md}, a
+\texttt{plan\_*.md} file, or a backend's own documentation, per the practice conventions from
+Chapter~\ref{ch:project-practice}. This final audit found that two such sources had themselves
+gone stale: the README still described the absence of an XNB reader, and the graphics matrix
+still described the pre-Task~863 texture hierarchy. The right way to use this chapter is
+therefore not to trust even its cited summaries indefinitely, but to follow them to current
+headers, implementations, and tests. That is the same discipline this project asks of itself,
+and the same discipline this book has tried to model throughout both volumes.

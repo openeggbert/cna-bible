@@ -20,7 +20,7 @@ before the current expansion phase started; useful for background, not for "what
 ## Repository layout
 
 - `latex/book/` — the whole book. Chapters under `chapters/part{1-9}-*/chNN-slug.tex` (1
-  through 48, continuous across all nine parts), six appendices under `chapters/appendices/`
+  through 49, continuous across all nine parts), six appendices under `chapters/appendices/`
   (`appendix-{a-f}-slug.tex`), front matter (`front/titlepage.tex`, `front/preface.tex`), and
   `main.tex` (the single top-level file — one `\part{}`/`\input{}` sequence, Parts I–IX, then
   `\appendix` for A–F, then `\printindex`). Part I–IV covers the core framework, the graphics

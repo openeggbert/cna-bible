@@ -22,7 +22,7 @@ session log; this file is the concise, current handoff and is rewritten as the s
   grep -iE 'multiply defined|multiply-defined' main.log
   ```
 
-- `makeindex` accepted 1,956 entries, rejected 0, and reported 0 warnings.
+- `makeindex` accepted 1,953 entries, rejected 0, and reported 0 warnings.
 - This is the first successful fresh full-book build after commit `87fb144`, whose verified
   baseline was 454 pages. The 14-page increase comes from the isolated continuation work that
   followed that baseline.
@@ -62,17 +62,41 @@ batch verification,” was also rendered in full (physical pages 49–56) and is
 
 ## Current focus
 
-1. Reconcile stale project bookkeeping exposed by the full build:
-   - several PLAN line counts differ from `wc -l`;
-   - the PLAN subtotal still says the book is 266 pages;
-   - `CLAUDE.md` still says 48 chapters;
-   - `README.md` is empty;
-   - Ch.49 still repeats the obsolete claim that Texture3D/TextureCube do not inherit
-     `Texture`, contradicting current CNA source and the corrected Ch.11.
-2. Rebuild and visually verify the documentation corrections.
-3. Continue the highest-value source-grounded expansion work in logical dependency order,
+1. Continue the highest-value source-grounded expansion work in logical dependency order,
    starting from the active graphics/backend area unless a fresher source audit reveals a
    more important correctness correction.
+
+## Documentation correction closed in this session
+
+- Ch.49 now describes the real Phase-G-complete XNB reader pipeline rather than saying it is
+  under consideration.
+- Its obsolete seven-backend Texture3D/TextureCube table is replaced with the narrower live
+  boundary: both classes inherit `Texture`, both have real collection/slot regression tests,
+  and EasyGL alone overrides the typed custom-`ShaderEffect` cube/volume hooks.
+- All known `PLAN.md` line-count mismatches are fixed, `CLAUDE.md` now says 49 chapters, and
+  the formerly empty `README.md` contains build and repository guidance.
+- Validation: full PDF remains 468 pages; reference/duplicate-label checks are empty;
+  makeindex accepted 1,953 entries with no warning; Ch.49 physical pages 427–430 were rendered
+  at 140 dpi and inspected clean. A newly exposed 8.08pt Ch.49 overflow was fixed before the
+  final render, leaving no chapter-local overfull box.
+
+## Source findings from the active correction
+
+- `Texture3D.hpp` and `TextureCube.hpp` both derive from `Texture`; their tests cover
+  `TextureCollection` and a real `GraphicsDevice.Textures` slot.
+- `ShaderEffect` exposes typed `SetTexture` overloads for 2D, cube, and volume textures.
+  EasyGL implements all three backend hooks and registers dedicated cube/volume shader pixel
+  tests. Other effect backends inherit the cube/volume no-op defaults.
+- `GraphicsDevice.Textures` is currently storage/disposal plumbing: no draw path consumes the
+  collection for any texture type. This is not a remaining Texture3D/TextureCube inheritance
+  defect.
+- `plan_xnb.md` records phases through G complete. `RegisterAllBuiltInXnbReaders()` registers
+  the built-in read-side pipeline; the main deliberate limits are general compiled
+  `EffectReader`, implicit `ReflectiveReader<T>`, unregistered closed generic combinations,
+  and LZ4. Phase I's official-sample inventory remains deferred.
+- CNA's own README and `docs/graphics-backend-feature-matrix.md` still repeat the superseded
+  no-XNB/no-texture-inheritance descriptions. The chapter now calls out that documentation
+  drift rather than treating it as authoritative.
 
 ## Repository-safety notes
 
