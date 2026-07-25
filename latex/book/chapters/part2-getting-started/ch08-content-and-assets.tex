@@ -220,17 +220,131 @@ loose-reader pointers but copies its named \texttt{.cnj} factories, as the later
 
 \section{The resolution order, precisely}
 
-With both formats real, \cnaclass{ContentManager}'s own asset-resolution order matters, and
-it is worth stating exactly: for a given asset name, \texttt{.xnb} is checked first; if no
-\texttt{.xnb} file is found, the literal, caller-given path (a directly loadable native
-asset, per \S\ref{sec:direct-loading} below) is tried next; only if neither of those resolves
-does \texttt{.cnj} apply. This ordering is deliberate on both ends: \texttt{.xnb}, when
-present, always wins outright, since it is the most capable and most binary-compatible
-option; and \texttt{.cnj} is checked last specifically so it can act as an optional
-\emph{metadata sidecar} for an otherwise-directly-loadable native asset (a \cnaclass{Texture2D}
-with a \texttt{.cnj} file supplying a source-file override and a color key, for instance) as
-well as a full replacement for an asset with no native format of its own --- not only a
-mutually-exclusive alternative to loading the asset directly.
+The earlier short three-way description is useful, but it hides two consequential facts: a
+candidate that exists is selected \emph{before} CNA knows whether its reader can consume it, and
+there is no retry with a lower-priority candidate after that reader fails. On a cache miss, the
+generic template and each of the \cnaclass{Texture2D}, \cnaclass{SoundEffect}, and
+\cnaclass{TextureCube} specializations use the same selection sequence. Written directly from
+\texttt{ContentManager.hpp}, with \texttt{base = BuildAssetPath(assetName)}, it is:
+
+\begin{lstlisting}
+if (exists(base + ".xnb"))
+    return LoadXnbAsset<T>(base + ".xnb");  // before a local reader is even required
+
+reader = the per-manager LooseFileContentTypeReader<T>;
+if (exists(base))
+    return reader.Read(base, content);       // literal path wins among loose candidates
+if (exists(base + ".cnj"))
+    return reader.Read(base + ".cnj", content);
+for (const auto& ext : reader.GetExtensions())
+    if (exists(base + ext))
+        return reader.Read(base + ext, content); // first listed existing extension wins
+return reader.Read(base, content);           // reader reports the eventual missing/invalid path
+\end{lstlisting}
+
+The first successful generic result then enters its strong type-plus-normalized-name cache;
+\cnaclass{Texture2D} records its weak backend entry; and move-only \cnaclass{SoundEffect} and
+\cnaclass{TextureCube} perform the sequence on every call. Those cache rules were covered above,
+but they matter here because a later call for a cached name does not re-evaluate newly created,
+removed, or repaired candidates.
+
+\subsection{A candidate is terminal; it is not a successful probe}
+
+The first line has deliberately stronger meaning than ``try XNB first.'' It appends
+\texttt{.xnb} to the complete logical name regardless of whether that name already has a dot or
+an extension. Thus \texttt{Load<Texture2D>("art/logo.png")} tests
+\texttt{art/logo.png.xnb} first, then (if no such file exists) reads the literal PNG. Conversely,
+the usual way to load \texttt{art/logo.xnb} as XNB is
+\texttt{Load<Texture2D>("art/logo")}. Passing \texttt{"art/logo.xnb"} tests
+\texttt{art/logo.xnb.xnb}; if that second file is absent, it hands the original XNB bytes to the
+ordinary loose Texture2D reader instead of invoking the XNB parser. A dot in a logical name is
+not special to the resolver: \texttt{"Flag.en-US"} quite intentionally permits
+\texttt{Flag.en-US.xnb}, \texttt{Flag.en-US.cnj}, and reader extensions.
+
+If the suffixed XNB exists, the manager immediately opens, parses, decompresses, and dispatches
+it by its own type-reader table. A malformed header, unsupported LZ4 compression, unregistered
+XNB reader, failed LZX decode, or root-object type mismatch is therefore terminal; CNA does not
+then try \texttt{base}, \texttt{base.cnj}, or a native extension. This happens even when the
+manager has no local \texttt{LooseFileContentTypeReader<T>}: XNB dispatch is process-wide and
+file-driven, as the registration section established. The focused XNB test proves a valid
+\texttt{fixture.xnb} wins over a same-named \texttt{fixture.cnj}; no located test deliberately
+places a broken XNB beside a healthy lower-priority candidate, but the control flow makes the
+no-fallback result direct.
+
+The same terminal rule applies below XNB. \texttt{exists(base)} accepts a literal file without
+asking whether its extension belongs to \texttt{reader.GetExtensions()}; then the unconditional
+\texttt{base.cnj} check runs before that reader's native list. Once either file exists,
+\texttt{reader.Read()} is called exactly once. A bad \texttt{.cnj}, a corrupt image, a directory,
+or a custom reader which rejects the selected path does not cause a second probe. The final bare
+path is not a success indication either: it is deliberately returned to the reader so that its
+own open/decode diagnostic is preserved. Consequently, the header's short statement that reader
+extensions are tried ``if assetName has no file extension'' is only a user-facing convention, not
+the literal algorithm: extension candidates are appended after any missing literal name,
+including one containing dots.
+
+\subsection{Literal files and \texttt{.cnj} sidecars are selected by the name you pass}
+
+The ordering between the two loose candidates is easy to misread. An extensionless call such as
+\texttt{Load<Texture2D>("sprites/hero")} chooses \texttt{sprites/hero.cnj} before
+\texttt{sprites/hero.png}; that lets a valid sidecar override the default native decode. An
+explicit existing literal call chooses the literal first instead:
+
+\begin{lstlisting}
+// Given hero.png and hero.cnj (whose sourceFile is hero.png):
+Texture2D native  = content.Load<Texture2D>("sprites/hero.png"); // literal PNG
+Texture2D sidecar = content.Load<Texture2D>("sprites/hero");     // hero.cnj, then its sourceFile
+\end{lstlisting}
+
+This is not merely explanatory: \texttt{CnjCacheIsolationTests} loads precisely that pair and
+observes that the second result has the sidecar color-key transformation while the explicit PNG
+retains its original pixels. The two calls also have distinct textual Texture2D cache keys.
+There is no general ``an explicit extension disables XNB'' rule, however: the extra
+\texttt{hero.png.xnb} check still occurs before the literal PNG.
+
+The global \texttt{.cnj} probe does not consult the reader's extension list. A custom reader
+whose \texttt{GetExtensions()} returns only \texttt{.foo} will still receive
+\texttt{name.cnj} when that file exists, and must either understand or reject it. Built-in
+readers make different choices after receiving it: texture, sound, and cube readers recognize a
+\texttt{sourceFile} envelope; self-contained readers validate their own expected CNJ type; and
+a reader which treats its path as a native stream has no automatic JSON adapter. A CNJ
+\texttt{sourceFile} is a new, safely checked logical \texttt{Load} call, so it starts this whole
+sequence again (including an XNB sibling of the source file), rather than being a direct native
+file-open bypass.
+
+\subsection{The built-in native-extension matrix is ordered and type-specific}
+
+Only after a missing literal and a missing \texttt{.cnj} does the reader's own ordered list
+matter. The current built-ins are deliberately not one universal ``asset extension'' registry:
+
+\begin{description}
+\item[\cnaclass{Texture2D}] \texttt{.png}, \texttt{.jpg}, \texttt{.jpeg}, \texttt{.bmp},
+\texttt{.gif}, \texttt{.tga}, \texttt{.tif}, \texttt{.tiff}, then \texttt{.qoi}.
+\item[\cnaclass{TextureCube}] \texttt{.dds} only; \texttt{std::shared\_ptr<Texture3D>} has
+only self-contained \texttt{.cnj}, not a native volume-image format.
+\item[\cnaclass{SoundEffect}] \texttt{.wav}; \cnaclass{Song} uses \texttt{.mp3},
+\texttt{.ogg}, \texttt{.wav}, \texttt{.flac}, \texttt{.opus}, \texttt{.aac}, and
+\texttt{.wma}, in that order.
+\item[\cnaclass{Video}] \texttt{.mp4}, \texttt{.ogv}, \texttt{.webm}, \texttt{.mkv},
+\texttt{.avi}, then \texttt{.mov}; its loose reader is not registered in Emscripten, Android,
+or MinGW builds.
+\item[\cnaclass{Model}] \texttt{.cnj}, \texttt{.gltf}, then \texttt{.glb}. The leading
+\texttt{.cnj} is redundant after the manager's global sidecar probe, but does not alter the
+result: a same-named CNJ beats glTF/GLB, while the runtime-glTF test proves a missing CNJ falls
+through to \texttt{basic.gltf}.
+\item[\cnaclass{SpriteFont}, \cnaclass{Effect}, \cnaclass{AnimationClipEXT}, and
+\cnaclass{Curve}] self-contained \texttt{.cnj} only. The NOXNA
+\cnaclass{SkinnedModelEXT} reader instead declares \texttt{.skinnedmodel.json}.
+\end{description}
+
+The list is an existence priority, not a content-sniffing policy. For example, when both a
+\texttt{music.wav} and \texttt{music.ogg} exist, \cnaclass{Song} chooses the WAV even if its
+decoder later rejects it; it does not retry Ogg. A \cnaclass{Model} likewise chooses a present
+\texttt{.gltf} before \texttt{.glb}. The focused resolver tests cover a healthy native texture,
+a healthy CNJ texture, the CNJ-over-native extension precedence, and the missing-CNJ glTF path.
+They do not cover explicit-XNB names, an invalid sidecar beside a healthy native file, literal
+files with unsupported extensions, directory candidates, or first-extension failure followed by
+a valid later extension. Applications that need such recovery must choose and validate a concrete
+path themselves, then expose it through a reader whose contract supplies that policy.
 
 \subsection{\texttt{RootDirectory} is a base, not a sandbox or cache namespace}
 
@@ -304,10 +418,10 @@ source-established boundaries, not failure-injection reproductions.
 The one-line construction in Chapter~\ref{ch:first-game}'s minimal game ---
 \texttt{Texture2D("assets/logo.png", getGraphicsDeviceProperty())} --- is the third, simplest
 path this chapter describes: \texttt{"assets/logo.png"} is a literal, directly loadable file
-path, resolved without any \texttt{.xnb} or \texttt{.cnj} involvement at all when neither is
-present. This remains the simplest path for a small, from-scratch CNA project, and it is
-exactly what the resolution order in the previous section falls through to only after the
-other two have both been tried and found nothing.
+path, resolved without any \texttt{.cnj} involvement when the literal exists. It remains the
+simplest path for a small, from-scratch CNA project. The resolver does still probe the distinct
+\texttt{"assets/logo.png.xnb"} candidate first; it falls through to the literal file when that
+compiled sibling is absent, not after probing a sidecar or every native extension.
 
 \section{ContentManager: constructing it and calling Load}
 
@@ -331,8 +445,10 @@ content.Unload();  // evicts this manager's caches; retained asset values remain
 \end{lstlisting}
 
 \texttt{Load<T>(const std::string\& assetName) -> T} is a template, not a virtual dispatch ---
-the asset name carries no extension, since resolving one is exactly the three-way order this
-chapter already covered (\texttt{.xnb}, then the literal path, then \texttt{.cnj}). Two
+the name may be extensionless or an existing literal file. On a cache miss it first probes the
+name-plus-\texttt{.xnb}, then the literal, then name-plus-\texttt{.cnj}, and only then its
+type-specific native-extension list; the preceding section gives the terminal-candidate rule.
+Two
 \texttt{NOXNA} extension points exist for cases the built-in readers don't cover:
 \texttt{RegisterTypeReader<T>} (taking a
 \texttt{std::unique\_ptr<LooseFileContentTypeReader<T>>}) for a whole new

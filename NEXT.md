@@ -6,15 +6,15 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **533 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by sixteen documentation commits: `944fa54`
+- Book: **535 physical PDF pages, 49 chapters, 6 appendices**.
+- The local branch is ahead of `origin/develop` by seventeen documentation commits: `944fa54`
   (render-target binding/usage contracts), the Reset-order contracts batch, the resource-lifecycle
   audit, the construction/SDL-ownership audit, the multisample-backend-rebuild audit, and the
   Game/GraphicsDeviceManager lifecycle and callback/disposal audits, plus the Game
   exit/destruction/component-lifetime and ContentManager cache/disposal and
   copy/replacement, service-provider/device-resolution, reader-registration, root/path, and
-  Load-failure/type/cache-mutation, concurrency/reentrancy, and content-manifest introspection
-  audits below.
+  Load-failure/type/cache-mutation, concurrency/reentrancy, content-manifest introspection, and
+  format-selection/fallback audits below.
   The previous seventeen-commit count was accurate before the remote advanced and is retained
   only in the historical session log.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
@@ -22,7 +22,44 @@ session log; this file is the concise live handoff.
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: ContentManager manifest introspection, ordering, and diagnostic boundary
+## Latest completed batch: ContentManager exact format selection and fallback boundary
+
+No CNA source changes were made; the sibling repository remained a read-only authority. The
+generic template and all three bespoke Load specializations, every built-in loose reader and its
+extension list, focused resolver/cache/XNB/glTF tests, and CNJ source-file helper establish:
+
+- On a cache miss CNA first checks `BuildAssetPath(assetName) + ".xnb"`, before it needs a local
+  reader. Only then does it select the first existing loose candidate: literal `base`, then
+  `base.cnj`, then the reader's ordered extensions; if none exists it still passes bare `base` to
+  the reader. The same chain applies to generic loads, weak-cached Texture2D, and uncached
+  SoundEffect/TextureCube. A cache hit never reevaluates the filesystem.
+- Selection is terminal, not a successful probe. A malformed/mismatched XNB, invalid CNJ,
+  corrupt native candidate, directory, or reader rejection does not fall through to a lower
+  candidate. The explicit logical XNB name trap follows directly: `Load<T>("a.xnb")` probes
+  `a.xnb.xnb` first and, if that is absent, routes the literal XNB through the loose reader;
+  callers use `Load<T>("a")` to activate `a.xnb` parsing. Dots do not otherwise suppress
+  suffixing.
+- An extensionless `Load<Texture2D>("hero")` gives `hero.cnj` priority over `hero.png`; an
+  existing literal `Load<Texture2D>("hero.png")` selects the PNG (after the independent
+  `hero.png.xnb` check). The global CNJ probe is not gated by `GetExtensions()`, so custom
+  readers can receive CNJ paths. A CNJ `sourceFile` begins a new, safe logical Load and can again
+  be preempted by a sibling XNB.
+- Ch.8 now records all built-in native-extension orders and the platform-excluded Video reader,
+  including Model's CNJ/glTF/GLB precedence. Existing focused tests cover healthy native/CNJ
+  texture selection, CNJ-over-native priority, XNB priority, cache isolation, and missing-CNJ
+  glTF; they omit invalid-candidate fallback, explicit-XNB names, unsupported literal extensions,
+  directories, and a failed first extension followed by a valid later one.
+- Full `latexmk` succeeded at **535 pages**; targeted undefined-reference and duplicate-label
+  checks are empty; makeindex accepted **2,160** entries with zero rejected and zero warnings;
+  `git diff --check` passes. Rendered physical pages **105--107** are clean. Ch.8 is now **920**
+  lines. The plan-consistency validator remains absent from this checkout.
+
+Next recommended start: finish the remaining ContentManager public surface by auditing
+`ResourceContentManager` and its virtual `OpenStream()` contract. Compare its constructor/base
+state, actual stream availability, inheritance effects on `Load<T>()`, test coverage, and FNA
+semantics before documenting or changing any use pattern.
+
+## Previous completed batch: ContentManager manifest introspection, ordering, and diagnostic boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. The
 manifest implementation and entry API, the focused manifest tests, `plan_xnb.md`/`xnb.md`, and
