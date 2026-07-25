@@ -153,8 +153,11 @@ There is a related resize defect that is easier to miss because the new logical 
 primary and shadow surfaces but cannot reset the library's private
 \texttt{logicalPresentationSet\_} flag. The next frame therefore uploads the new-sized primary
 texture into the \emph{old} logical-presentation rectangle. CNA's input-transform methods
-correctly recompute their scale from the new logical dimensions, so after such a resize their
-coordinate conversion and the physical presentation can disagree. Closing that gap needs
+do recompute their scale from the new logical dimensions, but the public input path does not
+call them: it discovers \texttt{free-direct}'s associated SDL renderer first, as the section
+below explains. That renderer retains the same old logical-presentation rectangle as physical
+output, so public input and presentation remain tied to the old coordinate canvas while the
+game's newly allocated surfaces use the new size. Closing that three-way mismatch needs
 \texttt{free-direct} to reapply logical presentation when the primary changes, not an
 unilateral CNA-side approximation.
 
@@ -163,13 +166,12 @@ of scope for this backend by the project owner's own instruction --- CNA's own a
 networking go through the ordinary backend-agnostic paths from Chapter~\ref{ch:audio-system}
 and Chapter~\ref{ch:networking} of this book, not through \texttt{free-direct} at all.
 
-\section{Letterboxing is fixed, but input coordinates are not guessed}
+\section{The transform math is sound, but public input takes another route}
 
-The permanent output-mode limitation does \emph{not} leave input mapping ambiguous. The
-backend implements both \texttt{TransformWindowToLogical()} and its inverse directly from the
-real \texttt{SDL\_Window} size, rather than reaching into \texttt{free-direct}'s deliberately
-private SDL renderer. For a logical size $(L_w,L_h)$ and physical window size $(P_w,P_h)$, it
-recomputes the same centered-letterbox transform that \texttt{free-direct} uses:
+The backend implements both \texttt{TransformWindowToLogical()} and its inverse directly from
+the real \texttt{SDL\_Window} size. For a logical size $(L_w,L_h)$ and physical window size
+$(P_w,P_h)$, they recompute the same centered-letterbox transform that
+\texttt{free-direct} uses:
 
 \[
 s = \min(P_w/L_w, P_h/L_h), \qquad
@@ -183,6 +185,23 @@ pixels. The calculation intentionally queries the live physical window every tim
 the primary/shadow surfaces retain the requested logical resolution, while window managers may
 choose a quite different actual window size.
 
+Those two correct methods are nevertheless shadowed during normal public input. Both public
+callers first ask \texttt{SDL\_Get\allowbreak Renderer(window)} for an associated renderer and
+use SDL's own logical-coordinate conversion when one exists. Only a renderer-less window
+proceeds to the backend registry. \texttt{free-direct} creates an SDL renderer on this same
+window during \texttt{SetCooperative\allowbreak Level()}, so SDL's first tier wins even though
+\texttt{Dx3Graphics\allowbreak Backend::GetRenderer\allowbreak Internal()} returns
+\texttt{nullptr}. The renderer is not actually unreachable from CNA: it is merely not
+returned by that backend accessor.
+
+This route has two time-dependent consequences. Before the first \texttt{Present()},
+\texttt{free-direct} has created the renderer but has not yet called
+\texttt{SDL\_SetRenderLogicalPresentation}; public input therefore passes through at window
+scale. The first presentation installs the hardcoded letterbox mapping, after which SDL's own
+conversion correctly follows the displayed output. A later logical resize hits the stale
+\texttt{logicalPresentationSet\_} problem above: both output and public input retain the old
+SDL mapping, while the new game surfaces no longer share that coordinate size.
+
 The dedicated \texttt{Dx3\_LogicalTransform} test avoids a fragile fixed-size expectation for
 exactly that reason. It asks the running window for its real dimensions, requests a $64\times64$
 logical canvas, then verifies four properties: logical-to-window-to-logical round trips preserve
@@ -191,9 +210,12 @@ equal horizontal and vertical logical steps have equal physical length; and that
 is exactly $\min(P_w/64,P_h/64)$. These checks prove both the centering and the absence of
 silent anisotropic stretch on whichever display the test is actually running, including the
 environment where an attempted \texttt{SDL\_SetWindowSize()} was not honoured by the window
-manager. This is a useful separation of responsibilities: output policy is constrained by
-\texttt{free-direct}, but coordinate conversion still has a concrete, tested contract for
-input code.
+manager. They do \emph{not} prove the public route above: the test obtains
+\texttt{Dx3GraphicsBackend\&} and invokes both methods directly, bypassing
+\texttt{Mouse::SetPosition()}, \texttt{SdlInputBridge}, and the SDL-renderer-first branch.
+Chapter~\ref{ch:backend-architecture},
+\S\ref{sec:backend-input-coordinate-matrix}, places that proof boundary in the full backend
+matrix.
 
 \section{Design decision 4 sidesteps two free-direct gaps}
 

@@ -114,11 +114,11 @@ if (keyboard.IsKeyDown(forwardKey))
 \section{Mouse}
 
 \cnaclass{Mouse} is static-only: \texttt{GetState()} and \texttt{SetPosition(x, y)}, the
-latter carefully converting logical coordinates to real window coordinates before calling
-SDL's warp function --- and doing so differently per backend (offset-aware on SDL\_Renderer,
-uniform-scale-aware on EasyGL, pass-through on Vulkan/BGFX), a small, concrete illustration of
-how even an ostensibly backend-agnostic input call has to account for
-this book's per-backend presentation differences (its backend-architecture chapter).
+latter attempting to convert logical coordinates to real window coordinates before calling
+SDL's warp function. The shared routing first asks an associated SDL renderer, then a
+registered graphics backend, then falls back to pass-through. Those tiers make the result
+backend- and presentation-dependent rather than a universal guarantee; the audit below and
+Chapter~\ref{ch:backend-architecture}'s matrix state the exact boundary.
 \cnaclass{MouseState} carries the expected X/Y, five buttons, and a cumulative,
 120-units-per-notch \texttt{ScrollWheelValue}; a \texttt{NOXNA} horizontal-scroll addition is
 deliberately excluded from \texttt{Equals} / \texttt{GetHashCode} / \texttt{ToString} specifically
@@ -189,7 +189,56 @@ const float pitch = mouse.Y * mouseSensitivity;
 cameraRotation = Quaternion::CreateFromYawPitchRoll(yaw, pitch, 0.0f) * cameraRotation;
 \end{lstlisting}
 
-This chapter's own intro named \texttt{SetPosition}'s \emph{write}-direction letterbox scaling on \texttt{SDL\_RENDERER} (converting a logical position to real window coordinates before warping); a later audit pass specifically checked whether the \emph{read} direction --- an incoming \texttt{SDL\_EVENT\_MOUSE\_MOTION} event's real window coordinates converted back to logical ones --- was equally correct, since every prior test happened to use a 1:1 window with no backend scaling at all, never actually exercising that conversion branch. It was: a real window with a 100$\times$100 logical presentation letterboxed into a 200$\times$200 physical window (a 2$\times$ scale factor) confirms a window-space motion event at $(100, 100)$ reads back through \texttt{Mouse::GetState()} as logical $(50, 50)$, exactly mirroring the already-tested write direction. A read/write pair that only one direction had ever actually verified is exactly the kind of asymmetric test gap worth checking for deliberately, not assuming symmetric coverage from a single direction's passing test.
+\subsection{Logical coordinates are a backend contract}
+\label{sec:input-logical-coordinate-routing}
+
+The write direction is only half the story. Incoming
+\texttt{SDL\_EVENT\_MOUSE\_MOTION} and mouse-button positions pass through
+\texttt{SdlInputBridge::to\_logical\_position()} before updating
+\texttt{InputManager}; touch starts from normalized window position and reaches the same
+helper. Thus a bad or missing transform affects absolute mouse reads, click coordinates, and
+touch together, while relative mouse motion deliberately remains an unscaled delta.
+
+The SDL\_RENDERER route has the strongest existing proof. A test creates a
+$100\times100$ logical presentation inside a $200\times200$ window, injects a physical motion
+event at $(100,100)$, and observes logical $(50,50)$ through
+\texttt{Mouse::GetState()}. Separate conversion tests cover the inverse and a real horizontal
+letterbox offset. The latter tests cannot inspect the OS cursor under Wayland, however:
+\texttt{SetPosition()} writes the requested logical point into \texttt{InputManager}
+\emph{before} attempting conversion and warp, so immediately reading that point back proves
+the cache assignment even if the physical cursor landed elsewhere. The ASCII integration
+test uses this same weak immediate set/get shape.
+
+Other backends are not interchangeable:
+
+\begin{itemize}
+\item EasyGL and Canvas register an offset-free height scale. It matches their default
+  fixed-height, dynamic-width mode, but not the other presentation modes they store.
+\item WebGPU and SDL GPU implement all five viewport modes, but their transform uses physical
+  pixel dimensions for SDL event and warp values expressed in window coordinates. A
+  high-pixel-density display therefore introduces a density-factor error. Reads in a
+  letterbox bar also return \texttt{false}, causing raw window coordinates to replace the
+  outside logical point the method had already computed.
+\item Vulkan has no override or registry entry. Its SpriteBatch projection stretches the
+  virtual canvas across the physical swapchain, so absolute input becomes misaligned after a
+  non-1:1 resize. Keeping its window-coordinate size equal to the requested virtual size is
+  the only portable caller-side guard today.
+\item BGFX and D3D9/11/12 also pass through, but those backends currently ignore logical
+  presentation and draw in physical coordinates; input matches that limitation rather than
+  the requested mode.
+\item DX3's correct direct helper methods are shadowed by the SDL renderer created inside
+  \repolink{free-direct}. Public mapping is pass-through until the first
+  \texttt{Present()} installs its hardcoded letterbox, then follows SDL's mapping. Its
+  four-property test invokes the helpers directly and does not exercise this public route.
+\end{itemize}
+
+The complete fourteen-product matrix and its test evidence are in
+Chapter~\ref{ch:backend-architecture},
+\S\ref{sec:backend-input-coordinate-matrix}. FNA has no corresponding backend split:
+\texttt{Mouse.GetState()} multiplies window X/Y by the independent backbuffer/window ratios,
+and \texttt{SetPosition()} applies their inverses. CNA needs more machinery because its
+presentation modes include offsets and dynamic logical dimensions, but callers should not
+mistake that richer vocabulary for uniform implementation.
 
 \section{GamePad}
 

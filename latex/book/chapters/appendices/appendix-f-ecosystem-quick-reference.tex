@@ -28,6 +28,15 @@ interactions with no Xbox~360 equivalent at all. \cnaclass{MouseState} additiona
 \texttt{Equals} / \texttt{GetHashCode} so those two stay byte-identical to FNA's own, vertical-only
 comparison, even though the field itself is real and populated from SDL's horizontal wheel axis.
 
+\textbf{Coordinate warning.} Absolute mouse/button/touch reads and
+\cnaclass{Mouse}::\texttt{SetPosition} do not have one uniform logical-presentation contract.
+SDL-renderer products have the complete mapping; EasyGL/Canvas cover only their default
+height-driven mode; WebGPU/SDL GPU mix window and physical-pixel spaces on high-density
+displays; Vulkan passes through after a non-1:1 resize; and DX3 changes behavior after its
+first \texttt{Present()}. See \S\ref{sec:input-logical-coordinate-routing} and the complete
+backend matrix in \S\ref{sec:backend-input-coordinate-matrix} before treating
+\texttt{Mouse::GetState()} coordinates as rendered logical pixels.
+
 \cnaclass{GamePad} follows the same static-class shape, with \texttt{GetCapabilities}/%
 \texttt{GetState} (two overloads, the second taking an explicit \cnaclass{GamePadDeadZone} mode)
 and \texttt{SetVibration}. Its \cnaclass{NOXNA} surface is the largest of any class in this

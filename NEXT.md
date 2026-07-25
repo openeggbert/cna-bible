@@ -6,18 +6,53 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **486 physical PDF pages, 49 chapters, 6 appendices**.
-- After the batch commit, the local branch is ahead of `origin/develop` by nine coherent
+- Book: **490 physical PDF pages, 49 chapters, 6 appendices**.
+- After the batch commit, the local branch is ahead of `origin/develop` by ten coherent
   documentation commits:
   roadmap, ShaderEffect/D3D ABI, general capability matrix, MSAA/anisotropy, buffer
   contracts, volume/cube readback contracts, and RenderTargetCube upload/transition
-  contracts, followed by Texture2D update contracts and instancing/vertex binding.
+  contracts, followed by Texture2D update contracts, instancing/vertex binding, and input
+  coordinate routing.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
   reviewing `git push`. Its response explicitly rejected the request rather than granting
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
 ## Latest completed batch
+
+The logical/window input-coordinate audit is complete:
+
+- `Mouse::SetPosition()` and `SdlInputBridge` first use an SDL renderer associated with the
+  window, then the `IGraphicsBackend` registry, then raw pass-through. The two backend
+  transform defaults return `false`.
+- SDL_Renderer and ASCII use SDL's complete logical-presentation transform. DX3 unexpectedly
+  uses the same route because `free-direct`'s supposedly private renderer remains discoverable
+  through `SDL_GetRenderer(window)`; its dedicated test calls the backend methods directly and
+  therefore does not prove public routing. Before DX3's first `Present()`, that renderer has
+  not yet been assigned a logical presentation and public input is still pass-through.
+- EasyGL and Canvas register height-only transforms that are exact for
+  `FixedHeightDynamicWidth` but do not implement their other stored presentation modes.
+  WebGPU and SDL GPU register the full five-mode viewport math in physical pixels, but SDL
+  events and cursor warps use window coordinates. The two spaces differ on a high-pixel-density
+  window, producing a density-factor error in both directions. They also return `false` for a
+  point in a letterbox bar; the caller then substitutes raw window coordinates instead of the
+  already-computed out-of-content logical coordinates.
+- Vulkan inherits pass-through even though its SpriteBatch projection maps the virtual size
+  across the physical swapchain, so resized/non-1:1 windows misalign absolute mouse/button/
+  touch positions and `Mouse::SetPosition()`. BGFX and D3D9/11/12 also inherit pass-through,
+  but currently ignore logical presentation and render in physical coordinates, making that
+  fallback consistent with their separate presentation limitation. Software and Headless
+  have no window.
+- Existing proof is narrow: the SDL route has direct read/write tests, DX3 proves only its
+  bypassed helper math, ASCII's immediate SetPosition/GetState check can pass from
+  `InputManager`'s synchronous state assignment alone, and no dedicated transform test was
+  found for EasyGL, Canvas, Vulkan, WebGPU, or SDL GPU.
+- Ch.16 now carries the three-tier route and complete fourteen-product matrix; Ch.25
+  distinguishes DX3's helper math from its real public path; Ch.26 explains the
+  caller-visible consequences and evidence boundary; Appendix F has the quick-reference
+  warning.
+
+## Previous completed batch
 
 The draw-fallback, instancing, and vertex-binding audit is complete:
 
@@ -45,7 +80,7 @@ The draw-fallback, instancing, and vertex-binding audit is complete:
   previous BGFX overclaim; Ch.22 expands its open-limit count from seven to nine; Appendix A
   carries the concise caller warning.
 
-## Previous completed batch
+## Earlier completed batch
 
 The `Texture2D` interface-default audit is complete:
 
@@ -66,7 +101,7 @@ The `Texture2D` interface-default audit is complete:
   GPU evidence. Ch.16 contains the full backend matrix and evidence limits. Ch.19 corrects
   its stale Vulkan no-op claim, and Appendix A carries the concise caller-facing warning.
 
-## Earlier completed batch
+## Earlier completed work
 
 The remaining `RenderTargetCube` interface defaults were traced through the public API,
 every factory/override, backend target state, FNA, and the relevant examples:
@@ -94,7 +129,7 @@ every factory/override, backend target state, FNA, and the relevant examples:
 - Ch.11, Ch.16, Ch.23, and Appendix A now agree. Ch.16 contains the complete matrix; Ch.23
   explicitly distinguishes working D3D backend callbacks from the missing public routing.
 
-## Earlier completed work
+## Additional earlier work
 
 The preceding readback audit established real ordinary Texture3D/TextureCube GPU readback on
 EasyGL, Vulkan, BGFX, WebGPU, SDL GPU, and D3D9/11/12, with the separate
@@ -122,34 +157,35 @@ latexmk -pdf -interaction=nonstopmode -halt-on-error -file-line-error -g main.te
 
 Results:
 
-- `main.pdf`: 486 pages.
+- `main.pdf`: 490 pages.
 - Targeted undefined-reference check: no matches.
 - Duplicate-label check: no matches.
-- `makeindex`: 2,026 accepted, 0 rejected, 0 warnings.
-- Rendered and inspected Ch.9 physical pages 114--115, Ch.16 pages 184--187, Ch.20 page 226,
-  Ch.22 pages 245--246, and Appendix A page 453.
+- `makeindex`: 2,032 accepted, 0 rejected, 0 warnings.
+- Rendered and inspected Ch.16 physical pages 181--184, Ch.25 pages 273--275, Ch.26 pages
+  281--283, and Appendix F pages 478--480.
 - No clipping, table collision, page-edge spill, malformed heading, running-header collision,
-  or folio defect was found. The new Ch.16 matrix is clean. All overfull warnings introduced
-  by this batch were removed before the final build; older warnings remain elsewhere.
+  or folio defect was found. The new Ch.16 matrix repeats its header cleanly. All overfull
+  warnings introduced by this batch were removed before the final build; older warnings
+  remain elsewhere.
 - `git diff --check`: pass.
 
 Useful verification commands:
 
 ```bash
-wc -l latex/book/chapters/part3-graphics-core/ch09-graphicsdevice.tex \
-      latex/book/chapters/part4-backends/ch16-backend-architecture.tex \
-      latex/book/chapters/part4-backends/ch20-bgfx-backend.tex \
-      latex/book/chapters/part4-backends/ch22-sdlgpu-backend.tex \
-      latex/book/chapters/appendices/appendix-a-core-graphics-quick-reference.tex
+wc -l latex/book/chapters/part4-backends/ch16-backend-architecture.tex \
+      latex/book/chapters/part4-backends/ch25-dx3-freedirect-backend.tex \
+      latex/book/chapters/part5-input-audio-net/ch26-input-system.tex \
+      latex/book/chapters/appendices/appendix-f-ecosystem-quick-reference.tex
 git diff --check
 ```
 
 ## Documentation synchronized
 
-- `PLAN.md` records 486 total pages and exact current line counts: Ch.9 1,097; Ch.16 826;
-  Ch.20 373; Ch.22 505; Appendix A 363.
-- Its durable session log records the public binding narrowing, fallback/override matrix,
-  backend-specific behavior and evidence strength, stale-state defect, and PDF inspection.
+- `PLAN.md` records 490 total pages and exact current line counts: Ch.16 935; Ch.25 286;
+  Ch.26 664; Appendix F 254.
+- Its durable session log records the public dispatch tiers, backend coordinate matrix,
+  window/pixel-space defect, DX3 timing/resize boundary, evidence strength, FNA contrast,
+  and PDF inspection.
 - `README.md` has build/navigation guidance; `CLAUDE.md` says 49 chapters.
 
 ## Repository safety
@@ -175,8 +211,8 @@ Sibling repositories remain read-only source authorities for ordinary book work.
 
 Continue Ch.16's backend-interface-default audit. Buffer defaults, volume/cube readback,
 RenderTargetCube upload/transitions, Texture2D updates, and draw/instancing fallbacks are
-closed. Re-inventory the remaining defaults; coordinate transforms, backbuffer readback, and
-swap-interval forwarding are promising candidates, but choose by public reachability and
-documentation gap after rechecking the live source. Trace the caller, override matrix, state
-transitions, and actual assertion layer before writing. Do not modify CNA itself; sibling
-repositories remain read-only source authorities.
+closed, and coordinate transforms are now closed as well. Re-inventory the remaining
+defaults; backbuffer readback and swap-interval forwarding are promising candidates, but
+choose by public reachability and documentation gap after rechecking the live source. Trace
+the caller, override matrix, state transitions, and actual assertion layer before writing.
+Do not modify CNA itself; sibling repositories remain read-only source authorities.

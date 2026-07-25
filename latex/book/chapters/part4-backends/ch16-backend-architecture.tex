@@ -73,6 +73,115 @@ all for ``does this backend actually honor a \cnaclass{SpriteBatch} transform ma
 caller has no way to \emph{ask} before hitting this specific silent no-op --- unlike the eight
 capabilities that mechanism does cover.
 
+\subsection{Window/logical input transforms: three dispatch tiers}
+\label{sec:backend-input-coordinate-matrix}
+
+\cnaclass{IGraphicsBackend}'s two coordinate hooks both default to returning
+\texttt{false}. The read hook is
+\texttt{TransformWindow\allowbreak ToLogical()}; its inverse is
+\texttt{TransformLogical\allowbreak ToWindow()}. That sounds like one ordinary
+unsupported-feature sentinel, but the public callers place two routes ahead of it:
+
+\begin{enumerate}
+\item if the window has an associated SDL renderer, mouse and touch use SDL's renderer
+  coordinate-conversion API;
+\item otherwise they consult \cnaclass{IGraphicsBackend}'s static window-to-backend registry
+  and call the corresponding virtual hook;
+\item if neither route succeeds, the original coordinates pass through unchanged.
+\end{enumerate}
+
+The read direction is shared by absolute mouse motion, mouse-button positions, and touch
+coordinates. The inverse is used by \cnaclass{Mouse::SetPosition()} before the OS cursor is
+warped. This makes both the override matrix and the dispatch tier load-bearing: an excellent
+transform that the backend never registers may still be dead, while a backend with no
+override may be correct because an SDL renderer wins first.
+
+\begingroup
+\small
+\setlength{\tabcolsep}{3.5pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{@{}p{0.14\textwidth}p{0.24\textwidth}p{0.31\textwidth}p{0.23\textwidth}@{}}
+\toprule
+\textbf{Backend} & \textbf{Public route} & \textbf{Actual coordinate contract} &
+  \textbf{Located evidence} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Backend} & \textbf{Public route} & \textbf{Actual coordinate contract} &
+  \textbf{Located evidence} \\
+\midrule
+\endhead
+\texttt{SDL\_\allowbreak RENDERER}, \texttt{ASCII}
+  & Associated SDL renderer, not a backend override.
+  & SDL implements all five presentation modes, including scale and letterbox offset.
+  & Public read-side event test and direct write-side conversion tests. ASCII's own immediate
+    set/get check is weaker for the reason below. \\
+\texttt{EASYGL}
+  & Registered backend override.
+  & Offset-free height scaling is exact for \texttt{FixedHeightDynamicWidth}; the other stored
+    modes do not have matching transform/output implementations.
+  & Source only; no dedicated coordinate test was found. \\
+\texttt{CANVAS}
+  & Registered backend override.
+  & Same height-only contract as EasyGL.
+  & Its unit test explicitly excludes the window-dependent transform methods. \\
+\texttt{WEBGPU}, \texttt{SDL\_GPU}
+  & Registered backend override.
+  & Shared five-mode math uses physical pixels, while SDL events and cursor warps use window
+    coordinates; high pixel density therefore introduces a scale error. A letterbox-bar read
+    also returns \texttt{false}, making the caller substitute raw window coordinates.
+  & Source only; no dedicated coordinate test was found. \\
+\texttt{DX3}
+  & The SDL renderer created inside \repolink{free-direct} wins before DX3's overrides.
+  & Hardcoded letterbox mapping becomes active lazily on the first \texttt{Present()}; before
+    that, public input passes through. The direct overrides are shadowed during normal use.
+  & Four-property test proves the shadowed helper math, not public input routing. \\
+\texttt{VULKAN}
+  & Inherited \texttt{false}; raw pass-through.
+  & SpriteBatch projects the virtual size across the physical swapchain, so a resized or
+    otherwise non-1:1 window makes absolute input disagree with rendered coordinates.
+  & Source only; no dedicated coordinate test was found. \\
+\texttt{BGFX}
+  & Inherited \texttt{false}; raw pass-through.
+  & The backend explicitly ignores virtual resolution and uses a physical viewport, so
+    pass-through agrees with that separate presentation limitation.
+  & Source only. \\
+\texttt{D3D9}, \texttt{D3D11}, \texttt{D3D12}
+  & Inherited \texttt{false}; raw pass-through.
+  & Presentation-mode scaling is stored or a no-op and rendering remains physical, so the
+    fallback is internally consistent but does not implement the requested presentation mode.
+  & Source only; no dedicated input-coordinate test was found. \\
+\texttt{SOFTWARE}, \texttt{HEADLESS}
+  & Inherited \texttt{false}; no normal window route exists.
+  & Logical pixels are internal buffers only; there is no OS cursor or SDL window to map.
+  & Source-proven by both null window accessors. \\
+\bottomrule
+\end{longtable}
+\endgroup
+
+The WebGPU/SDL GPU density distinction is not inferred from names alone. SDL's own
+\texttt{SDL\_video.h} says \texttt{SDL\_GetWindow\allowbreak Size()} returns
+window-coordinate size and
+\texttt{SDL\_GetWindow\allowbreak SizeInPixels()} returns the drawable pixel size; its
+renderer conversion API explicitly accepts and returns window coordinates. Both backends
+build \texttt{ComputeLogical\allowbreak Viewport()} from the latter physical size, then feed
+the result directly to/from mouse-event and warp coordinates from the former space.
+
+Two test boundaries prevent false confidence. \cnaclass{Mouse::SetPosition()} first writes the
+requested logical point straight into \texttt{InputManager}, then attempts the physical warp.
+An immediate \texttt{SetPosition}/\texttt{GetState} round trip therefore passes even if
+coordinate conversion and the warp are both wrong; the ASCII integration test has exactly
+this shape. The DX3 test instead calls both backend methods directly, bypassing the
+SDL-renderer-first dispatch which shadows them. The strongest existing public evidence is the
+SDL read-side test: it injects a physical motion event into a $200\times200$ window with a
+$100\times100$ logical presentation and observes logical $(50,50)$.
+
+FNA avoids a backend registry entirely. Its \cnaclass{Mouse::GetState()} multiplies each
+window coordinate by the independent backbuffer/window dimension ratio; \texttt{SetPosition}
+uses the inverse ratios. CNA's richer five-mode presentation model needs offsets and
+mode-specific viewport math that FNA's simple faux-backbuffer scale does not represent, but
+the table shows that this additional mechanism is not yet uniform or uniformly tested.
+
 \subsection{IRenderTargetBackend: where Chapter~\ref{ch:textures-rendertargets}'s honest defaults actually live}
 
 Reading \cnaclass{IRenderTargetBackend}'s own interface definition directly explains
