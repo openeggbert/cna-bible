@@ -120,6 +120,47 @@ now keeps its pending content alive long enough to render correctly and remain s
 elsewhere the same frame. The bug was confirmed via a real segfault in
 \texttt{sdlgpu\_mrt\_test.cpp} before the fix landed, not merely reasoned about in the abstract.
 
+\subsection{A regression that makes destruction precede submission}
+
+The permanent regression test is deliberately stricter than ``a short-lived target does not
+crash.'' In \texttt{examples/sdlgpu\_rendertarget\_lifetime\_test.cpp}, one \(8\times8\)
+\cnaclass{RenderTarget2D} is created as a local variable inside a single \texttt{Draw()} call,
+cleared red, then sampled by a queued \cnaclass{SpriteBatch} draw into a still-live
+\(16\times16\) destination target that was first cleared blue. The local variable reaches the
+end of its scope before \texttt{Present()} invokes \texttt{EnsureFrameRendered()}, so the
+sampled draw is still only a command waiting to be submitted:
+
+\begin{lstlisting}
+void DrawThroughShortLivedRenderTarget(GraphicsDevice& dev) {
+    RenderTarget2D localRt(dev, 8, 8, false, SurfaceFormat::Color,
+                           DepthFormat::None, 0, RenderTargetUsage::DiscardContents);
+    dev.SetRenderTarget(&localRt);
+    dev.Clear(Color::Red);
+    dev.SetRenderTarget(nullptr);
+
+    dev.SetRenderTarget(rtDest_.get());
+    dev.Clear(Color::Blue);
+    sb_->Begin();
+    sb_->Draw(localRt, Rectangle(0, 0, 16, 16),
+              Rectangle(0, 0, 8, 8), Color::White);
+    sb_->End();
+    dev.SetRenderTarget(nullptr);
+} // localRt is destroyed here, before this frame is submitted
+\end{lstlisting}
+
+On the first frame the test reads the centre pixel of \texttt{rtDest\_} back and requires exact
+red (within its small channel tolerance), proving that the queued sampling operation really
+ran; a no-crash-only assertion could otherwise pass after silently omitting the draw. It then
+performs the same create--clear--sample--destroy pattern for 120 frames, which checks that the
+deferred-release queue is drained after each submission rather than merely retaining every
+texture until shutdown. The implementation has two necessary lifetime stages: queued targets
+and draw targets retain a \texttt{shared\_ptr} to their internal state until frame rendering has
+finished, then that state's destructor places its raw color, depth, and MSAA handles in
+\texttt{pendingTextureReleases\_}. After a successful command-buffer submission, the backend
+releases each queued handle through \texttt{SDL\_ReleaseGPUTexture()}. SDL may still fence the
+physical memory internally; CNA's narrower rule is that a recording cannot release a handle
+which an unsubmitted command still names.
+
 \subsection{A worked example: \cnaclass{Texture3D}'s own \texttt{cycle=true} orphaned-write bug}
 
 \cnaclass{Texture3D} support on this backend --- sub-volume upload/readback via
@@ -210,12 +251,12 @@ remain code paths only, not validation claims, until run on real (or Wine/DXVK-c
 
 Every claim above is backed by a real CTest binary, not a code read alone. Counting the actual
 CMake test registration directly (\texttt{cmake/Tests/SdlGpuTests.cmake}) rather than trusting a
-plan-doc's own snapshot shows \textbf{20} real CTest binaries today, spanning the 2D and 3D
+plan-doc's own snapshot shows \textbf{21} real CTest binaries today, spanning the 2D and 3D
 smoke tests, every stock effect (including \cnaclass{EnvironmentMapEffect},
 \cnaclass{SkinnedEffect}, and the \texttt{NOXNA} \cnaclass{PbrEffect} this book's WebGPU chapter
 already introduced), custom \cnaclass{ShaderEffect}, every render-target variant (2D, cube,
 multiple render targets, MSAA), both extra texture types, sampler/render state, draw order, and
-swapchain recovery --- run, like every other backend's own CTest suite, against this project's
+swapchain recovery, plus the render-target-lifetime regression above --- run, like every other backend's own CTest suite, against this project's
 own \texttt{cna\_register\_backend\_test()} convention, gracefully skipping with a clear reason
 rather than hard-failing when no real \texttt{DISPLAY} / \texttt{WAYLAND\_DISPLAY} is present, the
 identical convention \texttt{D3D11} / \texttt{D3D12} / \texttt{WebGPU} already follow. All verification

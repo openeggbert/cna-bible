@@ -82,6 +82,18 @@ unverified. The book therefore treats the former as historical evidence, not a c
 claim. The new page compiled and rendered cleanly; existing isolated warnings in unchanged Ch.34
 material remain recorded in the PLAN row. Full-book rebuild is still pending.
 
+**Latest continuation: Ch.22 (SDL_GPU) now has a source-grounded lifetime proof, not just a
+description of the fix.** The live CMake list contains 21 real `SdlGpu` CTest registrations
+(not the chapter's stale 20). Its new `RenderTargetLifetime` regression creates an 8x8 local
+render target, clears it red, queues a SpriteBatch copy into a persistent 16x16 target, and
+destroys the local wrapper before `Present()`. The first frame reads the destination centre back
+as red; a further 119 frames repeat the lifecycle to ensure deferred releases drain. The chapter
+now explains both state ownership (`shared_ptr` survives queued work) and raw-handle release only
+after a successful command-buffer submit. A minimal Ch.22 document was compiled twice and its
+new physical pages 3--4 were rendered and inspected cleanly. The isolated document retains five
+pre-existing overfull warnings elsewhere in Ch.22; none comes from the new subsection. Full-book
+regeneration remains pending regardless.
+
 This was an unusually long, multi-batch session (author unavailable for many hours, explicit
 "continue autonomously" instruction given partway through, repeated several times). Seven full
 batches landed in total (371 → 452 pages, +81), on top of the earlier SDL_GPU chapter insertion
