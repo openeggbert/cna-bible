@@ -176,6 +176,29 @@ mipmap mode, Wrap/Clamp/Mirror, and the two independent dual-texture slots are
 all pixel-tested; anisotropy is stored but unimplemented, rather than another supported sampler
 dimension.
 
+\section{Deferred rendering still preserves the game's draw order}
+
+Deferring all SDL\_gpu work until \texttt{Present()} once introduced a correctness bug hidden by
+the backend's family-specific command vectors: it rendered every 3D family first and every sprite
+last, regardless of the order the game issued them. A background sprite, 3D model, and HUD sprite
+therefore became background/model/HUD only by accident; even the opposite sprite--then--3D order
+was replayed as 3D--sprite. This is visible whenever later opaque or blended content should cover
+earlier content, not merely a performance detail.
+
+Every \texttt{Queue*Draw()} and \texttt{QueueSprite()} call now appends a compact kind/index
+reference beside its family-specific command. At render time,
+\texttt{RenderQueuedDraws()} makes one chronological pass over those references and dispatches
+the existing per-family issue routine only when its command belongs to the current target. No
+sort is needed: append order is already the public draw-call order. Pipeline rebind avoidance is
+then tracked across all kinds rather than only sprites, so fixing correctness does not require
+forgetting the ordinary bind cache.
+
+\texttt{SdlGpu\_DrawOrder} proves both directions with no alpha arithmetic ambiguity. It renders
+an opaque red full-target sprite and an opaque green full-target 3D quad into separate targets
+with depth disabled. Sprite then 3D must read back green; 3D then sprite must read back red.
+The former fixed-family implementation produced red in both cases because sprites always ran
+last, so the pair is a discriminating regression rather than a no-crash smoke check.
+
 \section{Present timing belongs to the device manager, not a test-only backend poke}
 
 The SDL\_GPU tests establish a small but important rule about CNA's initialization lifecycle.
@@ -344,7 +367,7 @@ backend class's own source comment) was applied proactively to
 separate per-face \texttt{SetData()} calls that must all land on the same underlying resource --- caught
 and fixed before shipping rather than found by reproducing the same bug a second time.
 
-\section{A forced swapchain failure must preserve the queued frame}
+\section{Forced swapchain failure preserves the queued frame}
 
 SDL\_gpu distinguishes two acquisition outcomes that a renderer must not conflate. A successful
 \texttt{SDL\_WaitAndAcquireGPUSwapchainTexture()} call with a null texture is a documented,

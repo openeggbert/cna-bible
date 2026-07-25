@@ -154,6 +154,13 @@ actually enables anisotropy. It is now the chapter's sixth open limitation. The 
 nine-page isolated PDF compiled twice with zero overfull boxes; the changed page was rendered
 and inspected.
 
+**Ch.22 draw-order follow-up:** all queued 2D and 3D commands now replay in their real issue
+order through a kind/index reference queue; the prior fixed family order made sprites win even
+when a 3D draw was issued later. The two-case RenderTarget2D regression requires
+sprite-then-3D to read green and 3D-then-sprite to read red, exactly separating the repair from
+the old all-sprites-last behavior. The 455-line, nine-page isolated PDF compiled twice with zero
+overfull boxes.
+
 **Latest continuation: Ch.25 (DX3/free-direct) received a source-grounded fifth pass.** Its
 fixed-output letterbox limitation does not make input mapping ambiguous: the backend's real
 `TransformWindowToLogical()` and inverse query the live SDL window, recompute
