@@ -73,6 +73,15 @@ round-trip/mip tests. The new page compiled and rendered cleanly. The isolated w
 still reports pre-existing layout warnings in unchanged material, so its PLAN row says exactly
 that; full-book validation remains pending.
 
+**Latest continuation: Ch.34 (Sharp Runtime Overview) now distinguishes a real local quality
+gate from absent hosted CI.** It documents `scripts/local_ci_check.sh`'s strict configure/build/
+full-test behavior, explains why no GitHub Actions configuration was added (an explicitly
+declined external-resource decision), and records a source conflict: README describes earlier
+MinGW/Emscripten library builds while the newer continuation note calls both platforms
+unverified. The book therefore treats the former as historical evidence, not a current full-suite
+claim. The new page compiled and rendered cleanly; existing isolated warnings in unchanged Ch.34
+material remain recorded in the PLAN row. Full-book rebuild is still pending.
+
 This was an unusually long, multi-batch session (author unavailable for many hours, explicit
 "continue autonomously" instruction given partway through, repeated several times). Seven full
 batches landed in total (371 → 452 pages, +81), on top of the earlier SDL_GPU chapter insertion

@@ -281,3 +281,35 @@ itself; it expects the parent project (\texttt{cna}) to have already configured 
 \texttt{sharp-runtime}'s subdirectory is added, and links against it conditionally
 (\texttt{if(ANDROID AND TARGET SDL3::SDL3)}) only if that target already exists by the time this
 project's own \texttt{CMakeLists.txt} runs.
+
+\section{A local CI gate exists; a tracked CI pipeline deliberately does not}
+
+The absence of a GitHub Actions workflow is not evidence that sharp-runtime has no repeatable
+quality gate. Its real \texttt{scripts/local\_ci\_check.sh} is deliberately written as the
+local equivalent: strict shell failure handling; a fresh CMake configure; a parallel build whose
+captured log must contain zero \texttt{warning:} and zero \texttt{error:} matches; then the
+full \texttt{SharpRuntimeTests} binary. It exits at the first failed stage, making it suitable
+as a pre-push command rather than an advisory checklist. The CMake project independently
+registers that same test binary with GoogleTest discovery, so developers can also use
+\texttt{ctest}; the script intentionally invokes the binary directly to inspect its aggregate
+GoogleTest failure output itself.
+
+What is deliberately absent is a tracked remote trigger: sharp-runtime's current \texttt{NEXT.md}
+records that no \texttt{.github/workflows/*.yml} exists, and that adding one was offered to the
+project owner then declined. That is an external-resource decision, not a missing C\texttt{++}
+feature: a workflow activates real GitHub Actions execution, so the repository's own instructions
+forbid adding it unilaterally. The correct operational claim is therefore narrower than either
+``no CI'' or ``CI covers every change'': there is a concrete, fail-fast local gate, but it is
+not automatically run by a hosted service.
+
+\subsection{A small documentation conflict is itself a verification finding}
+
+The same sources show why a build claim must carry a date and scope. The README says that
+MinGW and Emscripten have each built the \texttt{SHARP\_RUNTIME} library cleanly in earlier
+stabilization work, while explicitly saying their GoogleTest binary was not cross-compiled.
+The newer continuation note, however, lists Windows and Emscripten as never compiled and needing
+verification. Those statements cannot both be a current, unqualified platform-status claim.
+Until a fresh cross-build resolves the record, this book treats the portable-library assertion as
+historical evidence only, and does not upgrade it to a current full-suite or runtime-validation
+claim. That distinction is practical: a native Linux test pass proves neither a cross compiler's
+headers/linker path nor a target platform's test execution.
