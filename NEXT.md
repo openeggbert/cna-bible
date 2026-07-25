@@ -6,14 +6,14 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **529 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by thirteen documentation commits: `944fa54`
+- Book: **531 physical PDF pages, 49 chapters, 6 appendices**.
+- The local branch is ahead of `origin/develop` by fourteen documentation commits: `944fa54`
   (render-target binding/usage contracts), the Reset-order contracts batch, the resource-lifecycle
   audit, the construction/SDL-ownership audit, the multisample-backend-rebuild audit, and the
   Game/GraphicsDeviceManager lifecycle and callback/disposal audits, plus the Game
   exit/destruction/component-lifetime and ContentManager cache/disposal and
-  copy/replacement, service-provider/device-resolution, reader-registration, and root/path audits
-  below.
+  copy/replacement, service-provider/device-resolution, reader-registration, root/path, and
+  Load-failure/type/cache-mutation audits below.
   The previous seventeen-commit count was accurate before the remote advanced and is retained
   only in the historical session log.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
@@ -21,7 +21,42 @@ session log; this file is the concise live handoff.
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: ContentManager root, asset path, and cache-key boundary
+## Latest completed batch: ContentManager `Load<T>()` failure, type, and cache-mutation boundary
+
+No CNA source changes were made; the sibling repository remained a read-only authority. The live
+generic and specialized Load paths, XNB `ContentReader` dispatch, content reader/manager tests,
+native-image and Song companion-file tests, and current FNA `ContentManager` establish:
+
+- CNA deliberately uses `ContentLoadException` for many validated content failures (missing/null
+  readers, malformed or unsupported XNB, unregistered/unsupported XNB readers, bad CNJ, wrong
+  CNJ type), but not as a universal `Load<T>()` wrapper. A disposed manager throws
+  `std::runtime_error`; an empty asset name is not proactively rejected. A direct or CNJ-mediated
+  missing native image propagates its `std::runtime_error`; an XNB Song with an unresolvable
+  companion media file propagates `System::IO::FileNotFoundException`; custom loose/CNJ readers
+  likewise propagate their own exceptions. Root-object type mismatch can yield
+  `std::bad_any_cast`, and a truncated payload can yield `System::IO::EndOfStreamException`.
+- The generic cache write happens only after its XNB or loose reader returns successfully, and
+  Texture2D likewise writes its weak entry only after success; a failed top-level attempt does
+  not cache the requested generic asset, so the next call retries it. SoundEffect and TextureCube
+  do not have manager cache entries. This is not a multi-asset transaction: reader code can cache
+  nested assets before later failing, and an expired Texture2D weak entry is removed before an
+  attempted replacement read. There is no loading sentinel, rollback, or cycle detection.
+- Current FNA instead rejects null/empty names with `ArgumentNullException` and disposed managers
+  with `ObjectDisposedException` before looking up its cache. CNA's located integration tests
+  cover malformed XNB, known CNJ errors, native-image propagation, and Song companion-file
+  propagation, but not empty names, root-type mismatch, callback throws, or failed-load retry.
+- Ch.8 now provides an explicit two-tier catch pattern and records the precise distinction. Full
+  `latexmk` succeeded at **531 pages**; targeted undefined-reference and duplicate-label checks
+  are empty; makeindex accepted **2,143** entries with zero rejected and zero warnings;
+  `git diff --check` passes. Rendered physical pages **107--108** are clean. Ch.8 is now
+  **706** lines. The plan-consistency validator remains absent from this checkout.
+
+Next recommended start: keep the ContentManager scope and audit concurrency, reentrancy, and
+configuration mutation. Trace concurrent `Load`/`Unload`/registration/root changes, nested same-key
+loads, the absence or presence of synchronization, reader lifetime during replacement, and FNA's
+corresponding synchronization before adding only source-established thread-safety guidance.
+
+## Previous completed batch: ContentManager root, asset path, and cache-key boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. The live
 path helpers and all Load specializations, root setter/manifest, CNJ and XNB nested-reference

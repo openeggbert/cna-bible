@@ -341,6 +341,70 @@ loose-file type, and \texttt{RegisterCnjLoader<T>(name, CnjLoaderFn<T>)} for a n
 \S\ref{sec:cnj} already named as the reason a game never needs to invent its own ad-hoc JSON
 format for a custom asset type.
 
+\subsection{\texttt{Load<T>()} has a success-only cache write, not one universal failure type}
+
+The short Doxygen promise that \texttt{Load<T>()} ``throws \texttt{ContentLoadException} if the
+asset cannot be loaded'' is a useful description of many deliberately validated content errors,
+but it is not a complete C\texttt{++} exception contract. The template begins by rejecting a
+disposed manager with \texttt{std::runtime\_error}; it does not reject an empty
+\texttt{assetName} at all. An empty name therefore follows the ordinary resolution logic and its
+eventual exception depends on the selected reader (or, with no reader for \texttt{T}, becomes the
+ordinary ``no reader registered'' \texttt{ContentLoadException}). This differs from current FNA,
+whose public \texttt{Load<T>} rejects a null or empty name with
+\texttt{ArgumentNullException} and a disposed manager with \texttt{ObjectDisposedException}
+before it looks in its cache.
+
+CNA does deliberately normalize many content-domain failures to
+\texttt{ContentLoadException}: an absent or null per-manager reader, a malformed XNB header,
+unsupported compression or reader version, an unregistered XNB reader name, invalid type-reader
+or shared-resource indices, malformed \texttt{.cnj} envelopes, and a known wrong \texttt{.cnj}
+type all take that route. The focused XNB tests exercise malformed magic, both unsupported
+compression-flag forms, an unregistered reader, and a declared file length larger than the real
+file; the focused CNJ tests exercise envelope and type validation. Those tests establish useful
+diagnostics for bad content, not a catch-all conversion layer around every operation below
+\texttt{Load<T>()}.
+
+Several meaningful failures intentionally remain their original C\texttt{++} exception. A
+missing native image reached through either a direct texture load or a \texttt{.cnj}
+\texttt{sourceFile} reaches the image decoder and throws \texttt{std::runtime\_error}; the
+dedicated source-file test asserts that exact propagation. A real XNB \cnaclass{Song} whose
+embedded companion media file cannot be found reaches the public load call as
+\texttt{System::IO::FileNotFoundException}, likewise covered end to end. A custom loose reader
+or a \texttt{RegisterCnjLoader} factory is ordinary application C\texttt{++} code and is called
+without a wrapper, so an exception it throws is also the exception its caller sees. Finally, XNB
+root-object dispatch uses \texttt{std::any\_cast<T>}; asking for a \texttt{T} different from the
+root reader's actual result can therefore surface \texttt{std::bad\_any\_cast}, and truncated
+reader payloads can surface \texttt{System::IO::EndOfStreamException}. Neither a root-type
+mismatch, an empty name, a throwing custom callback, nor a failed-then-retried load has a located
+\texttt{ContentManager} integration test yet.
+
+\Needspace{10\baselineskip}
+Callers that want one diagnostic boundary should make it explicitly rather than assuming the
+content exception is exhaustive:
+
+\begin{lstlisting}
+try {
+    auto level = content.Load<GameLevelData>("levels/intro");
+    StartLevel(level);
+} catch (const ContentLoadException& error) {
+    ShowContentDiagnostic(error.what());      // validated content-format/configuration problem
+} catch (const std::exception& error) {
+    ReportUnexpectedAssetFailure(error.what()); // decoder, companion file, or custom reader
+}
+\end{lstlisting}
+
+There is one reassuringly narrow cache rule, with an important qualification. The generic
+\texttt{loadedAssets\_} entry is assigned only after \texttt{LoadXnbAsset()} or the loose
+reader has returned a \texttt{T}; a failed top-level read therefore does not poison that
+type-plus-normalized-name entry, and the next call attempts the read again. Texture2D follows
+the same ``result first, weak-cache write second'' order, while move-only SoundEffect and
+TextureCube have no manager cache at all. This is not a transaction for arbitrary reader code:
+a reader may successfully call \texttt{cm.Load} for another asset before it later fails, thereby
+caching that nested asset, and an expired Texture2D weak entry is erased before its replacement
+load is attempted. Applications needing all-or-nothing multi-asset loading must hold and publish
+their own aggregate only after every individual load succeeds; \texttt{ContentManager} has no
+loading sentinel, rollback, or cycle-detection protocol.
+
 \subsection{A service provider is stored, not consulted, in current CNA}
 
 The two \texttt{IServiceProvider*} constructors look deliberately XNA-shaped, but their live
