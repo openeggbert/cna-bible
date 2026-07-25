@@ -5,12 +5,16 @@ This appendix consolidates the per-backend findings from Part~IV into one refere
 table. It is a summary, not a replacement --- each row's full story, including the specific
 task numbers and bug histories behind it, lives in the chapter cited in the rightmost column.
 
-\begin{center}
-\small
-\begin{tabular}{lp{7.6cm}l}
+\begin{small}
+\begin{longtable}{lp{7.6cm}l}
 \toprule
 \textbf{Backend} & \textbf{Summary status} & \textbf{See} \\
 \midrule
+\endfirsthead
+\toprule
+\textbf{Backend} & \textbf{Summary status} & \textbf{See} \\
+\midrule
+\endhead
 SDL\_RENDERER & 2D-only by design. 15 real bugs found and fixed; exactly 2 items formally
   BLOCKED (Wrap/Mirror addressing, Texture3D/TextureCube construction); a real, verified
   capability win over DX3 for every mode except those two. & Ch.~\ref{ch:sdl-renderer} \\
@@ -25,9 +29,9 @@ VULKAN & Second-most mature. BlendState/stencil both had ``accepts params, disca
   black for two distinct, separately-tracked reasons (Task~875/876). & Ch.~\ref{ch:vulkan-backend} \\
 BGFX & 37 of 38 originally-found gaps fixed in one session; the 38th (DepthBias, a genuine
   gap in the underlying bgfx library) fixed too. 2 remaining failures are environment
-  ceilings, not code bugs; \cnaclass{RenderTargetCube} sampling has its own, precisely
-  diagnosed wrong-handle-type cast (Task~873/874, unlike Vulkan's still-unresolved
-  equivalent). & Ch.~\ref{ch:bgfx-backend} \\
+  ceilings, not code bugs; \cnaclass{RenderTargetCube} sampling's former wrong-handle-type
+  cast (Task~873/874) is fixed, unlike Vulkan's still-unresolved black-render equivalent. &
+  Ch.~\ref{ch:bgfx-backend} \\
 WEBGPU & Experimental, activated 2026-07-12. Native 2D baseline plus growing 3D (PBR, skinning,
   render targets, instancing, mip generation). Excluded from this matrix's own cross-backend
   comparison by its own documentation's choice --- feature surface not yet broad enough. & Ch.~\ref{ch:webgpu-backend} \\
@@ -38,10 +42,12 @@ D3D9 & Targets pixel-for-pixel authenticity against real XNA~4.0, not just parit
   D3D9 swap-chain back-buffer format restriction (not a DXVK quirk) was found and fixed
   closing out this corpus. & Ch.~\ref{ch:direct3d-backends} \\
 D3D11 & First native Direct3D backend. Real state objects, all 10 stock shader variants, a
-  runtime-compiled custom ShaderEffect path. Device-lost recovery detection-only (never
-  triggered in this dev loop). & Ch.~\ref{ch:direct3d-backends} \\
-D3D12 & Built on D3D11's own bytecode/mapping tables. Routine CTest suite is off-screen only;
-  real swap-chain presentation proven separately via a manual, Proton-managed diagnostic. & Ch.~\ref{ch:direct3d-backends} \\
+  runtime-compiled, fixed-layout SpriteBatch custom-ShaderEffect path. Device-lost recovery
+  detection-only (never triggered in this dev loop). & Ch.~\ref{ch:direct3d-backends} \\
+D3D12 & Built on D3D11's own bytecode/mapping tables, including the same fixed-layout
+  SpriteBatch custom-effect ABI. Routine CTest suite is off-screen only; real swap-chain
+  presentation proven separately via a manual, Proton-managed diagnostic. &
+  Ch.~\ref{ch:direct3d-backends} \\
 CANVAS & Emscripten-only. No real browser/DOM exists in this dev environment at all --- every
   claim here means ``code-reviewed and structurally tested,'' not pixel-verified. 5 real bugs
   found via specification-level review alone. & Ch.~\ref{ch:canvas-ascii-backends} \\
@@ -51,14 +57,14 @@ DX3 & Fronts the sibling \texttt{free-direct} project. Real Wrap/Mirror support 
   win over SDL\_RENDERER, verified directly against the identical 2-texel test case used on
   that backend). No BLOCKED decisions remain open. & Ch.~\ref{ch:dx3-freedirect-backend} \\
 \bottomrule
-\end{tabular}
-\end{center}
+\end{longtable}
+\end{small}
 
 \section{A capability grid, condensed from the project's own master matrix}
 
 The per-backend prose above tells each backend's own story; this section adds the
 complementary view --- one capability against all seven of the backends
-\texttt{docs/graphics-backend-feature-matrix.md} covers in its own row-by-row comparison
+\texttt{docs/graphics-backend-\allowbreak{}feature-matrix.md} covers in its own row-by-row comparison
 (\texttt{SDL\_RENDERER}, \texttt{EASYGL}, \texttt{VULKAN}, \texttt{BGFX}, \texttt{D3D9},
 \texttt{D3D11}, \texttt{D3D12} --- \texttt{WEBGPU} and \texttt{SDL\_GPU} are both intentionally
 excluded from that source document's own comparison, the former by its own documented choice
@@ -67,16 +73,18 @@ Chapter~\ref{ch:webgpu-backend} and Chapter~\ref{ch:sdlgpu-backend} for their ow
 instead). Status symbols match the source document's own legend, spelled out as plain text
 rather than a symbol font this project's preamble doesn't load: \textbf{OK} correct and
 verified, \texttt{X} known gap not fixed, \texttt{BLK} formally BLOCKED (needs a
-project-owner architecture decision), \texttt{PARTIAL} implemented but not independently
-pixel-verified or only partially covered, \texttt{N/A} not applicable to this backend's own
-scope, \texttt{---} not attempted. Every cell below is a condensed transcription of a real row
+project-owner architecture decision), \texttt{P} the compact table form of the source's
+\texttt{PARTIAL} (implemented but not independently pixel-verified or only partially covered),
+\texttt{N/A} not applicable to this backend's own scope, \texttt{---} not attempted. Every cell
+below is a condensed transcription of a real row
 in the source document --- read that document directly (or the backend's own chapter, cited in
 the per-backend table above) for the full evidence and task numbers behind each symbol; this
 grid answers ``does it work'' at a glance, not ``how do we know.''
 
 \begin{center}
 \footnotesize
-\begin{longtable}{p{3.5cm}p{1.1cm}p{1.1cm}p{1.1cm}p{1.15cm}p{1.1cm}p{1.1cm}p{1.1cm}}
+\setlength{\tabcolsep}{3pt}
+\begin{longtable}{p{3.5cm}*{7}{p{1.35cm}}}
 \toprule
 \textbf{Feature} & \textbf{EGL} & \textbf{VK} & \textbf{BGFX} & \textbf{SDLR} & \textbf{D9} & \textbf{D11} & \textbf{D12} \\
 \midrule
@@ -84,8 +92,8 @@ grid answers ``does it work'' at a glance, not ``how do we know.''
 \multicolumn{8}{l}{\textit{2D SpriteBatch / SpriteFont}} \\
 All \texttt{Draw} overloads, sort modes, rotation/flip/scale/crop & OK & --- & --- &
   OK & OK & OK & OK \\
-Custom \texttt{Effect} via \texttt{Begin(effect)} & OK & OK & OK &
-  BLK\footnotemark[1] & OK & OK & OK \\
+Custom \texttt{Effect} via \texttt{Begin(effect)} & OK & OK &
+  X\textsuperscript{a} & N/A\textsuperscript{b} & OK & OK & OK \\
 \texttt{SpriteFont} glyph placement/spacing/newline/fallback/flip & OK & --- & --- &
   OK & --- & OK & OK \\
 \texttt{TextureAddressMode::}\allowbreak\texttt{Wrap} / \texttt{Mirror} via
@@ -95,23 +103,32 @@ Custom \texttt{Effect} via \texttt{Begin(effect)} & OK & OK & OK &
 \texttt{BlendState} (all presets + custom factors/equations) & OK & OK &
   OK & OK & OK & OK & OK \\
 \texttt{DepthStencilState} (compare func + full stencil ops) & OK & OK &
-  PARTIAL & OK & OK & OK & OK \\
-\texttt{RasterizerState} & OK & PARTIAL & PARTIAL & OK & OK &
+  P & OK & OK & OK & OK \\
+\texttt{RasterizerState} & OK & P & P & OK & OK &
   OK & OK \\
 Per-slot \texttt{SamplerState} (16 slots) & OK & OK & OK & OK &
-  PARTIAL & OK & OK \\
+  P & OK & OK \\
 \texttt{GraphicsDevice.}\allowbreak\texttt{ReferenceStencil} & X & OK & X & N/A & --- & OK & N/A \\
-\texttt{Clear} honors \texttt{ClearOptions::}\allowbreak\texttt{Stencil} & OK\footnotemark[2] &
-  OK\footnotemark[2] & OK\footnotemark[2] & PARTIAL & --- & PARTIAL & --- \\
+\texttt{Clear} honors \texttt{ClearOptions::}\allowbreak\texttt{Stencil} &
+  OK\textsuperscript{c} & OK\textsuperscript{c} & OK\textsuperscript{c} &
+  P & --- & P & --- \\
 \bottomrule
 \end{longtable}
 \end{center}
 
-\footnotetext[1]{\texttt{SDL\_RENDERER} throws by design --- a 2D-only backend has no shader
-stage for a custom \texttt{Effect} to run on, covered in full in
-Chapter~\ref{ch:sdl-renderer}.}
-\footnotetext[2]{\textbf{This grid deliberately corrects the source document.}
-\texttt{docs/graphics-backend-feature-matrix.md} still marks this row \texttt{X} ``ignored, all
+\begin{footnotesize}
+\noindent\textsuperscript{a}\textbf{This cell deliberately corrects the source document.}
+\path{docs/graphics-backend-feature-matrix.md} still marks BGFX \textbf{OK}, but the live
+backend's \texttt{CompileProgram()} always fails and \cnaclass{ShaderEffect} exposes no
+binary-loading route. Chapter~\ref{ch:shader-fx-gap} records the complete source audit.
+
+\noindent\textsuperscript{b}\texttt{SDL\_RENDERER} rejects a non-null custom effect by design --- a
+2D-only renderer with no programmable shader stage has no place for it to run. This is
+\texttt{N/A}, not the source document's \texttt{BLK}: no unresolved project-owner architecture
+decision is involved. See Chapter~\ref{ch:sdl-renderer}.
+
+\noindent\textsuperscript{c}\textbf{This grid deliberately corrects the source document.}
+\path{docs/graphics-backend-feature-matrix.md} still marks this row \texttt{X} ``ignored, all
 3 (Task~871, open)'' for \texttt{EASYGL} / \texttt{VULKAN} / \texttt{BGFX} --- stale as of this
 book's own independent re-verification (Chapters~\ref{ch:graphicsdevice},
 \ref{ch:state-objects}, and \ref{ch:sdl-renderer} all cover the real fix, which closed the gap
@@ -119,7 +136,8 @@ on all three hardware backends and found a real, previously-undiscovered Vulkan
 \texttt{stencilLoadOp} bug along the way). Treat this appendix's own \textbf{OK} here as more
 current than the source document's own \texttt{X} until that document is refreshed --- the same
 caution this appendix's closing section already asks a reader to apply project-wide, now with a
-concrete instance to point at.}
+concrete instance to point at.
+\end{footnotesize}
 
 This grid omits the source document's own Texture2D/Texture3D/TextureCube,
 Model/OcclusionQuery, and remaining-genuine-limitations tables entirely --- not because they are
@@ -128,7 +146,8 @@ less real, but because condensing all six original tables into one appendix woul
 above were chosen as the ones a reader deciding which backend to target for a specific game
 mechanic (2D-only? relies on device state objects for a real gameplay effect like an outline
 shader via a custom \texttt{DepthStencilState}?) is most likely to need first. The full six-table
-original remains the authoritative source for everything else.
+original remains the primary source for everything else, subject to the explicitly documented
+stale cells this appendix has independently re-audited.
 
 \section{Reading this table safely}
 
@@ -142,4 +161,4 @@ both directions --- the D3D9 backend's own documentation and the project's cross
 feature matrix genuinely disagreed about the render-target-as-texture fix's timing at one
 point, and the feature matrix's own account was the more current one. Treat this appendix the
 same way: a starting map, not a final word, to be checked against the project's own current
-\texttt{docs/graphics-backend-feature-matrix.md} before relying on any single row.
+\path{docs/graphics-backend-feature-matrix.md} before relying on any single row.

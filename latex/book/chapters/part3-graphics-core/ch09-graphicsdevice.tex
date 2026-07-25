@@ -579,7 +579,8 @@ A cluster of methods exist purely to support tooling, testing, and backend-inter
   recommended way to check whether the active backend (and, for device-dependent entries, the
   current runtime driver) supports a given capability --- e.g. 3D rendering on the 2D-only
   \texttt{SDL\_RENDERER} / \texttt{DX3} / \texttt{CANVAS} backends --- \emph{before} relying on it,
-  rather than calling the feature and handling whatever exception results.
+  rather than calling the feature and handling whatever exception results. The worked example
+  below shows the current \texttt{ASCII} exception to that intended contract.
 \item[\texttt{void SetCurrentEffect(Effect* effect)}] called automatically by
   \texttt{Effect::Apply()}; not meant to be called directly by ordinary game code, but included
   here because it's the exact mechanism Chapter~\ref{ch:stock-effects}'s stock-effect chapter
@@ -607,12 +608,16 @@ A cluster of methods exist purely to support tooling, testing, and backend-inter
 // Worked example: defensively check a capability before relying on it,
 // rather than calling it and handling whatever exception results --
 // exactly the pattern SupportsCapability's own doc comment recommends.
-// GraphicsCapability::ThreeD is a real, correctly-wired example: SDL_Renderer,
-// DX3, and Canvas (Chapters 17, 24, 23) all genuinely override this check
-// and throw std::runtime_error from every 3D call otherwise.
-if (dev.SupportsCapability(CNA::GraphicsCapability::ThreeD))
+// SDL_Renderer, DX3, and Canvas genuinely return false here. ASCII is also
+// 2D-only, but currently inherits the base class's default-true answer.
+const bool reports3D =
+    dev.SupportsCapability(CNA::GraphicsCapability::ThreeD);
+const bool knownAsciiFalsePositive =
+    dev.GetGraphicsBackendType() == CNA::GraphicsBackendType::Ascii;
+
+if (reports3D && !knownAsciiFalsePositive)
 {
-    // safe to issue 3D draw calls, bind vertex/index buffers, etc.
+    // Safe for every currently shipped backend after the known exception above.
 }
 else
 {
@@ -628,7 +633,8 @@ else
 \texttt{SupportsCapability} override rather than assuming the capability system is uniformly
 reliable.} \texttt{IGraphicsBackend::SupportsCapability}'s own default implementation --- used
 by any backend that doesn't override a specific capability --- returns \texttt{true}
-unconditionally. \texttt{CNA::GraphicsCapability::MultipleRenderTargets} exists in the enum
+unconditionally. That default creates more than one confirmed false positive.
+\texttt{CNA::GraphicsCapability::MultipleRenderTargets} exists in the enum
 specifically to let a caller check MRT support ahead of time, exactly as
 \S\ref{sec:worked-mrt} above recommends, but it is never actually referenced by any backend's
 \texttt{SupportsCapability} override anywhere in the codebase --- meaning
@@ -639,6 +645,19 @@ target past the first. The capability query that exists specifically to protect 
 this exact gap does not currently protect against it --- a real, precise, second-order finding
 about the capability system's own incompleteness, not a criticism of the MRT gap itself (which
 the header's own doc comment already names honestly as backend-dependent).
+
+The same direct audit finds two further shapes. \texttt{ASCII} is 2D-only and its reachable 3D
+operations forward to SDL renderer's throwing implementation, yet it has no capability
+override and therefore reports \texttt{ThreeD=true}; that is why the worked example above
+checks the backend type as well. \texttt{CustomEffects} likewise reports \texttt{true} on
+\texttt{BGFX}, \texttt{WEBGPU}, \texttt{ASCII}, and \texttt{SOFTWARE}, despite respectively
+producing an always-invalid compiled object, returning a null factory whose
+\cnaclass{SpriteBatch} path rejects the effect, exposing the same null/throw combination
+through the ASCII decorator, and accepting source without ever executing it. See
+Chapter~\ref{ch:shader-fx-gap} for that full backend matrix. \texttt{OcclusionQuery} adds a
+parallel confirmed set: WebGPU, SDL GPU, and Software inherit a null
+\texttt{CreateOcclusionQuery()} factory, while ASCII forwards to SDL renderer's throwing one,
+yet all four inherit the same \texttt{true} capability answer.
 \end{sourcenote}
 
 \section{Resource tracking and disposal ordering}
@@ -886,13 +905,15 @@ same exact shape as \texttt{MultipleRenderTargets}' own gap above --- another ca
 same eight-entry enum, declared for a caller to check ahead of time and never actually wired on
 any backend that would need to answer anything other than an unconditional \texttt{true} ---
 making \texttt{MultipleRenderTargets} and \texttt{DepthStencilBuffer} two confirmed-unreliable
-entries so far, against \texttt{ThreeD} (confirmed correctly wired above) and \texttt{WireFrame}
-(confirmed, by the identical direct-source-read method, to have a real, dedicated
-\texttt{case} on both EasyGL and Vulkan --- a hardcoded \texttt{false} on EasyGL, since GLES3
-has no wireframe fill mode at all, and a genuine runtime driver-feature check on Vulkan)
-confirmed reliable; the remaining four entries (\texttt{MultiSampleAntiAliasing},
-\texttt{AnisotropicFiltering}, \texttt{OcclusionQuery}, \texttt{CustomEffects}) were not
-re-audited for this finding and should not be assumed either way without the same direct check.
+entries so far. \texttt{ThreeD} has real false-return overrides on SDL renderer, DX3, and
+Canvas, but the ASCII false positive above means it is not universally reliable either.
+\texttt{CustomEffects} is now independently confirmed unreliable for the four backend-specific
+shapes above, and \texttt{OcclusionQuery} has the four null/throw false positives just
+identified. \texttt{WireFrame}, by contrast, has a real, dedicated \texttt{case} on both
+EasyGL and Vulkan --- a hardcoded \texttt{false} on EasyGL, since GLES3 has no wireframe fill
+mode at all, and a genuine runtime driver-feature check on Vulkan. The remaining entries
+(\texttt{MultiSampleAntiAliasing} and \texttt{AnisotropicFiltering}) were not exhaustively
+re-audited in this pass and should not be assumed either way without the same direct check.
 
 \section{Worked example: a raw two-triangle scene, no SpriteBatch}
 \label{sec:worked-drawprimitives}

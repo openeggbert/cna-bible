@@ -115,11 +115,19 @@ returning \texttt{true}) while silently dropping every single uniform value a ga
 --- exactly the kind of ``it compiles and something appears on screen'' risk
 Chapter~\ref{ch:shader-fx-gap}'s own \texttt{IsEffectValid()} worked example already warned
 readers to check for, extended one level deeper here: a valid program is not the same
-guarantee as a program that actually receives the uniforms it was given. Every backend that
-ships \cnaclass{ShaderEffect} support in practice does override the full setter set (this is
-not a real, observed gap the way the \cnaclass{SpriteBatch} transform-matrix one is) --- but
-the interface's own permissiveness here is worth knowing before assuming a new or
-partially-ported backend's uniform setters are wired up just because its shader compiles.
+guarantee as a program that actually receives the uniforms it was given. Backends that ship
+\cnaclass{ShaderEffect} support do \emph{not} uniformly override the full setter set; this is a
+real, observed boundary, not merely a hypothetical one. EasyGL supplies every
+scalar, vector, matrix, array, and 2D/cube/volume texture hook. D3D11 and D3D12 supply the
+scalar/vector/matrix family but inherit both array no-ops and every texture no-op; D3D9 has
+the same setter boundary. Their \cnaclass{SpriteBatch} paths bind only the primary texture
+expected by the fixed shader contract. Vulkan and SDL GPU likewise implement only their fixed
+scalar/vector/matrix slots. Headless records scalar/vector/matrix/array updates and a 2D
+texture bind for logic tests, but cannot prove a pixel result. Most strikingly, Software
+returns a valid effect while deliberately executing none of the supplied source and
+discarding every setter. Chapter~\ref{ch:shader-fx-gap} gives the full live matrix; the
+architectural lesson here is that each method on this permissive interface is an independent
+capability, even after compilation succeeds.
 
 \subsection{IIndexBufferBackend::SetData32: a defensive throw traced out to dead code}
 
@@ -179,15 +187,25 @@ returns \texttt{true} for everything; a 2D-only backend like \texttt{SDL\_RENDER
 than accepting a 3D draw call and throwing only once the call actually arrives.
 
 \begin{lstlisting}
-if (device.SupportsCapability(GraphicsCapability::ThreeD)) {
+const auto backend = device.GetGraphicsBackendType();
+const bool knownAscii3DFalsePositive =
+    backend == GraphicsBackendType::Ascii;
+if (device.SupportsCapability(GraphicsCapability::ThreeD) &&
+    !knownAscii3DFalsePositive) {
     DrawSceneWith3DModels();
 } else {
     DrawFlat2DFallbackScene(); // e.g. running on SDL_RENDERER or CANVAS
 }
 
-if (!device.SupportsCapability(GraphicsCapability::OcclusionQuery)) {
+const bool knownOcclusionFalsePositive =
+    backend == GraphicsBackendType::WebGPU ||
+    backend == GraphicsBackendType::SdlGpu ||
+    backend == GraphicsBackendType::Software ||
+    backend == GraphicsBackendType::Ascii;
+if (!device.SupportsCapability(GraphicsCapability::OcclusionQuery) ||
+    knownOcclusionFalsePositive) {
     // Skip GPU occlusion culling entirely rather than constructing an OcclusionQuery
-    // that CreateOcclusionQuery() would only return nullptr for anyway.
+    // whose factory would return nullptr or throw on these known exceptions.
 }
 \end{lstlisting}
 
@@ -198,6 +216,21 @@ is one of the eight values this mechanism covers, but no backend's \texttt{Suppo
 override actually gates on it, so it silently returns \texttt{true} even on backends (like
 \texttt{SOFTWARE}) where a real MRT draw demonstrably fails --- a capability flag that exists,
 but that this specific query cannot yet be trusted to answer honestly for.
+
+The source audit confirms further failures of that default-true design. First,
+\texttt{ASCII} is 2D-only and forwards its executable 3D calls to SDL renderer's throwing
+implementation, but it has no \texttt{SupportsCapability()} override of its own; unlike
+\texttt{SDL\_RENDERER}, \texttt{DX3}, and \texttt{CANVAS}, it therefore reports
+\texttt{ThreeD=true}. Second, \texttt{CustomEffects} reports true on BGFX, WebGPU, ASCII, and
+Software despite four different non-support shapes: an always-invalid compiled object, a null
+factory plus a throwing \cnaclass{SpriteBatch}, the same null/throw combination through the
+ASCII decorator, and a valid-looking Software object whose source is never executed. Thus
+\texttt{OcclusionQuery} is a third confirmed case: WebGPU, SDL GPU, and Software inherit a
+null factory, while ASCII forwards to SDL renderer's throwing factory, but all four report
+\texttt{true}. Thus ``ask, don't catch'' is the intended API, not yet a universal guarantee.
+A caller targeting one of these known exceptions needs the explicit guards above and, for
+custom effects, the backend-specific boundary documented in
+Chapter~\ref{ch:shader-fx-gap}.
 
 \section{Build-time selection}
 

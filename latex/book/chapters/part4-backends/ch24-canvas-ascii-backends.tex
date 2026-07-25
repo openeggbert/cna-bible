@@ -60,8 +60,8 @@ saving/restoring it --- both corrected together.
 
 \subsection{Not-fully-native features, honestly labeled}
 
-\cnaclass{TextureAddressMode::Wrap} is implemented via \texttt{ctx.createPattern(source,
-'repeat')}, applied only when the source rectangle actually exceeds the texture's bounds;
+\texttt{Wrap} addressing uses a repeating \texttt{ctx.createPattern} canvas pattern, applied
+only when the source rectangle actually exceeds the texture's bounds;
 \texttt{Mirror} uses a lazily-built, cached $2\times2$ pre-tiled mirrored canvas. Both carry
 the same real-browser verification caveat as everything else in this section. Mixed per-axis
 combinations (wrap on one axis, mirror or clamp on another) throw by design, per the fix
@@ -208,7 +208,7 @@ Background fills plus glyph tinting never actually went through
 \texttt{GraphicsDevice.BlendState} at all, so the underlying SDL renderer's blend mode
 defaulted to a non-alpha-aware mode --- background fills were effectively invisible, because
 an ``off'' glyph pixel simply overwrote the background with whatever raw black RGB value it
-stored. Fixed by forcing real \cnaclass{BlendState.AlphaBlend} factors before every grid draw,
+stored. Fixed by forcing the real \texttt{AlphaBlend} preset's factors before every grid draw,
 independent of whatever \cnaclass{BlendState} the game itself had set.
 
 \subsection{A methodology finding, not a bug}
@@ -228,8 +228,8 @@ input test written specifically for this backend, passing in full.
 
 \section{Both backends are 2D-only by explicit design, not by omission}
 
-Every backend documented in the previous three chapters implements the full
-\cnaclass{IGraphicsBackend} interface, 3D pipeline included, even where a given hardware
+Every backend documented in the previous three chapters implements the full backend interface,
+\cnaclass{IGraphicsBackend}, 3D pipeline included, even where a given hardware
 target turns out to have real gaps in that support (Chapter~\ref{ch:backend-architecture}
 covers several). \texttt{CANVAS} and \texttt{ASCII} are architecturally different: neither one
 \emph{attempts} 3D at all, and this is enforced in code, not merely asserted in prose.
@@ -239,10 +239,10 @@ covers several). \texttt{CANVAS} and \texttt{ASCII} are architecturally differen
 \texttt{AsciiGraphicsBackend} forwards every 3D-pipeline method it does override directly to
 the wrapped \texttt{SdlGraphicsBackend}'s own existing \texttt{ThrowNo3D()} calls, rather than
 re-declaring the same throw logic a second time --- a design decision the backend's own plan
-document (\texttt{plan\_ascii.md}, Phase~G7) records explicitly as ``same net behavior, less
-code.'' \texttt{ascii\_throwno3d\_test.cpp} exists purely to prove this forwarding is complete
-and correct, by calling each reachable 3D entry point on a real, live backend instance and
-checking that it actually throws:
+document (\path{plan_ascii.md}, Phase~G7) records explicitly as ``same net behavior, less
+code.'' The dedicated \path{ascii_throwno3d_test.cpp} exists purely to prove this forwarding
+is complete and correct, by calling each reachable 3D entry point on a real, live backend
+instance and checking that it actually throws:
 
 \begin{lstlisting}
 auto& backend = static_cast<AsciiGraphicsBackend&>(dev.GetBackend());
@@ -256,42 +256,72 @@ check(!backend.SupportsDepthStencil(), "SupportsDepthStencil() is false");
 check(backend.CreateTexture3D(4, 4, 4, false, 0) == nullptr, "CreateTexture3D returns nullptr");
 \end{lstlisting}
 
-Seventeen checks in total, covering three distinct failure shapes rather than one uniform
-rule: twelve directly-reachable entry points (the six \texttt{Clear*} overloads,
-\texttt{SetDepthTestEnabled}, \texttt{SetBlendEnabled}, \texttt{SetDepthWriteEnabled},
-\texttt{CreateVertexBuffer}, \texttt{CreateIndexBuffer16}, \texttt{CreateOcclusionQuery})
-throw a real \texttt{std::runtime\_error}; \texttt{SupportsDepthStencil()} returns \texttt{false}
-rather than throwing, since it is a capability query, not an action (the same ``ask, don't
-catch'' shape Chapter~\ref{ch:sdl-renderer} documents for \texttt{SDL\_RENDERER}'s own
-\texttt{SupportsCapability} overrides); and four factory methods
-(\texttt{CreateTexture3D} / \texttt{CreateTextureCube} / \texttt{CreateRenderTargetCube}/
-\texttt{CreateEffectBackend}) return \texttt{nullptr} rather than throwing at all, because
-\texttt{AsciiGraphicsBackend} never overrides them --- they fall through to
-\cnaclass{IGraphicsBackend}'s own shared defaults, which already return \texttt{nullptr}, so
-adding a local override would only duplicate behavior the base class already provides for
-free.
+Seventeen checks in total cover three distinct failure shapes rather than one uniform rule.
+Twelve directly-reachable entry points throw a real \texttt{std::runtime\_error}:
 
-Three further methods --- \texttt{DrawColoredPrimitives}, \texttt{DrawIndexedColoredPrimitives},
-\texttt{DrawInstancedPrimitivesEx} --- are deliberately \emph{not} exercised by this test at
-all, and the test's own comments explain why honestly rather than silently skipping them:
-each needs a real \texttt{IVertexBufferBackend\&} argument, but \texttt{CreateVertexBuffer}
-and \texttt{CreateIndexBuffer16} already throw (Checks~J/K above), so no real vertex or index
+\begin{itemize}
+  \item the six \texttt{Clear*} overloads;
+  \item \texttt{SetDepthTestEnabled}, \texttt{SetBlendEnabled}, and
+        \texttt{SetDepthWriteEnabled};
+  \item \texttt{CreateVertexBuffer}, \texttt{CreateIndexBuffer16}, and
+        \texttt{CreateOcclusionQuery}.
+\end{itemize}
+
+\texttt{SupportsDepthStencil()} instead returns \texttt{false}, since it is a capability query,
+not an action (the same ``ask, don't catch'' shape Chapter~\ref{ch:sdl-renderer} documents for
+\texttt{SDL\_RENDERER}'s own \texttt{SupportsCapability} overrides). Four other factories
+return \texttt{nullptr}:
+
+\begin{itemize}[nosep]
+  \item \texttt{CreateTexture3D};
+  \item \texttt{CreateTextureCube};
+  \item \texttt{CreateRenderTargetCube};
+  \item \texttt{CreateEffectBackend}.
+\end{itemize}
+
+None has an ASCII-specific override. All four fall through to the shared base-class defaults,
+which already return \texttt{nullptr}, so adding local overrides would only duplicate
+behavior the base class already provides for free.
+
+There is one important exception to that otherwise honest query behavior:
+\texttt{AsciiGraphics}\allowbreak\texttt{Backend} also never overrides the public
+\texttt{SupportsCapability(GraphicsCapability)} method, whose shared default returns
+\texttt{true}. It therefore reports \texttt{ThreeD=true}, \texttt{CustomEffects=true}, and
+\texttt{OcclusionQuery=true} even though the calls above prove that 3D operations throw, the
+custom-effect factory returns \texttt{nullptr}, and the query factory forwards to SDL
+renderer's throw. The internal
+\texttt{SupportsDepthStencil()} check in the test is truthful; the public capability enum
+currently is not for these three entries. Chapters~\ref{ch:graphicsdevice}
+and~\ref{ch:backend-architecture} show the required caller-side guard.
+
+The test deliberately does \emph{not} exercise three further methods:
+
+\begin{itemize}[nosep]
+  \item \texttt{DrawColoredPrimitives};
+  \item \texttt{DrawIndexedColoredPrimitives};
+  \item \texttt{DrawInstancedPrimitivesEx}.
+\end{itemize}
+
+Its own comments explain why honestly rather than silently skipping them: each needs a real
+vertex-buffer backend reference, but \texttt{CreateVertexBuffer} and
+\texttt{CreateIndexBuffer16} already throw (Checks~J/K above), so no real vertex or index
 buffer can ever exist on this backend to construct that argument with. They are structurally
 unreachable via any real call path a game could take, not merely untested by omission ---
-confirmed correct by code review instead, since both forward to the same wrapped inner backend
-with the identical one-line pattern as every other method in the file.
+confirmed correct by code review instead, since all three forward to the same wrapped inner
+backend with the identical one-line pattern as every other method in the file.
 
 \subsection{CANVAS: the identical contract, without a dedicated test}
 
 \texttt{CanvasGraphicsBackend} follows the exact same shape, documented directly in its own
 header rather than in a standalone test file: the ``inherently-3D-only pure virtuals'' ---
-\texttt{ClearColorAndDepth} and its five siblings, the vertex/index buffer factories,
+\texttt{ClearColorAnd\allowbreak{}Depth} and its five siblings, the vertex/index buffer factories,
 \texttt{DrawColoredPrimitives} --- throw via \texttt{ThrowNo3D()}, while the remaining
-3D-only surface (\texttt{Draw*Ex} / \texttt{DrawInstancedPrimitivesEx},
-\texttt{CreateIndexBuffer32}, and the same four \texttt{Create\{Texture3D, TextureCube,
-RenderTargetCube, OcclusionQuery, EffectBackend\}} factories) is left entirely on
-\cnaclass{IGraphicsBackend}'s own shared defaults, unoverridden. The header comment names its
-own precedent directly: this is ``confirmed against \texttt{SDL\_RENDERER}'s own precedent of
+3D-only surface (\texttt{Draw*Ex} / \texttt{DrawInstanced\allowbreak{}PrimitivesEx},
+\texttt{CreateIndex\allowbreak{}Buffer32}) is left on
+\cnaclass{IGraphicsBackend}'s own shared defaults, as are the five factories for
+\texttt{Texture3D}, \texttt{TextureCube}, \texttt{RenderTargetCube},
+\texttt{OcclusionQuery}, and \texttt{EffectBackend}. The header comment names its own
+precedent directly: this is ``confirmed against \texttt{SDL\_RENDERER}'s own precedent of
 not overriding these either (Phase~C7)'' --- the same reasoning \texttt{SDL\_RENDERER} itself
 established first, that \texttt{ASCII} then reused by wrapping \texttt{SDL\_RENDERER}
 verbatim, and that \texttt{CANVAS} arrived at independently for its own, unrelated

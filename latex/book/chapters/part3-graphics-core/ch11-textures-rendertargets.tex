@@ -258,10 +258,11 @@ device.SetRenderTarget(nullptr); // back to the backbuffer
 Whether this actually produces a correct image is, per \S\ref{sec:rendertargets} below,
 backend-dependent in a way no amount of correct call-site code can work around: EasyGL renders
 this correctly; Vulkan renders black for either (or both) of two distinct, separately-tracked
-reasons; and BGFX has an unconditional \texttt{static\_cast} type-confusion bug reading the
-wrong handle pool entirely. A porting engineer hitting a black cube face on Vulkan should treat
-this as a confirmed, known backend limitation rather than a bug in call-site code structured
-like the example above.
+reasons; and BGFX's former unconditional \texttt{static\_cast} type-confusion bug has since
+been fixed by shared cube-sampling interfaces and virtual handle dispatch, as the detailed
+status below records. A porting engineer hitting a black cube face on Vulkan should treat this
+as a confirmed, known backend limitation rather than a bug in call-site code structured like
+the example above; BGFX no longer belongs in that category.
 
 \section{Render targets: a once-sharp per-backend divergence, mostly closed since}
 \label{sec:rendertargets}
