@@ -328,7 +328,7 @@ separate, write-only swapchain readback limitation described below.
 \section{What remains open}
 \label{sec:sdlgpu-what-remains-open}
 
-Three limits are worth stating precisely rather than glossing over. First, occlusion queries are a
+Four limits are worth stating precisely rather than glossing over. First, occlusion queries are a
 \emph{permanent} limitation of the underlying API, not a task gap: the vendored
 \texttt{SDL\_gpu.h} has no query-pool or occlusion-query type anywhere in it (only
 \texttt{SDL\_GPUFence} for CPU/GPU synchronization), so \texttt{CreateOcclusionQuery()}
@@ -358,7 +358,12 @@ uniform color. This means the generated-mipmap case's own existing ``passing'' s
 resting on a test that structurally cannot catch this specific failure mode; a genuine fix
 needs a non-uniform per-level test (a distinct solid color per mip level, mirroring the
 sub-volume worked example's own per-Z-slice colors) before this can honestly be called
-resolved either way. Beyond these three, Windows (D3D12 driver) and macOS/iOS (Metal driver)
+resolved either way. Fourth, the generic \texttt{.cnj} custom-effect fixture remains a
+cross-backend portability gap: its loose GLSL ES 3.00 declarations are not accepted by this
+backend's explicit-location, uniform-block binding contract, even though the dedicated
+\texttt{\#version 450} effect regression is pixel-verified. That choice is deliberately left
+open pending either a shared content-dialect migration or a real shader-translation layer.
+Beyond these four, Windows (D3D12 driver) and macOS/iOS (Metal driver)
 remain code paths only, not validation claims, until run on real (or Wine/DXVK-class) hardware
 --- the same phased-claim discipline this book already applies to \texttt{D3D11} /
 \texttt{D3D12} (Chapter~\ref{ch:direct3d-backends}) and \texttt{WebGPU}

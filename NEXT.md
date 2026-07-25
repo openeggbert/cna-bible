@@ -132,10 +132,11 @@ that current count.
 portability. The live CnjEffect fixture uses GLSL ES 3.00 with loose uniforms and unqualified
 stage I/O, which fails under SDL_GPU; the passing dedicated regression instead uses version 450,
 explicit locations, fixed set/binding spaces, and named uniform blocks. It pixel-verifies an
-effect-specific tint and a no-effect white control. The 384-line chapter compiled twice as an
+effect-specific tint and a no-effect white control. The 389-line chapter compiled twice as an
 eight-page isolated PDF with zero overfull boxes; the new material was rendered and inspected.
 The fixture remains an intentional, separately-scoped compatibility gap rather than a claim
-that custom effects are unsupported.
+that custom effects are unsupported, and is now named consistently as the fourth item in the
+chapter's closing open-limits list.
 
 **Latest continuation: Ch.25 (DX3/free-direct) received a source-grounded fifth pass.** Its
 fixed-output letterbox limitation does not make input mapping ambiguous: the backend's real
