@@ -885,9 +885,29 @@ A cluster of methods exist purely to support tooling, testing, and backend-inter
   the active backend (same window) with a new requested multisample count.
   Its header still describes a missing manager/reset path, but that rationale is stale:
   ordinary \texttt{ApplyChanges()} now reaches the normal reset and multisample-application
-  path. This older escape hatch remains in several focused tests; it is still safe only before
-  GPU resources exist, because it destroys and replaces the complete backend rather than
-  performing the normal resource-preserving reconfiguration.
+  path. This older escape hatch remains in three focused Vulkan tests; it is still safe only
+  before GPU resources exist, because it destroys and replaces the complete backend rather than
+  performing the normal resource-preserving reconfiguration. This is a precondition in prose,
+  not an enforced check: it neither examines the resource vector nor raises \texttt{DeviceResetting}
+  or \texttt{DeviceReset}. A texture, buffer, or target created before the call retains a
+  backend object tied to the destroyed backend.
+
+  The implementation destroys \texttt{backend\_}, creates its replacement, then reruns the
+  viewport update. It does not reapply the stored blend/depth/rasterizer,
+  sampler, vertex/index, effect, blend-factor, stencil, or custom viewport/scissor state to the
+  replacement. The final viewport helper commonly returns early at the same window dimensions,
+  because its remembered dimensions belong to the old backend. It also stores the requested count
+  before construction but never writes the new backend's actual clamped count back, unlike the
+  ordinary \texttt{Reset()} path.
+
+  Replacement failure is worse than an unsupported sample count: the old backend has already
+  been destroyed, the device retains the new requested presentation value, and
+  \texttt{GetBackend()} / \texttt{SupportsCapability()} throw because \texttt{backend\_} is null.
+  A normal \texttt{Reset()} still raises both events but skips all backend work in that state; only
+  another successful call to this NOXNA hook can restore a backend. The three legacy callers invoke it
+  during \texttt{Initialize()} before their first \cnaclass{SpriteBatch}, texture, or target and
+  then prove Vulkan rendering; no located test covers resources/state/events, clamping, or a
+  failed replacement. Prefer the normal manager/reset route for runtime MSAA changes.
 \end{description}
 
 \begin{sourcenote}

@@ -7,9 +7,9 @@ session log; this file is the concise live handoff.
 
 - Branch: `develop`.
 - Book: **521 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by four documentation commits: `944fa54`
+- The local branch is ahead of `origin/develop` by five documentation commits: `944fa54`
   (render-target binding/usage contracts), the Reset-order contracts batch, the resource-lifecycle
-  audit, and the current construction/SDL-ownership audit.
+  audit, the construction/SDL-ownership audit, and the current multisample-backend-rebuild audit.
   The previous seventeen-commit count was accurate before the remote advanced and is retained
   only in the historical session log.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
@@ -17,7 +17,46 @@ session log; this file is the concise live handoff.
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: construction defaults, rollback, and SDL video ownership
+## Latest completed batch: multisample backend rebuild and failure state
+
+No CNA source changes were made; the sibling repository remained a read-only authority. The
+legacy hook, the normal `GraphicsDeviceManager` route, all direct callers, their registrations,
+and the current backend interface establish:
+
+- Runtime `GraphicsDeviceManager::ApplyChanges()` does reach `GraphicsDevice::Reset()` and the
+  backend's in-place `ApplyMultiSampleCount()` hook. That normal path records the actual clamped
+  count in `PresentationParameters`; the older `RecreateBackendForMultiSampleCount(int)` header
+  assertion that the manager has no reset path is stale.
+- The legacy hook instead first destroys `backend_`, constructs a replacement, and only then asks
+  the viewport helper to run. Its three remaining callers are focused Vulkan programs, all during
+  `Initialize()` before their first `SpriteBatch`, texture, or render target. They demonstrate
+  successful Vulkan rendering only; they do not exercise state, resources, events, clamping, or
+  a failed replacement.
+- Its ``before resources'' restriction is prose, not enforcement: it neither inspects the
+  resource vector nor raises `DeviceResetting`/`DeviceReset`. It also does not reapply the stored
+  blend/depth/rasterizer, sampler, vertex/index, effect, blend-factor, stencil, or custom
+  viewport/scissor state. Same-size replacement commonly leaves the new backend without an
+  explicit viewport update because the old backend's dimensions are remembered. Unlike normal
+  Reset, the requested count is stored before construction but the actual clamped result is never
+  written back.
+- If replacement construction throws, the previous backend is already gone, the new requested
+  presentation value remains, and `GetBackend()`/`SupportsCapability()` throw with a null backend.
+  Ordinary `Reset()` still emits its events but skips backend work in that state; only another
+  successful legacy rebuild can restore a backend. This is a source-established recovery hole,
+  not an injected failure reproduction.
+- Ch.9 records the corrected routing, unsafe legacy contract, state omissions, failure outcome,
+  and narrow proof boundary. Incremental `latexmk` succeeded at **521 pages**; targeted
+  undefined-reference and duplicate-label checks are empty; makeindex accepted **2,124** entries
+  with zero rejected and zero warnings; `git diff --check` passes. One initially introduced
+  overfull box was removed. Physical pages 124--125 (printed 102--103) were rendered and are
+  clean. Ch.9 is now **1,393** lines and remains printed pages **87--112**.
+
+Next recommended start: trace the `GraphicsDeviceManager` event/lifecycle layer around
+`ApplyChanges()`: determine whether its `DeviceResetting`/`DeviceReset` notifications forward or
+duplicate device notifications, their state observations and failure behavior, and the exact
+cross-backend test evidence. Keep it separate from the completed device-level Reset audit.
+
+## Previous completed batch: construction defaults, rollback, and SDL video ownership
 
 No CNA source changes were made; the sibling repository remained a read-only authority.
 The constructor path, focused Headless/Software/D3D12 examples, generic pixel-test preflight,
