@@ -913,6 +913,77 @@ There is no Cube seed in the whole-container fuzzer. Thus the fixture is valuabl
 ordinary DXT1 traversal, not proof that arbitrary Cube XNB input is bounded or that all six faces
 are semantically correct.
 
+\subsection{SpriteFontReader has real DXT3 and LZX fixtures, but does not validate its parallel glyph tables}
+\label{sec:xnb-spritefont-reader-contract}
+
+The explicitly registered
+\texttt{Microsoft.Xna.Framework.Content.SpriteFontReader} has FNA's ordinary fresh-font payload,
+but it is an object graph rather than a run of bare fields. In this exact order it dispatches a
+\cnaclass{Texture2D} atlas, a \texttt{List<Rectangle>} of glyph bounds, a second
+\texttt{List<Rectangle>} of cropping rectangles, a \texttt{List<Char>} character map, Int32
+\texttt{lineSpacing}, Single \texttt{spacing}, a \texttt{List<Vector3>} of kerning triples, and
+a Boolean followed by a Char only when that Boolean says a default character is present. Each
+nested object begins with its own one-based XNB type-reader index. The final optional character
+is therefore a literal Boolean/Char pair, not a \texttt{NullableReader<Char>} object. CNA applies
+its exact serialized-version-zero rule to the table entries around this FNA-shaped body.
+
+The reader's registration has a deliberately narrow dependency surface. It installs its three
+actual closed generic names --- ListReader for Rectangle, Char, and Vector3 --- but intentionally
+does not install the atlas's Texture2DReader; a standalone registration caller must do that
+separately. The built-in umbrella does install both. CNA's generic-list adapter recreates its
+element reader from the global canonical-name registry, rather than retaining FNA's matching
+instance from the current file's reader table. Thus only these three closed combinations are
+available; a dependency spelling CNA has not registered fails rather than being reflectively
+supplied. The real standard table has exactly the eight names needed by this route.
+
+Each list first reads a signed Int32 count and the common collection guard accepts only zero
+through the configured ten-million-element limit. That protects an individual reservation, but
+there is no aggregate budget across the three lists and no semantic relation between them. The
+constructor simply stores all four parallel vectors and builds its character lookup by assigning
+each map entry its last index. It does not require equal glyph/cropping/character/kerning counts,
+sorted or unique characters, finite kerning and spacing, positive line spacing, or rectangles
+inside the atlas. A malformed font can consequently load successfully and later make
+\texttt{MeasureString()} or \texttt{SpriteBatch::DrawString()} index a shorter kerning, cropping,
+or glyph vector out of bounds. FNA also trusts its content-pipeline tables, but its managed lists
+fail with a bounds exception; CNA's unchecked \texttt{std::vector} indexing is not a safe error
+boundary for untrusted XNB input.
+
+The optional default character exposes a second current-develop defect. CNA copies a present
+character without checking that the character map contains it. When an unknown text character
+then falls back, both measurement and drawing call \texttt{find(defaultCharacter)} and immediately
+read \texttt{it->second}; an absent default therefore dereferences \texttt{end()}. FNA's
+dictionary indexer instead throws on that inconsistent state. The later unmerged
+\texttt{feature/audit} commit \texttt{fb1dcbc4} adds construction/setter validation and a checked
+fallback, but it is not an ancestor of current \texttt{develop}. This is observable in the
+current CNJ SpriteFont test fixture too: it supplies \texttt{"?"} as the default while its sole
+glyph is \texttt{'A'}, then never measures an unknown character. Treat the absence of an XNB
+default-character invariant as live source behavior, not as a harmless test omission.
+
+Existing-instance handling differs deliberately, even though ordinary manager dispatch never
+reaches it. SpriteFontReader leaves \texttt{CanDeserializeIntoExistingObject} false, as FNA
+does, so normal \cnaclass{ContentManager} loading creates a fresh value. A direct advanced read
+with an existing C\texttt{++} font instead throws \texttt{System::NotImplementedException} before
+consuming payload. FNA's otherwise-dead branch reloads only the existing atlas texture in place,
+discards every remaining font field, and returns that same instance. CNA consequently has no
+direct reload equivalence, but it also avoids inventing a public mutator solely for a normal-path
+case that cannot occur.
+
+The evidence is appreciably stronger than for Texture3D but bounded. Real uncompressed MonoGame
+\texttt{Default.xnb} goes through \cnaclass{ContentManager} with the standard eight-reader table:
+its 128-by-128 DXT3 atlas, all four 95-element lists, characters from space through tilde,
+line spacing 19, zero extra spacing, and no default character are independently recorded in its
+fixture manifest. The test asserts the scalar and character-range subset, not glyph, cropping, or
+kerning values, decoded atlas pixels, or rendering. A second real MonoGame
+\texttt{FontCalibri14.xnb} exercises the same reader after a 44,032-byte multi-block LZX decode;
+the test establishes only a nonempty map and positive \texttt{MeasureString("Hello")} width.
+The focused reader tests cover registration and the false existing-instance property, while the
+many backend SpriteFont pixel tests hand-build tiny fonts rather than validating XNB tables. No
+located test covers a true XNB default character, list/count mismatch, duplicate or malformed
+character map, invalid rectangles/floats, truncation, nonzero reader version, direct-existing
+failure, cache/unload, another producer/platform, or a SpriteFont seed in the container fuzzer.
+Treat the two real fixtures as sound ordinary-layout and compressed-path evidence, not as a
+validation or adversarial-input oracle.
+
 \section{The resolution order, precisely}
 
 The earlier short three-way description is useful, but it hides two consequential facts: a

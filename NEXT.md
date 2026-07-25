@@ -6,18 +6,60 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-25)
 
 - Branch: `develop`.
-- Book: **549 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by **nine**
+- Book: **551 physical PDF pages, 49 chapters, 6 appendices**.
+- The local branch is ahead of `origin/develop` by **ten**
   documentation commits: the ContentTypeReader contract, XNB container, type-name/table,
   scalar/math, Decimal/DateTime, CurveReader, Texture2DReader, Texture3DReader, and
-  TextureCubeReader audits. This count was checked against the current remote-tracking ref; do
-  not reuse older historical ahead-counts.
+  TextureCubeReader and SpriteFontReader audits. This count was checked against the current
+  remote-tracking ref; do not reuse older historical ahead-counts.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
   reviewing `git push`. Its response explicitly rejected the request rather than granting
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: TextureCubeReader XNB face, mip, byte-accounting, and ownership boundary
+## Latest completed batch: SpriteFontReader XNB glyph-table, default-character, and fixture boundary
+
+No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
+SpriteFontReader and generic collection bridge, SpriteFont/SpriteBatch consumers, focused and
+end-to-end tests, real MonoGame fixture manifests, current FNA reader/runtime, and
+current-versus-unmerged history establish:
+
+- The version-zero reader dispatches Texture2D, glyph and cropping Rectangle lists, a Char map,
+  Int32 line spacing, Single spacing, Vector3 kerning, then a Boolean plus conditional Char. The
+  final value is not a NullableReader object. Its helper registers only the three required closed
+  ListReader combinations; Texture2D must be registered separately outside the built-in umbrella.
+- Each list has the signed 0--10-million count guard, but there is no aggregate budget or check
+  that glyph, cropping, character, and kerning vectors are parallel. Nor are characters, floats,
+  or atlas rectangles semantically validated. Later MeasureString/DrawString index all lists by
+  the character-map index, so a malformed successfully loaded font can read a shorter vector out
+  of bounds.
+- Current `develop` also accepts a default character absent from the character map, then
+  dereferences `unordered_map::end()` when fallback is used. FNA's dictionary throws instead.
+  `fb1dcbc4` adds constructor/setter validation and a checked fallback only on unmerged
+  `feature/audit`; the current CNJ test fixture itself creates this invalid `?`/`A` state but
+  never exercises fallback.
+- Normal ContentManager dispatch supplies no existing font, matching FNA's false capability
+  flag. A direct CNA existing-instance read throws `NotImplementedException`; FNA's dormant
+  branch reloads only the atlas in place and discards the rest. This is an intentional direct-path
+  divergence, not a normal-load behavior.
+- Real MonoGame `Default.xnb` proves a 128x128 DXT3 atlas and 95 glyph records through the full
+  manager route; `FontCalibri14.xnb` proves the same graph after a 44,032-byte multi-block LZX
+  decode. Tests omit exact atlas/table/render checks and every malformed/default-character/direct
+  path; the container fuzzer has no SpriteFont seed.
+
+Ch.8 now records the literal wire and dependency surface, parallel-table/default-character failure
+boundaries, direct FNA contrast, and the two-fixture evidence matrix. Full latexmk succeeded at
+**551 pages**; targeted undefined-reference and duplicate-label checks are empty; makeindex
+accepted **2,243** entries with zero rejected and zero warnings; `git diff --check` passes.
+Rendered physical pages **117--119** are clean. Ch.8 is **1,806** lines and Ch.6 is **621** lines.
+The plan-consistency validator remains absent from this checkout.
+
+Next recommended start: continue the XNB M3 reader audit with `SoundEffectContentTypeReader`:
+wire variants, byte/format accounting, ownership and direct-instance behavior, the actual PCM
+support boundary, and real fixture/fuzz coverage. Keep the SpriteFont default-character repair
+explicitly limited to unmerged `feature/audit`.
+
+## Previous completed batch: TextureCubeReader XNB face, mip, byte-accounting, and ownership boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
 TextureCubeReader, cube upload/mip/backend implementations, DXT helpers, focused and real-fixture
