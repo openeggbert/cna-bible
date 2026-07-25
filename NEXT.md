@@ -7,20 +7,48 @@ session log; this file is the concise live handoff.
 
 - Branch: `develop`.
 - Book: **519 physical PDF pages, 49 chapters, 6 appendices**.
-- After the batch commit, the local branch is ahead of `origin/develop` by seventeen coherent
-  documentation commits:
-  roadmap, ShaderEffect/D3D ABI, general capability matrix, MSAA/anisotropy, buffer
-  contracts, volume/cube readback contracts, and RenderTargetCube upload/transition
-  contracts, followed by Texture2D update contracts, instancing/vertex binding, and input
-  coordinate routing, public backbuffer readback, swap-interval contracts, and presentation
-  format/fullscreen contracts, recovery/debug-hook contracts, viewport/scissor contracts, and
-  public `ClearOptions` contracts, and render-target binding/usage contracts.
+- The local branch is ahead of `origin/develop` by two documentation commits:
+  `944fa54` (render-target binding/usage contracts) and this Reset-order contracts batch.
+  The previous seventeen-commit count was accurate before the remote advanced and is retained
+  only in the historical session log.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
   reviewing `git push`. Its response explicitly rejected the request rather than granting
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: render-target binding and `RenderTargetUsage`
+## Latest completed batch: `GraphicsDevice::Reset()` event order
+
+No CNA source changes were made; the sibling repository remained a read-only authority.
+The implementation, focused examples/CMake registration, and current FNA source establish:
+
+- CNA raises `DeviceResetting` before it copies the new presentation parameters or changes a
+  non-null adapter. Its handler therefore observes the old settings; `DeviceReset` observes
+  the new settings after any backend MSAA clamp. FNA assigns parameters/adapter and clamps MSAA
+  before `DeviceResetting`, then issues one native backbuffer reset and restores both default
+  rectangles.
+- CNA has no equivalent universal backend-reset operation. It runs SDL window changes, virtual
+  resolution, MSAA, swap-interval, and presentation-format hooks, then asks the backend for
+  viewport dimensions. A final `DeviceReset` only means this shared route returned; it does not
+  prove acceptance of fullscreen, format, or timing requests.
+- Evidence is deliberately narrow. The registered SDL Renderer event program proves one event
+  of each kind, their order, and the 32-to-64 old/new parameter observations. The reusable
+  resize test is registered on EasyGL, Vulkan, and BGFX and proves only a custom viewport's
+  eventual full-size restoration after an actual resize. It does not prove same-size behavior,
+  scissor reset, adapter replacement, or native presentation acceptance.
+- Ch.9 now carries the staged ordering, the FNA contrast and direct source URL, test boundary,
+  and cross-reference to the existing same-size viewport/scissor limitation. Its actual printed
+  span is pages 87--110 (24 pages), correcting the stale 31-page plan figure.
+- Validation: incremental `latexmk` succeeded at **519 pages**; targeted undefined-reference
+  and duplicate-label checks are empty; makeindex accepted **2,119** entries with zero rejected
+  and zero warnings; `git diff --check` passes. Rendered printed pages 91--92 are clean. The
+  32-line addition introduced no overfull box; Ch.9 is now 1,294 lines.
+
+Next recommended start: continue the remaining public `GraphicsDevice` audit with resource
+registration/disposal and the six lifecycle events. First trace the internal resource vector,
+`OnResourceCreated`/`OnResourceDestroyed`, re-entrant `Dispose()`, and backend/window teardown
+against FNA and actual tests; do not conflate its event delivery with a native device-loss reset.
+
+## Previous completed batch: render-target binding and `RenderTargetUsage`
 
 No CNA source changes were made; the sibling repository remained a read-only authority.
 Findings were verified against the live shared source, all fourteen backend implementations,

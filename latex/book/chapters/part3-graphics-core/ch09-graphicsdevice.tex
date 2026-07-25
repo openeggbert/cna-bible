@@ -256,6 +256,38 @@ GraphicsAdapter\&)}, and a fourth \texttt{NOXNA} pointer-adapter overload,
 to mean ``keep the current adapter'' without requiring a caller to look one up just to pass it
 back unchanged.
 
+\subsection{Reset is observable staged work, not an all-at-once success guarantee}
+\label{sec:graphicsdevice-reset-order}
+
+The four overloads all end in the pointer-adapter form, whose order is part of the observable
+contract. CNA first raises \texttt{DeviceResetting}; only then does it copy the supplied
+presentation-parameter value, replace \texttt{Adapter} when the pointer is non-null,
+update TouchPanel's logical dimensions, try the SDL window's fullscreen/size changes, and forward
+virtual resolution, multisampling, swap interval, and presentation-format fields to the backend.
+It calls \texttt{UpdateViewportFromWindow()} and raises \texttt{DeviceReset} last. Thus a
+\texttt{DeviceResetting} handler in CNA observes the \emph{old} parameters and adapter, whereas
+its \texttt{DeviceReset} handler observes the new, possibly backend-clamped MSAA count.
+
+That is a real FNA difference, not merely an event-name interpretation. FNA stores its
+\texttt{PresentationParameters} and adapter, clamps MSAA, and only then raises
+\texttt{DeviceResetting}; after the event it performs one native \texttt{FNA3D\_ResetBackbuffer}
+call and unconditionally assigns full-backbuffer \texttt{Viewport} and
+\texttt{ScissorRectangle} before \texttt{DeviceReset}. The current reference implementation is
+available at \url{https://raw.githubusercontent.com/FNA-XNA/FNA/master/src/Graphics/GraphicsDevice.cs}.
+CNA has no equivalent universal backend-reset call. Its successful final event means that its
+shared routing completed; it does not establish that a driver accepted every requested native
+format, timing, or fullscreen change (the product-specific limits are the subject of the two
+source notes below).
+
+The distinction is directly covered, but narrowly. The registered SDL Renderer integration
+test \texttt{sdlrenderer\_devicereset\_events\_test.cpp} changes a 32-pixel-wide back buffer to
+64 pixels and proves one event of each kind, their order, and the old/new parameter observations.
+The reusable viewport-after-resize test is registered for EasyGL, Vulkan, and BGFX and proves a
+custom viewport eventually becomes full-size after an actual resize. Neither test establishes
+same-size reset behavior, a scissor reset, adapter replacement, or that the native presentation
+request was accepted. In particular, CNA's same-size reset preserves custom viewport/scissor
+state; see \S\ref{sec:graphicsdevice-viewport-scissor} for that separate, caller-visible gap.
+
 \begin{sourcenote}
 \textbf{From the FNA-fidelity audit (\texttt{docs/graphicsdevice-fna-audit.md}):} the three
 concrete gaps against FNA's public surface are the \texttt{Present} 3-arg overload, the
