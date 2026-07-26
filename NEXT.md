@@ -6,65 +6,58 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-26)
 
 - Branch: `develop`.
-- Book: **557 physical PDF pages, 49 chapters, 6 appendices**.
+- Book: **559 physical PDF pages, 49 chapters, 6 appendices**.
 - The pre-session `develop` checkout matched `origin/develop` exactly; the previous claim that it
-  was twelve commits ahead was stale. The VideoReader and ModelReader audits are committed locally
-  and are the only two new unpushed commits after that matching start. No remote operation was
-  attempted.
+  was twelve commits ahead was stale. The VideoReader and ModelReader audits (plus their handoff
+  correction) are committed locally; the following stock-effect batch is uncommitted. No remote
+  operation was attempted.
 - Do not infer that the historical `a8b38ae` push-review failure still describes the tracking
   state. No push was attempted in this batch; retain the normal approval requirement for any
   future `git push`.
 
-## Latest completed batch: ModelReader XNB graph, resource ownership, compatibility, and evidence boundary
+## Latest completed batch: stock-effect XNB material readers, external textures, ownership, and evidence boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
-four model readers, `Model`/bone/mesh/draw consumers, focused and registration tests, complete
-fixture manifest, whole-container fuzzer, current local FNA readers, and generic shared-resource
-implementation establish:
+five stock-effect readers, their graphics-effect consumers, focused and Model integration tests,
+generic external-reference bridge, current local FNA readers, and registered-reader inventory
+establish:
 
-- The version-zero graph starts with declaration/buffer dependencies: a stride plus element
-  records, a UInt32 vertex count plus exact raw bytes, and a Boolean element width plus Int32 raw
-  index bytes. The root requires a content manager and graphics device, then carries UInt32 bones,
-  their String/Matrix records and redundant hierarchy, signed mesh/part counts, mesh
-  String/bone/sphere/Tag records, four signed draw scalars and three shared resources per part,
-  then a root reference and model Tag. Bone IDs are one-byte below 255 bones, UInt32 otherwise,
-  one-based with zero null.
-- CNA caps bones, meshes, and parts at 100,000 and hardens vertex byte multiplication, but not
-  hierarchy semantics. It ignores every scalar bone parent and relies only on child lists, unlike
-  FNA which assigns both. Invalid scalar parents, inconsistent parent/child declarations,
-  duplicates, cycles, unlimited child counts, and parent-after-child order therefore survive when
-  child indices are in range. A null root silently becomes bone zero when bones exist, where FNA
-  immediately fails indexing its `-1` result.
-- Declaration offsets/enums/stride relationships, mesh-part scalar ranges, required non-null
-  shared resources, and index-byte divisibility are not checked. A non-multiple index byte length
-  is rounded down, discarding trailing bytes. The generic reader verifies positive shared indices
-  and installs them only after all shared objects are read; zero leaves raw part pointers null.
-  The returned Model keeps its bones, meshes, parts, buffers, and effects in a private shared
-  ownership bundle, so cache copies reuse the same graph rather than re-uploading resources.
-- CNA deliberately rejects every non-null model/mesh/part Tag, while FNA preserves Tags. Normal
-  dispatch gives neither reader an existing Model; a direct CNA instance instead fails before
-  reading, while FNA's dormant branch reuses existing mesh parts and returns that object.
-- The real uncompressed MonoGame v5 `BlenderDefaultCube.xnb` proves the full ordinary route: two
-  bones, Cube mesh/sphere, one 24-vertex/12-primitive part, 24-byte position-normal declaration,
-  16-bit 36-index buffer, and BasicEffect. A second manager load proves vertex-buffer pointer
-  identity. The 1,500-mutation whole-container fuzzer covers its complete root/fixup path, but no
-  compressed/non-MonoGame model, multi-part sharing, 255-bone reference, Tag/direct/null-root,
-  contradictory hierarchy, malformed draw/index, unload, or real-backend draw case exists.
+- BasicEffect, AlphaTestEffect, DualTextureEffect, EnvironmentMapEffect, and SkinnedEffect use
+  their exact FNA version-zero material-field sequences. They all require a manager GraphicsDevice
+  before reading even an empty texture string and erase to the one exact `shared_ptr<Effect>` type
+  needed for Model's polymorphic shared-resource fixups. The general compiled-bytecode EffectReader
+  remains a distinct, recognised-but-intentionally-unsupported path.
+- The serialized payloads omit runtime fog, matrix, light, and other effect switches, leaving
+  constructor defaults. All texture strings use generic `ReadExternalReference<T>()`, so empty is
+  null and nonempty references follow generic sibling/root rules and are privately retained by the
+  effect. CNA requires an exact Texture2D/TextureCube root where FNA reads broad Texture then casts
+  with `as`; a wrong concrete reference therefore becomes null in FNA but reaches CNA's type-cast
+  boundary. No stock-effect test covers a nonempty, missing, escaping, wrong-type, absolute, or
+  symlinked external reference.
+- The only material semantic fence is SkinnedEffect's 1/2/4 weights-per-vertex property. The other
+  float/vector values are not finite/range checked; AlphaTestEffect also accepts unchecked enum
+  values and converts the full UInt32 reference alpha to its signed property. Direct existing
+  `shared_ptr<Effect>` input is ignored and replaced without invalidating the caller's shared
+  pointer, matching FNA's dormant branch; normal dispatch never supplies one.
+- MonoGame's real uncompressed `BlenderDefaultCube.xnb` provides one 46-byte, textureless
+  BasicEffect shared-resource body through a complete Model load, and its 1,500-case fuzzer mutates
+  that path. AlphaTest, DualTexture, EnvironmentMap, and Skinned have only hand-constructed
+  empty-texture streams cross-checked with FNA source. There is no standalone root-XNB load,
+  version/truncation/external-texture/direct/cache/unload test, effect-specific fuzzer seed, or
+  real external fixture for the latter four.
 
-Ch.8 now records the literal graph, reader/resource boundaries, malformed-hierarchy and draw-data
-limits, FNA/direct/cache distinctions, and fixture/fuzzer scope. Full `make -C latex book`
-succeeded at **557 pages**; targeted undefined-reference and duplicate-label checks are empty;
-makeindex accepted **2,300** entries with zero rejected and zero warnings; `git diff --check`
-passes. Rendered physical PDF pages **119--120** (printed pages **97--98**) are clean. Ch.8 is
-**2,176** lines and Ch.6 is **621** lines. The plan-consistency validator remains absent from this
-checkout.
+Ch.8 now records the five wire orders, device/type/ownership and validation boundaries, FNA
+contrast, and evidence limits. Full `make -C latex book` succeeded at **559 pages**; targeted
+undefined-reference and duplicate-label checks are empty; makeindex accepted **2,299** entries
+with zero rejected and zero warnings; `git diff --check` passes. Rendered physical PDF pages
+**120--121** (printed pages **98--99**) are clean. Ch.8 is **2,247** lines and Ch.6 is **621**
+lines. The plan-consistency validator remains absent from this checkout.
 
-Next recommended start: audit another high-value unreviewed Ch.8 XNB reader only after confirming
-the remaining registered-reader inventory; alternatively deepen the ContentManager model cache/
-unload and real-backend draw boundary if source offers a coherent evidence path. Keep the Model
-hierarchy/draw-metadata gaps, Video FPS/silent-missing-playback divergences, SoundEffect
-loop-endpoint overflow, and stale sibling support artifacts as current `develop` facts until
-source or documentation fixes land.
+Next recommended start: XNB reader inventory is now fully represented in Ch.8; switch to a
+separate safe ContentManager/graphics API audit rather than manufacturing another reader pass.
+Keep the Model hierarchy/draw-metadata gaps, stock-effect external-reference/evidence limits,
+Video FPS/silent-missing-playback divergences, SoundEffect loop-endpoint overflow, and stale
+sibling support artifacts as current `develop` facts until source or documentation fixes land.
 
 ## Previous completed batch: SongReader XNB external-file reference, path, timing, and evidence boundary
 

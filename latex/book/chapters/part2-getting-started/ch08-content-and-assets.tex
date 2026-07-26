@@ -1067,6 +1067,77 @@ or cyclic hierarchy, out-of-range draw scalars, non-multiple index data, ownersh
 or a model draw on a real backend.  Successful loading of the cube therefore establishes the
 standard pipeline path, not a promise that arbitrary Model XNB metadata is safe to draw.
 
+\subsection{Stock-effect readers reproduce their material fields, but external textures and four of five formats lack real-asset evidence}
+\label{sec:xnb-stock-effect-reader-contract}
+
+The five registered stock-effect readers are a deliberately separate family from the general
+\texttt{Microsoft.Xna.Framework.Content.EffectReader}.  The latter is the recognised-but-
+unsupported compiled platform-shader route described earlier; it consumes no effect bytecode and
+throws a named content-load error.  The five concrete readers instead construct CNA's corresponding
+native stock effects.  They all erase their C\texttt{++} result to \texttt{shared\_ptr<Effect>}.
+This is not a claim that all five have the same runtime
+class: it is the necessary common type for a Model mesh part's polymorphic shared-effect callback.
+An \texttt{any} cast in this implementation requires an exact C\texttt{++} type, whereas FNA's
+managed reference cast can naturally upcast any of the five concrete objects to \texttt{Effect}.
+
+Each body starts by constructing its effect from the owning content manager's GraphicsDevice, so
+even an entirely texture-free stock-effect XNB cannot be read standalone or by a manager without a
+device.  Its fields then have FNA's literal version-zero order.  BasicEffect has an external
+Texture2D reference; diffuse, emissive, and specular Vector3 values; Single specular power and
+alpha; and Boolean vertex color.  AlphaTestEffect has an external Texture2D; Int32 comparison
+function; UInt32 reference alpha; diffuse Vector3; Single alpha; and Boolean vertex color.
+DualTextureEffect has two external Texture2D references, diffuse Vector3, Single alpha, and
+Boolean vertex color.  EnvironmentMapEffect has external Texture2D and TextureCube references,
+then Single map amount, Vector3 map specular, Single Fresnel factor, diffuse and emissive Vector3
+values, and Single alpha.  SkinnedEffect has external Texture2D, Int32 weights per vertex,
+diffuse/emissive/specular Vector3 values, Single specular power, and Single alpha.  Fog, world/
+view/projection matrices, lights, and the other runtime effect switches are not serialized in this
+family; each remains at its native constructor default.
+
+The texture strings use the generic \texttt{ReadExternalReference<T>()} path, not the Song/Video
+filesystem shortcut.  Thus an empty string is null, while a nonempty relative reference resolves
+beside the effect asset, goes through normal ContentManager resolution, and retains that returned
+texture through a private \texttt{shared\_ptr}.  CNA applies the generic lexical escape rejection
+for a path which normalizes above the root, although the existing generic absolute-path and
+symlink limits still apply.  It also asks directly for \texttt{Texture2D} or \texttt{TextureCube}.
+FNA asks for the broader \texttt{Texture} type and uses \texttt{as Texture2D} or
+\texttt{as TextureCube}; a wrong concrete root therefore becomes null in FNA but reaches CNA's
+exact-type loading/cast boundary.  No stock-effect test exercises a nonempty, missing, escaping,
+wrong-type, absolute, or symlinked external texture reference.
+
+Apart from the normal scalar reads, the readers intentionally leave validation to the effect
+properties.  SkinnedEffect's setter admits only one, two, or four weights per vertex, matching
+FNA's own property rule, so another Int32 fails while the reader is constructing the effect.
+The other material floats and Vector3 components are not required to be finite or inside a color/
+opacity range.  AlphaTestEffect also casts any Int32 to \cnaclass{CompareFunction} without an enum
+check and casts the full UInt32 reference-alpha field into CNA's signed Int32 property.  This
+mirrors FNA's raw casts rather than enforcing the public property's nominal 0--255 range.  A
+well-formed pipeline normally supplies sensible values; a successful reader return is not a
+sanitisation pass for arbitrary material metadata.
+
+Existing-instance behavior has a less surprising C\texttt{++} ownership boundary than the
+move-only audio readers.  These reader targets are copyable \texttt{shared\_ptr<Effect>} values,
+but their default false \texttt{CanDeserializeIntoExistingObject} capability means normal root
+dispatch supplies none.  A direct caller must box the common base pointer rather than one typed
+to a concrete effect.  CNA unboxes then ignores it and returns a fresh effect, as FNA also ignores
+its dormant existing parameter.  The caller's original shared pointer remains
+valid.  Within a Model, the delayed shared-resource callback installs a raw effect pointer in the
+part and the Model's owner bundle retains the shared pointer, so repeated Model loads preserve the
+same live material resources.
+
+Evidence divides sharply between BasicEffect and the other four readers.  The five canonical
+factory names and their hand-written field orders have focused registration/direct-reader tests.
+The real externally produced MonoGame \texttt{BlenderDefaultCube.xnb} provides a 46-byte
+BasicEffect shared-resource body with no texture, the recorded diffuse/specular material values,
+and a full Model integration route; the Model fuzzer mutates that same BasicEffect path as part of
+its 1,500 whole-container cases.  AlphaTest, DualTexture, EnvironmentMap, and Skinned tests are
+hand-constructed empty-texture streams checked field by field against current FNA sources.  No
+reader has a standalone root XNB manager load, nonzero reader-version or truncation test,
+external-texture success/failure test, direct-existing test, cache/unload check, or its own
+fuzzer seed; no real asset was located for the latter four.  Treat current support as a credible
+ordinary material-field port, not evidence that every stock-effect XNB producer, texture graph,
+or malformed payload is interoperable.
+
 \subsection{SoundEffectReader widens its real WAV support, but its wrapped-loop endpoint can overflow}
 \label{sec:xnb-soundeffect-reader-contract}
 
