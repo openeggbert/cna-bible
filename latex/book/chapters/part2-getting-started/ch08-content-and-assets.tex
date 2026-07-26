@@ -984,6 +984,89 @@ failure, cache/unload, another producer/platform, or a SpriteFont seed in the co
 Treat the two real fixtures as sound ordinary-layout and compressed-path evidence, not as a
 validation or adversarial-input oracle.
 
+\subsection{ModelReader reconstructs the ordinary shared-resource graph, but accepts contradictory hierarchy and draw metadata}
+\label{sec:xnb-model-reader-contract}
+
+The registered \texttt{Microsoft.Xna.Framework.Content.ModelReader} depends on three other
+registered readers: \texttt{VertexDeclarationReader}, \texttt{VertexBufferReader}, and
+\texttt{IndexBufferReader}.  A declaration is an Int32 stride, an Int32 element count, then an
+Int32 offset, format, usage, and usage index for every element.  A vertex buffer embeds that
+declaration through a raw-reader call, then has a UInt32 vertex count and exactly
+\texttt{vertexCount * stride} raw bytes.  An index buffer is a Boolean selecting 16- or 32-bit
+indices, an Int32 byte count, and that many bytes.  CNA limits declaration elements to 1,024,
+rejects a vertex count which cannot fit its signed resource API, widens the vertex-byte
+multiplication before the exact read, and rejects a negative stride or overflowing byte total.
+Those are useful hardening additions around FNA's direct reads.  It does not validate declaration
+offsets, enum values, or their relationship to the stride, however.  Index data needs only be
+nonnegative: a non-multiple byte count is accepted, divided down to an index count, and its one to
+three trailing bytes are silently discarded.  The reader passes the byte vector on by a typed
+pointer cast rather than first requiring an exact element-width multiple.
+
+At the start of the root reader CNA requires both an owning content manager and its graphics
+device; the result owns live vertex/index buffers and effects, not just a portable serialized
+description.  It then reads a UInt32 bone count (capped at 100,000), each bone's XNB String and
+Matrix, and each hierarchy record.  A bone reference is a one-based ID with zero for null: it
+occupies one byte while the model has fewer than 255 bones, and UInt32
+otherwise.  Each record contains a parent reference followed by a UInt32 child count and that
+many child references.  Mesh count and each mesh-part count are signed and independently limited
+to the same 100,000 ceiling; mesh records carry an XNB String name, a bone reference, a
+\cnaclass{BoundingSphere}, Tag object, and parts.  A part has four signed draw scalars in the
+order vertex offset, vertex count, start index, and primitive count, its Tag, then shared
+VertexBuffer, IndexBuffer, and Effect reference indices.  The final root-bone reference and
+model Tag finish the body.  This is FNA's version-zero wire order, with CNA's normal reader-table
+version admission around it.
+
+The hierarchy fields are redundant in a well-formed pipeline output, but CNA does not use them
+symmetrically.  It reads and completely ignores each scalar parent reference; only processing a
+parent's child list calls \texttt{ModelBone::AddChild()}, which sets the child's parent pointer.
+FNA assigns a non-null scalar parent \emph{and} adds children.  CNA therefore accepts an
+out-of-range scalar parent and accepts mutually inconsistent parent/child declarations whenever
+the child references themselves are in range.  There is no child-count cap, duplicate-child,
+single-parent, cycle, or parent-before-child check.  A malformed graph can consequently make
+\texttt{CopyAbsoluteBoneTransformsTo()} compose a bone with a destination transform that has not
+yet been calculated; \cnaclass{Model}'s linear index-order loop was written for ordinary
+pipeline hierarchy ordering, not graph repair.  CNA does validate a non-null mesh parent and a
+non-null root reference.  But a null root becomes index zero when bones exist (and null only when
+the bone vector is empty), whereas FNA immediately indexes its \texttt{-1} result and fails.
+
+Mesh and draw metadata are similarly trusted after their coarse counts.  CNA preserves the mesh
+name and bounding sphere and assigns the validated mesh parent through Model's ownership-aware
+constructor, but does not check that offsets, vertex counts, starts, or primitive counts are
+nonnegative or fit their resolved buffers.  A positive shared-resource index is range-checked by
+the generic reader and fixed up only after every shared object has been read; index zero is a
+legal null reference, leaving that part's corresponding pointer unset.  No ModelReader check
+requires the three pointers before later rendering.  A positive primitive count with an effect
+and absent buffer is thus not rejected at loading time.  The normal two-pass ordering is
+important: callbacks install raw buffer/effect pointers into the already built parts only after
+the root Model exists, while a private \texttt{shared\_ptr}-owned resource bundle retains the
+bones, meshes, parts, buffers, and effects for every copy of that Model.  This is why cache copies
+can safely share the same GPU resources rather than re-decoding them.
+
+Tags and existing-instance reads are explicit compatibility boundaries rather than unnoticed
+omissions.  CNA consumes every model, mesh, and part Tag so the stream remains aligned, but throws
+\cnaclass{ContentLoadException} for any non-null value.  FNA stores those objects on the model
+objects.  The default false \texttt{CanDeserializeIntoExistingObject} flag means a normal
+manager load has no existing Model in either implementation.  A direct CNA read with one instead
+throws before consuming the body; FNA's otherwise unreachable branch reuses its existing mesh
+parts and returns the same Model after consuming the remaining root and Tag.  Normal CNA loading
+uses the copyable generic asset cache, so successive \texttt{Load<Model>()} results share the
+reader-owned graph; it is not an in-place reload API.
+
+The evidence is good for the intended ordinary case but narrow for this graph's edge cases.  A
+real externally produced, uncompressed MonoGame version-five \texttt{BlenderDefaultCube.xnb}
+passes through the complete manager path: two bones (\texttt{RootNode} then \texttt{Cube}), one
+Cube mesh parented to the second bone, its radius-$\sqrt{3}$ bounding sphere, one 24-vertex/
+12-primitive part, a 24-byte Position--Normal declaration, a 16-bit 36-index buffer, and a
+\texttt{BasicEffect}.  The focused test also proves that two manager loads retain pointer identity
+for the vertex buffer.  The deterministic whole-container fuzzer mutates that complete fixture
+1,500 times, exercising root dispatch and shared-resource fixups; it is a valuable clean-failure
+screen, not a semantic graph test.  There is no compressed or non-MonoGame Model fixture, no
+fixture with two parts sharing a resource, no 255-bone/UInt32-reference case, and no targeted
+test for Tags, existing models, null or invalid shared references, empty/null roots, contradictory
+or cyclic hierarchy, out-of-range draw scalars, non-multiple index data, ownership after unload,
+or a model draw on a real backend.  Successful loading of the cube therefore establishes the
+standard pipeline path, not a promise that arbitrary Model XNB metadata is safe to draw.
+
 \subsection{SoundEffectReader widens its real WAV support, but its wrapped-loop endpoint can overflow}
 \label{sec:xnb-soundeffect-reader-contract}
 

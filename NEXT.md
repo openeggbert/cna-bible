@@ -6,58 +6,64 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-26)
 
 - Branch: `develop`.
-- Book: **555 physical PDF pages, 49 chapters, 6 appendices**.
+- Book: **557 physical PDF pages, 49 chapters, 6 appendices**.
 - The pre-session `develop` checkout matched `origin/develop` exactly; the previous claim that it
-  was twelve commits ahead was stale. This VideoReader documentation batch is committed locally
-  and is the only new unpushed commit after that matching starting point.
+  was twelve commits ahead was stale. The VideoReader audit is committed locally; the following
+  ModelReader documentation batch is its uncommitted successor. No remote operation was attempted.
 - Do not infer that the historical `a8b38ae` push-review failure still describes the tracking
   state. No push was attempted in this batch; retain the normal approval requirement for any
   future `git push`.
 
-## Latest completed batch: VideoReader XNB external-file reference, metadata, playback, and evidence boundary
+## Latest completed batch: ModelReader XNB graph, resource ownership, compatibility, and evidence boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
-registered reader, `Video`/`VideoPlayer`/FFmpeg paths, reader/manager/playback tests, synthetic
-fixture manifest, XNB fuzzer inventory, local current FNA reader/runtime, and generic
-external-reference contrast establish:
+four model readers, `Model`/bone/mesh/draw consumers, focused and registration tests, complete
+fixture manifest, whole-container fuzzer, current local FNA readers, and generic shared-resource
+implementation establish:
 
-- The version-zero payload is an XNB String reference, Int32 duration, width, and height, Single
-  FPS, then Int32 soundtrack type. CNA's typed primitive reads are wire-equivalent to FNA's generic
-  `ReadObject<T>()` calls. The soundtrack value is an unchecked cast and metadata-only in playback.
-- The reference is a direct filesystem sibling of `RootDirectory / AssetName`, not
-  `ReadExternalReference<T>()`. It permits parent traversal, absolute paths, and reached symlinks
-  outside the root. Both implementations strip four unverified characters, then probe the bare
-  stem, `.ogv`, and `.ogg`; stale `NEXTmedia.md` text saying `.oga` is wrong. CNA skips a
-  resolved path of four or fewer characters and regards a directory as existing, where FNA's
-  unconditioned substring and `File.Exists()` differ.
-- A manager and its GraphicsDevice are required, but the XNB `Video` constructor trusts the path
-  and metadata and does not open a decoder. Well-formed missing references therefore load. Playback
-  is the actual open/metadata boundary: CNA returns to `Stopped` silently when FFmpeg cannot open
-  the path, whereas FNA's normal Theora route throws `FileNotFoundException` at playback. CNA's
-  source comment also incorrectly calls its `> 1.0f` FPS mismatch check FNA-equivalent; FNA uses
-  `>= 1.0f`, so an exact one-fps difference is a real untested divergence.
-- Normal dispatch has no existing Video. A direct copyable `std::any` value is unboxed and then
-  ignored, so a fresh value is returned; generic manager caching is by copied Video value.
-- The complete XNB integration test is assembled at run time beside CNA's synthetic 160x90,
-  25-fps, two-second `chroma_420.mkv`. It proves header/table/registration/manager/device,
-  fallback to its original `.mkv` after the two XNB probes fail, and first-frame construction. It
-  is not a real Video XNB: there is no external/compressed fixture, Video fuzzer seed, extension
-  success test, missing-playback test, malformed-field test, direct-existing/cache test, or
-  external-producer differential test.
+- The version-zero graph starts with declaration/buffer dependencies: a stride plus element
+  records, a UInt32 vertex count plus exact raw bytes, and a Boolean element width plus Int32 raw
+  index bytes. The root requires a content manager and graphics device, then carries UInt32 bones,
+  their String/Matrix records and redundant hierarchy, signed mesh/part counts, mesh
+  String/bone/sphere/Tag records, four signed draw scalars and three shared resources per part,
+  then a root reference and model Tag. Bone IDs are one-byte below 255 bones, UInt32 otherwise,
+  one-based with zero null.
+- CNA caps bones, meshes, and parts at 100,000 and hardens vertex byte multiplication, but not
+  hierarchy semantics. It ignores every scalar bone parent and relies only on child lists, unlike
+  FNA which assigns both. Invalid scalar parents, inconsistent parent/child declarations,
+  duplicates, cycles, unlimited child counts, and parent-after-child order therefore survive when
+  child indices are in range. A null root silently becomes bone zero when bones exist, where FNA
+  immediately fails indexing its `-1` result.
+- Declaration offsets/enums/stride relationships, mesh-part scalar ranges, required non-null
+  shared resources, and index-byte divisibility are not checked. A non-multiple index byte length
+  is rounded down, discarding trailing bytes. The generic reader verifies positive shared indices
+  and installs them only after all shared objects are read; zero leaves raw part pointers null.
+  The returned Model keeps its bones, meshes, parts, buffers, and effects in a private shared
+  ownership bundle, so cache copies reuse the same graph rather than re-uploading resources.
+- CNA deliberately rejects every non-null model/mesh/part Tag, while FNA preserves Tags. Normal
+  dispatch gives neither reader an existing Model; a direct CNA instance instead fails before
+  reading, while FNA's dormant branch reuses existing mesh parts and returns that object.
+- The real uncompressed MonoGame v5 `BlenderDefaultCube.xnb` proves the full ordinary route: two
+  bones, Cube mesh/sphere, one 24-vertex/12-primitive part, 24-byte position-normal declaration,
+  16-bit 36-index buffer, and BasicEffect. A second manager load proves vertex-buffer pointer
+  identity. The 1,500-mutation whole-container fuzzer covers its complete root/fixup path, but no
+  compressed/non-MonoGame model, multi-part sharing, 255-bone reference, Tag/direct/null-root,
+  contradictory hierarchy, malformed draw/index, unload, or real-backend draw case exists.
 
-Ch.8 now records the literal wire, path/containment and short-reference boundaries,
-device/deferred-playback behavior, FNA differences, direct/value-cache behavior, and fixture
-scope. Full latexmk succeeded at **555 pages**; targeted undefined-reference and duplicate-label
-checks are empty; makeindex accepted **2,295** entries with zero rejected and zero warnings;
-`git diff --check` passes. Rendered physical PDF pages **136--138** (printed pages **114--116**)
-are clean. Ch.8 is **2,093** lines and Ch.6 is **621** lines. The plan-consistency validator
-remains absent from this checkout.
+Ch.8 now records the literal graph, reader/resource boundaries, malformed-hierarchy and draw-data
+limits, FNA/direct/cache distinctions, and fixture/fuzzer scope. Full `make -C latex book`
+succeeded at **557 pages**; targeted undefined-reference and duplicate-label checks are empty;
+makeindex accepted **2,300** entries with zero rejected and zero warnings; `git diff --check`
+passes. Rendered physical PDF pages **119--120** (printed pages **97--98**) are clean. Ch.8 is
+**2,176** lines and Ch.6 is **621** lines. The plan-consistency validator remains absent from this
+checkout.
 
-Next recommended start: audit the XNB `ModelReader` graph -- root/shared-resource layout,
-collection and index validation, model/bone/effect ownership, direct-instance semantics, and the
-real MonoGame `BlenderDefaultCube.xnb` fixture/fuzzer evidence. Keep the Video FPS-tolerance and
-silent-missing-playback divergences, the SoundEffect loop-endpoint overflow, and stale sibling
-support artifacts as current `develop` facts until source or documentation fixes land.
+Next recommended start: audit another high-value unreviewed Ch.8 XNB reader only after confirming
+the remaining registered-reader inventory; alternatively deepen the ContentManager model cache/
+unload and real-backend draw boundary if source offers a coherent evidence path. Keep the Model
+hierarchy/draw-metadata gaps, Video FPS/silent-missing-playback divergences, SoundEffect
+loop-endpoint overflow, and stale sibling support artifacts as current `develop` facts until
+source or documentation fixes land.
 
 ## Previous completed batch: SongReader XNB external-file reference, path, timing, and evidence boundary
 
