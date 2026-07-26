@@ -1,30 +1,36 @@
 \chapter{State Objects}
 \label{ch:state-objects}
 
-CNA's four state-object classes --- \cnaclass{BlendState}, \cnaclass{DepthStencilState},
-\cnaclass{RasterizerState}, \cnaclass{SamplerState} --- all inherit
-\cnaclass{GraphicsResource} and all ship a small set of static, ready-made presets that exist
-before any real \cnaclass{GraphicsDevice} does (which is exactly why
-Chapter~\ref{ch:graphicsdevice}'s \cnaclass{GraphicsResource} base accepts a null device).
-An architectural choice worth stating up front, because it is a deliberate deviation from
-FNA: CNA stores state objects \emph{by value} on \cnaclass{GraphicsDevice}, not by
-reference. In FNA (and real XNA), a state object is a reference type, so mutating a
-\cnaclass{BlendState} instance after assigning it to the device retroactively changes the
-device's behavior. In CNA, once assigned, the device holds its own copy; mutating your
-original instance afterward has no effect. \texttt{docs/rasterizerstate-support.md}
-confirms this is a deliberate, tracked choice (Task~869), and separately confirms that FNA
-itself enforces no state-object immutability either way --- so this is a difference in
-aliasing semantics, not a correctness regression against an immutability guarantee that never
-existed.
+CNA's four state-object classes all inherit \cnaclass{GraphicsResource}. Their static,
+ready-made presets exist before a \cnaclass{GraphicsDevice}; that is why the base accepts a null
+device (Chapter~\ref{ch:graphicsdevice}). An architectural choice worth stating up front is that
+CNA stores the three device-wide state objects \emph{by value}. A device assignment copies the
+supplied state into its own CPU field, then calls the corresponding backend application method.
+Thus mutating the original local value later cannot change the stored device value. CNA also
+declares the static presets \texttt{const}, whereas
+FNA's \texttt{static readonly} fields protect only the C\# reference --- their public state
+properties remain mutable. The presets themselves are unbound, harmless \cnaclass{GraphicsResource}
+values in both implementations, not GPU allocations that must be disposed.
 
-\subsection{A worked example: the by-value semantics, made concrete}
+There is a second, more important rule than that value/reference difference: reading CNA's
+mutable device-state getter gives access only to the CPU copy. Changing that reference does
+\emph{not} call \texttt{ApplyBlendState}, \texttt{ApplyDepthStencilState}, or
+\texttt{ApplyRasterizerState}; those calls occur only in their three device setters. Reassign a
+changed copy to submit it. A former CNA test comment claimed that FNA's reference alias would make
+a later \cnaclass{BlendState} mutation take effect on the next draw. Current FNA source does not
+support that conclusion: its blend/depth flush resubmits only when the selected state \emph{object
+identity} changes, so a mutation of the already-current object is not dirty-tracked. FNA does
+reapply its rasterizer state every draw, but that implementation detail is not a portable update
+route. The safe rule in either API is to configure a state before assignment and assign it again
+after a change.
 
-The architectural deviation named above --- CNA copies a state object into the device rather
-than aliasing it --- is easy to state abstractly and easy to get wrong in practice, so it is
-worth seeing directly. \texttt{GraphicsDevice::setBlendStateProperty(const BlendState\&)}
-takes its argument by \texttt{const} reference, but stores an internal copy; the mutable
-overload of \texttt{getBlendStateProperty()} then returns a reference to \emph{that stored
-copy}, not to whatever object was originally passed in:
+\section{A worked example: the by-value semantics, made concrete}
+
+The value copy and submission boundary are easy to state abstractly and easy to get wrong in
+practice. \texttt{GraphicsDevice::setBlendStateProperty(const BlendState\&)} takes its argument
+by \texttt{const} reference, stores an internal copy, and submits the supported fields. The
+mutable overload of \texttt{getBlendStateProperty()} returns that CPU copy; it is not a proxy that
+submits every field mutation:
 
 \begin{lstlisting}
 BlendState custom;
@@ -33,21 +39,56 @@ custom.setColorDestinationBlendProperty(Blend::One);   // additive-style blend
 device.setBlendStateProperty(custom);
 
 custom.setColorSourceBlendProperty(Blend::Zero);        // mutate the ORIGINAL afterward
-// device.getBlendStateProperty().getColorSourceBlendProperty() is still SourceAlpha here --
-// the device's own copy was made at the setBlendStateProperty() call, and is now
-// completely independent of `custom`.
+// device's stored copy and submitted blend factors are still SourceAlpha here.
 
-device.getBlendStateProperty().setColorSourceBlendProperty(Blend::One); // this DOES take
-// effect immediately, because it mutates the device's own stored copy directly.
+// Do not use this as a GPU update: it changes only the device's stored CPU copy.
+device.getBlendStateProperty().setColorSourceBlendProperty(Blend::One);
+
+BlendState submitted = device.getBlendStateProperty();
+submitted.setColorSourceBlendProperty(Blend::One);
+device.setBlendStateProperty(submitted); // the required submission step
 \end{lstlisting}
 
-The practical rule this implies, for anyone porting real XNA/FNA code that relies on the
-opposite (reference-type, retroactive) behavior: never assume re-mutating a
-\cnaclass{BlendState} variable after assigning it to a device will change anything on that
-device. If a game needs to tweak blend settings per-frame, mutate through
-\texttt{device.getBlendStateProperty()} directly, or construct and assign a fresh state object
-every time --- either is correct in CNA; only the ``mutate the original and expect the device
-to see it'' pattern from real XNA silently does nothing.
+The practical rule is therefore more conservative than the old ``mutate through the getter''
+advice: construct or copy, change, and assign a fresh value every time the effective blend,
+depth-stencil, or rasterizer state changes. A C++ getter mutation can make later introspection
+misleading by showing a value the backend was never asked to use.
+
+\section{The value surface is broader than the binding bridge}
+\label{sec:state-object-binding-boundary}
+
+Every public property round-trips in the small C\texttt{++} value objects, but the common backend
+interface is narrower. This is a structural limitation above any individual backend mapping:
+the three whole-state setters make one immediate call with the fields present in that interface;
+there is no later generic reconciliation of omitted fields. The current routes are:
+
+\begin{itemize}
+  \item \cnaclass{BlendState} forwards its six source/destination/function values. Its
+    \texttt{BlendFactor} is then sent through the separate device property. Each color-write
+    mask and \texttt{MultiSampleMask} is absent from the backend call. The device's own
+    \texttt{MultiSampleMask} is only a C\texttt{++} integer shadow; unlike FNA's native setter,
+    it makes no backend call.
+  \item \cnaclass{DepthStencilState} forwards all of its depth/stencil fields on whole-state
+    assignment. Its \texttt{ReferenceStencil} is also sent through the distinct device setter,
+    whose backend default is a no-op; Chapter~\ref{ch:state-objects}'s EasyGL caveat therefore
+    still applies to a standalone reference change.
+  \item \cnaclass{RasterizerState} forwards cull mode, fill mode, scissor enable, and both bias
+    values, but not \texttt{MultiSampleAntiAlias}. The property is a retained CPU value rather
+    than a generic rasterization command.
+  \item On every CNA draw, the device visits all sixteen \emph{pixel} sampler slots and forwards
+    only filter, AddressU, AddressV, and maximum anisotropy. AddressW, MaxMipLevel, and
+    MipMapLevelOfDetailBias are never read by that bridge. The public vertex texture and vertex
+    sampler collections are retained (and cleared when a texture is disposed), but no draw path
+    forwards either collection to the backend at all.
+\end{itemize}
+
+The sampler loop is intentionally different from the three whole-state setters: changing a
+pixel sampler collection entry is seen at the next draw because every slot is reapplied then.
+That does not rescue its omitted fields or the vertex collections. Current CPU tests exercise
+defaults, names, round trips, and bounds, while backend examples exercise selected supported
+pixel-sampler and state fields. No located test asks whether a getter mutation reaches a backend,
+or distinguishes ColorWriteChannels, either multisample property, AddressW, MaxMipLevel, LOD
+bias, or a vertex sampler/texture from its default behavior.
 
 \section{BlendState}
 
@@ -63,13 +104,15 @@ and \texttt{SourceAlphaSaturation}); \cnaclass{BlendFunction} has five (\texttt{
 set already seen on \cnaclass{DisplayOrientation} (Chapter~\ref{ch:game-loop}) and
 \cnaclass{ClearOptions} (Chapter~\ref{ch:graphicsdevice}).
 
-Current cross-backend status, per \texttt{docs/graphics-backend-feature-matrix.md}: fully
+For the six source/destination/function values that the common bridge actually carries, the
+current cross-backend status in \texttt{docs/graphics-backend-feature-matrix.md} is fully
 correct on EasyGL, BGFX, SDL\_Renderer, and all three Direct3D backends. Vulkan is the one
-backend with a real, historically serious bug here --- for a long time its blend
-implementation was, in the project's own words, ``almost entirely fake'': one hardcoded
-blend equation applied regardless of what was actually requested, confirmed failing across
-five separate pixel tests before the fix replaced it with a genuine per-\cnaclass{Blend}/%
-\cnaclass{BlendFunction} mapping across all nine of the backend's pipeline-creation sites.
+backend with a real, historically serious bug in that forwarded subset --- for a long time its
+blend implementation was, in the project's own words, ``almost entirely fake'': one hardcoded
+blend equation applied regardless of what was actually requested, confirmed failing across five
+separate pixel tests before the fix replaced it with a genuine per-\cnaclass{Blend}/%
+\cnaclass{BlendFunction} mapping across all nine of the backend's pipeline-creation sites. That
+evidence does not make the unforwarded color-write masks or multisample mask work.
 
 \section{DepthStencilState}
 
@@ -255,18 +298,17 @@ nine values spanning point/linear/anisotropic and their per-mip-stage combinatio
 
 The central, now-fixed finding here was not about the address-mode or filter mapping tables
 themselves --- both were correct in isolation for as long as they were tested --- but about
-whether \texttt{GraphicsDevice.SamplerStates} / \texttt{VertexSamplerStates} were actually
-\emph{applied} before a 3D draw at all. They were not, for three separate, backend-specific
-reasons: on EasyGL, eighteen overloads across three user-primitive draw families ---
-\texttt{DrawUserPrimitives}, \texttt{DrawUserIndexedPrimitives}, and
-\texttt{DrawInstancedPrimitives} --- simply never called the internal sampler-application step;
-that step was only ever called by the two ordinary buffer-bound draw entry points,
-\texttt{DrawPrimitives} and \texttt{DrawIndexedPrimitives}. On Vulkan, the dual-texture descriptor-set path
-hardcoded a default sampler into its slots regardless of what sampler state was actually
+whether the supported \emph{pixel} \texttt{GraphicsDevice.SamplerStates} route was actually
+applied before a 3D draw. It was not, for three separate, backend-specific reasons. EasyGL's
+eighteen user-primitive overloads omitted the internal sampler-application step; only the
+ordinary buffer-bound \texttt{DrawPrimitives} and \texttt{DrawIndexedPrimitives} calls made it.
+On Vulkan, the dual-texture descriptor-set path hardcoded a default sampler into its slots
+regardless of what sampler state was actually
 current; on BGFX, a dual-texture draw bound its second texture slot using the \emph{first}
 slot's sampler flags. All three were fixed, and --- once actually applied --- the underlying
 address-mode and filter mappings themselves were confirmed correct on EasyGL and Vulkan for a
-real 3D stock-effect draw.
+real 3D stock-effect draw. That conclusion never extended to \texttt{VertexSamplerStates}:
+the public collection is still retained only, as the binding-boundary section above shows.
 
 Two further, more severe gaps were found and fixed together. First, mip-aware filtering:
 EasyGL correctly honors any explicit \texttt{Mip}-qualified filter, but \texttt{Point} and
@@ -277,11 +319,13 @@ mip-aware filter unconditionally to the common non-mipmapped case would render a
 (solid black) instead. Second, and more severe: \texttt{Texture2D::SetData} at a mip level
 above~0 was a \emph{total, silent no-op} on both Vulkan and BGFX --- the same historical
 failure shape their \cnaclass{Texture3D} / \cnaclass{TextureCube} readback paths once had
-(Chapter~\ref{ch:textures-rendertargets} now records the corrected live matrix) --- and Vulkan
-additionally hardcoded a single mip level and never set a sampler's \texttt{minLod} /
-\texttt{maxLod} at all. Both are now fixed on all three hardware backends: mip-level
-\texttt{SetData} is real GPU upload everywhere, and EasyGL's
-\texttt{GL\_TEXTURE\_MAX\_LEVEL} incompleteness bug is fixed alongside it.
+(Chapter~\ref{ch:textures-rendertargets} now records the corrected live matrix). Mip-level
+\texttt{SetData} is now a real GPU upload on all three hardware backends, but that upload fix
+must not be mistaken for full \cnaclass{SamplerState} mip control: the common binding bridge has
+no AddressW, MaxMipLevel, or LOD-bias argument. Backend caches consequently use their own
+defaults for those missing values (for example, the Direct3D sampler caches set AddressW from
+AddressV, LOD bias to zero, and allow the full mip range). No game-set value of those three
+properties can reach them through this API today.
 Anisotropic filtering itself: correct on Vulkan (queries the real device capability and
 clamps the requested level); EasyGL was silently falling back to plain trilinear filtering
 regardless of the requested anisotropy level until a fix wired real

@@ -9,13 +9,51 @@ session log; this file is the concise live handoff.
 - Book: **565 physical PDF pages, 49 chapters, 6 appendices**.
 - The pre-session `develop` checkout matched `origin/develop` exactly; the previous claim that it
   was twelve commits ahead was stale. The VideoReader, ModelReader, and stock-effect audit batches
-  (plus their handoff corrections) are committed locally. The validated Chapter 12 and current
-  Chapter 13 audits are recorded below. No remote operation was attempted.
+  (plus their handoff corrections) are committed locally. The validated Chapter 12, Chapter 13,
+  and current Chapter 14 audits are recorded below. No remote operation was attempted.
 - Do not infer that the historical `a8b38ae` push-review failure still describes the tracking
   state. No push was attempted in this batch; retain the normal approval requirement for any
   future `git push`.
 
-## Latest completed batch: Chapter 13 EffectParameter, technique/pass, and stock-effect binding boundary
+## Latest completed batch: Chapter 14 state-object submission and backend-binding boundary
+
+No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
+four state classes and collections, GraphicsDevice setter/draw routes, backend interface and
+cache contracts, focused CPU/backend examples, and current local FNA state/device sources
+establish:
+
+- CNA copies BlendState, DepthStencilState, and RasterizerState into GraphicsDevice, then their
+  setters submit the fields carried by the backend interface. Mutating an original local state
+  affects neither copy nor GPU. More importantly, mutating the C++ device getter changes only its
+  CPU copy; application occurs only on re-assignment. A former CNA test comment claimed FNA's
+  reference alias made a bound Blend/Depth state mutation dirty on the next draw, but current FNA
+  flushes those only when object identity changes. FNA does reapply RasterizerState per draw, not
+  a portable update mechanism. Configure, then assign again after every effective change.
+- The public value surface is broader than the generic binding bridge. Blend submits six factors/
+  functions plus BlendFactor, but no ColorWriteChannels or multisample mask; GraphicsDevice's
+  own MultiSampleMask is only a CPU shadow. Depth-stencil forwards all whole-state fields, with
+  the documented backend-dependent standalone ReferenceStencil caveat. Rasterizer omits
+  MultiSampleAntiAlias. Pixel sampler draws refresh all 16 slots but carry only filter, AddressU,
+  AddressV, and anisotropy; AddressW, MaxMipLevel, and LOD bias never cross the bridge, and the
+  vertex texture/sampler collections have no draw route at all.
+- CPU tests cover default values, names, round trips, and collection bounds, while backend
+  examples cover selected supported pixel/state fields. No located test distinguishes a getter
+  mutation, color-write mask, either multisample setting, AddressW, MaxMipLevel, LOD bias, or
+  vertex sampler/texture from its default rendering behavior. Ch.14 now limits its previous
+  blend and sampler claims to the fields actually forwarded.
+
+Full `make -C latex book` succeeded at **565 pages**; makeindex accepted **2,316** entries with
+zero rejected/warnings; targeted undefined-reference and duplicate-label checks are empty; and
+`git diff --check` passes. Rendered physical PDF pages **217--218** (printed **193--194**) are
+clean; Ch.14 runs through physical page **224** (printed **200**) before Chapter 15. Ch.14 is
+**397** lines. The plan-consistency validator remains absent from this checkout.
+
+Next recommended start: Chapter 14's state-value, submission, and binding limits are current.
+Move to the next graphics-core contract, preferably Chapter 15's ShaderEffect/runtime-compiler
+boundary, rather than repeating per-backend state coverage. Only add CNA source/tests when the
+sibling CNA repository itself is in scope.
+
+## Previous completed batch: Chapter 13 EffectParameter, technique/pass, and stock-effect binding boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
 base Effect/parameter/pass/technique and GraphicsDevice dispatch implementations, all five stock
