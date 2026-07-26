@@ -180,6 +180,81 @@ Until then, treat construction as insufficient evidence of support, preflight th
 capability where it is meaningful, and keep unsupported cube/volume textures out of custom
 effect bindings.
 
+\subsection{Native window handles are borrowed; renderers remain a backend escape hatch}
+\label{sec:backend-native-handle-boundary}
+
+The two native-handle methods in \cnaclass{IGraphicsBackend} are pure virtual because the
+common \cnaclass{Game} construction path needs a window even though the backends construct it
+in different ways. Their nearby source comment still says that the SDL dependency ``should be
+abstracted later.'' In the ordinary path, \cnaclass{Game} takes
+\texttt{GetWindowInternal()} from its already-created \cnaclass{GraphicsDevice} and installs the
+same raw address in its \cnaclass{GameWindow}. The XNA-shaped \texttt{Handle} property exposes
+that address as an integer, while the explicitly NOXNA
+\texttt{GetNativeSdlWindowEXT()} returns it as \texttt{SDL\_Window*}. Neither accessor transfers
+ownership: \cnaclass{GameWindow}'s destructor is defaulted, its constructor taking an
+\texttt{SDL\_Window*} merely stores the pointer, and it never calls \texttt{SDL\_DestroyWindow}.
+The public extension is therefore a borrowed inspection/control escape hatch for calls such as
+\cnaclass{CNA::Devices::DisplayInfo}, not a license to destroy CNA's window.
+
+The two raw return types have intentionally different availability. A regular windowed backend
+returns its current \texttt{SDL\_Window*}; \texttt{HEADLESS} and \texttt{SOFTWARE} always return
+null, and the D3D12 \texttt{HeadlessEXT} path does too. Only \texttt{SDL\_RENDERER} returns an
+\texttt{SDL\_Renderer*} of its own. \texttt{ASCII} forwards the renderer owned by its inner
+SDL-renderer backend. Every other backend returns null, including \texttt{DX3}: free-direct
+creates a private SDL renderer lazily for presentation but deliberately never gives it to CNA.
+The device's direct renderer accessor is private, but its NOXNA \texttt{GetBackend()} extension
+makes the internal route available to code that includes internal headers. It is not a stable,
+portable renderer API: null is normal, and any non-null pointer belongs to the current backend
+and expires when that backend is recreated or disposed. There is deliberately no matching
+\cnaclass{GameWindow} renderer extension.
+
+These distinctions make the safe public use pattern small but strict. Inside a scope holding a
+\cnaclass{Game\& game} (with \texttt{<SDL3/SDL.h>} included), use:
+
+\begin{lstlisting}
+auto& window = game.getWindowProperty();
+if (SDL_Window* native = window.GetNativeSdlWindowEXT(); native != nullptr) {
+    // Borrowed only: inspect/configure it with SDL; never SDL_DestroyWindow(native).
+#if defined(CNA_DEVICES)
+    const float scale = CNA::Devices::DisplayInfo::getContentScaleProperty(window);
+    (void) scale;
+#endif
+}
+\end{lstlisting}
+
+This is adapted from the real \texttt{DisplayInfo} call shape, rather than promising that every
+backend has a window. It also has a device-lifetime precondition which the return type cannot
+express. When a device owns the window it resets its backend first and then destroys that SDL
+window during \texttt{Dispose()}; it does not notify the separate \cnaclass{GameWindow} raw
+field. Normal \cnaclass{Game} member destruction is ordered safely because \cnaclass{GameWindow}
+dies before the device and has no native destructor work. Explicitly disposing a game-owned
+device while retaining and using \texttt{Game::Window}, however, leaves that wrapper pointing at
+a destroyed SDL object. No located test performs that sequence. Do not cache or use either raw
+pointer across device disposal; code needing a long-lived independent window must retain and
+manage its own SDL ownership instead.
+
+\cnaclass{PresentationParameters::DeviceWindowHandle} is the inverse integration route, but it
+is still a borrow. A nonzero integer is blindly reinterpreted as \texttt{SDL\_Window*}; CNA sets
+\texttt{ownsWindow\_} false, performs no validity check, and never destroys it. The embedding
+host must keep the real SDL window alive through backend teardown. This branch returns before
+the normal creator path publishes the window into \cnaclass{Input::TextInputEXT} and
+\cnaclass{Input::Mouse}; it also does not clear either global static handle during teardown.
+An embedding application that needs text input, cursor warps, or relative mouse mode on its
+attached window must set and later clear those two input-handle properties itself, without
+clobbering another live device's selection. FNA's usual game path avoids this ambiguity because
+it creates its game window before its graphics device and publishes its window to the input
+subsystems there.
+
+Existing \cnaclass{GameWindow} tests prove that a wrapper can mutate a caller-created SDL window
+and that a null wrapper is safe, while backend smoke examples only inspect internal handles.
+They do not construct a device around a live external window, check that device disposal leaves
+it intact, check input-handle publication/clearing, or exercise \cnaclass{GameWindow} after
+explicit device disposal. A source-repository decision is needed before repairing the latter two
+boundaries: should an attached device claim the process-wide input target, and should device
+disposal explicitly invalidate its \cnaclass{GameWindow} view? Those choices affect multi-window
+embedding and observable post-disposal behaviour, so they are \texttt{needs\_human} outside this
+book-only checkout.
+
 \subsection{ISpriteBatchBackend, and where Chapter~\ref{ch:spritebatch}'s transform bug actually lived}
 
 Only five of \cnaclass{ISpriteBatchBackend}'s nine methods are pure virtual ---

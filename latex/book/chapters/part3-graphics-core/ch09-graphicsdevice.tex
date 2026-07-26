@@ -66,10 +66,13 @@ backend.
   D3D12 at the time of writing, supports this; a backend that can't, like EasyGL, whose GL
   context is bound to a window, throws from its own constructor instead of silently
   papering over the request); an explicit externally-supplied window handle via
-  \texttt{PresentationParameters::DeviceWindowHandle}; or, the common case, a real
+  \texttt{PresentationParameters::DeviceWindowHandle} (borrowed, never validated or destroyed
+  by CNA); or, the common case, a real
   \texttt{SDL\_CreateWindow} call (falling back to $1024\times768$ if the requested back-buffer
   size is unset), whose handle is then published to both \texttt{Input::TextInputEXT} and
-  \texttt{Input::Mouse} so text input and mouse capture target the right window.
+  \texttt{Input::Mouse} so text input and mouse capture target the right window. The attached
+  branch bypasses that publication; its precise lifetime/input duties are documented in
+  Chapter~\ref{ch:backend-architecture}, \S\ref{sec:backend-native-handle-boundary}.
 \item[\texttt{createBackend()}] builds a \texttt{GraphicsBackendCreateArgs} struct from the
   current \cnaclass{PresentationParameters} and wires a \texttt{deviceEventCallback} that
   drives the real \texttt{Lost} / \texttt{Resetting} / \texttt{Reset} events and

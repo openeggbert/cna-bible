@@ -485,6 +485,13 @@ API of its own''). The \texttt{EXT} suffix convention here is a sibling of \text
 mark non-XNA additions, but \texttt{EXT} specifically marks methods bolted onto an otherwise
 XNA-shaped class, kept visually distinct from the XNA members around them.
 
+\texttt{GetNativeSdlWindowEXT()} is a borrowed pointer, not an ownership transfer. In an ordinary
+windowed game it views the device-created SDL window; in a headless configuration it can be null.
+Never destroy it from game code or retain it across explicit graphics-device disposal: the wrapper
+does not own it and is not notified when a separately owned device tears it down. The complete
+backend availability, attached-window, input-routing, and teardown contract is in
+Chapter~\ref{ch:backend-architecture}, \S\ref{sec:backend-native-handle-boundary}.
+
 \section{GraphicsDeviceManager's role in the loop}
 \label{sec:graphicsdevicemanager-in-loop}
 

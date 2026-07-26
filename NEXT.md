@@ -6,7 +6,7 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-26)
 
 - Branch: `develop`.
-- Book: **569 physical PDF pages, 49 chapters, 6 appendices**.
+- Book: **571 physical PDF pages, 49 chapters, 6 appendices**.
 - The pre-session `develop` checkout matched `origin/develop` exactly; the previous claim that it
   was twelve commits ahead was stale. The VideoReader, ModelReader, and stock-effect audit batches
   (plus their handoff corrections) are committed locally. The validated Chapter 12, Chapter 13,
@@ -15,7 +15,7 @@ session log; this file is the concise live handoff.
   state. No push was attempted in this batch; retain the normal approval requirement for any
   future `git push`.
 
-## Latest completed batch: Chapter 16 resource tracking and optional-factory boundary
+## Latest completed batch: Chapter 16 resource tracking, optional-factory, and native-handle boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
 `GraphicsDevice`/`GraphicsResource` lifecycle implementation, public resource ownership shapes,
@@ -50,6 +50,17 @@ establish:
   error. `GraphicsCapability::ThreeD` is too coarse to preflight the individual texture/target
   factories; only occlusion queries have a dedicated capability. Existing tests do not inject
   null factories, check the unchanged read buffer/device binding state, or cover that shader path.
+- `GameWindow::Handle` and `GetNativeSdlWindowEXT()` are borrowed SDL-window views. The normal
+  `Game` installs the graphics device's raw pointer into the wrapper; `GameWindow` never destroys
+  it. Headless/Software and D3D12 HeadlessEXT have no window. Of the internal renderer accessors,
+  only SDL_RENDERER has a renderer and ASCII forwards its inner SDL renderer; every other backend,
+  including DX3's private free-direct renderer, reports null. A non-null renderer is current-backend
+  state, not a portable handle to cache across recreation/disposal.
+- An owned device tears down its backend then destroys its SDL window without clearing the separate
+  `GameWindow` raw field, so explicitly disposing a device while retaining its game window leaves a
+  stale wrapper. A supplied `PresentationParameters::DeviceWindowHandle` is instead blindly cast,
+  borrowed, never destroyed, and bypasses automatic TextInputEXT/Mouse handle publication and
+  clearing. Existing GameWindow/input tests do not cover either device-attached window behavior.
 - **needs_human / source-repository follow-up:** repair CNA's resource registration/ownership
   policy (or prohibit copy/move on tracked resources, with a deliberate `Texture2D` alias rule)
   and add the device-first teardown tests. The required implementation is outside this book
@@ -59,19 +70,24 @@ establish:
   accessor/binding route safe. This changes observable failure timing and must remain consistent
   with the intentional `OcclusionQuery` fallback, so it is not safe to decide or patch in the
   book checkout.
+- **needs_human / source-repository follow-up:** decide whether an externally attached device
+  should claim the process-wide TextInputEXT/Mouse target and whether device disposal must
+  invalidate the `GameWindow` view. Both choices affect multi-window embedding and observable
+  post-disposal behavior, so tests or fixes should not be invented in this book-only checkout.
 
-Full `make -C latex book` succeeded at **569 pages**; makeindex accepted **2,343** entries with
+Full `make -C latex book` succeeded at **571 pages**; makeindex accepted **2,361** entries with
 zero rejected/warnings; targeted undefined-reference and duplicate-label checks are empty; no new
 Chapter 16 overfull box appeared; and `git diff --check` passes. Rendered physical PDF pages
-**237--238** (printed **213--214**) are clean; Ch.16 runs through physical page **266** (printed
-**242**) before Chapter 17. Ch.16 is **1,969** lines. The plan-consistency validator remains
-absent from this checkout.
+**238--239** (printed **214--215**) are clean; Ch.16 runs through physical page **267** (printed
+**243**), followed by the intentional physical-page-268 chapter-boundary blank before Chapter 17.
+Ch.16 is **2,044** lines. The plan-consistency validator remains absent from this checkout.
 
-Next recommended start: Chapter 16's ownership and optional-factory contracts are current.
+Next recommended start: Chapter 16's ownership, optional-factory, and native-handle contracts are
+current.
 Continue with another narrow, source-backed Chapter 16 interface audit only if it finds a distinct
 contract; do not repeat the existing capability, render-target, presentation, recovery, or
-factory-null matrices. Both documented CNA source repairs remain `needs_human` until `../cna` is
-explicitly in scope.
+factory-null matrices. The three documented CNA source repairs remain `needs_human` until
+`../cna` is explicitly in scope.
 
 ## Previous completed batch: Chapter 13 EffectParameter, technique/pass, and stock-effect binding boundary
 
