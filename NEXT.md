@@ -15,7 +15,7 @@ session log; this file is the concise live handoff.
   state. No push was attempted in this batch; retain the normal approval requirement for any
   future `git push`.
 
-## Latest completed batch: Chapter 16 resource ownership and device-tracking boundary
+## Latest completed batch: Chapter 16 resource tracking and optional-factory boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
 `GraphicsDevice`/`GraphicsResource` lifecycle implementation, public resource ownership shapes,
@@ -38,23 +38,40 @@ establish:
   handle survival and no double free, not tracker/event counts or device-first disposal after a
   live copy/move. Use stable `unique_ptr` storage, do not relocate live resources, and dispose
   every `Texture2D` alias before its device.
+- A null optional factory result has three incompatible public outcomes. `OcclusionQuery` becomes
+  an inert object (`Begin`/`End` no-op, incomplete, zero pixels); `Texture3D`/`TextureCube`
+  construct with valid metadata but silently discard writes and leave read buffers untouched; and
+  null `RenderTarget2D`/`RenderTargetCube` backends are forwarded to the bind hook while device
+  state still says a target is bound and adopts its dimensions. D3D9 can take the texture/query
+  null paths at runtime, while Software and Canvas intentionally inherit relevant null defaults.
+- Null volume/cube textures have a second, unsafe route: their NOXNA `GetBackend()` accessors
+  dereference the null owner, and `ShaderEffect::SetTexture()` calls those accessors. A custom
+  shader binding can therefore produce C++ undefined behavior rather than a clean unsupported
+  error. `GraphicsCapability::ThreeD` is too coarse to preflight the individual texture/target
+  factories; only occlusion queries have a dedicated capability. Existing tests do not inject
+  null factories, check the unchanged read buffer/device binding state, or cover that shader path.
 - **needs_human / source-repository follow-up:** repair CNA's resource registration/ownership
   policy (or prohibit copy/move on tracked resources, with a deliberate `Texture2D` alias rule)
   and add the device-first teardown tests. The required implementation is outside this book
   checkout; the book now records the exact failure boundary.
+- **needs_human / source-repository follow-up:** choose one public null-factory policy: throw an
+  early `NotSupportedException`, or define an explicit unavailable-resource state and make every
+  accessor/binding route safe. This changes observable failure timing and must remain consistent
+  with the intentional `OcclusionQuery` fallback, so it is not safe to decide or patch in the
+  book checkout.
 
-Full `make -C latex book` succeeded at **569 pages**; makeindex accepted **2,335** entries with
+Full `make -C latex book` succeeded at **569 pages**; makeindex accepted **2,343** entries with
 zero rejected/warnings; targeted undefined-reference and duplicate-label checks are empty; no new
 Chapter 16 overfull box appeared; and `git diff --check` passes. Rendered physical PDF pages
-**236--237** (printed **212--213**) are clean; Ch.16 runs through physical page **266** (printed
-**242**) before Chapter 17. Ch.16 is **1,905** lines. The plan-consistency validator remains
+**237--238** (printed **213--214**) are clean; Ch.16 runs through physical page **266** (printed
+**242**) before Chapter 17. Ch.16 is **1,969** lines. The plan-consistency validator remains
 absent from this checkout.
 
-Next recommended start: Chapter 16's resource ownership and address-tracking boundary is current.
+Next recommended start: Chapter 16's ownership and optional-factory contracts are current.
 Continue with another narrow, source-backed Chapter 16 interface audit only if it finds a distinct
-contract; do not repeat the existing capability, render-target, presentation, or recovery matrices.
-The source-repository resource-lifetime repair remains `needs_human` until `../cna` is explicitly
-in scope.
+contract; do not repeat the existing capability, render-target, presentation, recovery, or
+factory-null matrices. Both documented CNA source repairs remain `needs_human` until `../cna` is
+explicitly in scope.
 
 ## Previous completed batch: Chapter 13 EffectParameter, technique/pass, and stock-effect binding boundary
 

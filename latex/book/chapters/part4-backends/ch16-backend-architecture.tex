@@ -116,6 +116,70 @@ managed resource references do not expose this C++ relocation failure mode. CNA'
 destructor suppresses \texttt{ResourceDestroyed} is stale against the current common
 implementation; the source and this chapter's rule above are authoritative.
 
+\subsection{A null factory result is not one uniform ``unsupported'' outcome}
+\label{sec:backend-null-factory-outcomes}
+
+The common interface intentionally makes several factories optional. Its inherited defaults
+return a null \texttt{unique\_ptr} for an occlusion query, volume texture, cube texture,
+2D render target, cube render target, or programmable effect. That return is a backend-side
+capability signal, not a public exception policy. The required 2D texture, SpriteBatch, vertex
+buffer, and 16-bit index-buffer factories are pure virtual instead; Chapter~\ref{ch:shader-fx-gap}
+covers the separate optional-effect result. The remaining five factory results travel through
+three materially different public paths:
+
+\begin{center}
+\small
+\begin{tabular}{p{0.21\textwidth}p{0.31\textwidth}p{0.39\textwidth}}
+\toprule
+\textbf{Factory result} & \textbf{Public construction result} & \textbf{First observable use} \\
+\midrule
+Occlusion query & A real \cnaclass{OcclusionQuery} with a null private handle. & \texttt{Begin()} and \texttt{End()} do nothing; \texttt{IsComplete} is false and \texttt{PixelCount} is zero. \\
+\addlinespace
+Volume or cube texture & A real \cnaclass{Texture3D} or \cnaclass{TextureCube}, with validated dimensions, format, and mip count but no native handle. & Valid \texttt{SetData} returns after its argument checks without storing data. \texttt{GetData} returns without writing the caller's buffer. \\
+\addlinespace
+2D or cube render target & A real \cnaclass{RenderTarget2D} or \cnaclass{RenderTargetCube} whose cached target-backend pointer is null. & \cnaclass{GraphicsDevice} forwards null to the backend bind hook but still records the target as bound and resets its viewport/scissor to the target's public dimensions. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+This is not merely theoretical inheritance. The Software backend deliberately inherits the
+null defaults for volume textures, cube render targets, and hardware queries; Canvas leaves
+the corresponding 3D-only surface on the common defaults; and D3D9 can return null at runtime
+when its actual device lacks cube-map, volume-texture, or occlusion-query support. SDL\_RENDERER
+documents the historical problem especially plainly: its 3D texture constructors succeed with
+no real backend. It later chose a different policy for queries by overriding the factory to
+throw its usual ``no 3D'' exception. Thus even a factory's \texttt{nullptr} convention does not
+predict construction behaviour for every backend.
+
+The texture case is dangerous. Both classes have the NOXNA
+\texttt{GetBackend\allowbreak()} reference accessor, which unconditionally dereferences that possibly-null
+owner. A custom \cnaclass{ShaderEffect}'s cube/volume \texttt{SetTexture()} overload calls exactly
+that accessor before invoking its effect backend, so a successfully constructed unsupported
+texture reaches C++ null-reference undefined behaviour rather than a capability exception. The
+ordinary \texttt{Texture\allowbreak Collection} accepts it as well because it rejects disposed textures,
+not textures without a backend. Render-target binding has the opposite mismatch: it retains a
+coherent-looking public binding/viewport state even though the native target pointer handed to
+the backend is null. These are worse failure modes than an explicit unsupported-operation error
+because they make the constructor's success look like evidence of usable storage.
+
+\cnaclass{GraphicsCapability} does not close this gap. \texttt{ThreeD} is deliberately a broad
+pipeline flag, \texttt{OcclusionQuery} is the only one of these operations with a dedicated
+value, and neither Texture3D, TextureCube, nor either single render-target factory has an
+individual query. A 3D-capable D3D9 device may therefore report the inherited broad capability
+while its hardware-specific cube or volume factory returns null. Existing unit tests exercise
+normal device construction and argument guards; the old combined texture/render-target test
+checks only enum ordinals, and no located test injects a null optional factory, observes the
+unchanged read buffer, checks the device's binding state, or attempts the ShaderEffect route.
+
+This requires a source-repository compatibility decision, not a documentation-only patch:
+either turn a null factory result into a well-defined, early \texttt{NotSupportedException}
+for the public constructors, or retain constructible null objects but expose an explicit
+availability contract and guard every accessor/binding path. The choice affects observable
+failure timing and must be made consistently with the intentional OcclusionQuery fallback.
+Until then, treat construction as insufficient evidence of support, preflight the coarse
+capability where it is meaningful, and keep unsupported cube/volume textures out of custom
+effect bindings.
+
 \subsection{ISpriteBatchBackend, and where Chapter~\ref{ch:spritebatch}'s transform bug actually lived}
 
 Only five of \cnaclass{ISpriteBatchBackend}'s nine methods are pure virtual ---
