@@ -6,18 +6,60 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-26)
 
 - Branch: `develop`.
-- Book: **553 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by **twelve**
-  documentation commits: the ContentTypeReader contract, XNB container, type-name/table,
-  scalar/math, Decimal/DateTime, CurveReader, Texture2DReader, Texture3DReader, and
-  TextureCubeReader, SpriteFontReader, SoundEffectReader, and SongReader audits. This count was checked
-  against the current remote-tracking ref; do not reuse older historical ahead-counts.
-- `a8b38ae` could not be pushed because the escalation approval service disconnected while
-  reviewing `git push`. Its response explicitly rejected the request rather than granting
-  permission. Do not bypass that control; retry only when approval is available or the user
-  explicitly authorizes another attempt.
+- Book: **555 physical PDF pages, 49 chapters, 6 appendices**.
+- The pre-session `develop` checkout matched `origin/develop` exactly; the previous claim that it
+  was twelve commits ahead was stale. This VideoReader documentation batch is committed locally
+  and is the only new unpushed commit after that matching starting point.
+- Do not infer that the historical `a8b38ae` push-review failure still describes the tracking
+  state. No push was attempted in this batch; retain the normal approval requirement for any
+  future `git push`.
 
-## Latest completed batch: SongReader XNB external-file reference, path, timing, and evidence boundary
+## Latest completed batch: VideoReader XNB external-file reference, metadata, playback, and evidence boundary
+
+No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
+registered reader, `Video`/`VideoPlayer`/FFmpeg paths, reader/manager/playback tests, synthetic
+fixture manifest, XNB fuzzer inventory, local current FNA reader/runtime, and generic
+external-reference contrast establish:
+
+- The version-zero payload is an XNB String reference, Int32 duration, width, and height, Single
+  FPS, then Int32 soundtrack type. CNA's typed primitive reads are wire-equivalent to FNA's generic
+  `ReadObject<T>()` calls. The soundtrack value is an unchecked cast and metadata-only in playback.
+- The reference is a direct filesystem sibling of `RootDirectory / AssetName`, not
+  `ReadExternalReference<T>()`. It permits parent traversal, absolute paths, and reached symlinks
+  outside the root. Both implementations strip four unverified characters, then probe the bare
+  stem, `.ogv`, and `.ogg`; stale `NEXTmedia.md` text saying `.oga` is wrong. CNA skips a
+  resolved path of four or fewer characters and regards a directory as existing, where FNA's
+  unconditioned substring and `File.Exists()` differ.
+- A manager and its GraphicsDevice are required, but the XNB `Video` constructor trusts the path
+  and metadata and does not open a decoder. Well-formed missing references therefore load. Playback
+  is the actual open/metadata boundary: CNA returns to `Stopped` silently when FFmpeg cannot open
+  the path, whereas FNA's normal Theora route throws `FileNotFoundException` at playback. CNA's
+  source comment also incorrectly calls its `> 1.0f` FPS mismatch check FNA-equivalent; FNA uses
+  `>= 1.0f`, so an exact one-fps difference is a real untested divergence.
+- Normal dispatch has no existing Video. A direct copyable `std::any` value is unboxed and then
+  ignored, so a fresh value is returned; generic manager caching is by copied Video value.
+- The complete XNB integration test is assembled at run time beside CNA's synthetic 160x90,
+  25-fps, two-second `chroma_420.mkv`. It proves header/table/registration/manager/device,
+  fallback to its original `.mkv` after the two XNB probes fail, and first-frame construction. It
+  is not a real Video XNB: there is no external/compressed fixture, Video fuzzer seed, extension
+  success test, missing-playback test, malformed-field test, direct-existing/cache test, or
+  external-producer differential test.
+
+Ch.8 now records the literal wire, path/containment and short-reference boundaries,
+device/deferred-playback behavior, FNA differences, direct/value-cache behavior, and fixture
+scope. Full latexmk succeeded at **555 pages**; targeted undefined-reference and duplicate-label
+checks are empty; makeindex accepted **2,295** entries with zero rejected and zero warnings;
+`git diff --check` passes. Rendered physical PDF pages **136--138** (printed pages **114--116**)
+are clean. Ch.8 is **2,093** lines and Ch.6 is **621** lines. The plan-consistency validator
+remains absent from this checkout.
+
+Next recommended start: audit the XNB `ModelReader` graph -- root/shared-resource layout,
+collection and index validation, model/bone/effect ownership, direct-instance semantics, and the
+real MonoGame `BlenderDefaultCube.xnb` fixture/fuzzer evidence. Keep the Video FPS-tolerance and
+silent-missing-playback divergences, the SoundEffect loop-endpoint overflow, and stale sibling
+support artifacts as current `develop` facts until source or documentation fixes land.
+
+## Previous completed batch: SongReader XNB external-file reference, path, timing, and evidence boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
 reader and `Song`/`MediaPlayer` paths, focused/manager/registration tests, the real MonoGame
@@ -56,11 +98,9 @@ Rendered physical PDF pages **134--136** (printed pages **112--114**) are clean.
 **1,979** lines and Ch.6 is **621** lines. The plan-consistency validator remains absent from this
 checkout.
 
-Next recommended start: audit `VideoContentTypeReader`'s five-field external-reference wire,
-path normalization and containment boundary, GraphicsDevice/backend requirement, missing-file and
-playback timing, direct-instance behavior, and the absence of a real compiled Video XNB fixture.
-Keep the SoundEffect loop-endpoint overflow/stale support artifacts and the Song stale-FNA-timing
-comment as current `develop` facts until source or documentation fixes land.
+The historical next step was the VideoReader audit above, now complete. Keep the SoundEffect
+loop-endpoint overflow/stale support artifacts and the Song stale-FNA-timing comment as current
+`develop` facts until source or documentation fixes land.
 
 ## Previous completed batch: SoundEffectReader XNB WAVEFORMATEX, decoder, loop, and ownership boundary
 

@@ -1949,9 +1949,123 @@ normalization, short or malformed strings, negative/extreme duration values, dir
 or a Song root in the whole-container fuzzer.  Treat the successful fixture as evidence for the
 one real companion graph it contains, not as a security or media-playback certificate.
 
-\cnaclass{VideoReader} follows the same broad architectural shape --- an external media reference
-rather than an embedded stream --- but has its own five-field layout and extension set.  Its
-reader-level path tests do not turn the Song fixture into evidence for video.
+\subsubsection{\cnaclass{VideoReader}: five trusted metadata fields around a deferred media open}
+\label{sec:xnb-video-reader}
+
+\cnaclass{VideoReader} is also registered at reader version zero, under the canonical factory
+key:
+
+\begin{lstlisting}
+Microsoft.Xna.Framework.Content.VideoReader
+\end{lstlisting}
+
+Like \cnaclass{SongReader}, it serializes an external media name rather than encoded media bytes.
+Unlike Song, the reference is followed by four more pieces of metadata.  Its complete root-object
+body is therefore:
+
+\begin{lstlisting}
+String  referenceName       // normal XNB 7-bit byte-length prefix, then UTF-8 bytes
+Int32   durationMs
+Int32   width
+Int32   height
+Single  framesPerSecond
+Int32   soundTrackType      // cast directly to VideoSoundtrackType
+\end{lstlisting}
+
+FNA reads these fields through its generic \texttt{ReadObject<T>()} calls, while CNA calls the
+matching typed primitive methods directly.  That is a C\texttt{++} implementation-style
+difference, not a second wire format: both consume the same String, four signed 32-bit values
+(including the soundtrack enum), and one IEEE-754 single in the same order.  Neither reader
+validates that the soundtrack integer is one of the three named \cnaclass{VideoSoundtrackType}
+values.  It is simply cast, and current playback code on both sides treats that field as metadata
+rather than a cue to duck, mute, or select an audio track.
+
+\paragraph{Sibling resolution is deliberately filesystem-shaped, and not a containment boundary.}
+The reader forms a base path from \cnaclass{ContentManager}'s \texttt{RootDirectory} plus the
+logical XNB asset name, then resolves the serialized string as a sibling.  CNA changes
+backslashes to slashes, uses \cnans{std::filesystem::path}'s lexical normalization, and probes
+the resulting filesystem path directly.  FNA's \texttt{FileHelpers.ResolveRelativePath()} uses a
+URI to collapse the same relative-directory syntax before using its filesystem probes.  Neither
+path is \cnaclass{ContentReader::ReadExternalReference<T>()}: there is no generic logical-root
+check here.  A sufficiently deep parent traversal, an absolute reference, or a symlink reached
+after lexical normalization can consequently identify a file outside the configured content
+tree.  This is compiled-content path handling, not a sandbox for an untrusted reference string.
+
+After resolution, the normal XNA convention is a fake \texttt{.wmv} suffix.  Both readers remove
+the final four characters without checking that they actually spell \texttt{.wmv}, first accept
+the extensionless stem if it exists, then probe \texttt{.ogv} and \texttt{.ogg} in that exact
+order.  The first existing path wins; when neither probe exists, the original unstripped path is
+retained.  Thus a real \texttt{intro.wmv} can become an adjacent \texttt{intro.ogv} or
+\texttt{intro.ogg}; a pre-existing \texttt{intro.ogv} also round-trips through strip and
+re-probe.  This is narrower than Song's \texttt{.ogg}/\texttt{.oga}/\texttt{.qoa} set and does
+not make CNA's ordinary loose-file \cnaclass{Video} extensions (such as \texttt{.mkv} or
+\texttt{.mp4}) into supported XNB substitutions.
+
+There are two small malformed-reference qualifications.  CNA only strips when the \emph{resolved}
+path exceeds four characters; FNA calls \texttt{Substring(0, length - 4)} unconditionally, so a
+short direct-reader path can fail in FNA before the numeric fields are read.  At exactly four
+characters, both eventually retain the original string, although CNA skips FNA's empty-stem
+filesystem probes.  CNA uses \cnans{std::filesystem::exists()}, which also reports a directory;
+FNA uses \texttt{File.Exists()}, which does not.  No current Video reader test covers any of
+these edge cases, separator normalization, a path escape, a symlink, the \texttt{.wmv} to
+\texttt{.ogv}/\texttt{.ogg} success paths, or an invalid soundtrack integer.
+
+\paragraph{Loading creates trusted metadata; opening and most validation happen later.}
+\cnaclass{VideoReader} needs both an owning \cnaclass{ContentManager} and that manager's
+\cnaclass{GraphicsDevice}.  A standalone \cnaclass{ContentReader} fails immediately with
+\cnaclass{ContentLoadException} when no manager exists; a manager without a device fails after
+the five fields have been read when it requests its internal device.  Normal
+\texttt{ContentManager::Load<Video>()} supplies both in a configured game.  The resulting
+seven-argument \cnaclass{Video} constructor stores the path, device, duration, dimensions,
+frame rate, and soundtrack type verbatim.  It neither tests that the file exists nor opens a
+decoder.  In particular, an unresolved but well-formed XNB reference loads successfully, and
+negative/extreme duration or dimension values, non-finite frame rates, and arbitrary enum values
+are admitted as trusted serialized metadata.
+
+The actual FFmpeg open happens when \cnaclass{VideoPlayer::Play()} receives that Video.  A
+successful open then checks the file's width and height and compares its frame rate against the
+serialized value before allocating the frame texture.  This makes a validly parsed but
+metadata-mismatched XNB fail at playback with \cnaclass{InvalidOperationException}, rather than
+at \texttt{Load}.  There is a precise current FNA difference at the tolerance edge: FNA rejects
+a difference of one frame per second or more (\texttt{>= 1.0f}), while CNA rejects only a value
+strictly greater than one (\texttt{> 1.0f}); no CNA test exercises that exact one-fps boundary.
+More seriously for callers expecting FNA-style failure, CNA's FFmpeg wrapper returns false when a
+path cannot be opened or contains no usable video stream.  \cnaclass{VideoPlayer::Play()} then
+returns in the stopped state without throwing.  FNA's ordinary Theora player opens the path when
+played and throws \cnaclass{FileNotFoundException} if it cannot open it.  The timing is therefore
+deferred in both designs, but CNA's unresolved-reference outcome is a silent stopped player,
+not FNA's playback-time exception.  A corrupt existing file can similarly reach the decoder
+boundary rather than becoming an XNB parsing error.
+
+This graphics and decoder dependence also explains the platform boundary already described in
+Chapter~\ref{ch:media-system}: on Windows, Android, and Emscripten the current build excludes the
+FFmpeg-backed Video implementation.  The public declarations remain, but using this reader's
+result reaches a link-time absence rather than an intentionally implemented runtime fallback.
+
+\paragraph{Existing instances, caching, and the evidence actually present.}
+\cnaclass{VideoReader} inherits the default false
+\texttt{CanDeserializeIntoExistingObject} capability, so ordinary root dispatch supplies no
+existing Video.  A direct type-erased C\texttt{++} call can still box a copyable Video in
+\texttt{std::any}; the generic bridge unboxes it, but the reader discards it and constructs a
+fresh value, just as FNA ignores its \texttt{existingInstance} parameter.  \cnaclass{ContentManager}'s
+normal Video cache is consequently a separate value-cache: later \texttt{Load<Video>()} calls
+return copies of the cached Video rather than populating an object the caller previously held.
+No located test covers direct existing-instance input or a Video cache identity/lifetime case.
+
+The strongest current end-to-end test builds a complete uncompressed version-five \texttt{XNBw}
+container in memory, writes it beside CNA's 160-by-90, 25-fps, two-second
+\texttt{chroma\_420.mkv} FFmpeg fixture, then loads it through the real header, type table,
+registration, reader, manager, and \cnaclass{VideoPlayer} route.  It proves the five-field
+order, GraphicsDevice hand-off, fallback to the original \texttt{.mkv} reference after the
+\texttt{.ogv}/\texttt{.ogg} probes fail, and a first frame of the declared size.  Focused tests
+also cover registration, all five declared values, deliberately mismatched metadata reaching
+the deferred player check, and the missing-manager-device error.  This is meaningful integration
+evidence, but its provenance matters: the \texttt{.xnb} is assembled by the test at run time and
+the companion is CNA's synthetic FFmpeg media fixture.  No real MonoGame- or XNA-produced Video
+XNB has been located; no real compressed Video XNB, XNB Video container-fuzzer seed,
+missing-reference playback assertion, malformed/truncated field test, extension-probe success
+case, direct-existing case, or external-producer differential test exists.  Song's real compiled
+fixture is not evidence for this five-field Video body.
 
 \section{What this means for porting}
 
