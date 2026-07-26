@@ -384,6 +384,79 @@ uses the inverse ratios. CNA's richer five-mode presentation model needs offsets
 mode-specific viewport math that FNA's simple faux-backbuffer scale does not represent, but
 the table shows that this additional mechanism is not yet uniform or uniformly tested.
 
+\subsection{The static window registry is a raw, single-slot routing table}
+\label{sec:backend-window-registry-lifetime}
+
+The second dispatch tier above is not a property of an SDL window or a
+\cnaclass{GraphicsDevice}.  It is one process-wide, function-local-static
+\texttt{unordered\_map<SDL\_Window*, IGraphicsBackend*>}.  Registration assigns
+\texttt{map[window] = backend}; lookup returns the stored raw pointer or null; unregistration
+erases by window pointer alone.  There is no ownership token, weak lifetime check, duplicate
+registration check, or lock.  Thus the map is deliberately a convenience route for the two
+virtual transforms, not a native-object or device-ownership registry.
+
+Both directions dereference its result.  After the SDL-renderer-first attempt fails or finds no
+renderer, \texttt{SdlInputBridge} gets the pointer and calls
+\texttt{TransformWindowToLogical()} for mouse motion, button positions, and touch coordinates.
+\cnaclass{Mouse::SetPosition()} makes the symmetric lookup before calling
+\texttt{TransformLogicalToWindow()} and warping the cursor.  The renderer-first branch normally
+keeps SDL\_RENDERER and ASCII out of this map, but it does not make a stale entry safe: the
+fallback immediately performs a virtual call through whatever pointer the map returns.
+
+Only four current source backends register: EasyGL, Canvas, SDL GPU, and WebGPU.  Their timing
+is materially different:
+
+\begin{itemize}
+\item EasyGL registers immediately after its non-null-window check, \emph{before} creating the
+  GL context, initializing the EasyGL device, registering GL resources, or allocating optional
+  MSAA buffers.  If any later constructor step throws, C\texttt{++} destroys constructed members
+  but does not invoke the incomplete \texttt{EasyGLGraphicsBackend} destructor.  Its
+  unregistration therefore never runs, leaving a map entry whose backend pointer is dangling.
+  This compounds Chapter~9's already-recorded lack of a \cnaclass{GraphicsDevice} construction
+  rollback: a later input event for that window can reach a virtual call through the stale
+  pointer rather than merely observing a failed device construction.
+\item Canvas registers after its null check and has no later constructor work.  SDL GPU registers
+  only after its GPU resources, output-size query, and presentation state have been established.
+  WebGPU registers at the end of its guarded initialization block, after creating/configuring its
+  surface and adapter/device; its catch path cleans the earlier native state.  These three orders
+  avoid EasyGL's particular ``register, then perform risky setup'' interval, but all use the
+  same raw map and unconditional destructor erase.
+\end{itemize}
+
+The usual test-only multisample replacement is serial rather than overlapping: it resets the old
+backend, whose destructor erases its entry, then constructs the replacement for the same window.
+It therefore has a temporary no-mapping interval and does not itself produce two map values.  A
+failed replacement still leaves no usable backend; an EasyGL failure can additionally retain the
+early stale value described above.
+
+The public attached-window path makes the single-slot rule observable even without reaching into
+the internal header.  Nothing prevents two devices from being given the same borrowed
+\texttt{PresentationParameters::DeviceWindowHandle}.  If both selected backends register, the
+later assignment silently replaces the earlier pointer.  When the earlier backend is destroyed,
+its pointer-blind erase removes the later backend's mapping too.  The survivor then falls back to
+raw coordinates rather than its transform.  Reuse of an SDL-window address after destruction has
+the analogous key-identity hazard.  The map also has no synchronization, so input processing on
+one thread concurrent with backend creation or destruction on another would read and mutate an
+\texttt{unordered\_map} without a stated thread-affinity or locking contract.  The ordinary game
+loop may happen to serialize those operations, but the implementation itself does not enforce it.
+
+The current tests do not exercise these lifetime rules.  Canvas tests construct a backend with a
+non-null fake pointer specifically because its constructor only registers it, but never query the
+map or exercise a transform.  The direct SDL-renderer and DX3 helper tests summarized above also
+bypass registry lookup.  No located test covers duplicate attached devices, owner-aware
+unregistration, constructor failure after registration, address reuse, or concurrent lookup.
+FNA's ratio-based mouse path has no comparable backend-pointer registry, even though its simpler
+coordinate model cannot represent CNA's offsets and presentation modes.
+
+\paragraph{Source-repository follow-up (needs human decision).}
+This requires an explicit ownership/concurrency policy in CNA, not a documentation-only
+workaround: register only after fallible construction or use an RAII registration guard; erase
+only when the entry still belongs to the departing backend; and either reject a second device for
+one SDL window or specify a supported multi-device routing model.  The last choice affects the
+public borrowed-window embedding contract, and the thread-affinity versus locking choice affects
+backend and event-pump design.  The source repository is outside this book checkout, so this
+audit records the boundary rather than selecting or implementing a policy.
+
 \subsection{\texttt{SetSwapInterval}: exact public enum, four backend meanings}
 \label{sec:backend-swap-interval-matrix}
 

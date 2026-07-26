@@ -6,7 +6,7 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-26)
 
 - Branch: `develop`.
-- Book: **571 physical PDF pages, 49 chapters, 6 appendices**.
+- Book: **573 physical PDF pages, 49 chapters, 6 appendices**.
 - The pre-session `develop` checkout matched `origin/develop` exactly; the previous claim that it
   was twelve commits ahead was stale. The VideoReader, ModelReader, and stock-effect audit batches
   (plus their handoff corrections) are committed locally. The validated Chapter 12, Chapter 13,
@@ -15,7 +15,8 @@ session log; this file is the concise live handoff.
   state. No push was attempted in this batch; retain the normal approval requirement for any
   future `git push`.
 
-## Latest completed batch: Chapter 16 resource tracking, optional-factory, and native-handle boundary
+## Latest completed batch: Chapter 16 resource tracking, optional-factory, native-handle, and
+static-registry boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
 `GraphicsDevice`/`GraphicsResource` lifecycle implementation, public resource ownership shapes,
@@ -61,6 +62,18 @@ establish:
   stale wrapper. A supplied `PresentationParameters::DeviceWindowHandle` is instead blindly cast,
   borrowed, never destroyed, and bypasses automatic TextInputEXT/Mouse handle publication and
   clearing. Existing GameWindow/input tests do not cover either device-attached window behavior.
+- CNA's second input-transform tier uses a process-global raw `SDL_Window* -> IGraphicsBackend*`
+  map after SDL-renderer conversion is unavailable, for both event reads and `Mouse::SetPosition`
+  cursor warps. Only EasyGL, Canvas, SDL GPU, and WebGPU register. Assignment overwrites without a
+  duplicate check and erasure accepts only a window key. EasyGL registers before its fallible GL
+  initialization, so a later constructor throw bypasses its destructor and leaves a dangling map
+  pointer; the other three register at the end of their relevant setup.
+- Two borrowed-window devices can silently replace each other's one map slot; destroying the first
+  then removes the live second device's mapping. The map also has no synchronization or stated
+  thread-affinity contract. Canvas's fake-window tests prove construction only; no located test
+  covers lookup, duplicate attachments, owner-aware erase, post-registration construction failure,
+  pointer-address reuse, or concurrent access. FNA's ratio-based mouse route has no comparable
+  backend-pointer registry.
 - **needs_human / source-repository follow-up:** repair CNA's resource registration/ownership
   policy (or prohibit copy/move on tracked resources, with a deliberate `Texture2D` alias rule)
   and add the device-first teardown tests. The required implementation is outside this book
@@ -74,19 +87,23 @@ establish:
   should claim the process-wide TextInputEXT/Mouse target and whether device disposal must
   invalidate the `GameWindow` view. Both choices affect multi-window embedding and observable
   post-disposal behavior, so tests or fixes should not be invented in this book-only checkout.
+- **needs_human / source-repository follow-up:** define whether one SDL window permits one device
+  or a multi-device transform-routing model, then use late/RAII registration, owner-aware erase,
+  and an explicit thread-affinity or locking rule. This affects the public borrowed-window
+  embedding contract and is not safe to invent in this book-only checkout.
 
-Full `make -C latex book` succeeded at **571 pages**; makeindex accepted **2,361** entries with
+Full `make -C latex book` succeeded at **573 pages**; makeindex accepted **2,364** entries with
 zero rejected/warnings; targeted undefined-reference and duplicate-label checks are empty; no new
 Chapter 16 overfull box appeared; and `git diff --check` passes. Rendered physical PDF pages
-**238--239** (printed **214--215**) are clean; Ch.16 runs through physical page **267** (printed
-**243**), followed by the intentional physical-page-268 chapter-boundary blank before Chapter 17.
-Ch.16 is **2,044** lines. The plan-consistency validator remains absent from this checkout.
+**241--243** (printed **217--219**) are clean; Ch.16 runs through physical page **269** (printed
+**245**), followed by the intentional physical-page-270 chapter-boundary blank before Chapter 17.
+Ch.16 is **2,117** lines. The plan-consistency validator remains absent from this checkout.
 
-Next recommended start: Chapter 16's ownership, optional-factory, and native-handle contracts are
-current.
+Next recommended start: Chapter 16's ownership, optional-factory, native-handle, and static
+window-registry contracts are current.
 Continue with another narrow, source-backed Chapter 16 interface audit only if it finds a distinct
 contract; do not repeat the existing capability, render-target, presentation, recovery, or
-factory-null matrices. The three documented CNA source repairs remain `needs_human` until
+factory-null matrices. The four documented CNA source repairs remain `needs_human` until
 `../cna` is explicitly in scope.
 
 ## Previous completed batch: Chapter 13 EffectParameter, technique/pass, and stock-effect binding boundary
