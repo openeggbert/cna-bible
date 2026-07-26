@@ -24,18 +24,97 @@ public \texttt{Effect.Apply()}, only \texttt{EffectPass.Apply()} --- and the pro
 uses to hand its own parameters down to whichever backend is active; the base implementation
 is a no-op, and every stock effect overrides it.
 
-\cnaclass{EffectParameter} carries full metadata (name, semantic, row/column counts,
-\cnaclass{EffectParameterClass}, \cnaclass{EffectParameterType}) plus typed
-\texttt{GetValue*} / \texttt{SetValue*} accessors for every scalar, vector, matrix, quaternion,
-string, and texture type XNA effects support. \cnaclass{EffectParameterCollection},
-\cnaclass{EffectPassCollection}, and \cnaclass{EffectTechniqueCollection} all store their
-elements behind \texttt{unique\_ptr} rather than by value, specifically so that a reference
-obtained earlier --- including a captured \texttt{CurrentTechnique} --- stays valid even if a
-later \texttt{Add()} reallocates the backing vector. \cnaclass{EffectPass::Apply()} throws
-\texttt{InvalidOperationException} if the pass does not belong to the effect's currently
+\cnaclass{EffectParameter} carries a name, semantic, row/column counts, class/type enums, and a
+broad family of typed \texttt{GetValue*} / \texttt{SetValue*} accessors. That surface is
+deliberately not a general compiled-effect uniform API in CNA; its actual storage, stock-effect
+linkage, and sharp edges are made explicit in \S\ref{sec:stock-effect-parameter-boundary}. The
+parameter, pass, and technique collections all store elements behind \texttt{unique\_ptr} rather
+than by value, so a reference obtained earlier --- including a captured \texttt{CurrentTechnique}
+--- survives a later \texttt{Add()} reallocation. \cnaclass{EffectPass::Apply()} throws
+\texttt{InvalidOperationException} if an owned pass does not belong to the effect's currently
 selected technique, including when \texttt{CurrentTechnique} is null --- matching FNA's own
 ``Applied a pass not in the current technique!'' guard, mapped onto a defined C\texttt{++}
 exception rather than the null-reference crash the equivalent null case produces in C\#.
+
+\section{Parameters and techniques are structural compatibility, not general uniforms}
+\label{sec:stock-effect-parameter-boundary}
+
+The XNA-looking \texttt{Parameters} property needs a careful reading in current CNA. FNA parses
+compiled bytecode into its real parameters, techniques, passes, annotations, arrays, and
+structures; those parameter values are what the compiled effect later applies. CNA's matching
+constructor always throws, so there is no parser or general parameter-to-backend binding behind
+the public collection. A bare \cnaclass{Effect} starts with one manually created
+\texttt{Default} technique containing one \texttt{P0} pass and with \emph{zero} parameters.
+
+The five stock effects do not all even present the same structural approximation.
+\cnaclass{BasicEffect} adds no parameter records at all, even though real FNA's compiled
+BasicEffect exposes its parsed parameter table:
+
+\begin{lstlisting}
+auto& parameters = basic.getParametersProperty();
+EffectParameter* diffuse = parameters["DiffuseColor"]; // nullptr
+\end{lstlisting}
+
+\cnaclass{AlphaTestEffect},
+\cnaclass{DualTextureEffect}, \cnaclass{EnvironmentMapEffect}, and \cnaclass{SkinnedEffect}
+each call a private \texttt{CacheEffectParameters()} helper instead. It manually creates a
+small set of internal shadows: respectively 6, 5, 12, and 12 records for the derived material,
+fog, matrix, and shader-index calculations. Those lists are neither a bytecode reflection result
+nor a full public description of the effect; for example, the manually cached AlphaTest and
+DualTexture lists contain no texture parameter despite each effect having a texture property.
+
+The normal render flow is consequently one-way:
+
+\begin{lstlisting}
+stockEffect.setDiffuseColorProperty(tint); // authoritative effect field / dirty bit
+for (EffectPass& pass : stockEffect.getCurrentTechniqueProperty()->getPassesProperty()) {
+    pass.Apply();                           // OnApply may refresh internal shadow records
+    graphicsDevice.DrawIndexedPrimitives(/* ... */);
+    // GraphicsDevice calls stockEffect.FillGpuDrawParams(), which reads the effect fields.
+}
+\end{lstlisting}
+
+Writing a manually found \cnaclass{EffectParameter} therefore does not form a portable
+alternative to a stock effect's named property and does not create an arbitrary backend uniform.
+The device dispatches \texttt{FillGpuDrawParams()} directly, not the collection. A few
+properties deliberately use a shadow as their own storage --- fog color is the important example
+in the four effects that cache it --- but that is an implementation detail that a later property
+assignment or \texttt{OnApply()} calculation can overwrite. Use the public
+\texttt{setDiffuseColorProperty}, \texttt{setTextureProperty}, matrix, lighting, fog, and
+skinning APIs for stock material state; use the explicit \texttt{ShaderEffect::SetUniform*}
+surface, with Chapter~\ref{ch:shader-fx-gap}'s backend limits, for a genuinely custom uniform.
+
+\subsection{What an individual parameter actually retains}
+
+An \cnaclass{EffectParameter} stores independent C\texttt{++} float, integer, string, and
+texture-pointer caches. Its metadata does not check that a requested setter matches the declared
+class, type, shape, or count; it is descriptive data, not runtime validation. Array getters
+return at most the currently stored entries rather than necessarily the requested count. A
+negative request is caller-invalid: vector/matrix/quaternion and Boolean getters happen to yield
+an empty result, while the integer and float array implementations form an invalid iterator range.
+No focused test covers this mismatch or negative-count path.
+
+The texture overloads deserve the same caution. CNA keeps a separate raw slot for each texture
+overload. Calling \texttt{SetValue(Texture*)} therefore does not populate the matching typed
+texture getter, even when the dynamic object has that derived type; there is no generic texture
+getter. FNA has one texture reference which its typed getters cast. CNA also accepts and returns
+strings where FNA's \texttt{SetValue(string)} explicitly throws
+\texttt{NotImplementedException}. None of these pointers retains a texture, and none is a GPU
+binding instruction. The standalone parameter tests cover same-overload scalar/vector/matrix/
+quaternion/texture round trips and defaults, but not metadata mismatch, truncation, negative
+counts, generic-texture behavior, lifetime, stock-effect linkage, or rendering.
+
+\subsection{Pass selection still matters}
+
+\cnaclass{Effect::Apply()} is a useful CNA-only convenience: it calls \texttt{OnApply()} and
+makes the effect current on the device even if \texttt{CurrentTechnique} is null or names an
+unrelated technique. It does not itself select or validate a pass. The familiar loop above is
+safe because \cnaclass{EffectPass::Apply()} compares its owning technique's stable identity with
+the current one before reaching that convenience method. The public C\texttt{++} constructors
+also allow an ownerless pass; applying such a pass simply returns without setting any effect,
+where FNA constructs passes internally. Keep application code on the current technique's own
+passes and do not use null/unrelated techniques or ownerless manually assembled passes as a
+configuration API.
 
 \section{GpuDrawParams: the one struct every backend reads}
 

@@ -6,16 +6,51 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-26)
 
 - Branch: `develop`.
-- Book: **561 physical PDF pages, 49 chapters, 6 appendices**.
+- Book: **565 physical PDF pages, 49 chapters, 6 appendices**.
 - The pre-session `develop` checkout matched `origin/develop` exactly; the previous claim that it
   was twelve commits ahead was stale. The VideoReader, ModelReader, and stock-effect audit batches
-  (plus their handoff corrections) are committed locally. The validated Chapter 12 audit is recorded
-  below. No remote operation was attempted.
+  (plus their handoff corrections) are committed locally. The validated Chapter 12 and current
+  Chapter 13 audits are recorded below. No remote operation was attempted.
 - Do not infer that the historical `a8b38ae` push-review failure still describes the tracking
   state. No push was attempted in this batch; retain the normal approval requirement for any
   future `git push`.
 
-## Latest completed batch: Chapter 12 model runtime contract, collections, ownership boundary, and current loader routes
+## Latest completed batch: Chapter 13 EffectParameter, technique/pass, and stock-effect binding boundary
+
+No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
+base Effect/parameter/pass/technique and GraphicsDevice dispatch implementations, all five stock
+effects, focused parameter/stock-effect tests, and current local FNA counterparts establish:
+
+- CNA cannot parse compiled effect bytecode, so its Parameters/Techniques surface is structural
+  compatibility rather than a general reflected uniform API. A bare Effect has one Default/P0
+  technique/pass and zero parameters; BasicEffect adds none. AlphaTest, DualTexture,
+  EnvironmentMap, and Skinned manually cache only 6, 5, 12, and 12 internal records. Those
+  records are incomplete CPU shadows, not portable property setters or backend bindings.
+- Stock fields are authoritative: pass application may refresh selected shadows, then draw
+  dispatch reads the concrete effect through FillGpuDrawParams directly. Effect::Apply is a
+  CNA-only convenience and does not validate a current technique/pass; an owned pass validates
+  its technique identity, while a public ownerless pass is a no-op. Applications must apply the
+  current technique's own passes rather than build arbitrary pass configurations.
+- Individual EffectParameter values are independent unvalidated scalar/string/raw-pointer caches.
+  Arrays truncate to stored values; negative float/int array counts form invalid iterator ranges.
+  Generic Texture* and typed texture slots do not interoperate, strings diverge from FNA, and no
+  slot owns a texture or creates a GPU binding. Existing standalone tests only cover same-overload
+  round trips, not those edges, stock linkage, lifetime, or rendering.
+
+Ch.13 now records these compatibility and application limits without duplicating Chapter 8's XNB
+reader wire audit. Full `make -C latex book` succeeded at **565 pages**; makeindex accepted
+**2,318** entries with zero rejected/warnings; targeted undefined-reference and duplicate-label
+checks are empty; `git diff --check` passes. Rendered physical PDF pages **205--207** (printed
+**181--183**) are clean; Ch.13 runs through physical page **216** (printed **192**) before
+Chapter 14. Ch.13 is **578** lines. The plan-consistency validator remains absent from this
+checkout.
+
+Next recommended start: the narrow stock-effect parameter/pass boundary is current. Continue with
+the next under-documented graphics-core chapter, preferably Chapter 14's state-object ownership
+and mutation semantics, rather than duplicating XNB or stock-property coverage. Only add CNA
+source/tests when the sibling CNA repository itself is in scope.
+
+## Previous completed batch: Chapter 12 model runtime contract, collections, ownership boundary, and current loader routes
 
 No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
 runtime model/mesh/part/collection code, current FNA counterparts, XNB and loose readers, resolver,

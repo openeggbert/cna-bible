@@ -3942,3 +3942,31 @@ stays frozen by explicit author decision, not left incomplete.
   overfull boxes were removed, leaving only prior Ch.12 layout warnings. Physical PDF pages
   **193--200** (printed **171--178**) rendered cleanly; `git diff --check` passed. The
   plan-consistency validator remains absent from this checkout.
+
+- **2026-07-26, autonomous continuation — Chapter 13 EffectParameter, technique/pass, and
+  stock-effect binding boundary audited.** This record supersedes the Chapter~13 table row's
+  former **499**-line figure: Ch.13 is now **578** lines. Traced the CNA base
+  `Effect`/parameter/pass/technique and GraphicsDevice dispatch implementations, all five stock
+  effects, standalone parameter and stock-effect tests, and current local FNA counterparts. No
+  CNA source changed; the sibling repository remained read-only.
+
+  CNA cannot parse compiled effect bytecode, so its public parameter/technique shape is structural
+  compatibility, not a general reflected uniform API. The bare base supplies Default/P0 and no
+  parameters; BasicEffect adds no records. AlphaTest, DualTexture, EnvironmentMap, and Skinned
+  instead cache only 6, 5, 12, and 12 partial CPU shadow records. Stock fields remain
+  authoritative: pass application can refresh shadows, but GraphicsDevice reads the concrete
+  effect through `FillGpuDrawParams()` directly. `Effect::Apply()` is CNA-only and does not
+  select/validate a pass; owned passes validate their stable technique identity while a public
+  ownerless pass is a no-op.
+
+  `EffectParameter` has independent unvalidated scalar/string/raw-pointer caches. Arrays may
+  truncate; negative float/int array counts form invalid iterator ranges; generic and typed
+  texture slots do not interoperate; strings diverge from FNA; and none of the raw pointers owns
+  a resource or binds a GPU uniform. Existing parameter tests cover only same-overload round
+  trips, not metadata mismatch, count edges, generic textures, lifetime, stock linkage, or
+  rendering. Full `make -C latex book` succeeded at **565 pages**; target undefined-reference
+  and duplicate-label checks were empty; makeindex accepted **2,318** entries with zero
+  rejection/warning; newly added overfull boxes were removed; and `git diff --check` passed.
+  Rendered physical pages **205--207** (printed **181--183**) are clean. Chapter 13 ends on
+  physical page **216** (printed **192**) before Chapter 14. The plan-consistency validator
+  remains absent from this checkout.
