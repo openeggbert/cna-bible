@@ -3914,3 +3914,31 @@ stays frozen by explicit author decision, not left incomplete.
   makeindex accepted **2,302** entries with zero rejection/warning; `git diff --check` passed.
   Physical PDF pages **193--200** (printed pages **171--178**) rendered cleanly. Ch.12 is now
   **482** lines. The plan-consistency validator remains absent from this checkout.
+
+- **2026-07-26, autonomous continuation — Chapter 12 model ownership, copying, and unload
+  boundary audited.** This record supersedes the Chapter~12 table row's former **482**-line
+  figure: Ch.12 is now **558** lines. Traced `Model`'s compiler-generated value-copy members,
+  raw collections, private `shared_ptr<void>` bundle, all three reader bundle implementations,
+  generic cache/Unload behavior, focused XNB/cache tests, and current FNA reference semantics.
+  No CNA source changed; the sibling repository remained read-only.
+
+  A copied CNA Model has independent top-level vectors/Root/Tag fields but aliases the same raw
+  bones, meshes, parts, buffers, effects, mesh Tags, and reader resources; its private ownership
+  handle keeps the XNB or CNJ/glTF bundle alive. Mutating a bone or mesh graph through one copy
+  changes every copy, while replacing the top-level Model Tag changes only that wrapper. FNA
+  instead returns its one cached Model class reference. XNB owns the normal graph/buffers/effects;
+  CNJ/glTF additionally own decoded textures and the skin/morph Tags. A retained loaded Model
+  remains coherent after `ContentManager::Unload()` removes its cache entry, but its raw graphics
+  device must still outlive drawing.
+
+  Hand-built constructors own nothing: bones, meshes, parts, buffers, effects, Tags, and device
+  must outlive every shallow model copy. The NOXNA `setOwnedResources(shared_ptr<void>)` hook can
+  retain a deliberate aggregate owner but cannot rescue arbitrary external raw addresses. Existing
+  XNB coverage proves repeated-load VertexBuffer identity and generic tests prove cache eviction;
+  no located test holds Model through Unload, checks shared-copy mutation, hand-build lifetime, or
+  final resource destruction. Ch.12's new section records these rules and FNA contrast. Full
+  `make -C latex book` succeeded at **561 pages**; target undefined-reference and duplicate-label
+  checks were empty; makeindex accepted **2,313** entries with zero rejection/warning; newly added
+  overfull boxes were removed, leaving only prior Ch.12 layout warnings. Physical PDF pages
+  **193--200** (printed **171--178**) rendered cleanly; `git diff --check` passed. The
+  plan-consistency validator remains absent from this checkout.

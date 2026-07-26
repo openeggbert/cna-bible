@@ -231,6 +231,82 @@ enabled. Those tests do not make the three routes interchangeable: use XNB for c
 asset fidelity, CNJ for a controlled self-contained/imported description, and direct glTF/GLB
 for the first supported group of a glTF~2.0 file when the resolver priority selects it.
 
+\section{Lifetime and copies: value syntax, one mutable graph}
+\label{sec:model-lifetime-copy}
+
+\cnaclass{Model} is a copy-constructible C\texttt{++} value, but copying it is not a deep model
+clone. Its compiler-generated copy operation copies the two collection vectors, \texttt{Root},
+and \texttt{Tag} as raw pointers, while copying its private type-erased
+\texttt{shared\_ptr<void>} ownership handle. The vectors are separate little wrappers after the
+copy, but every \cnaclass{ModelBone}, \cnaclass{ModelMesh}, \cnaclass{ModelMeshPart}, buffer,
+effect, and the graph below them is the same object. A bone-transform or part/effect mutation
+observed through one copy is therefore observed through every copy; this is shared mutable model
+state, not a way to pose or material-override one instance independently.
+
+Each normal reader intentionally fills that last ownership handle before returning. The XNB
+reader's private bundle retains unique bones, meshes, and parts plus shared vertex buffers,
+index buffers, and effects. The CNJ and direct-glTF routes share a corresponding bundle which
+also retains their buffers, graph objects, effects, decoded textures, skinning data, and morph
+data. That is why a cached or caller-held loaded \cnaclass{Model} can safely keep the raw
+pointers used by its collections: the bundle itself is shared among every copy. It also explains
+why CNJ/glTF's \texttt{Model.Tag} and part Tags remain valid while such a model lives --- their
+\cnaclass{SkinningData} and morph objects are in that same bundle. XNB rejects non-null serialized
+Tags, so it has no analogous reader-provided Tag object to retain.
+
+The visible cache behavior follows directly from that representation:
+
+\begin{lstlisting}
+Model first  = content.Load<Model>("ship");
+Model second = content.Load<Model>("ship"); // another C++ wrapper, same bones/meshes/buffers
+
+first.CopyBoneTransformsFrom(newPose);       // second now observes the same bone transforms
+content.Unload();                            // removes manager cache entries only
+// first and second still retain the reader-owned graph through their shared ownership handles
+\end{lstlisting}
+
+The real XNB test checks the decisive GPU identity part of this rule: two loads expose the same
+underlying \cnaclass{VertexBuffer}, not a fresh decode/upload. The generic content-cache and
+\texttt{Unload()} tests separately prove cache eviction, but no located test holds a \emph{Model}
+through \texttt{Unload()}, copies one and checks a shared mutation, or exercises the final
+bundle destruction. The code makes the first two outcomes clear; the missing tests remain an
+evidence boundary rather than permission to assume a complete shutdown protocol.
+
+There are two qualifications to ``shared'' worth keeping precise. Reassigning the top-level
+\texttt{Tag} changes only that particular C\texttt{++} wrapper's raw pointer; it does not rewrite
+another wrapper's \texttt{Tag} field, although both initially point to the same reader-owned
+object. In contrast, a mesh Tag or a bone/part/effect change is made on the shared pointed-to
+graph and is visible through all copies. FNA returns its cached \cnaclass{Model} \emph{class}
+reference, so ordinary managed assignment aliases even the top-level wrapper; CNA's value syntax
+is consequently not a deep-copy compatibility promise.
+
+\subsection{Hand-built graphs have no automatic owner}
+
+The public three/five-argument \cnaclass{Model} constructors merely store the caller's raw
+bone and mesh addresses. Likewise, meshes store raw part and graphics-device addresses; parts
+store raw buffer, index-buffer, effect, and Tag addresses; and bones store raw parent/child
+addresses. They allocate none of those objects and do not install an ownership bundle. The
+constructors are \texttt{NOXNA} extensions precisely because FNA creates these graph objects
+through internal readers rather than asking game code to manage them.
+
+Consequently a hand-built model is drawable only while its complete graph outlives every model
+copy that uses it; its \cnaclass{GraphicsDevice} must survive for the same draw lifetime.
+Stack-allocated construction is fine for a local, synchronous test, but returning the model
+after its backing bones, meshes, parts, buffers, effects, or Tag objects have died leaves
+dangling pointers. An advanced CNA owner can deliberately attach one aggregate lifetime object
+with the \texttt{NOXNA}
+\texttt{setOwnedResources(shared\_ptr<void>)} hook, mirroring the three readers; otherwise the
+application must retain its own aggregate explicitly. The hook retains only what its supplied
+shared object owns---it does not make a raw graphics-device pointer, an externally assigned Tag,
+or another unowned raw address safe by itself.
+
+Finally, \cnaclass{ContentManager::Unload()} clears its generic asset and texture lookup maps;
+it does not walk a loaded model or invalidate a caller-held C\texttt{++} value. A retained
+reader-created model therefore keeps its bundle after unload, but still relies on the separately
+unowned graphics device being alive when it draws. Drop every model copy before tearing down that
+device, and do not mistake cache eviction for a safe concurrent reload or a universal resource
+destructor. Chapter~\ref{ch:content-and-assets} gives the manager-wide cache, thread, and
+disposal rules; this section supplies the model-specific raw-pointer consequence.
+
 \section{Skinning: two independent systems, not one}
 
 CNA ships two separate, unrelated systems for animated meshes, and conflating them is an

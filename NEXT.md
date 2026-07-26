@@ -38,22 +38,31 @@ focused CPU tests, backend tests, and CNJ/glTF integration suites establish:
   at the literal stage. CNJ and direct glTF synthesize Model bones while retaining real skin data
   on `Model.Tag` and morph data on part Tags. Direct glTF imports only its first scene-scoped mesh
   group at fixed unit scale 1.0; XNB alone reconstructs its serialized hierarchy and shared graph.
+- A copied CNA `Model` is a new lightweight wrapper, not a deep clone: its raw graph and private
+  ownership bundle are shared, so bone/mesh/part/effect mutations are cross-copy, whereas a later
+  top-level `Model.Tag` replacement is per wrapper. XNB/CNJ/glTF readers install bundles that
+  retain their graph (and CNJ/glTF texture, skin, and morph Tags); `Unload()` merely evicts the
+  manager cache, so caller-held models remain coherent but still require their raw GraphicsDevice.
+  Hand-built graphs own nothing unless an advanced caller deliberately attaches an aggregate with
+  the NOXNA `setOwnedResources(shared_ptr<void>)` hook.
 - CNJ has focused descriptor/envelope and shared-animation-clip coverage. Direct glTF has eight
   unconditional end-to-end tests plus one Draco test when that optional dependency is enabled.
   CPU and backend tests cover normal transforms, effect bookkeeping, EasyGL/Bgfx pixels, and the
   SDL 3D failure path, but not zero-bone draw, malformed manual graph, collection out-of-range,
-  mutable-effect desynchronisation, or concurrent draw recovery.
+  mutable-effect desynchronisation, concurrent draw recovery, Model-after-Unload, shared-copy
+  mutation, hand-built lifetime, or final resource destruction.
 
-Ch.12 corrects the obsolete loader prose and its own zero-gap/uniform-collection claims, adds the
-runtime invariants, and removes two severe pre-existing test-name layout overflows. Full
-`make -C latex book` succeeded at **561 pages**; makeindex accepted **2,302** entries with zero
-rejected/warnings; targeted undefined-reference and duplicate-label checks are empty; `git diff
---check` passes. Rendered physical PDF pages **193--200** (printed **171--178**) are clean.
-Ch.12 is **482** lines. The plan-consistency validator remains absent from this checkout.
+Ch.12 corrects obsolete loader, zero-gap, and uniform-collection claims; adds the draw,
+ownership/copy/Unload invariants; and removes two severe pre-existing test-name layout overflows.
+Full `make -C latex book` succeeded at **561 pages**; makeindex accepted **2,313** entries with
+zero rejected/warnings; targeted undefined-reference and duplicate-label checks are empty; `git
+diff --check` passes. Rendered physical PDF pages **193--200** (printed **171--178**) are clean.
+Ch.12 is **558** lines. The plan-consistency validator remains absent from this checkout.
 
-Next recommended start: the reader routes and draw/collection contract are current. If continuing
-Chapter 12, make the next pass a narrow raw-pointer lifetime/copy/Unload ownership audit; otherwise
-move to the next under-documented graphics-core chapter rather than repeating Model reader wires.
+Next recommended start: Chapter~12's reader, draw, collection, and ownership contracts are now
+current. Move to the next under-documented graphics-core chapter rather than repeating Model reader
+wires or manufacturing more Model edge-case prose; only add Model tests/source work when the CNA
+repository itself is in scope.
 
 ## Previous completed batch: stock-effect XNB material readers, external textures, ownership, and evidence boundary
 
