@@ -514,13 +514,16 @@ are documented in Chapter~\ref{ch:graphicsdevice}.
 One CNA-specific extension lives directly alongside this class rather than inside it: a
 \texttt{NOXNA enum class PresentationMode} with five values ---
 \texttt{Letterbox}, \texttt{Overscan}, \texttt{Stretch}, \texttt{NativeBackBuffer},
-\texttt{FixedHeightDynamicWidth} --- controlling how the game's back buffer is scaled to the
-actual display when the two don't match in aspect ratio, exposed through
-\texttt{getPreferredPresentationModeProperty()} / \texttt{setPreferredPresentationModeProperty()}.
+\texttt{FixedHeight\allowbreak Dynamic\allowbreak Width} --- expressing the game's requested policy for its virtual
+back buffer and actual display when the two don't match in aspect ratio, exposed through
+\texttt{getPreferred\allowbreak Presentation\allowbreak Mode\allowbreak Property()} /
+\texttt{setPreferred\allowbreak Presentation\allowbreak Mode\allowbreak Property()}.
 Real XNA never had to solve this problem in the same way, since the Xbox 360 and a Windows
 desktop of that era rarely presented CNA's variety of target displays (a browser canvas, an
 Android device in either orientation, an arbitrary desktop window); this is a genuinely new
-subsystem, clearly marked as such rather than folded silently into the XNA-facing API.
+subsystem, clearly marked as such rather than folded silently into the XNA-facing API. The enum
+is a manager-side request, not a portable promise that every backend has a matching scale,
+letterbox, or crop pass; Chapter~\ref{ch:backend-architecture} gives the current product matrix.
 
 A game that wants a fixed, letterboxed virtual resolution --- one of the more common real
 Getting-Started decisions, since it means every downstream draw call can assume one known
@@ -537,12 +540,11 @@ MyGame::MyGame()
 }
 \end{lstlisting}
 
-With \texttt{Letterbox} selected, a player resizing the window to a wider or taller aspect
-ratio than 1280:720 sees black bars rather than a stretched or cropped game --- every draw call
-in \texttt{Draw()} keeps working in the same 1280$\times$720 coordinate space CNA's own
-internal virtual-resolution machinery (Chapter~\ref{ch:graphicsdevice} covers
-\texttt{SetVirtualResolution}, the private method this setting ultimately reaches) scales and
-letterboxes on the game's behalf.
+On a backend that implements Letterbox, a player resizing the window to a wider or taller aspect
+ratio than 1280:720 sees black bars rather than a stretched or cropped game, while draw calls
+remain in the 1280$\times$720 logical coordinate space. The manager delivers this request before
+resetting virtual resolution; the GraphicsDevice path and the backend-specific execution matrix
+are documented in Chapters~\ref{ch:graphicsdevice} and~\ref{ch:backend-architecture}.
 
 \subsection{Vertical retrace is a presentation preference, not the fixed timestep}
 

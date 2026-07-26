@@ -92,16 +92,17 @@ backend.
   differs from the full back buffer, and comparing against \texttt{Viewport} directly would
   silently stomp that custom viewport back to full-window size on the very next
   \texttt{Present()} even though no real resize occurred.
-\item[\texttt{SetVirtualResolution(width, height)}] is the actual mechanism behind
-  Chapter~\ref{ch:game-loop}'s \texttt{PresentationMode} feature: it stores the requested
-  logical resolution, writes it into \texttt{PresentationParameters}' own back-buffer
-  width/height, forwards it to the backend (which is free to render at a different physical
-  resolution and scale/letterbox/crop the result per whichever \texttt{PresentationMode} the
-  game selected), and finally calls \texttt{UpdateViewportFromWindow()} to resync.
-\item[\texttt{SetPresentationMode(mode)}] simply forwards the mode value to the backend ---
-  all the actual scaling-mode logic (letterbox black bars vs.\ overscan cropping vs.\ plain
-  stretch vs.\ a fixed native back buffer) lives entirely on the backend side of this call, not
-  in \cnaclass{GraphicsDevice} itself.
+\item[\texttt{SetVirtualResolution(width, height)}] is a private helper which stores valid
+  logical dimensions, writes them into \texttt{PresentationParameters}, forwards them to the
+  backend, and resynchronises the viewport. No current caller of this helper was located:
+  construction and \texttt{Reset()} instead assign their virtual fields directly and call the
+  backend hook themselves. It is therefore not, by itself, the public mechanism behind
+  Chapter~\ref{ch:game-loop}'s manager setting.
+\item[\texttt{SetPresentationMode(mode)}] simply forwards the mode value to the backend. The
+  manager calls it immediately before Reset so mode-dependent virtual-size computation (notably
+  SDL\_RENDERER fixed-height mode) sees the requested policy first. The actual result is a
+  backend property rather than a universal GraphicsDevice guarantee; the fourteen-product
+  matrix is in Chapter~\ref{ch:backend-architecture}.
 \item[\texttt{applyPresentationParametersToWindow()}] applies the real SDL-level consequences
   of a presentation-parameter change --- \texttt{SDL\_SetWindowFullscreen} and
   \texttt{SDL\_SetWindowSize} --- and is deliberately non-fatal about the fullscreen call

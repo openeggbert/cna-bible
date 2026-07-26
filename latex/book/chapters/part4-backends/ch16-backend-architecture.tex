@@ -457,6 +457,143 @@ public borrowed-window embedding contract, and the thread-affinity versus lockin
 backend and event-pump design.  The source repository is outside this book checkout, so this
 audit records the boundary rather than selecting or implementing a policy.
 
+\subsection{\texttt{PresentationMode} is one manager request, not one portable presentation engine}
+\label{sec:backend-presentation-mode-matrix}
+
+The five-value \texttt{NOXNA} \cnaclass{PresentationMode} enum belongs to
+\cnaclass{GraphicsDeviceManager}, not to the public presentation-parameters object. Its default
+is \texttt{FixedHeight\allowbreak Dynamic\allowbreak Width}; a game changes it through
+\texttt{setPreferred\allowbreak Presentation\allowbreak Mode\allowbreak Property()}. This
+distinction is important: a direct \cnaclass{GraphicsDevice} construction does not receive a
+manager's preferred mode at all. \texttt{GraphicsDevice::create\allowbreak Backend()} fills
+virtual width/height, MSAA, interval, formats, and profile in
+\texttt{GraphicsBackend\allowbreak CreateArgs}, but leaves its presentation-mode member at that
+struct's default fixed-height value. It then calls the backend's virtual-resolution hook.
+
+The ordinary game-manager route is deliberately ordered differently.  On
+\texttt{CreateDevice()} or \texttt{ApplyChanges()}, the manager first calls
+\texttt{GraphicsDevice::SetPresentationMode()} and then calls \texttt{Reset()} with its new
+\cnaclass{PresentationParameters}.  Reset stores the requested back-buffer dimensions, updates
+TouchPanel's display dimensions, applies the native window change, and calls only
+\texttt{backend->SetVirtualResolution()}.  The order matters for SDL\_RENDERER: its
+fixed-height calculation derives a new logical width from the physical output and therefore must
+already know the mode.  The private \texttt{GraphicsDevice::SetVirtualResolution()} helper does
+write both the cached virtual dimensions and the public presentation parameters, but no current
+caller of that helper was located; creation and Reset duplicate the backend-forwarding part
+directly.  Thus the manager is the public configuration route, while the individual backend is
+the presentation implementation.
+
+The enum names express a useful requested policy. \texttt{Letterbox} preserves aspect ratio with
+bars; \texttt{Overscan} fills and crops; \texttt{Stretch} fills non-uniformly; and
+\texttt{NativeBack\allowbreak Buffer} requests physical output coordinates. The fixed-height
+mode retains its logical height while deriving width from the output aspect. They are \emph{not},
+however, a cross-backend promise that each output path draws those five policies. The following
+matrix is the current source-level
+contract for all fourteen factory products.  ``2D'' means the normal window-backbuffer sprite
+path; an explicitly bound render target remains its own pixel grid rather than acquiring
+letterbox bars or a crop rectangle.
+
+\begingroup
+\small
+\setlength{\tabcolsep}{2.7pt}
+\renewcommand{\arraystretch}{1.14}
+\begin{longtable}{@{}p{0.15\textwidth}p{0.28\textwidth}p{0.25\textwidth}p{0.25\textwidth}@{}}
+\toprule
+\textbf{Backend} & \textbf{What the five-mode request executes} &
+\textbf{Virtual size / viewport result} & \textbf{Evidence and boundary} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Backend} & \textbf{What the five-mode request executes} &
+\textbf{Virtual size / viewport result} & \textbf{Evidence and boundary} \\
+\midrule
+\endhead
+\texttt{SDL\_\allowbreak RENDERER}
+  & Maps Letterbox, Overscan, Stretch, and NativeBackBuffer directly to SDL's logical-
+    presentation modes. FixedHeightDynamicWidth first derives a width from the physical output
+    and then uses SDL Letterbox; because the derived grid has the output aspect, it normally has
+    no bars.
+  & Reports its logical grid. It reapplies the presentation when SetVirtualResolution or
+    SetPresentationMode is called and again after an output-size change at Present().
+  & The source logs, but does not throw, if SDL rejects the logical-presentation call. Existing
+    readback tests deliberately select NativeBackBuffer because SDL pixel reads are physical;
+    they do not constitute a five-mode pixel suite. \\
+\texttt{ASCII}
+  & Forwards every mode to an inner SDL renderer, then samples its private virtual-sized game
+    target into character cells before that inner renderer presents.
+  & A virtual-resolution change forwards to SDL and recreates the private game target. Its
+    reported viewport is the inner renderer's logical viewport.
+  & This is SDL's mode conversion plus an extra quantisation/composite step, not an independent
+    five-mode implementation. No separate ASCII mode test was located. \\
+\texttt{EASYGL}
+  & FixedHeightDynamicWidth is a uniform full-window map with a derived width. Every other enum
+    value uses the supplied virtual width/height over the whole GL viewport; there is no
+    letterbox offset, overscan crop, or NativeBackBuffer disable path.
+  & The backend stores both fields and computes its logical size for projection and viewport
+    reporting. It selects the full physical GL viewport before using that logical projection.
+  & Its own transform comments explicitly describe the non-default offset handling as
+    unimplemented. The resize example proves the fixed-height calculation, not the other four
+    policies. \\
+\texttt{CANVAS}
+  & Stores the mode and performs the same fixed-height logical-width calculation as EasyGL;
+    non-fixed modes retain the requested virtual dimensions. No located Canvas drawing path
+    consumes the mode to create bars, crop, or stretch a browser canvas.
+  & The bookkeeping drives GetViewportSize and input conversion, not a demonstrated output
+    compositor.
+  & Fake-window tests establish construction only. Browser execution and a five-mode visual
+    assertion remain unlocated, so this must not be read as a browser-presentation guarantee. \\
+\texttt{SDL\_GPU}, \texttt{WEBGPU}
+  & Compute the same explicit logical viewport: NativeBackBuffer is physical; fixed height
+    derives width; Stretch fills; Letterbox uses the smaller uniform scale and centered bars;
+    Overscan uses the larger scale and centered crop.
+  & The normal swapchain 2D sprite path maps through that rectangle and reports its logical
+    dimensions. Both validate the enum range; an invalid internal integer throws.
+  & This is the only located pair with a complete local five-policy geometry calculation. The
+    existing tests cover input/ordinary rendering routes, not a visual assertion for every mode;
+    high-DPI window-versus-pixel input mismatch is covered earlier in this chapter. \\
+\texttt{VULKAN}
+  & SetPresentationMode is an empty override. SetVirtualResolution retains the values and
+    recreates the physical swapchain; no letterbox, crop, or stretch pass follows.
+  & The window backbuffer uses its physical swapchain extent and GetViewportSize queries SDL
+    pixel size. Virtual 2D projection therefore does not imply a five-mode output transform.
+  & The expensive swapchain recreation on a logical-size update is source-visible. No mode test
+    or source branch selects a different presentation policy. \\
+\texttt{D3D9}, \texttt{D3D11}, \texttt{D3D12}
+  & D3D9 stores both values; D3D11 discards the mode; D3D12 has an empty mode hook. Their native
+    swapchains remain physical, so no member creates bars, cropping, or a scaling pass.
+  & D3D9/D3D11 report physical dimensions. D3D12 reports the stored virtual dimensions even
+    though its drawing backbuffers are physical.
+  & Consequently identical requests can change reported coordinates without changing output on
+    D3D12. The Direct3D backend chapter gives the detailed native-swapchain evidence. \\
+\texttt{BGFX}
+  & Both hooks are explicit no-ops: BGFX has no CNA logical-presentation layer.
+  & It uses the physical SDL window viewport.
+  & Header comments state this policy directly; no mode-specific test exists. \\
+\texttt{SOFTWARE}, \texttt{HEADLESS}
+  & Software ignores the mode and resizes its CPU backbuffer to the virtual dimensions when no
+    render target is active. Headless ignores the mode and uses the virtual dimensions as its
+    synthetic backbuffer size.
+  & These are replacement/simulation grids, not a physical presentation scale. A bound target
+    supplies its own size.
+  & Neither product has a window compositor, so the visual meanings of Letterbox, Overscan, and
+    Stretch do not apply. \\
+\texttt{DX3}
+  & Stores the requested mode, but free-direct's physical presenter always uses letterbox.
+  & A virtual-size change recreates CNA's logical surfaces. The underlying presenter retains its
+    first logical-presentation rectangle after that change.
+  & Chapter~\ref{ch:dx3-freedirect-backend} documents both the hard-coded-letterbox limitation
+    and its later-resolution-change defect; CNA cannot fix either by storing another enum. \\
+\bottomrule
+\end{longtable}
+\endgroup
+
+For a portable game, set the manager property before its normal initialization and treat
+\texttt{NativeBackBuffer} as the explicit test/readback choice when physical pixels matter. Do
+not infer letterbox geometry from the enum alone: ask the target backend's chapter, use its
+logical input route, and keep physical screenshot/readback coordinates separate. The matrix is
+also a stabilization boundary: any merger of the pending backend work must rerun this audit
+before the book promotes a current implementation detail to a compatibility promise.
+
 \subsection{\texttt{SetSwapInterval}: exact public enum, four backend meanings}
 \label{sec:backend-swap-interval-matrix}
 

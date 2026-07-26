@@ -6,7 +6,7 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-26)
 
 - Branch: `develop`.
-- Book: **573 physical PDF pages, 49 chapters, 6 appendices**.
+- Book: **575 physical PDF pages, 49 chapters, 6 appendices**.
 - The pre-session `develop` checkout matched `origin/develop` exactly; the previous claim that it
   was twelve commits ahead was stale. The VideoReader, ModelReader, and stock-effect audit batches
   (plus their handoff corrections) are committed locally. The validated Chapter 12, Chapter 13,
@@ -15,8 +15,8 @@ session log; this file is the concise live handoff.
   state. No push was attempted in this batch; retain the normal approval requirement for any
   future `git push`.
 
-## Latest completed batch: Chapter 16 resource tracking, optional-factory, native-handle, and
-static-registry boundary
+## Latest completed batch: Chapter 16 resource tracking, optional-factory, native-handle,
+static-registry, and presentation-mode boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
 `GraphicsDevice`/`GraphicsResource` lifecycle implementation, public resource ownership shapes,
@@ -74,6 +74,18 @@ establish:
   covers lookup, duplicate attachments, owner-aware erase, post-registration construction failure,
   pointer-address reuse, or concurrent access. FNA's ratio-based mouse route has no comparable
   backend-pointer registry.
+- `PresentationMode` is a `GraphicsDeviceManager`-only NOXNA request, not a
+  `PresentationParameters` field. The ordinary manager path sets the backend mode before Reset
+  forwards virtual dimensions; direct device construction leaves the create-argument mode at its
+  `FixedHeightDynamicWidth` default. The private `GraphicsDevice::SetVirtualResolution` helper
+  has no located caller: construction and Reset invoke the backend hook directly.
+- The five enum values are not a portable scaling contract. SDL_RENDERER/ASCII delegate to SDL's
+  full logical-presentation modes; SDL GPU/WebGPU contain the full local five-policy 2D geometry;
+  EasyGL and Canvas only implement fixed-height logical-size bookkeeping plus whole-window
+  non-default mapping; Vulkan, BGFX, and Direct3D lack a policy-specific compositor; Software and
+  Headless replace/simulate their backbuffer; and DX3 always presents letterboxed through
+  free-direct. Chapter 16's matrix records each viewport/evidence boundary, and Chapters 6/9 no
+  longer promise universal bars/cropping/scaling.
 - **needs_human / source-repository follow-up:** repair CNA's resource registration/ownership
   policy (or prohibit copy/move on tracked resources, with a deliberate `Texture2D` alias rule)
   and add the device-first teardown tests. The required implementation is outside this book
@@ -92,19 +104,26 @@ establish:
   and an explicit thread-affinity or locking rule. This affects the public borrowed-window
   embedding contract and is not safe to invent in this book-only checkout.
 
-Full `make -C latex book` succeeded at **573 pages**; makeindex accepted **2,364** entries with
+Full `make -C latex book` succeeded at **575 pages**; makeindex accepted **2,367** entries with
 zero rejected/warnings; targeted undefined-reference and duplicate-label checks are empty; no new
 Chapter 16 overfull box appeared; and `git diff --check` passes. Rendered physical PDF pages
-**241--243** (printed **217--219**) are clean; Ch.16 runs through physical page **269** (printed
-**245**), followed by the intentional physical-page-270 chapter-boundary blank before Chapter 17.
-Ch.16 is **2,117** lines. The plan-consistency validator remains absent from this checkout.
+**243--245** (printed **219--221**) are clean; Ch.16 runs through physical page **271** (printed
+**247**), followed by the intentional physical-page-272 chapter-boundary blank before Chapter 17.
+Ch.16 is **2,254** lines. The plan-consistency validator remains absent from this checkout.
 
-Next recommended start: Chapter 16's ownership, optional-factory, native-handle, and static
-window-registry contracts are current.
-Continue with another narrow, source-backed Chapter 16 interface audit only if it finds a distinct
-contract; do not repeat the existing capability, render-target, presentation, recovery, or
-factory-null matrices. The four documented CNA source repairs remain `needs_human` until
-`../cna` is explicitly in scope.
+## Deliberate pause after this checkpoint
+
+By author direction, do not extend or perform a fresh deep audit of `cna-bible` until CNA's
+`feature/audit` work and the pending graphics-backend feature branches have been stabilized and
+integrated into the intended source baseline. This is a pause, not completion or abandonment:
+the current Ch.16 contracts are the verified pre-integration baseline.
+
+When work resumes, first identify the exact integrated CNA commit/branch, re-read its active
+plans and `NEXT.md`, then reconcile the presentation/input/lifetime matrices in Chapters 6, 9,
+16, and the affected backend chapters before adding new prose. Re-run the full book build and
+visual spot checks because backend changes can invalidate both behavior claims and pagination.
+The four documented CNA source repairs remain `needs_human` until `../cna` is explicitly in
+scope.
 
 ## Previous completed batch: Chapter 13 EffectParameter, technique/pass, and stock-effect binding boundary
 
