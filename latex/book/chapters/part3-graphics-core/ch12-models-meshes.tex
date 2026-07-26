@@ -7,9 +7,12 @@
 each \cnaclass{ModelMesh} owns a \cnaclass{ModelMeshPartCollection} and a
 \cnaclass{ModelEffectCollection}; each \cnaclass{ModelMeshPart} references a shared
 \cnaclass{VertexBuffer} / \cnaclass{IndexBuffer} pair and an \cnaclass{Effect}. This is the
-same shape as real XNA, and \cnaclass{Model}'s \emph{runtime} API --- as opposed to how a
-model actually gets loaded, \S\ref{sec:model-loading} below --- is fully audited against FNA
-with zero known open gaps as of the most recent fix (a \texttt{rootBoneIndex} correction).
+same shape as real XNA. The reader-side contract is deliberately separate (and is covered by
+\S\ref{sec:model-loading} below and Chapter~\ref{ch:content-and-assets}); at runtime, the useful
+distinction is between a normally loaded, internally consistent model and a hand-built one.
+The latter can use several \texttt{NOXNA} construction/mutation hooks, so it must preserve the
+invariants that a content reader normally supplies. The exact boundary, including the remaining
+intentional C++ safety deviations from FNA, matters more than a blanket claim of zero gaps.
 \cnaclass{Model} exposes \texttt{CopyAbsoluteBoneTransformsTo},
 \texttt{CopyBoneTransformsFrom} / \texttt{To}, and a convenience \texttt{Draw(world, view,
 projection)}; one small, intentionally-kept deviation from FNA is that CNA's
@@ -19,11 +22,11 @@ array, never a compatibility problem for correctly-sized callers.
 
 \cnaclass{ModelBone} carries \texttt{Name}, \texttt{Index}, a get/set \texttt{Transform},
 its \texttt{Parent}, and a \texttt{Children} collection built via a \texttt{NOXNA}
-\texttt{AddChild}. \cnaclass{ModelMesh} carries a get/\emph{set} \texttt{BoundingSphere}
-(the setter was added specifically to support the real \texttt{.xnb} content pipeline
-described below) and a get/\emph{set} \texttt{ParentBone} --- both properties that only
-matter once something actually populates them, which is exactly where the two different
-model loaders in this codebase diverge sharply.
+\texttt{AddChild}. CNA also exposes setters for a \cnaclass{ModelMesh}'s
+\texttt{BoundingSphere} and \texttt{ParentBone}; FNA reserves both setters for its internal
+reader. They are useful for CNA hand construction and the XNB reader, but turn reader-populated
+metadata into caller-maintained state, which is exactly where the two model loaders and the
+draw contract below diverge sharply.
 
 \section{A worked example: two ways to draw a loaded model}
 
@@ -33,7 +36,8 @@ The simplest path is the convenience method already named above:
 model.Draw(worldMatrix, camera.View(), camera.Projection());
 \end{lstlisting}
 
-This is correct for a model with no bone hierarchy to speak of, but a real, multi-bone model
+This is correct for a loaded, renderable model with at least a root bone, even if it has no
+interesting hierarchy to speak of. A real, multi-bone model
 (a character, a vehicle with independently-animated wheels) needs each mesh drawn with its
 \emph{own} absolute bone transform composed into world space first --- the classic pattern,
 grounded directly in the real \texttt{CopyAbsoluteBoneTransformsTo} and
@@ -61,69 +65,171 @@ for (ModelMesh& mesh : model.getMeshesProperty()) {
 
 \texttt{boneTransforms[mesh.getParentBoneProperty()->getIndexProperty()]} is the one line
 worth pausing on: it looks up the mesh's \emph{own} parent bone's absolute transform, not bone
-0 or the model's own root. This used to be exactly where the ``two loaders'' distinction below
-bit hardest --- every mesh loaded through the older \texttt{.model.json} path once silently got
-the same default bone regardless of what the source data said, so this exact loop would have
-rendered every part of a \texttt{.model.json}-loaded model rigidly welded together. That
-specific failure mode is fixed now (Task~937, below); this worked example still holds for both
-loaders today, not just the \texttt{.xnb} one.
+0 or the model's own root. This used to be exactly where the former loose-JSON route bit
+hardest --- every mesh once silently got the same default bone regardless of what the source data
+said, so this exact loop would have rendered every part rigidly welded together. That specific
+failure mode is fixed now (Task~937, below); the worked example holds for XNB, CNJ, and direct
+glTF/GLB outputs today.
 
-\section{Two loaders, two very different stories --- one now much closer to the other}
+\section{The draw contract: a model is more than a bag of pointers}
+\label{sec:model-draw-contract}
+
+\cnaclass{Model::Draw} is deliberately a thin convenience path, not a validator or a general
+scene graph. It retains one process-wide, static vector of absolute bone matrices (the same
+shape as FNA's static array), grows it only when a later model has more bones, copies the
+absolute transforms into it, then visits every mesh. For every distinct effect listed by that
+mesh it requires the matrix interface, writes
+\texttt{boneMatrix * world}, \texttt{view}, and \texttt{projection}, and only then asks the mesh
+to issue its part draws. An effect in the mesh's effect collection that does not implement that
+interface is therefore a hard \texttt{runtime\_error}; it is not silently ignored or drawn with
+some other matrix convention.
+
+That compact loop establishes three input invariants which a normal content load satisfies, but
+which the public/extended hand-build API does not enforce:
+
+\begin{itemize}
+  \item A renderable mesh needs an applicable bone matrix. CNA deliberately treats a null
+        \texttt{ParentBone} as bone index~0, whereas FNA immediately dereferences the mesh
+        parent to obtain its index and fails for null. This is a sensible C++ safety
+        improvement for a one-root-bone hand-built model, and the real EasyGL/Bgfx hierarchy
+        pixel tests exercise it for their root mesh. It does \emph{not} make a zero-bone model
+        renderable: with a positive-effect mesh, index~0 is outside an initially empty static
+        vector; after some other model has grown that shared vector, it can instead reuse that
+        earlier model's stale slot. FNA's static array is likewise retained, but its usual null
+        \texttt{ParentBone} path fails first rather than recovering. Give every model that can
+        draw at least one bone, and give each mesh a parent explicitly when it is not that root.
+  \item \texttt{CopyAbsoluteBoneTransformsTo} computes slots in collection order. A child
+        therefore has to name a parent whose result was already written; it neither topologically
+        sorts nor detects cycles, duplicate parents, or an index that disagrees with the vector
+        position. The XNB reader's malformed-graph boundary is documented in
+        Chapter~\ref{ch:content-and-assets}; the same ordering rule applies to a hand-built graph.
+  \item The manual loop in the previous section intentionally dereferences the mesh parent
+        pointer so that an invalid attachment is visible at the call site. Unlike
+        \texttt{Model::Draw}, it has no null-to-root fallback. Well-formed
+        outputs of the current loaders assign a mesh parent, but an XNB shared-resource reference
+        of zero can still leave it null; a manually assembled mesh must either set one or choose
+        and check its root fallback before indexing \texttt{boneTransforms}.
+\end{itemize}
+
+\cnaclass{ModelMesh::Draw} has a different, narrower safety rule: it skips a part with a null
+\texttt{Effect} or a non-positive \texttt{PrimitiveCount}. FNA skips only the latter, then
+dereferences a null effect, so the CNA skip is another deliberate no-undefined-behaviour
+deviation. It does \emph{not} validate the remaining draw fields: a positive-count part still
+passes its raw vertex buffer, index buffer, offsets, vertex count, start index, and primitive
+count to \cnaclass{GraphicsDevice}. A missing buffer or invalid range consequently fails at the
+graphics-device/backend boundary rather than becoming a harmless skipped part. This is why a
+model's successful construction is not proof that it is drawable.
+
+\subsection{Keep parts and effects connected through the part setter}
+
+The mesh's \cnaclass{ModelEffectCollection} is a derived, distinct-effect view of the effects
+used by its parts; it is what \cnaclass{Model::Draw} configures before
+\cnaclass{ModelMesh::Draw} applies each part's current technique. The supported way to maintain
+that relationship is:
+
+\begin{lstlisting}
+part.setEffectProperty(&basicEffect); // adds basicEffect to mesh.Effects if absent
+// ...
+part.setEffectProperty(nullptr);      // removes it only if no other part still uses it
+\end{lstlisting}
+
+The implementation first retains an old effect while any sibling part still points to it, then
+removes it only for the final user; it adds a new non-null effect only if the collection does not
+already contain that pointer. Thus two parts sharing one \cnaclass{BasicEffect} produce one
+matrix setup in \texttt{Model::Draw}, while each part still produces its own indexed draw. The
+focused part/effect unit tests cover exactly this retain-on-shared/release-on-last-user transition
+and the no-duplicate case.
+
+\cnaclass{ModelEffectCollection::Add}/\texttt{Remove} and
+\texttt{ModelMesh::getEffectsPropertyMutable()} exist only as \texttt{NOXNA} escape hatches.
+Unlike FNA's internal-only collection mutation, CNA exposes them to make its content reader
+possible. They neither deduplicate \texttt{Add} nor repair a collection that a caller has
+manually made inconsistent with its parts: a stale extra effect is configured but never applied
+by a part, and a duplicate is configured twice. Do not populate \texttt{Effects} directly in
+ordinary game code; set each part's effect and retain the buffers/effects for at least as long as
+the model uses their raw pointers.
+
+\subsection{Serial use and evidence boundary}
+
+The static bone-matrix scratch vector has no mutex or per-model ownership. Concurrent
+\texttt{Model::Draw} calls, even for different models, can resize/write it simultaneously and
+are a C++ data race; concurrent mutation of bones, effects, or parts has the same ordinary
+object-state problem. FNA also uses one unsynchronised static scratch array, but CNA's race is
+undefined behaviour rather than merely a managed-runtime ordering hazard. Render models on the
+graphics thread or otherwise serialize the entire draw/mutation sequence.
+
+The focused CPU tests cover transform multiplication, destination-size checks, constructor
+parent wiring, and part-to-effect collection bookkeeping. Backend tests go further: the EasyGL
+root/hierarchy model tests read back pixels, Bgfx has equivalent two-mesh/hierarchy tests, and
+the SDL\_Renderer test proves that a fully populated positive-primitive model reaches the shared
+3D draw failure boundary. No located test deliberately covers zero-bone rendering, invalid
+parent order/cycles, raw out-of-range part fields, direct mutable-effect desynchronisation, or
+concurrent \texttt{Draw}; treat those as construction-time invariants, not tested recovery
+paths.
+
+\section{Three model asset routes, not two}
 \label{sec:model-loading}
 
-This is still one of the most important things to understand about \cnaclass{Model} in CNA,
-even though the gap between the two paths has narrowed substantially since an earlier pass of
-this chapter first described it: \textbf{there are two separate, independent \cnaclass{Model}
-loaders}, and \texttt{ContentManager::Load<Model>()} always tries the newer, real one first.
+The old two-loader and \texttt{.model.json} framing no longer describes the resolver.
+CNA now has two reader implementations but three current \cnaclass{Model} asset routes:
+the wire-compatible XNB \texttt{ModelReader}, plus one \texttt{ModelTypeReader} that reads
+self-contained \texttt{.cnj} descriptions and direct \texttt{.gltf}/\texttt{.glb} files. For an
+extensionless cache miss, \cnaclass{ContentManager} looks for \texttt{name.xnb}, then a literal
+\texttt{name}, then \texttt{name.cnj}, \texttt{name.gltf}, and \texttt{name.glb}. Thus a
+same-named CNJ hides a glTF/GLB asset, and an XNB sibling hides both; passing an existing literal
+\texttt{name.gltf} explicitly reaches that literal before the extensionless sidecar probe. The
+full resolver contract is in Chapter~\ref{ch:content-and-assets}; the three resulting runtime
+graphs are the important distinction here.
 
 \begin{description}
-  \item[The real \texttt{.xnb} \texttt{ModelReader}] (\texttt{CNA::Internal::Xnb::ModelReader})
-        is wire-compatible with real XNA/MonoGame/FNA compiled model assets. It reconstructs
-        the full bone hierarchy, assigns each mesh's real \texttt{ParentBone}, computes a real
-        \texttt{BoundingSphere}, and correctly resolves shared \cnaclass{VertexBuffer}/%
-        \cnaclass{IndexBuffer} / \cnaclass{Effect} resources across meshes that share them ---
-        everything below in this section that describes a remaining gap does \emph{not} apply
-        to this loader.
-  \item[The \texttt{.model.json} loose-file loader] (\texttt{ModelTypeReader}) had, at the time
-        this chapter was first written, a whole cluster of real gaps against the \texttt{.xnb}
-        path --- most of that cluster is closed now, confirmed by reading the reader's current
-        implementation directly rather than trusting this chapter's own earlier pass. It no
-        longer collapses every mesh onto one synthetic root bone: each mesh gets its own real,
-        distinctly-named \cnaclass{ModelBone}, correctly attached as a child of the model's
-        root via a real \texttt{AddChild()} call, with that mesh's own \texttt{ParentBone} set
-        to point at it (Task~937) --- this is a synthesized one-bone-per-mesh scheme, not a
-        parse of an explicit hierarchy from the JSON's own \texttt{"bones"} array, but it is
-        enough to unblock exactly the kind of independently-posable-rigid-part model
-        (a tank's wheels/turret/cannon/hatch) that motivated the fix. Separately, the format
-        itself has grown a real, direct path to GPU-skinned animation: an optional top-level
-        \texttt{"skeleton"} / \texttt{"animations"} pair (Task~941, reusing the same
-        \texttt{.skeleton.bin} / \texttt{.clip.bin} binary formats \cnaclass{SkinnedModelEXT}
-        already used) attaches a real \cnaclass{SkinningData} to the loaded \cnaclass{Model}'s
-        own \texttt{Tag} property, exactly the convention
-        \S\ref{sec:animation-player-worked-example} below already describes for driving
-        \cnaclass{AnimationPlayer} --- a \texttt{.model.json} asset with a \texttt{"skeleton"}
-        field and \texttt{"effect": "SkinnedEffect"} mesh entries can now be animated the same
-        way, not only a model routed through the separate Avatar-specific format. What remains
-        genuinely unfixed: \texttt{BoundingSphere} is still never computed for this loader,
-        staying at a degenerate zero radius; \texttt{ModelMesh.Tag} itself (as opposed to
-        \cnaclass{Model}'s own \texttt{Tag}, now real) is still never set; and resource sharing
-        is still absent --- every mesh still gets a freshly-allocated \cnaclass{VertexBuffer}/%
-        \cnaclass{IndexBuffer}, and every part using anything other than the plain
-        \texttt{"BasicEffect"} string still gets its own freshly-constructed \cnaclass{Effect}
-        rather than a shared one, with no dependency-graph-aware resource deduplication of the
-        kind FNA's own \texttt{ReadSharedResource<T>} performs. The ``zero test coverage''
-        claim this chapter's own earlier pass made is also no longer true: three dedicated
-        structural tests now exist for exactly the fixes named above (bone hierarchy, skeleton/%
-        animation parsing, and an end-to-end skinned-animation pixel test proving a real
-        per-frame bone transform actually reaches the GPU).
+  \item[The real \texttt{.xnb} \texttt{ModelReader}]
+        (\texttt{CNA::Internal::Xnb::ModelReader}) is wire-compatible with real
+        XNA/MonoGame/FNA compiled model assets. It reconstructs the full bone hierarchy, assigns
+        each mesh's serialized \texttt{ParentBone}, computes its serialized
+        \texttt{BoundingSphere}, and resolves shared \cnaclass{VertexBuffer}/%
+        \cnaclass{IndexBuffer}/\cnaclass{Effect} resources. Its exact malformed-graph, draw-field,
+        tag, and shared-resource boundary is covered in Chapter~\ref{ch:content-and-assets}.
+  \item[The self-contained \texttt{.cnj} \texttt{ModelTypeReader} route]
+        validates a \texttt{Model} CNJ envelope and rejects \texttt{sourceFile}; the former
+        \texttt{.model.json} name survives only in historical comments and test-target names,
+        not in this reader's extension list. It creates one root whose name can come from the
+        first JSON \texttt{bones} record, then one synthetic child bone per mesh, not the
+        descriptor's general bone hierarchy. Each mesh receives that child as
+        \texttt{ParentBone}, so independently poseable rigid parts work, but the original
+        source hierarchy is not reconstructed. An optional \texttt{skeleton}/\texttt{animations}
+        sidecar pair builds \cnaclass{SkinningData} on \cnaclass{Model.Tag}, and morph data lives
+        on the corresponding part's \texttt{Tag}.
+
+        This route still leaves \texttt{BoundingSphere} degenerate and
+        \texttt{ModelMesh.Tag} null. It allocates a fresh vertex/index buffer and built-in stock
+        effect for each described mesh part; a named custom effect instead goes through the
+        manager's cached \texttt{shared\_ptr<Effect>} route. This is not XNB's serialized
+        shared-resource graph, even where repeated custom-effect names happen to share a cached
+        object.
+  \item[The direct \texttt{.gltf}/\texttt{.glb} \texttt{ModelTypeReader} route]
+        parses glTF~2.0 and its buffers without producing a CNJ or binary sidecars first. It
+        reuses the offline converter's import core, including sparse-accessor-safe extraction,
+        topological skin ordering, material/image extraction, and morph/animation data. Its
+        visible limit is deliberate: one \texttt{Load<Model>} returns only the first
+        scene-scoped mesh group, with a fixed unit scale of~1.0. Convert a multi-character or
+        differently-scaled file offline when the other groups or a scale factor matter.
+
+        Like the CNJ route, direct glTF creates a synthetic root plus one child bone per imported
+        primitive rather than exposing the scene or skin hierarchy as \cnaclass{ModelBone}s.
+        A real skin is retained as \cnaclass{SkinningData} on \cnaclass{Model.Tag}; morph
+        targets and their tracks are retained on each \cnaclass{ModelMeshPart.Tag}. Extracted
+        images are decoded in memory and cached by glTF image pointer during that one import, but
+        mesh buffers and effects remain per primitive.
 \end{description}
 
-Whether the remaining distinction matters to you depends on which loader your assets go
-through and which specific gap you rely on --- a real \texttt{.xnb} asset pipeline (this book's
-migration chapter) still sidesteps every one of them; a hand-authored \texttt{.model.json}
-asset now only inherits the narrower remaining list above, not the wholesale ``rigidly welded
-together, no bounding sphere, no shared resources, no tests'' picture an earlier pass of this
-chapter described.
+The evidence is much stronger than the old chapter wording suggested. The focused CNJ tests
+cover a real descriptor and envelope rejection, shared animation-clip resolution has three
+additional tests, and the direct runtime-glTF suite has eight unconditional end-to-end cases
+(textures, reversed-order skinning/animation, morph weights and cubic splines, PBR, skinned PBR,
+occlusion remapping, and punctual lights), plus a Draco case when that optional dependency is
+enabled. Those tests do not make the three routes interchangeable: use XNB for compiled XNA
+asset fidelity, CNJ for a controlled self-contained/imported description, and direct glTF/GLB
+for the first supported group of a glTF~2.0 file when the resolver priority selects it.
 
 \section{Skinning: two independent systems, not one}
 
@@ -306,36 +412,71 @@ if (!bones_.bones_.empty())
 
 The real regression tests earned by this fix (\texttt{ModelTests.cpp}) are worth naming for the
 verification technique they demonstrate, not just their existence:
-\texttt{FiveArgConstructorDefaultRootBoneIndexMatchesFourArgBehavior},
-\texttt{FiveArgConstructorHonorsNonZeroRootBoneIndex} (a three-bone hierarchy, index~2 selected,
-checked both for equality against the expected bone \emph{and} inequality against bone~0 --- a
-test that only checked equality could pass even if the parameter were silently ignored and the
-implementation happened to default to the requested bone by coincidence),
-\texttt{FiveArgConstructorThrowsWhenRootBoneIndexOutOfRange}, and
-\texttt{FiveArgConstructorEmptyBonesLeavesRootNullEvenWithDefaultIndex}. The fix's own commit
-history records a real sabotage-and-revert check applied to confirm these tests actually
-exercise what they claim to: with the constructor temporarily edited to ignore
-\texttt{rootBoneIndex} entirely (falling back to the old, hardcoded \texttt{bones[0]}), exactly
-the two tests that depend on honoring a non-default index failed as predicted, while the other
-24 \texttt{ModelTest.*} cases were unaffected --- the same discriminating-power methodology this
-book applies throughout (a test suite's own \emph{ability} to catch a real regression is itself
-worth verifying, not assumed from the fact that it currently passes).
 
-This fix closes the runtime-API side of the gap only. The separate \texttt{.model.json} content
-loader (\S\ref{sec:model-loading} above) still never calls this five-argument constructor at
-all --- moot in practice today, since that loader currently synthesizes exactly one bone per
-model regardless of what a source JSON's own \texttt{"bones"} array lists, so there is no
-second bone a non-default \texttt{rootBoneIndex} could name yet. The gap is closed at the
-runtime-API layer, honestly still open one layer further out at the content-loading layer, and
-\texttt{docs/model-content-pipeline-support.md} tracks the distinction between the two
-precisely rather than treating the runtime fix as though it also closed the loader-side one.
+\begin{lstlisting}
+FiveArgConstructorDefaultRootBoneIndexMatchesFourArgBehavior
+FiveArgConstructorHonorsNonZeroRootBoneIndex
+FiveArgConstructorThrowsWhenRootBoneIndexOutOfRange
+FiveArgConstructorEmptyBonesLeavesRootNullEvenWithDefaultIndex
+\end{lstlisting}
 
-\section{Collections, uniformly}
+The nonzero-index case uses a three-bone hierarchy, selects index~2, and checks both equality
+with the expected bone and inequality with bone~0. A test that only checked equality could pass
+even if the parameter were silently ignored and the implementation happened to default to the
+requested bone by coincidence. The fix's own commit history records a real sabotage-and-revert
+check applied to confirm these tests actually exercise what they claim to: with the constructor
+temporarily edited to ignore \texttt{rootBoneIndex} entirely (falling back to the old, hardcoded
+\texttt{bones[0]}), exactly the two tests that depend on honoring a non-default index failed as
+predicted, while the other 24 \texttt{ModelTest.*} cases were unaffected --- the same
+discriminating-power methodology this book applies throughout (a test suite's own
+\emph{ability} to catch a real regression is itself worth verifying, not assumed from the fact
+that it currently passes).
 
-\cnaclass{ModelBoneCollection}, \cnaclass{ModelMeshCollection},
-\cnaclass{ModelMeshPartCollection}, and \cnaclass{ModelEffectCollection} all follow the same
-shape: integer indexing via \texttt{operator[]}, name-based indexing where it makes sense,
-\texttt{Count}, \texttt{Contains}, \texttt{TryGetValue}, and standard iterators --- the same
-collection idiom already seen on \cnaclass{GameComponentCollection}
-(Chapter~\ref{ch:game-loop}) and \cnaclass{CurveKeyCollection}
-(Chapter~\ref{ch:math-core-types}), applied consistently a third time here.
+This fix closes the hand-build runtime-API gap only. Neither loose route calls the five-argument
+constructor: CNJ and direct glTF/GLB both place their synthetic root at index~0, then append
+synthetic mesh/primitive child bones. CNJ does not turn its general \texttt{"bones"} array into
+that \cnaclass{ModelBone} hierarchy, and direct glTF stores its actual skeleton separately in
+\cnaclass{SkinningData}. Consequently neither route currently has a serialized arbitrary root
+bone for \texttt{rootBoneIndex} to represent. The gap is closed for a hand-built model, but
+remains deliberately inapplicable to the two loose content routes; the reader-specific
+distinctions are tracked in \S\ref{sec:model-loading}, not hidden by the runtime fix.
+
+\section{Collections are read views, but not uniform ones}
+\label{sec:model-collections-contract}
+
+The four model collections deliberately expose C++ iteration rather than FNA's managed
+enumerators, but they do \emph{not} have one identical API.
+
+\cnaclass{ModelBoneCollection} has checked integer lookup, name lookup,
+\texttt{TryGetValue}, \texttt{Contains}, and iterators.
+Its storage is populated by \texttt{Model} or a bone's \texttt{NOXNA AddChild};
+name lookup returns the first matching name, so names are useful handles, not enforced unique
+identifiers.
+
+The mesh collection has the same named-lookup family. Its integer lookup is checked, as is the
+bone collection's, so an invalid index throws rather than invoking C++ undefined behaviour.
+One small FNA divergence remains: FNA rejects a null \emph{or empty} mesh-name argument before
+searching, while CNA's \texttt{std::string} API has no null spelling and accepts the empty
+string. It can consequently return a deliberately empty-named mesh or simply return false.
+Do not use an empty name as a portable not-supplied sentinel.
+
+\cnaclass{ModelMeshPartCollection} has only checked-by-convention integer access,
+\texttt{Count}, and iterators --- there is no part name, \texttt{Contains}, or
+\texttt{TryGetValue}. Its current integer operator uses raw \texttt{vector[]}, not
+\texttt{at}; a negative or too-large index is undefined behaviour in CNA where FNA's
+\texttt{ReadOnlyCollection} would throw. Count-check a hand-derived part index first.
+
+\cnaclass{ModelEffectCollection} likewise has integer access, \texttt{Count},
+\texttt{Contains}, and iterators, but no name lookup or \texttt{TryGetValue}. Its
+integer operator also uses raw \texttt{vector[]} and has the same caller-side bounds
+requirement. Its mutable operations are the \texttt{NOXNA} escape hatches described in
+\S\ref{sec:model-draw-contract}, not a fourth normal collection-builder API.
+
+All name searches are linear and return the first matching pointer; neither loader nor
+collection constructor rejects duplicate names. The focused \texttt{ModelBoneCollectionTests.cpp}
+and \texttt{ModelMeshCollectionTests.cpp} cover normal name/index/iterator behaviour and missing
+names, but no located collection test covers the empty-name FNA difference or the unchecked
+part/effect indices. The safe cross-collection rule is therefore simple: keep the model's
+ownership and topology coherent at construction time, use name lookup only where that collection
+actually exposes it, and bounds-check calculated integer indices before asking a collection for
+an element.

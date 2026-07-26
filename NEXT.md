@@ -6,15 +6,56 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-26)
 
 - Branch: `develop`.
-- Book: **559 physical PDF pages, 49 chapters, 6 appendices**.
+- Book: **561 physical PDF pages, 49 chapters, 6 appendices**.
 - The pre-session `develop` checkout matched `origin/develop` exactly; the previous claim that it
   was twelve commits ahead was stale. The VideoReader, ModelReader, and stock-effect audit batches
-  (plus the Model handoff correction) are committed locally. No remote operation was attempted.
+  (plus their handoff corrections) are committed locally. The validated Chapter 12 audit is recorded
+  below. No remote operation was attempted.
 - Do not infer that the historical `a8b38ae` push-review failure still describes the tracking
   state. No push was attempted in this batch; retain the normal approval requirement for any
   future `git push`.
 
-## Latest completed batch: stock-effect XNB material readers, external textures, ownership, and evidence boundary
+## Latest completed batch: Chapter 12 model runtime contract, collections, ownership boundary, and current loader routes
+
+No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
+runtime model/mesh/part/collection code, current FNA counterparts, XNB and loose readers, resolver,
+focused CPU tests, backend tests, and CNJ/glTF integration suites establish:
+
+- `Model::Draw` shares unsynchronised process-global bone scratch storage and assumes a valid,
+  parent-before-child graph. CNA falls back from a null mesh parent to bone zero, unlike FNA, but
+  a renderable zero-bone model is still invalid: the first call indexes an empty vector and a later
+  call can reuse a stale slot. `ModelMesh::Draw` skips null effects or non-positive primitive
+  counts only; positive parts still reach raw buffer/range validation in `GraphicsDevice`.
+- `ModelMeshPart::setEffectProperty` is the supported part-to-distinct-mesh-effect bridge:
+  shared effects remain until the last part releases them and duplicate pointers are avoided.
+  The public NOXNA mutable effect collection does not deduplicate direct additions and can diverge
+  from its parts. Mesh metadata setters are public CNA extensions where FNA reserves the setters
+  for its reader. Bone/mesh collection indexes are checked; part/effect indexes use unchecked
+  `vector[]`; mesh lookup also accepts an empty string where FNA rejects it.
+- The old two-loader / `.model.json` story was stale. There are two reader implementation classes
+  but three routes: wire-compatible XNB, self-contained CNJ, and direct glTF/GLB. Extensionless
+  resolution is XNB, literal, CNJ, glTF, then GLB; an explicitly named glTF literal is selected
+  at the literal stage. CNJ and direct glTF synthesize Model bones while retaining real skin data
+  on `Model.Tag` and morph data on part Tags. Direct glTF imports only its first scene-scoped mesh
+  group at fixed unit scale 1.0; XNB alone reconstructs its serialized hierarchy and shared graph.
+- CNJ has focused descriptor/envelope and shared-animation-clip coverage. Direct glTF has eight
+  unconditional end-to-end tests plus one Draco test when that optional dependency is enabled.
+  CPU and backend tests cover normal transforms, effect bookkeeping, EasyGL/Bgfx pixels, and the
+  SDL 3D failure path, but not zero-bone draw, malformed manual graph, collection out-of-range,
+  mutable-effect desynchronisation, or concurrent draw recovery.
+
+Ch.12 corrects the obsolete loader prose and its own zero-gap/uniform-collection claims, adds the
+runtime invariants, and removes two severe pre-existing test-name layout overflows. Full
+`make -C latex book` succeeded at **561 pages**; makeindex accepted **2,302** entries with zero
+rejected/warnings; targeted undefined-reference and duplicate-label checks are empty; `git diff
+--check` passes. Rendered physical PDF pages **193--200** (printed **171--178**) are clean.
+Ch.12 is **482** lines. The plan-consistency validator remains absent from this checkout.
+
+Next recommended start: the reader routes and draw/collection contract are current. If continuing
+Chapter 12, make the next pass a narrow raw-pointer lifetime/copy/Unload ownership audit; otherwise
+move to the next under-documented graphics-core chapter rather than repeating Model reader wires.
+
+## Previous completed batch: stock-effect XNB material readers, external textures, ownership, and evidence boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
 five stock-effect readers, their graphics-effect consumers, focused and Model integration tests,
