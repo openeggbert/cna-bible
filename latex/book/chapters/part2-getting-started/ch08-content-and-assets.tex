@@ -1848,13 +1848,110 @@ not need to rediscover the same wall, but the direct reader overloads described 
 \S\ref{sec:content-type-reader-contract} must learn the same box/unbox convention before they can
 support those targets.
 
-\texttt{SongReader} and \texttt{VideoReader} both follow a simpler, sibling shape: neither reads
-an embedded media payload at all, since real XNA \cnaclass{Song} / \cnaclass{Video} assets are
-always external files (\texttt{.ogg} / \texttt{.oga} / \texttt{.qoa} for \cnaclass{Song},
-\texttt{.ogv} / \texttt{.ogg} for \cnaclass{Video}) referenced by name --- both are ports of FNA's
-own strip-last-four-characters-then-reprobe extension-normalization logic, verified against a
-real MonoGame-produced \texttt{.xnb} together with its real vendored companion media file so the
-extension probing has something genuine to find on disk.
+\subsubsection{\cnaclass{SongReader}: an external-file reference}
+\label{sec:xnb-song-reader}
+
+\cnaclass{SongReader} is registered as a version-zero reader.  Its canonical factory key is:
+
+\begin{lstlisting}
+Microsoft.Xna.Framework.Content.SongReader
+\end{lstlisting}
+
+It has no embedded encoded-audio payload, format tag, byte count, shared resource, or decoder
+hand-off.  After the root-object reader index, its complete body is one XNB \cnaclass{String}
+followed by one signed \cnaclass{Int32}:
+
+\begin{lstlisting}
+String  referenceName  // normal XNB 7-bit byte-length prefix, then UTF-8 bytes
+Int32   durationMs
+\end{lstlisting}
+
+The first value is a file reference, not an invocation of the generic external-reference
+mechanism.  CNA first combines the owning manager's \cnaclass{RootDirectory} and the logical asset
+name (for example,
+\texttt{Content/Music/Menu}) and takes that path's parent.  It replaces backslashes with forward
+slashes in both inputs, appends the serialized reference as a sibling, and applies only C++ lexical
+path normalization.  Thus a reference such as
+\texttt{"../Audio/loop.wma"} means a sibling-directory lookup rather than a second content-manager
+load.  This matches the role of FNA's \cnaclass{FileHelpers.ResolveRelativePath()}, but it is an
+important distinction from CNA's generic external-reference helper: that helper rejects a logical
+path which climbs above the content root, while \cnaclass{SongReader} has no equivalent containment
+check.  A sufficiently deep \texttt{..} reference, an absolute reference, or a symlink reached
+after lexical normalization can therefore name a real file outside the configured content tree.
+Neither lexical normalization nor the subsequent existence probes canonicalizes the path or proves
+that it is a regular audio file.  Compiled content is normally trusted input here; it is not a
+sandboxed reference format.
+
+For a resolved path longer than four characters, the reader removes the final four characters
+without inspecting what they are, then calls \cnaclass{Normalize()} on the resulting stem.  It first
+accepts the extensionless stem itself if it exists, then probes \texttt{.ogg}, \texttt{.oga}, and
+\texttt{.qoa}, in that order.  The first existing candidate wins.  If all four probes fail, it
+restores the original, unstripped path.  This is FNA's historical XNA compatibility rule: an XNA
+asset conventionally stores a \texttt{.wma} placeholder, while a desktop runtime substitutes an
+available supported companion.  It also happens to round-trip MonoGame content which has already
+serialized \texttt{.ogg}, because removing and then re-appending its four-character extension
+finds the same file.  It is not general extension validation: \texttt{.mp3} loses four characters
+too, and the three supported spellings are case-sensitive filesystem probes on a case-sensitive
+host.
+
+There are two malformed-edge differences worth keeping separate from the valid-format contract.
+CNA skips the stripping step when the resolved string has four or fewer characters; FNA calls
+\texttt{Substring(0, length - 4)} unconditionally, so a shorter string throws before either
+duration or constructor processing.  For a four-character string FNA probes the empty stem, while
+CNA retains the original string.  Neither behavior is covered by a checked-in test and neither is
+how a real \cnaclass{Song} asset is emitted.  More practically, CNA's final \cnaclass{Song}
+constructor tests \cnans{std::filesystem::exists()}, which admits an existing directory; FNA's
+\cnaclass{File.Exists()} rejects a directory.  A CNA directory reference can consequently survive
+loading and fail only when the media backend later attempts to open it.
+
+\paragraph{The media file is not decoded here, but a missing file still fails during \texttt{Load}.}
+The reader performs its path probes before it reads \texttt{durationMs}, then constructs
+\cnaclass{Song} only after that integer has been consumed.  CNA's constructor performs the final
+existence test and throws \cnaclass{FileNotFoundException} when the selected candidate (or the
+unstripped fallback) is absent.  Consequently a truncated duration can produce a stream exception
+first, but a well-formed XNB whose companion is missing fails from \cnaclass{ContentManager::Load<Song>},
+not when the game first calls \cnaclass{MediaPlayer::Play()}.  This corrects a stale claim in the
+current CNA reader and test comments: current FNA's own \cnaclass{Song} constructor also calls
+\cnaclass{File.Exists()} and throws \cnaclass{FileNotFoundException} immediately.  The parity boundary
+is therefore eager \emph{existence}, not lazy failure.  CNA's media player still opens the file
+lazily with SDL3's streaming music loader, so deletion/replacement after loading, a directory
+accepted by CNA, or an unsupported/corrupt-but-existing audio stream remains a later playback
+boundary rather than an XNB decoding result.
+
+Unlike scalar readers, \cnaclass{SongReader} cannot use a standalone \cnaclass{ContentReader}.
+It requires a non-null owning \cnaclass{ContentManager} to form the base path and throws
+\cnaclass{ContentLoadException} before consuming either body field when none is present.  Normal
+\cnaclass{ContentManager::Load<Song>()} always supplies one, but the direct reader surface does not.
+The reader does not opt into deserializing an existing object, so normal root dispatch passes no
+existing song.  A direct C\texttt{++}
+\cnaclass{ReadUntyped()} call can still box a copyable \cnaclass{Song} in \cnans{std::any}; the
+generic adapter unboxes it, but \cnaclass{SongReader::Read()} intentionally ignores it and returns a
+fresh value, just as FNA's typed reader ignores its \texttt{existingInstance} parameter.  CNA's
+ordinary manager cache is a separate value-cache story: \cnaclass{Song} is copyable, so a later
+matching \cnaclass{Load<Song>()} returns a copy of the cached value, not an in-place deserialization
+of an earlier caller's object.
+
+\paragraph{What the real companion fixture proves --- and what it does not.}
+The vendored MonoGame fixture \texttt{one\_two\_three.xnb}, in the checked-in uncompressed Song
+fixture directory, is a 131-byte version-five XNB.  Its root reader is \cnaclass{SongReader}; the
+body names its \texttt{.ogg} companion and records \texttt{769282} milliseconds.  Its genuine
+72,796-byte companion sits beside it.  The end-to-end manager test proves the
+canonical registration, header/table dispatch, sibling lookup, \texttt{.ogg} strip-and-reprobe
+round trip, final handle, and duration together; a built-in-registration test repeats the load
+with a fresh manager.  A hand-built full XNB additionally proves that an unresolved reference
+propagates CNA's \cnaclass{FileNotFoundException} through the manager path.
+
+That is useful but intentionally narrow evidence.  The fixture is MonoGame-produced rather than
+an original XNA \texttt{.wma}-placeholder asset, and it neither plays/decodes the companion nor
+proves the \texttt{.oga} or \texttt{.qoa} alternatives.  No located test covers a null manager,
+direct existing-instance input, sibling \texttt{..} and absolute/symlink paths, separator
+normalization, short or malformed strings, negative/extreme duration values, directory admission,
+or a Song root in the whole-container fuzzer.  Treat the successful fixture as evidence for the
+one real companion graph it contains, not as a security or media-playback certificate.
+
+\cnaclass{VideoReader} follows the same broad architectural shape --- an external media reference
+rather than an embedded stream --- but has its own five-field layout and extension set.  Its
+reader-level path tests do not turn the Song fixture into evidence for video.
 
 \section{What this means for porting}
 

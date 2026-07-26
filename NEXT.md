@@ -3,21 +3,66 @@
 Read this file first, then `PLAN.md`. `PLAN.md` is the durable expansion plan and historical
 session log; this file is the concise live handoff.
 
-## Current state (2026-07-25)
+## Current state (2026-07-26)
 
 - Branch: `develop`.
 - Book: **553 physical PDF pages, 49 chapters, 6 appendices**.
-- The local branch is ahead of `origin/develop` by **eleven**
+- The local branch is ahead of `origin/develop` by **twelve**
   documentation commits: the ContentTypeReader contract, XNB container, type-name/table,
   scalar/math, Decimal/DateTime, CurveReader, Texture2DReader, Texture3DReader, and
-  TextureCubeReader, SpriteFontReader, and SoundEffectReader audits. This count was checked
+  TextureCubeReader, SpriteFontReader, SoundEffectReader, and SongReader audits. This count was checked
   against the current remote-tracking ref; do not reuse older historical ahead-counts.
 - `a8b38ae` could not be pushed because the escalation approval service disconnected while
   reviewing `git push`. Its response explicitly rejected the request rather than granting
   permission. Do not bypass that control; retry only when approval is available or the user
   explicitly authorizes another attempt.
 
-## Latest completed batch: SoundEffectReader XNB WAVEFORMATEX, decoder, loop, and ownership boundary
+## Latest completed batch: SongReader XNB external-file reference, path, timing, and evidence boundary
+
+No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
+reader and `Song`/`MediaPlayer` paths, focused/manager/registration tests, the real MonoGame
+fixture manifest and companion file, current FNA reader/runtime, generic ContentReader contrast,
+and the container fuzzer establish:
+
+- The registered, version-zero body is exactly an XNB String reference then a signed Int32 duration.
+  It is a direct filesystem-reference reader, not `ReadExternalReference<T>()`: it needs an owning
+  ContentManager, resolves the string beside `RootDirectory / AssetName`, converts backslashes,
+  and lexical-normalizes it. It has no generic external-reference root-confinement check, so deep
+  `..`, absolute, and symlink paths can reach outside the content root.
+- For a path longer than four characters it strips four characters without testing the extension,
+  then probes the bare stem, `.ogg`, `.oga`, and `.qoa` in order, restoring the original path when
+  none exists. This maps XNA's `.wma` placeholder to a desktop companion and also round-trips the
+  MonoGame `.ogg` fixture. CNA skips stripping for strings of four or fewer characters while FNA
+  calls `Substring` unconditionally; CNA's `filesystem::exists` also admits a directory where
+  FNA's `File.Exists` rejects it.
+- CNA reads the duration before constructing Song. A malformed duration can therefore fail first,
+  but a well-formed unresolved companion throws `FileNotFoundException` during `Load<Song>`.
+  Current FNA does the same in its Song constructor; CNA header/test comments which say FNA defers
+  the failure until playback are stale. Actual audio open/decode remains deferred to MediaPlayer.
+- Normal dispatch has no existing Song. A direct copyable `std::any` Song is unboxed then ignored
+  and a fresh value returned, matching FNA's ignored existing instance. Manager caching is by
+  copyable value, not in-place deserialization.
+- The 131-byte real MonoGame `one_two_three.xnb` and its 72,796-byte `.ogg` companion prove the
+  full manager/header/table/registration/sibling-probe/duration route; a hand-built file proves
+  unresolved-reference propagation. No test covers original-XNA `.wma`, `.oga`/`.qoa`, playback,
+  null manager, direct existing input, path escape/separators/symlinks, malformed/short fields,
+  duration extremes, directory admission, or a Song container-fuzzer seed.
+
+Ch.8 now records the literal wire, narrowing and containment boundary, correct eager FNA/CNA
+missing-file timing, direct/value-cache behavior, and fixture scope. Full latexmk succeeded at
+**553 pages**; targeted undefined-reference and duplicate-label checks are empty; makeindex
+accepted **2,274** entries with zero rejected and zero warnings; `git diff --check` passes.
+Rendered physical PDF pages **134--136** (printed pages **112--114**) are clean. Ch.8 is
+**1,979** lines and Ch.6 is **621** lines. The plan-consistency validator remains absent from this
+checkout.
+
+Next recommended start: audit `VideoContentTypeReader`'s five-field external-reference wire,
+path normalization and containment boundary, GraphicsDevice/backend requirement, missing-file and
+playback timing, direct-instance behavior, and the absence of a real compiled Video XNB fixture.
+Keep the SoundEffect loop-endpoint overflow/stale support artifacts and the Song stale-FNA-timing
+comment as current `develop` facts until source or documentation fixes land.
+
+## Previous completed batch: SoundEffectReader XNB WAVEFORMATEX, decoder, loop, and ownership boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
 reader, WavWrapper/SoundEffect paths, focused/property/fuzz/manager tests, real fixture manifests,
