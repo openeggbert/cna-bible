@@ -115,6 +115,52 @@ facilities. The default-no-op setters on \cnaclass{IEffectBackend}
 \texttt{SetUniformXxx()} call may be structurally accepted without changing GPU state unless
 that concrete backend overrides it.
 
+\subsection{Object lifetime, submission, and cloning are deliberately narrow}
+
+The constructor takes its two source arguments by reference but immediately copies both into
+the effect. It is therefore safe to construct from temporary or subsequently modified strings;
+the program is compiled from the construction-time copies, not from caller-owned character
+storage. If the device has a backend, construction asks it once for an
+\cnaclass{IEffectBackend}. A returned but invalid backend does not make the common constructor
+throw: it writes that backend's \texttt{GetCompileError()} text to standard error and leaves
+\texttt{IsEffectValid()} false. A null backend and a failed compile are intentionally collapsed
+to the same public boolean, and there is no public \cnaclass{ShaderEffect} accessor for the
+diagnostic. Backends may of course fail before returning from their own factory, so this is not a
+promise that every backend-specific setup failure becomes a boolean.
+
+Treat that validity result as a precondition, not a delayed exception. \cnaclass{Effect}\texttt{::Apply()}
+does reject an already disposed effect, but its common code calls \texttt{OnApply()} and then
+makes the effect current. \cnaclass{ShaderEffect}\texttt{::OnApply()} merely writes a debug
+message when its backend is absent or invalid; it does not bind a fallback program. Calling
+\texttt{Apply()} on an invalid custom effect can therefore still replace the device's current
+effect pointer. There is no automatic retry or source recompilation in this object; construct a
+new effect after correcting source or changing the backend circumstances.
+
+The uniform and texture calls are submission calls, not an XNA-style parameter collection.
+\cnaclass{ShaderEffect} keeps no uniform dictionary, no sampler table, and no texture ownership:
+each \texttt{SetUniformXxx()} forwards its name and scalar or caller buffer immediately to the
+backend if one exists, while each \texttt{SetTexture()} immediately forwards the address of the
+texture's backend. It performs no common-layer check of a uniform name, sampler-unit range,
+array count, or matrix/array pointer. EasyGL uploads/binds at that call; some other backends copy
+into a fixed staging block; inherited interface defaults can do nothing; and Headless records a
+raw texture-backend pointer for tracing. Thus a successful call is not a portable guarantee of a
+binding, and it never gives the effect ownership of the texture. Keep every texture alive by its
+normal owner and set it again whenever the target backend/path requires rebinding. The standalone
+setters also do not inspect \texttt{IsDisposed}; unlike \texttt{Apply()}, they continue to
+forward while the backend object remains alive, so disposal must be treated as terminal by the
+caller.
+
+\texttt{Clone()} is equally source-only. It returns an owning raw \cnaclass{Effect} pointer
+whose concrete object is constructed afresh as
+\texttt{new ShaderEffect(*device\_, vertSrc\_, fragSrc\_)}: it recompiles an independent
+backend program and restores the three \cnaclass{IEffectMatrices} values to identity. It does
+not copy submitted uniforms, texture binds, name/tag metadata, or a compiled-program handle;
+its base effect begins with its own empty parameter collection and one Default/P0 technique.
+Use an owning smart pointer at the call site and reapply all desired state to the clone. The
+existing \texttt{ShaderEffectTests} test proves only distinct object identity, equal copied
+source strings, and equal validity on the default test device; it does not exercise a real
+compile, matrix/state transfer, texture lifetime, invalid-apply behavior, or a backend reset.
+
 \subsection{A worked example: a minimal GLSL ShaderEffect, adapted from a real test}
 
 Adapted from \texttt{easygl\_shadereffect\_texturecube\_test.cpp}, a minimal

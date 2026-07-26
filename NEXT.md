@@ -6,52 +6,53 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-26)
 
 - Branch: `develop`.
-- Book: **565 physical PDF pages, 49 chapters, 6 appendices**.
+- Book: **567 physical PDF pages, 49 chapters, 6 appendices**.
 - The pre-session `develop` checkout matched `origin/develop` exactly; the previous claim that it
   was twelve commits ahead was stale. The VideoReader, ModelReader, and stock-effect audit batches
   (plus their handoff corrections) are committed locally. The validated Chapter 12, Chapter 13,
-  and current Chapter 14 audits are recorded below. No remote operation was attempted.
+  Chapter 14, and current Chapter 15 audits are recorded below. No remote operation was attempted.
 - Do not infer that the historical `a8b38ae` push-review failure still describes the tracking
   state. No push was attempted in this batch; retain the normal approval requirement for any
   future `git push`.
 
-## Latest completed batch: Chapter 14 state-object submission and backend-binding boundary
+## Latest completed batch: Chapter 15 ShaderEffect object, submission, and clone boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
-four state classes and collections, GraphicsDevice setter/draw routes, backend interface and
-cache contracts, focused CPU/backend examples, and current local FNA state/device sources
+`ShaderEffect`/`Effect`/`GraphicsResource` implementation, common effect-backend interface,
+EasyGL and Headless submission paths, focused clone test, and the earlier per-backend matrix
 establish:
 
-- CNA copies BlendState, DepthStencilState, and RasterizerState into GraphicsDevice, then their
-  setters submit the fields carried by the backend interface. Mutating an original local state
-  affects neither copy nor GPU. More importantly, mutating the C++ device getter changes only its
-  CPU copy; application occurs only on re-assignment. A former CNA test comment claimed FNA's
-  reference alias made a bound Blend/Depth state mutation dirty on the next draw, but current FNA
-  flushes those only when object identity changes. FNA does reapply RasterizerState per draw, not
-  a portable update mechanism. Configure, then assign again after every effective change.
-- The public value surface is broader than the generic binding bridge. Blend submits six factors/
-  functions plus BlendFactor, but no ColorWriteChannels or multisample mask; GraphicsDevice's
-  own MultiSampleMask is only a CPU shadow. Depth-stencil forwards all whole-state fields, with
-  the documented backend-dependent standalone ReferenceStencil caveat. Rasterizer omits
-  MultiSampleAntiAlias. Pixel sampler draws refresh all 16 slots but carry only filter, AddressU,
-  AddressV, and anisotropy; AddressW, MaxMipLevel, and LOD bias never cross the bridge, and the
-  vertex texture/sampler collections have no draw route at all.
-- CPU tests cover default values, names, round trips, and collection bounds, while backend
-  examples cover selected supported pixel/state fields. No located test distinguishes a getter
-  mutation, color-write mask, either multisample setting, AddressW, MaxMipLevel, LOD bias, or
-  vertex sampler/texture from its default rendering behavior. Ch.14 now limits its previous
-  blend and sampler claims to the fields actually forwarded.
+- The two source strings are copied at construction, then the factory is called once if the
+  device has a backend. A returned invalid backend prints `GetCompileError()` to stderr but does
+  not throw at the common layer. `IsEffectValid()` intentionally collapses null backend and
+  failed compilation to false, and exposes no compiler diagnostic or automatic retry.
+  Backend-specific factory failures can still throw before they return.
+- `Effect::Apply()` rejects a disposed resource, yet invokes `OnApply()` and then records the
+  effect as current. An invalid/absent `ShaderEffect` backend only logs from `OnApply()`; it
+  binds no fallback. Applying an invalid custom effect can consequently replace the current
+  effect pointer. The standalone uniform/texture setters do not inspect disposal at all.
+- Uniform and texture calls are direct backend submissions, not `EffectParameter` entries. The
+  class holds no uniform/sampler map or texture owner and performs no common name, unit, count,
+  or buffer-pointer validation. EasyGL acts at the call, some backends stage or trace values,
+  inherited defaults may do nothing, and a successful call is not a portable binding guarantee.
+- `Clone()` returns caller-owned raw storage and constructs a new effect from only the device and
+  copied sources. It recompiles a separate backend program, resets World/View/Projection to
+  identity, and drops submitted uniforms, texture binds, name/tag metadata, and program state.
+  The one clone test checks only distinct identity, copied source strings, and equal
+  default-device validity; it leaves real compilation, state transfer, lifetime, invalid apply,
+  and backend-reset behavior untested.
 
-Full `make -C latex book` succeeded at **565 pages**; makeindex accepted **2,316** entries with
-zero rejected/warnings; targeted undefined-reference and duplicate-label checks are empty; and
-`git diff --check` passes. Rendered physical PDF pages **217--218** (printed **193--194**) are
-clean; Ch.14 runs through physical page **224** (printed **200**) before Chapter 15. Ch.14 is
-**397** lines. The plan-consistency validator remains absent from this checkout.
+Full `make -C latex book` succeeded at **567 pages**; makeindex accepted **2,323** entries with
+zero rejected/warnings; targeted undefined-reference and duplicate-label checks are empty; no new
+Chapter 15 overfull box appeared; and `git diff --check` passes. Rendered physical PDF pages
+**227--228** (printed **203--204**) are clean; Ch.15 runs through physical page **232** (printed
+**208**) before Part IV / Chapter 16. Ch.15 is **379** lines. The plan-consistency validator
+remains absent from this checkout.
 
-Next recommended start: Chapter 14's state-value, submission, and binding limits are current.
-Move to the next graphics-core contract, preferably Chapter 15's ShaderEffect/runtime-compiler
-boundary, rather than repeating per-backend state coverage. Only add CNA source/tests when the
-sibling CNA repository itself is in scope.
+Next recommended start: Chapter 15's own runtime-source and object-lifetime boundary is current.
+Move to the next planned graphics-core contract, preferably a narrow Chapter 16 backend-interface
+or resource-lifetime audit, rather than repeating the documented custom-shader backend matrix.
+Only add CNA source/tests when the sibling CNA repository itself is in scope.
 
 ## Previous completed batch: Chapter 13 EffectParameter, technique/pass, and stock-effect binding boundary
 
