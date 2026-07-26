@@ -8,9 +8,8 @@ session log; this file is the concise live handoff.
 - Branch: `develop`.
 - Book: **559 physical PDF pages, 49 chapters, 6 appendices**.
 - The pre-session `develop` checkout matched `origin/develop` exactly; the previous claim that it
-  was twelve commits ahead was stale. The VideoReader and ModelReader audits (plus their handoff
-  correction) are committed locally; the following stock-effect batch is uncommitted. No remote
-  operation was attempted.
+  was twelve commits ahead was stale. The VideoReader, ModelReader, and stock-effect audit batches
+  (plus the Model handoff correction) are committed locally. No remote operation was attempted.
 - Do not infer that the historical `a8b38ae` push-review failure still describes the tracking
   state. No push was attempted in this batch; retain the normal approval requirement for any
   future `git push`.
