@@ -1,6 +1,6 @@
 # The CNA Bible — Expansion Plan (1000–2000 pages per part-group; single book since 2026-07-20)
 
-**Status: Phase 1 execution is active. The current book is 559 physical PDF pages
+**Status: Phase 1 execution is active. The current book is 569 physical PDF pages
 (49 chapters + 6 appendices), fully rebuilt and reference-checked on 2026-07-26. This is a
 long-running, multi-session project — this file is the durable task list and progress tracker
 across sessions. Update the status column and the session log at the bottom every session.**
@@ -18,8 +18,8 @@ ResourceContentManager/OpenStream, TitleContainer/TitleLocation, ContentReader,
 ContentTypeReader, XNB header/decompression, type-reader-name/table, scalar/math-reader, and
 Decimal/DateTime-reader, CurveReader, Texture2DReader, Texture3DReader, TextureCubeReader,
 SpriteFontReader, ModelReader, StockEffect readers, SoundEffectReader, SongReader, and VideoReader audits.
-`main.pdf` is 559 pages; the targeted undefined-reference and duplicate-label checks are empty;
-makeindex accepted 2,299 entries with no
+`main.pdf` is 569 pages; the targeted undefined-reference and duplicate-label checks are empty;
+makeindex accepted 2,343 entries with no
 rejection or warning.
 The current ContentReader/ContentTypeReader/XNB-container/type-name/scalar/Decimal/Curve/Texture2D/Texture3D/TextureCube/SpriteFont/Model/StockEffect/SoundEffect/Song/Video coverage includes the Model portion on printed pages 97--98 (physical PDF pages 119--120), the StockEffect portion on printed pages 98--99 (physical PDF pages 120--121), the Song portion on printed pages 115--117 (physical PDF pages 137--139), and the Video portion on printed pages 117--118 (physical PDF pages 139--140). Together with the
 previously checked pages 50, 58--59, 60, 63--64, 103--118, 124--125, and 126--127, were rendered
