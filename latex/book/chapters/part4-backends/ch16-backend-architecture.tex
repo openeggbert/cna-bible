@@ -53,6 +53,69 @@ design, and every backend chapter's own ``degrades/gap/blocked'' distinctions in
 that silently degrades to a no-op reads differently in an audit than one that throws, even
 though both mean ``not implemented here.''
 
+\subsection{Resource ownership is separate from device tracking}
+\label{sec:backend-resource-tracking}
+
+The factory return types answer only one half of the lifetime question. A concrete public
+resource owns its backend handle --- normally through a \texttt{unique\_ptr}, while
+\cnaclass{Texture2D} deliberately uses a \texttt{shared\_ptr} --- but
+\cnaclass{GraphicsDevice} owns neither. Its \texttt{resources\_} member is only a raw,
+non-owning vector of \cnaclass{GraphicsResource} addresses. The normal constructor path adds
+\texttt{this} to that vector and raises \texttt{ResourceCreated}; a normal disposal removes it
+after the derived class has released its backend handle. This split is why backend factories can
+return independent resource objects without creating a reference cycle with the device.
+
+The shutdown order is intentionally strong for that normal path. \cnaclass{GraphicsDevice}\texttt{::Dispose()}
+moves the raw list into a local vector, clears the registered list before iteration, calls each
+resource's virtual public \texttt{Dispose()}, raises the device's \texttt{Disposing} event, and
+only then destroys the backend/context. Re-entrant removal is therefore harmless, and a normal
+texture, buffer, query, sprite batch, effect, or render target releases its GL/D3D/Vulkan/SDL
+object while its owning backend still exists. A resource's own \texttt{Disposing} event is
+suppressed on its C++ destructor path, but \texttt{GraphicsResource::Dispose(bool)} still calls
+the device's \texttt{ResourceDestroyed} hook regardless of that Boolean; only explicit versus
+destructor notification differs. Once the device has disposed a normally registered object,
+its \texttt{isDisposed} guard also prevents the later resource destructor from following its
+now-dangling device pointer.
+
+That guarantee is address-based, not ownership-based, and it has a consequential C++ boundary.
+\cnaclass{GraphicsResource}'s copy constructor and defaulted move constructor copy the device
+pointer but do \emph{not} replace the original raw-list entry with the destination address or
+register a new one. \cnaclass{Texture2D} makes this directly observable: it is copyable, its
+copies have independent \texttt{IsDisposed} flags but share the same backend
+\texttt{shared\_ptr}, and a copy raises neither \texttt{ResourceCreated} nor the tracked-resource
+count. Moving \cnaclass{VertexBuffer}, \cnaclass{IndexBuffer}, \cnaclass{Texture2D},
+\cnaclass{Texture3D}, \cnaclass{TextureCube}, or a movable render target transfers the handle
+but leaves the device tracking the moved-from address. The existing move example proves only
+that immediate ownership transfer avoids a double free; it does not prove device-first teardown.
+
+This makes a seemingly ordinary scope pattern non-portable in CNA:
+
+\begin{lstlisting}
+Texture2D original(device, 64, 64);
+Texture2D alias = original;              // shared GPU backend, alias untracked
+Texture2D relocated(std::move(original)); // backend moved, old address still tracked
+// Letting either surviving value outlive device.Dispose() is unsafe.
+\end{lstlisting}
+
+If the device disposes first, it sees only the original address. For the copy case that merely
+releases one \texttt{shared\_ptr} reference; for the move case it resets the moved-from null
+handle. In both cases a surviving, untracked value can retain a backend object past destruction
+of its native context and later destroy it too late. Same-device move assignment is less severe
+only because the pre-existing destination was already registered; cross-device assignment has
+no coherent tracking transfer at all. The public test examples deliberately use stable
+\texttt{unique\_ptr} storage or reserve capacity, and no located test copies/moves a live
+resource, disposes its device first, checks event/count accounting, or then destroys the
+surviving value.
+
+Treat GPU resources as address-stable, device-scoped objects: prefer
+\texttt{std::unique\_ptr<T>} (or another non-relocating owner), do not put live movable resources
+in a reallocating value container, avoid \cnaclass{Texture2D} value copies unless every alias is
+explicitly disposed before the device, and never move-assign a resource across devices. FNA's
+managed resource references do not expose this C++ relocation failure mode. CNA's sibling
+\path{docs/graphics-resource-lifetime.md} records the move caveat, but its statement that a
+destructor suppresses \texttt{ResourceDestroyed} is stale against the current common
+implementation; the source and this chapter's rule above are authoritative.
+
 \subsection{ISpriteBatchBackend, and where Chapter~\ref{ch:spritebatch}'s transform bug actually lived}
 
 Only five of \cnaclass{ISpriteBatchBackend}'s nine methods are pure virtual ---

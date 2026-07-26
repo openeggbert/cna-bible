@@ -6,53 +6,55 @@ session log; this file is the concise live handoff.
 ## Current state (2026-07-26)
 
 - Branch: `develop`.
-- Book: **567 physical PDF pages, 49 chapters, 6 appendices**.
+- Book: **569 physical PDF pages, 49 chapters, 6 appendices**.
 - The pre-session `develop` checkout matched `origin/develop` exactly; the previous claim that it
   was twelve commits ahead was stale. The VideoReader, ModelReader, and stock-effect audit batches
   (plus their handoff corrections) are committed locally. The validated Chapter 12, Chapter 13,
-  Chapter 14, and current Chapter 15 audits are recorded below. No remote operation was attempted.
+  Chapter 14, Chapter 15, and current Chapter 16 audits are recorded below. No remote operation was attempted.
 - Do not infer that the historical `a8b38ae` push-review failure still describes the tracking
   state. No push was attempted in this batch; retain the normal approval requirement for any
   future `git push`.
 
-## Latest completed batch: Chapter 15 ShaderEffect object, submission, and clone boundary
+## Latest completed batch: Chapter 16 resource ownership and device-tracking boundary
 
 No CNA source changes were made; the sibling repository remained a read-only authority. CNA's
-`ShaderEffect`/`Effect`/`GraphicsResource` implementation, common effect-backend interface,
-EasyGL and Headless submission paths, focused clone test, and the earlier per-backend matrix
+`GraphicsDevice`/`GraphicsResource` lifecycle implementation, public resource ownership shapes,
+current lifetime guide, move/copy examples, focused tests, and FNA's managed-reference model
 establish:
 
-- The two source strings are copied at construction, then the factory is called once if the
-  device has a backend. A returned invalid backend prints `GetCompileError()` to stderr but does
-  not throw at the common layer. `IsEffectValid()` intentionally collapses null backend and
-  failed compilation to false, and exposes no compiler diagnostic or automatic retry.
-  Backend-specific factory failures can still throw before they return.
-- `Effect::Apply()` rejects a disposed resource, yet invokes `OnApply()` and then records the
-  effect as current. An invalid/absent `ShaderEffect` backend only logs from `OnApply()`; it
-  binds no fallback. Applying an invalid custom effect can consequently replace the current
-  effect pointer. The standalone uniform/texture setters do not inspect disposal at all.
-- Uniform and texture calls are direct backend submissions, not `EffectParameter` entries. The
-  class holds no uniform/sampler map or texture owner and performs no common name, unit, count,
-  or buffer-pointer validation. EasyGL acts at the call, some backends stage or trace values,
-  inherited defaults may do nothing, and a successful call is not a portable binding guarantee.
-- `Clone()` returns caller-owned raw storage and constructs a new effect from only the device and
-  copied sources. It recompiles a separate backend program, resets World/View/Projection to
-  identity, and drops submitted uniforms, texture binds, name/tag metadata, and program state.
-  The one clone test checks only distinct identity, copied source strings, and equal
-  default-device validity; it leaves real compilation, state transfer, lifetime, invalid apply,
-  and backend-reset behavior untested.
+- A normal resource owns its backend handle while `GraphicsDevice` retains only its raw address.
+  Device disposal moves and clears that address list, invokes resource disposal while the backend
+  still exists, and destroys the backend last. This makes the usual device-first shutdown order
+  safe and re-entrancy harmless. A destructor suppresses the resource's `Disposing` event, but
+  current `GraphicsResource::Dispose(false)` still calls the device's `ResourceDestroyed` hook;
+  the sibling lifetime guide's contrary sentence is stale.
+- That safety is address-based. Base copy/move operations copy `graphicsDevice_` but never move
+  or add tracking entries. A `Texture2D` value copy shares its `shared_ptr` backend with
+  independent disposal state but remains untracked; move construction transfers a resource's
+  handle while leaving the moved-from address tracked. An untracked survivor through device
+  disposal can destroy a native backend after its context/device has gone.
+- Same-device move assignment only benefits from its destination's already-existing tracker
+  entry; cross-device assignment has no coherent registration transfer. Existing tests show live
+  handle survival and no double free, not tracker/event counts or device-first disposal after a
+  live copy/move. Use stable `unique_ptr` storage, do not relocate live resources, and dispose
+  every `Texture2D` alias before its device.
+- **needs_human / source-repository follow-up:** repair CNA's resource registration/ownership
+  policy (or prohibit copy/move on tracked resources, with a deliberate `Texture2D` alias rule)
+  and add the device-first teardown tests. The required implementation is outside this book
+  checkout; the book now records the exact failure boundary.
 
-Full `make -C latex book` succeeded at **567 pages**; makeindex accepted **2,323** entries with
+Full `make -C latex book` succeeded at **569 pages**; makeindex accepted **2,335** entries with
 zero rejected/warnings; targeted undefined-reference and duplicate-label checks are empty; no new
-Chapter 15 overfull box appeared; and `git diff --check` passes. Rendered physical PDF pages
-**227--228** (printed **203--204**) are clean; Ch.15 runs through physical page **232** (printed
-**208**) before Part IV / Chapter 16. Ch.15 is **379** lines. The plan-consistency validator
-remains absent from this checkout.
+Chapter 16 overfull box appeared; and `git diff --check` passes. Rendered physical PDF pages
+**236--237** (printed **212--213**) are clean; Ch.16 runs through physical page **266** (printed
+**242**) before Chapter 17. Ch.16 is **1,905** lines. The plan-consistency validator remains
+absent from this checkout.
 
-Next recommended start: Chapter 15's own runtime-source and object-lifetime boundary is current.
-Move to the next planned graphics-core contract, preferably a narrow Chapter 16 backend-interface
-or resource-lifetime audit, rather than repeating the documented custom-shader backend matrix.
-Only add CNA source/tests when the sibling CNA repository itself is in scope.
+Next recommended start: Chapter 16's resource ownership and address-tracking boundary is current.
+Continue with another narrow, source-backed Chapter 16 interface audit only if it finds a distinct
+contract; do not repeat the existing capability, render-target, presentation, or recovery matrices.
+The source-repository resource-lifetime repair remains `needs_human` until `../cna` is explicitly
+in scope.
 
 ## Previous completed batch: Chapter 13 EffectParameter, technique/pass, and stock-effect binding boundary
 
