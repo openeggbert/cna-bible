@@ -1,0 +1,336 @@
+\chapter{Avatar: Faithful Absence and CNAEXT Rendering}
+\label{ch:avatar}
+
+The Avatar system is the strangest corner of CNA, and deliberately so. Chapter~\ref{ch:what-is-cna} already
+flagged it: unlike every other namespace in this book, Avatar was ported from
+a \emph{decompiled} real Microsoft XNA~4.0 reference assembly, because FNA never implemented
+it at all --- real avatar rendering depended on Xbox Live's cloud avatar-editor service, which
+has been offline for well over a decade. This chapter explains what that means concretely:
+the base API is not a limitation CNA imposed, but a byte-exact reproduction of behavior that
+was \emph{already inert} on the real assembly, and a wholly separate, CNA-original extension
+sits alongside it to provide actual, real rendering.
+
+\section{The base API: faithfully, provably inert}
+
+\cnaclass{AvatarRenderer}'s own class documentation states the finding plainly: neither of
+its two constructor overloads ever actually reads its arguments, and
+\texttt{getStateProperty()} unconditionally forces itself to
+\cnaclass{AvatarRendererState::Unavailable} on every single read --- nothing anywhere in the
+class ever assigns \texttt{Ready} or \texttt{Loading}. This is not a bug CNA introduced; it is
+the real, observed behavior of the actual reference assembly off real Xbox~360 hardware,
+where the mesh, texture, and animation data an avatar needs was always streamed at runtime
+from a now-dead cloud service and consequently never present at all. \texttt{Draw()} is
+correspondingly a permanent no-op in both its overloads, and the \cnaclass{Matrix}-array
+overload specifically still enforces a real, meaningful contract despite drawing nothing ---
+it hard-throws \texttt{ArgumentException} unless given exactly the real Xbox avatar
+skeleton's 71 bone entries. \texttt{getBindPoseProperty()} throws
+\texttt{InvalidOperationException} unless \texttt{State == Ready}, which --- per the above ---
+is never true in faithful usage, so this call always throws in practice.
+
+\cnaclass{AvatarDescription} tells the same story from a different angle: its constructor
+requires exactly 1{,}021 bytes and throws otherwise, a real format that was never publicly
+documented and cannot be reverse-engineered from the reference assembly alone.
+\texttt{CreateRandom()} --- despite its name --- never actually randomizes anything; both
+overloads always return an all-zero, invalid description, and the second overload's
+\cnaclass{AvatarBodyType} parameter is not read at all. \texttt{BeginGetFromGamer} /
+\texttt{EndGetFromGamer} complete synchronously (a ``fully synchronous fake-async
+operation,'' in the project's own words) and \texttt{EndGetFromGamer} always returns the same
+all-zero, invalid description regardless of which gamer was actually passed in.
+\cnaclass{AvatarAnimation} completes the pattern: its constructor never reads the requested
+\cnaclass{AvatarAnimationPreset} at all, so every instance ends up with the identical 71
+zero-valued bone transforms and a zero-length animation clip, no matter which of the 31 named
+presets was requested.
+
+None of this is presented apologetically in the project's own documentation, and this book
+follows that lead: it is presented as a faithful, verified reproduction of a real, if
+surprising, historical API surface --- exactly the kind of specific, checkable claim
+Chapter~\ref{ch:what-is-cna} asked this book to preserve rather than round off into a vague ``Avatar
+support is limited.''
+
+\section{SkinnedModelEXT: the separate, real-rendering extension}
+
+Real avatar rendering in CNA does not live inside the classes above at all --- it lives in a
+structurally independent, entirely \texttt{NOXNA} system, \cnaclass{SkinnedModelEXT}, built
+specifically because \cnaclass{Model} / \cnaclass{ModelMesh} (Chapter~\ref{ch:models-meshes}'s models-and-meshes
+coverage) encode a rigid, per-mesh parent-bone hierarchy --- the wrong shape entirely for
+real per-vertex GPU skinning. \cnaclass{SkinnedModelEXT} owns its own bone hierarchy (a
+parent-index array, local bind poses, and global inverse bind poses), its own named animation
+clips (each a set of per-bone keyframe tracks with linear translation/scale interpolation and
+spherical-linear rotation interpolation), and its own mesh parts, deliberately move-only since
+it owns real GPU buffer resources. Crucially, its bone count and hierarchy are wholly
+independent of the faithful 71-bone \cnaclass{AvatarBone} array above --- a typical
+\cnaclass{SkinnedModelEXT} skeleton runs 50 to 65 bones, comfortably inside
+\cnaclass{SkinnedEffect}'s (Chapter~\ref{ch:stock-effects}'s stock-effects coverage) 72-bone cap, and the
+two bone-numbering schemes are never confused or bridged directly.
+
+A small, opt-in surface bridges the two systems without touching the faithful API's own
+inert behavior at all: \texttt{AvatarRenderer::EnableRealRenderingEXT(device, model)} builds
+an internal \cnaclass{SkinnedEffect}; \texttt{DrawRealEXT(clipName, position, loop)} then
+samples the requested clip and issues a real draw through the ordinary
+\cnaclass{GraphicsDevice} path, throwing \texttt{InvalidOperationException} if real rendering
+was never enabled in the first place. Nothing about this opt-in path changes what
+\texttt{Draw()}, \texttt{getStateProperty()}, or any other faithful-API member does --- a game
+that never calls \texttt{EnableRealRenderingEXT} sees exactly the inert behavior described
+above, unchanged.
+
+\begin{lstlisting}
+// Worked example: the same AvatarRenderer instance, opted into real
+// rendering. The AvatarDescription passed to the constructor still goes
+// through the faithful, all-zero-invalid CreateRandom() path above -- it
+// is never read by the real-rendering side at all, which draws entirely
+// from the separately-loaded SkinnedModelEXT instead.
+AvatarDescription desc = AvatarDescription::CreateRandom();
+AvatarRenderer renderer(&desc);
+
+auto model = std::make_shared<SkinnedModelEXT>(LoadSkinnedModel("Content/Avatar/base.skinnedmodel.json"));
+renderer.EnableRealRenderingEXT(*graphicsDevice, model);
+renderer.SetAppearanceEXT(AvatarAppearanceEXT());  // default skin/hair/garment tints
+
+// In Draw(), called every frame:
+renderer.setWorldProperty(Matrix::Identity);
+renderer.setViewProperty(camera.View);
+renderer.setProjectionProperty(camera.Projection);
+renderer.DrawRealEXT("Idle", elapsedClipTime, /* loop */ true);
+\end{lstlisting}
+
+\subsection{Two real lighting bugs found while chasing why avatars looked wrong}
+
+The worked example above sets \texttt{DrawRealEXT}'s custom ambient/lighting state through the
+internal \cnaclass{SkinnedEffect} \texttt{EnableRealRenderingEXT} builds --- and a real,
+found-and-fixed ordering bug lived in exactly that setup path: \texttt{AvatarRenderer::%
+DrawRealEXT} called \texttt{EnableDefaultLighting()} \emph{after} the caller's own custom
+ambient value had already been set, so \texttt{EnableDefaultLighting()}'s own unconditional
+overwrite (the same behavior Chapter~\ref{ch:stock-effects}'s \cnaclass{BasicEffect} worked example already warns
+about) discarded it silently on every single draw call. A game calling
+\texttt{renderer.setAmbientLightColorProperty(...)} before \texttt{DrawRealEXT} would have seen
+no effect from it whatsoever, with no error of any kind --- fixed by reordering the two calls
+so the default lighting setup runs first and any caller customization applied afterward
+genuinely sticks.
+
+The second bug is not avatar-specific in where it lives, only in how it was found: three
+consecutive rounds of tuning avatar ambient lighting to fix visibly-too-dark materials all
+failed, and the reason turned out to be a real formula bug in EasyGL's own shader generation,
+shared by every skinned, vertex-lit, and environment-mapped 3D draw on that backend, not
+avatars alone. \texttt{EmissiveColor} was multiplied by \texttt{DiffuseColor} \emph{twice} in
+three of EasyGL's shader-variant builders --- real FNA's own \texttt{Lighting.fxh} adds the
+emissive term \emph{after} the diffuse multiply, not as part of it. Because CNA pre-folds
+ambient light into the emissive term before it reaches the shader (the same convention
+Chapter~\ref{ch:stock-effects} covers for the stock-effect lighting model generally), the double multiply meant
+ambient light landed on screen as $\mathit{ambient} \times \mathit{diffuse}^2$ rather than the
+correct $\mathit{ambient} \times \mathit{diffuse}$ --- crushing any dark material's ambient
+contribution toward black far more aggressively than intended, and explaining exactly why
+raising the ambient value in the previous three tuning rounds never visibly fixed anything: the
+formula itself was wrong, not merely mistuned. Fixed by moving the emissive add outside the
+diffuse multiply to match FNA's real formula; a dedicated pixel test measuring the fraction of
+near-black pixels across a lit avatar mesh went from 4.1--6.0\% before the fix to exactly 0\%
+after it.
+
+\subsection{Wardrobe hot-swapping: a real, found-and-fixed leak and a real ordering bug}
+
+\cnaclass{SkinnedModelEXT}\texttt{::AttachPartEXT} lets an independently-loaded wardrobe piece
+--- a hairstyle, a shirt, built separately by the same content pipeline against the same
+canonical skeleton --- actually be worn by an already-loaded, running avatar at runtime, not
+just converted offline; it requires the incoming piece to share this model's exact bone count,
+the one cheap check available to catch an obviously mismatched skeleton. Two real bugs were
+found and fixed in this specific path. First, a genuine GPU-resource leak: removing a part by
+erasing it directly from the public \texttt{Parts} vector --- the only approach available
+before \texttt{RemovePartEXT} existed --- only ever discarded a non-owning descriptor,
+never releasing the underlying \cnaclass{VertexBuffer} / \cnaclass{IndexBuffer} /
+\texttt{ModelMeshPart} / \cnaclass{Texture2D} it pointed at; \texttt{RemovePartEXT} now also
+erases the matching entries from this model's own owned-resource vectors, so the real GPU
+memory is actually freed. Second, a real ordering bug: re-attaching a same-named replacement
+part (swapping hairstyles at runtime, the exact scenario this feature exists for) used to
+render \emph{both} the old and new part simultaneously, because \texttt{AttachPartEXT} only
+ever appended; it now removes any existing part(s) sharing the incoming part's name --- via
+\texttt{RemovePartEXT}, freeing their GPU resources too --- before appending the replacement.
+
+\begin{lstlisting}
+// Worked example: swapping a hairstyle on a running, already-rendering
+// avatar. AttachPartEXT's replace-by-name fix means the old hair part is
+// both visually replaced AND its GPU resources freed, not just visually
+// obscured by a second overlapping part.
+SkinnedModelEXT newHair = LoadSkinnedModel("Content/Avatar/Wardrobe/spikyhair.skinnedmodel.json");
+avatarModel->AttachPartEXT(std::move(newHair));  // replaces any existing "...Hair" part
+\end{lstlisting}
+
+\subsection{Appearance: necessarily invented, not reverse-engineered}
+
+\cnaclass{AvatarAppearanceEXT} provides skin/hair/garment tint colors --- and its own
+documentation is explicit that this is a CNA invention, not a reconstruction of the real,
+proprietary avatar-appearance format, which is permanently inaccessible from the decompiled
+assembly alone. It is tint-only in its current form, with no per-part texture or clothing
+geometry customization. One default value was itself the subject of a real, confirmed bug:
+the default shoe tint was originally near-black, causing avatar shoes to render as a
+``featureless pure-black blob'' until fixed through direct pixel-sampling verification rather
+than a guess.
+
+\subsection{Real bugs found building the content pipeline}
+
+A dedicated \texttt{.skinnedmodel.json} / \texttt{.skeleton.bin} / \texttt{.clip.bin} content
+pipeline loads \cnaclass{SkinnedModelEXT} assets, and building it end to end surfaced three
+genuine, worth-naming bugs. Manifest asset paths originally resolved against the content
+root rather than the manifest file's own directory, breaking any subdirectory-organized asset
+bundle --- fixed to resolve relative to the manifest itself. A genuine C\texttt{++}
+unspecified-evaluation-order bug corrupted keyframe data: chaining several
+\texttt{reader.Read<float>()} calls directly as constructor arguments for a
+\cnaclass{Vector3} / \cnaclass{Quaternion} scrambled component order, because C\texttt{++} does
+not guarantee left-to-right evaluation of function arguments the way a reader might assume ---
+fixed by reading each component into a named local first. And the asset-conversion tooling's
+own bone-hierarchy reordering step needed a corresponding remap of inverse bind matrices and
+per-vertex joint indices, which were still expressed in glTF's own original joint order rather
+than the tool's newly reordered one.
+
+\subsection{A real, currently open visual defect, and four disproven fixes worth knowing about}
+
+Not every investigation into this system's placeholder art has closed cleanly, and this book's
+own methodology (Chapter~\ref{ch:what-is-cna}) is explicit that an honestly-still-open finding
+belongs here just as much as a fixed one does. A generated avatar's \texttt{Wave} animation
+shows ragged blue (shirt) and skin-colored mesh fragments at the shoulder and chest --- and
+seven consecutive rounds of investigation, most of it disproving its own prior round's leading
+theory, narrowed this down to a precise, still-unresolved geometric root cause rather than
+either fixing it or abandoning the search.
+
+The most important reframing came in the seventh round: measuring garment-versus-body vertex
+crossing counts under the actual \texttt{Wave} pose found them \emph{identical} to a neutral
+standing pose (shirt 64 of 228 vertices crossing in both), with only the camera-visible
+attribution shifting onto the now-raised arm. This rules out the animation itself --- garment
+and body mesh deform correctly \emph{together} under \texttt{Wave} (an earlier round's own
+joint-blend fix made that true --- an earlier round found and fixed a real, separate bug where
+a joint's own automatic weight-blend selection tested only axial distance along the bone with
+no perpendicular limit, so a laterally-pointing arm bone's blend slab swept down through the
+torso, hips, and legs) --- and reframes the whole defect as a
+rest-pose problem rotated into view, not a skinning bug at all: \textbf{any real fix has to
+reduce the underlying garment/body mesh interpenetration itself, not the animation blending.}
+Measured precisely in the neutral pose, the shirt's own procedurally-generated capsule shell
+buries into the head sphere at the collar (19 vertices, $-0.131$m) and into the lower-arm
+capsule at the cuffs (24 vertices) --- and, worked through by hand, the collar overlap traces
+to one specific, calculable cause: the shirt's \texttt{Spine1} shell (radius $0.176$, spanning
+$z{=}1.40$ to $z{=}1.576$) geometrically extends into the head sphere (radius $0.15$, centered
+at $z{=}1.60$, so its own bottom sits at $z{=}1.45$) --- an overlap of approximately $0.126$m,
+matching the measured $-0.131$m almost exactly. A separate waist overlap (pants against the
+spine) is real but mutually hidden by both garments at once, so it never actually reaches the
+screen; the collar and cuffs are the \emph{only} crossings a player would ever actually see.
+
+Four distinct structural fixes were each tried, measured, and reverted --- worth naming
+precisely, both so a future attempt does not repeat them and because a book on real engineering
+practice should show disproof as readily as proof: narrowing the garment blend radius produced
+no clear improvement; trimming the garment capsule's own boundary caps made the pants overlap
+measurably worse (21 vertices buried became 39); switching to flat-capped cylinder shells with
+separate joint spheres --- an approach this same investigation had once recommended --- made
+every single measured metric worse at once (\texttt{Wave} speckle roughly doubled, groin
+crossings went from zero to 28, mesh brightness dropped); and raising tessellation from 12 to
+32 segments genuinely smoothed the visibly ragged edges without actually removing the
+underlying fragments, at a real, measured cost of 4.2$\times$ the vertex data. That last one
+was reverted as a deliberate project-owner scope decision, not because it failed technically ---
+it remains a one-line change to re-enable if a future session decides the geometry cost is
+worth paying for smoother (not fewer) artifacts. As of this writing, the defect remains
+formally open, with three live options on the table: target the collar and cuffs specifically
+(sizing each garment shell against the maximum body radius it must actually clear along its
+own span, not just against its own underlying bone), accept the residual overlap as an
+inherent, honestly-documented limitation of shelling a procedurally-generated placeholder body
+with convex per-bone primitives, or revisit the tessellation trade-off as an explicit
+owner-approved cost. This is exactly the kind of open, well-diagnosed-but-unresolved item this
+book's own closing chapters (Chapter~\ref{ch:project-practice}, Chapter~\ref{ch:roadmap}) point to as evidence that ``done'' and
+``verified correct'' are not the same claim, even inside a single actively-maintained system.
+
+\subsection{A worked example: what \texttt{ComputeBoneTransformsEXT} actually computes}
+
+Every worked example so far treats \cnaclass{SkinnedModelEXT}'s animation sampling as a black
+box behind \texttt{DrawRealEXT}. \texttt{ComputeBoneTransformsEXT(clipName, position, loop,
+outWorldBones)} --- the function that actually does it --- is worth tracing through directly,
+since its real test file builds the smallest possible rig that still exercises hierarchy
+composition: two bones, bone~1 a child of bone~0 offset $(0,1,0)$ in the bind pose, with a
+single keyframe track moving bone~0 from $(0,0,0)$ at $t{=}0$s to $(2,0,0)$ at $t{=}1$s:
+
+\begin{lstlisting}
+SkinnedModelEXT model;
+model.BoneCount = 2;
+model.ParentBoneIndices = {-1, 0};
+model.BindPoseLocal = {Matrix::getIdentityProperty(),
+                        Matrix::CreateTranslation(Vector3(0, 1, 0))};
+model.InverseBindPoseGlobal = {Matrix::getIdentityProperty(),
+                                Matrix::getIdentityProperty()};
+
+BoneTrackEXT track;
+track.BoneIndex = 0;
+track.Keys.push_back(KeyframeEXT{TimeSpan::FromSeconds(0.0), Vector3(0, 0, 0)});
+track.Keys.push_back(KeyframeEXT{TimeSpan::FromSeconds(1.0), Vector3(2, 0, 0)});
+
+AnimationClipEXT clip;
+clip.Duration = TimeSpan::FromSeconds(1.0);
+clip.Tracks.push_back(track);
+model.Clips["Move"] = clip;
+
+std::vector<Matrix> bones;
+model.ComputeBoneTransformsEXT("Move", TimeSpan::FromSeconds(0.5), false, bones);
+// bones[0].Translation.X == 1.0f -- linear interpolation, exactly halfway
+\end{lstlisting}
+
+Reading \texttt{SkinnedModelEXT.cpp} directly shows the real algorithm behind that single
+number: sample each bone track's translation (\texttt{Lerp}) and rotation
+(\texttt{Quaternion::Slerp}) at the clamped/wrapped clip position into a local transform per
+bone, then walk \texttt{ParentBoneIndices} in stored (topological) order composing each bone's
+local transform with its already-computed parent's world transform, and finally multiply by
+\texttt{InverseBindPoseGlobal} to produce the skinning matrix \cnaclass{SkinnedEffect} actually
+consumes. Three real, independently-fixed defects live inside this one function, each verified
+by its own dedicated test:
+
+\begin{description}
+  \item[Task 11.1 --- unbounded looping cost.] The original wraparound for \texttt{loop=true}
+        repeatedly subtracted or added one \texttt{Duration} at a time until the position fell
+        back in range --- a real per-call cost proportional to \texttt{position / Duration},
+        catastrophic for a long-running session animating a short clip.
+        \cnaclass{System::TimeSpan} has no modulo operator, so the fix works in raw ticks
+        instead: C\texttt{++}'s \texttt{\%} truncates toward zero, so a single conditional
+        \texttt{+= durationTicks} normalizes a negative remainder into
+        \texttt{[0, durationTicks)} --- floor-mod without ever actually looping. The real
+        regression test constructs a position 1{,}000{,}000{,}000.5 clip-durations in (using
+        integer tick arithmetic specifically to keep the expected result exact) and asserts
+        the call completes in under 100ms.
+  \item[Task 11.3 --- unchecked skeleton-data lengths.] \texttt{ParentBoneIndices} /
+        \texttt{BindPoseLocal} / \texttt{InverseBindPoseGlobal} are populated straight from
+        file content and then indexed up to \texttt{BoneCount} with no check that each
+        vector's own \texttt{.size()} actually matches it --- a corrupt or truncated
+        \texttt{.skeleton.bin} (or, as the real test file's own comment notes, a
+        hand-constructed model in a test) previously produced a real out-of-bounds
+        \texttt{std::vector::operator[]} read instead of a clean, catchable error. Fixed with
+        an explicit length check that throws \texttt{ArgumentException} naming exactly which
+        vector disagreed with \texttt{BoneCount}, before any indexing happens.
+  \item[Task 13.2 --- an out-of-range track is skipped, not crashed.] A defensive bounds check
+        (\texttt{!track.Keys.empty() \&\& track.BoneIndex >= 0 \&\& track.BoneIndex <
+        localTransforms.size()}) means a track referencing a bone index that does not exist on
+        this model --- 99 on a 2-bone rig, or a negative index --- is safely skipped, leaving
+        that (nonexistent) bone at its bind pose rather than corrupting memory or throwing. The
+        real test asserts this with \texttt{EXPECT\_NO\_THROW} on two simultaneously-bad tracks
+        (index 99 and index $-5$) added to the same clip used above.
+\end{description}
+
+\section{Backend support and real content proof}
+
+Real GPU skinning through this extension is proven end-to-end via pixel readback on EasyGL;
+Vulkan and BGFX both have the real pipeline wiring in place (descriptor sets and per-frame
+bone uniform buffers) but had not, as of the source material this book draws from, been
+separately smoke-tested for this specific feature. On \texttt{SDL\_RENDERER}, any attempt to
+create the 3D resources this extension needs throws the same ``does not support 3D'' error
+already covered in Part~IV's backend chapters, consistent with that backend's documented
+scope. Beyond synthetic tests, a dedicated demo application loads real content and renders a
+complete, correctly proportioned, animated humanoid avatar in a real window, toggling between
+clips live --- alongside seven sibling demo applications covering an animation gallery,
+appearance-tint studio, wardrobe hot-swapping, multi-attach stress testing, and a
+side-by-side comparison against the faithful, inert base API, so a reader can see both halves
+of this chapter's story running at once.
+
+\section{The shape of this chapter, restated}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+& \textbf{Base Avatar API (faithful)} & \textbf{SkinnedModelEXT (\texttt{NOXNA})} \\
+\midrule
+Purpose & Byte-exact port of real XNA~4.0 & CNA-original, opt-in real renderer \\
+Bone rig & Fixed 71-bone array, always zero & Independent count (\raisebox{0.5ex}{\texttildelow}50--65), real skeleton \\
+Draw() & Permanent no-op & Real \cnaclass{GraphicsDevice} / \cnaclass{SkinnedEffect} draw \\
+Enabled by default & Yes & No --- requires explicit opt-in \\
+\bottomrule
+\end{tabular}
+\end{center}

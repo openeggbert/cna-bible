@@ -1,0 +1,315 @@
+\chapter{Why sharp-runtime Exists}
+\label{ch:sharp-runtime-overview}
+
+This book's ecosystem chapter introduced \texttt{sharp-runtime} as the foundation layer every
+XNA-facing CNA type quietly depends on. This chapter treats it as a project in its own right
+--- one considerably larger, and considerably more broadly scoped, than its role inside CNA
+alone might suggest.
+
+\section{Scale}
+
+\texttt{sharp-runtime} ships 982 public headers, 210 implementation files, and a test suite
+of 12{,}476 tests, all passing at the time of writing, grown from a starting baseline the
+project's own porting rules treat as a floor that must never be lowered. This is a
+considerably larger surface than ``just enough .NET to make XNA's API vocabulary work in
+C\texttt{++}'' might suggest --- coverage genuinely extends to \texttt{System.Text.Json},
+\texttt{System.Xml.Linq} / \texttt{XPath}, \texttt{System.Buffers.Text} / \texttt{Binary},
+\texttt{System.Threading.Channels}, and \texttt{System.Net.WebSockets} / \texttt{Http} /
+\texttt{Security}, well beyond a minimal XNA-support subset.
+
+\section{Namespace structure}
+
+\texttt{include/System/} mirrors real .NET's namespace tree directly:
+\texttt{Collections} (with \texttt{Concurrent}, \texttt{Frozen}, \texttt{Generic},
+\texttt{Immutable}, \texttt{ObjectModel}, \texttt{Specialized} sub-namespaces),
+\texttt{IO} (with \texttt{Compression}, \texttt{Hashing}, \texttt{IsolatedStorage}),
+\texttt{Net} (with \texttt{Http}, \texttt{Sockets}, \texttt{WebSockets}, \texttt{Security}),
+\texttt{Text} (with \texttt{Json}, \texttt{RegularExpressions}, \texttt{Encodings}),
+\texttt{Threading} (with \texttt{Channels}, \texttt{Tasks}), \texttt{Xml}, \texttt{Security},
+\texttt{Globalization}, \texttt{Runtime}, and roughly 185 flat top-level types
+(\texttt{Object}, \texttt{String}, \texttt{Exception}, \texttt{EventHandler},
+\texttt{IDisposable}, \texttt{TimeSpan}, \texttt{DateTimeOffset}, \texttt{Delegate},
+\texttt{Guid}, \texttt{Random}, \texttt{Uri}, \texttt{Version}, \texttt{Nullable},
+\texttt{Span}, \texttt{Memory}, and more). A separate \texttt{include/SharpRuntime/}
+namespace holds project-internal helpers that are not part of the .NET mirror at all ---
+most importantly \texttt{SharpRuntimeHelper.hpp}, home to the type-alias table
+Chapter~\ref{ch:design-philosophy} already introduced (\texttt{bytecs},
+\texttt{intcs}, \texttt{Single}, and the rest).
+
+\section{Object and IDisposable: the two roots}
+
+\cnaclass{System::Object} is CNA's substitute for .NET's universal base type, and its own
+design is honest about the substitution's limits: it is abstract here (a pure-virtual
+\texttt{GetTypeName()}), because C\texttt{++} has no universal root type of its own to anchor
+it to the way every .NET type implicitly inherits \texttt{object}. \texttt{GetHashCode()},
+\texttt{Equals}, \texttt{ToString()}, and a non-virtual \texttt{GetType()} (backed by
+\texttt{typeid(*this)}) round out the surface; two macros,
+\texttt{GetTypeNameHPP()} / \texttt{GetTypeNameCPP()}, exist purely to reduce the boilerplate of
+implementing the required override on every concrete class --- the same
+\texttt{GetTypeName()} override Chapter~\ref{ch:design-philosophy} already showed CNA's own
+porting checklist requires on every class inheriting \texttt{System::Object}.
+\cnaclass{System::IDisposable} is a single pure interface method,
+\texttt{virtual void Dispose() = 0}; its own documentation is explicit that C\texttt{++} has
+no equivalent of C\#'s \texttt{using} statement, so callers either use RAII or call
+\texttt{Dispose()} explicitly, and every implementation is expected to be idempotent.
+
+\section{EventHandler and MulticastAction: solving a problem C\# doesn't have}
+
+\cnaclass{System::EventHandler<TEventArgs>} deliberately diverges from real .NET's own
+design, and its own header comment states why directly: in C\#, \texttt{EventHandler<T>} is
+only a delegate \emph{type} --- the actual multicast subscriber list and invocation mechanism
+are supplied separately, by the compiler-generated code behind the \texttt{event} keyword.
+C\texttt{++} has no \texttt{event} keyword, so \texttt{sharp-runtime}'s own
+\cnaclass{EventHandler<T>} has to be both the type \emph{and} the subscriber-list
+infrastructure at once: \texttt{operator+=}, a token-based \texttt{Add} / \texttt{Remove} pair,
+\texttt{Clear()}, and \texttt{Raise(sender, e)}. \texttt{Raise} specifically invokes over a
+\emph{snapshot} of the current handler list, not the live list --- a direct, deliberate guard
+against a handler that removes itself (or another handler) from within its own invocation,
+which previously surfaced as a real \texttt{std::bad\_function\_call} crash before this
+snapshot discipline was adopted. A further mechanism, \texttt{SetReplayHook()}, exists
+specifically to model a real XNA quirk this book has already touched on earlier ---
+\cnaclass{NetworkSession.GamerJoined} (Chapter~\ref{ch:networking}) is expected to replay
+already-happened state to a newly-added subscriber, not only notify about future events, and
+this hook is the general mechanism that makes that pattern implementable once, rather than
+reinvented per event.
+
+\cnaclass{System::MulticastAction<Args...>} is a second, purpose-built multicast type built
+for the same underlying reason: since \texttt{std::function}/lambda values have no C\#-style
+target-plus-method equality, ordinary value comparison cannot implement C\#'s
+\texttt{-=}-style single-subscriber removal, so this type uses the same
+token-based-removal-plus-snapshot-invocation discipline as \cnaclass{EventHandler<T>} to solve
+the identical problem for plain multicast callback fields that are not shaped like a
+C\#-style public event. The motivating real-world case, named directly in this type's own
+header comment, is re-parenting a scene-graph hierarchy: a node that resubscribes to a
+different set of ancestor callbacks needs to drop its \emph{specific} old subscription without
+clearing every other subscriber sharing the same field, which plain value comparison over
+\texttt{std::function} objects cannot distinguish.
+
+\begin{lstlisting}
+// Worked example: token-based removal, the scenario this type exists for
+// -- unsubscribing one specific handler without disturbing any other
+// subscriber on the same field.
+System::MulticastAction<float> onParentTransformChanged;
+auto token = onParentTransformChanged.Add(
+    [this](float deltaScale) { ApplyParentScale(deltaScale); });
+
+// ... later, when this node is re-parented onto a different ancestor ...
+onParentTransformChanged.Remove(token);          // only this subscription is dropped
+token = newParent->onTransformChanged.Add(       // resubscribe to the new ancestor
+    [this](float deltaScale) { ApplyParentScale(deltaScale); });
+\end{lstlisting}
+
+\section{Value types worth knowing before reading later chapters}
+
+\cnaclass{System::TimeSpan}, the type underlying \cnaclass{GameTime} and
+\cnaclass{SensorBase::TimeBetweenUpdates} throughout this book, stores its value internally
+as 100-nanosecond ticks and carries one small, diagnostic-only surprise: a static, atomic
+copy/move counter, exposed for test instrumentation. This counter is also the subject of one
+specific, deliberately accepted, benign finding: a project-wide ThreadSanitizer run reports
+exactly one pre-existing race, in this counter's own increment, explicitly carved out as
+out-of-scope in at least one downstream consumer's own sanitizer configuration (the
+\cnans{Microsoft::Devices} work covered in Chapter~\ref{ch:devices-sensors}) --- a real,
+known, harmless race in a debug-only diagnostic field, not in \cnaclass{TimeSpan}'s actual
+timing behavior.
+
+\cnaclass{Collections::Generic::List<T>} and \cnaclass{Dictionary<TKey,TValue>} both
+implement .NET's fail-fast collection-modified-during-enumeration behavior via an internal
+version counter checked on every enumeration step --- with one small, explicitly documented
+deviation on \cnaclass{Dictionary}: its \texttt{Remove()} bumps the version counter, which
+real .NET's own \texttt{Dictionary.Remove()} does not do, because \texttt{std::unordered\_map}'s
+own iterator-invalidation guarantees on erase differ from the array-backed entry table real
+.NET's dictionary uses internally --- a deliberate, reasoned adaptation to the underlying
+C\texttt{++} standard library type, not an oversight. This is not just a two-type pattern:
+every mutable generic collection this library ships --- \cnaclass{HashSet}, \cnaclass{LinkedList},
+\cnaclass{Queue}, \cnaclass{Stack}, \cnaclass{SortedDictionary}, \cnaclass{SortedList},
+\cnaclass{SortedSet}, and \cnaclass{OrderedDictionary} alongside the two above --- carries the
+identical version-counter invariant, made project-wide as a deliberate late addition rather
+than left as a two-type special case. \cnaclass{OrderedDictionary} specifically needed a
+follow-up fix of its own even after that rollout: its \texttt{EnsureCapacity} method resized
+the backing storage without bumping the version counter, meaning an enumerator already in
+flight across a capacity-triggered resize would not detect the mutation the way every other
+structural change on the same type correctly does --- closed as its own, narrower fix once
+found, on the same underlying invariant.
+
+\section{Concurrency primitives}
+
+\cnaclass{Threading::Tasks::Task} implements a real, if scoped, async-task model:
+\texttt{Wait()} rethrows a faulted task's exception (matching .NET's own
+\texttt{Wait()} / \texttt{ThrowIfExceptional} contract), and \texttt{ContinueWith} uses
+weak-pointer-based cycle avoidance specifically to avoid leaking a continuation chain rather
+than spawning an extra OS thread per continuation. A detail worth stating plainly, since it
+governs how a caller should reason about ordering: this port has no thread pool or scheduler
+at all, so a continuation always runs synchronously and inline, either on whichever thread
+completes the antecedent task or, if the antecedent is already complete by the time
+\texttt{ContinueWith} is called, immediately on the calling thread --- effectively as if
+\texttt{TaskContinuationOptions::ExecuteSynchronously} were always set, regardless of whether a
+caller actually passes it. Most of the accepted \texttt{TaskContinuationOptions} filter bits
+(\texttt{NotOnFaulted} / \texttt{NotOnCanceled} / \texttt{NotOnRanToCompletion} and their
+\texttt{OnlyOnX} compositions) are genuinely honored; the rest
+(\texttt{PreferFairness} / \texttt{LongRunning} / \texttt{AttachedToParent} /
+\texttt{DenyChildAttach} / \texttt{HideScheduler} / \texttt{LazyCancellation}) are accepted only
+for API-surface parity, since there is no scheduler or parent-task tracking for them to affect
+in the first place.
+
+\begin{lstlisting}
+// Worked example: ContinueWith's continuation does NOT rethrow the
+// antecedent's exception automatically the way Wait() does -- it must
+// inspect the antecedent explicitly, and it runs synchronously, inline,
+// with no extra thread spawned for it.
+System::Threading::Tasks::Task loadTask = System::Threading::Tasks::Task::Run(
+    [] { LoadLevelFromDisk(); });
+
+System::Threading::Tasks::Task continuation = loadTask.ContinueWith(
+    [](System::Threading::Tasks::Task antecedent)
+    {
+        if (antecedent.getIsFaultedProperty())
+        {
+            LogLevelLoadFailure();
+            return;  // the antecedent's exception is NOT rethrown here automatically
+        }
+        FinishLevelSetup();
+    });
+\end{lstlisting}
+
+\subsection{WhenAll and WhenAny: the same exception-sniffing bug, found twice}
+
+\cnaclass{Task::WhenAll} and \cnaclass{Task::WhenAny} round out the async surface, and
+\texttt{WhenAny} specifically was rebuilt to match real .NET's own zero-extra-thread design
+(\texttt{TaskFactory.CommonCWAnyLogic}'s completion-registration strategy) rather than the
+naive one-watcher-thread-per-input-task approach it started as --- \texttt{WhenAny}'s own
+header comment records that the original version \texttt{join()}'d its losing watcher threads,
+making the whole call as slow as its slowest input, fixed by \texttt{detach()}ing them instead
+once \texttt{ContinueWith}'s continuation-registration mechanism made a dedicated watcher
+thread unnecessary in the first place. \texttt{WhenAll} waits on every input task to completion
+(never short-circuiting on the first fault, matching real .NET) and, if one or more faulted,
+rethrows the first one encountered in input order when the returned task is waited on --- a
+deliberate simplification versus real .NET's \texttt{AggregateException} wrapping, consistent
+with the same choice \cnaclass{Task::Wait} already makes for a single faulted task.
+
+Both methods needed to distinguish a genuinely canceled input task from one that faulted with a
+directly-thrown \cnaclass{TaskCanceledException}, and both hit the identical bug independently
+before the fix: an earlier version of the underlying completion watcher used
+\texttt{catch (const TaskCanceledException\&)} to detect cancellation, which cannot tell a real
+cancellation apart from a caller-supplied \cnaclass{TaskCanceledException} passed to
+\texttt{TaskCompletionSource::SetException()}, since \texttt{TrySetCanceled()} completes its own
+promise with a \cnaclass{TaskCanceledException} internally too --- silently discarding the
+caller's actual exception object and message, confirmed via a standalone repro rather than
+inferred from a code read. The fix, applied in both places once found, does not sniff the
+exception type at all: a separate, out-of-band atomic cancellation flag is set only by the
+genuine producer-side cancellation path (\texttt{TrySetCanceled()}), and the watcher
+checks that flag instead of pattern-matching the caught exception --- so a task whose action
+throws \cnaclass{TaskCanceledException} itself, with no cooperative
+\cnaclass{CancellationToken} involved, now correctly reports Faulted rather than being
+misclassified as Canceled.
+
+\cnaclass{Threading::Thread} is a thin wrapper over \texttt{std::thread} that deliberately does
+not start at construction --- a second call to \texttt{Start()} throws
+\texttt{ThreadStateException}, matching real .NET's own one-shot-start contract exactly,
+rather than silently allowing a thread object to be restarted the way a naive wrapper might.
+
+\section{Permanent scope boundaries: what will never be ported, and why}
+
+\texttt{sharp-runtime}'s own \texttt{CLAUDE.md} states its scope discipline directly, and it is
+worth quoting rather than paraphrasing, since the wording distinguishes a real category this
+book's own methodology depends on: ``Known permanent deviations (not bugs, not TODO).'' Five
+areas are named explicitly, each with a stated reason rather than left as an unexplained gap ---
+the delegate-tier deviation is the one already covered in full in
+Chapter~\ref{ch:parity-philosophy} (the three-tier \texttt{Action} / \texttt{Delegate}/
+\texttt{MulticastAction} split); the remaining four are covered here:
+
+\begin{description}
+  \item[Reflection] (\cnaclass{System::Type}, \cnaclass{System::Activator},
+  \texttt{Enum.GetNames} / \texttt{GetValues}) --- ``completely out of scope. Stubs are the
+  correct end state,'' not a gap awaiting engineering effort.
+  \item[GC] (\texttt{System::GC}) --- every method is a real, callable no-op; memory is managed
+  by RAII / \texttt{std::shared\_ptr} throughout, so there is no garbage collector for these
+  calls to meaningfully forward to.
+  \item[Serialization] (\texttt{[Serializable]}, \texttt{SerializationInfo}) --- ignored
+  outright; not needed for game code.
+  \item[P/Invoke and interop] --- out of scope entirely.
+  \item[Cryptography] (symmetric/asymmetric ciphers, X.509 certificates, TLS ---
+  \texttt{Aes*} / \texttt{RSA*} / \texttt{EC*} / \texttt{ChaCha20Poly1305} / \texttt{CryptoStream},
+  \texttt{X509Certificates}, \texttt{SslStream}) --- out of scope by an explicit, dated decision
+  (2026-07-07): correctly implementing this needs either a large new external dependency
+  (OpenSSL/mbedTLS) or a hand-rolled, security-critical implementation, and neither is worth it
+  for game code. This deviation is deliberately narrow, not a blanket ``no crypto'' rule: hash
+  algorithms (\texttt{MD5} / \texttt{SHA*} / \texttt{HMAC} / \texttt{PBKDF2}) carry no key material and
+  no confidentiality guarantee to get wrong, so they remain in scope and are already ported.
+\end{description}
+
+\subsection{Reflection's real stub, and the one contradiction it deliberately accepts}
+
+\cnaclass{System::Type}'s own header comment is worth reading in full for what it says about
+\emph{how} a permanent stub should behave, not just that it exists: constructed via
+\texttt{Type::From<T>()}, backed by C++ RTTI's \texttt{std::type\_info} rather than any real
+reflection metadata, its boolean predicates (\texttt{IsClass}, \texttt{IsValueType},
+\texttt{IsAbstract}, \texttt{IsSealed}, \texttt{IsInterface}) each return a fixed value
+regardless of what the actual type argument is --- because C++ RTTI cannot determine any of
+them --- and the comment states plainly that these fixed values are \emph{not} mutually
+consistent: \texttt{Type::From<int>()} reports both \texttt{IsClass()==true} and
+\texttt{IsValueType()==false} simultaneously, a combination that would be self-contradictory for
+a real .NET type (\texttt{int} is \texttt{IsValueType==true}, \texttt{IsClass==false}). This is
+not an oversight left for a future fix --- the header says explicitly that these predicates
+exist only so ported code calling \texttt{type.IsClass} still \emph{compiles}, not to answer the
+question correctly, and that calling code must not branch on them to distinguish value types
+from class types. \cnaclass{System::Activator} narrows the same permanent gap to exactly the
+part that survives the loss of reflection: its real, callable
+\texttt{CreateInstance<T>()} template constructs any default-constructible \texttt{T} at
+compile time, while the reflection-based overloads real .NET exposes ---
+\texttt{CreateInstance(Type)}, \texttt{CreateInstanceFrom} --- are absent entirely, not stubbed,
+because \texttt{sharp-runtime} has no \texttt{System.Reflection} for them to resolve a
+\texttt{Type} argument against in the first place.
+
+\section{Vendored dependencies and build structure}
+
+\texttt{sharp-runtime}'s own \texttt{CMakeLists.txt} builds a single static library target,
+\texttt{SHARP\_RUNTIME}, from every \texttt{.cpp} file glob-matched under \texttt{src/}, linked
+against three vendored third-party libraries built alongside it in the same configure step:
+\texttt{tinyxml2} (a two-file XML parser, zlib license), \texttt{miniz} (a multi-file ZIP/DEFLATE
+implementation, MIT/public domain), and \texttt{nlohmann/json} (header-only, vendored directly
+rather than built as a target). \texttt{ZLIB::ZLIB} is the one dependency this project expects
+the host system to already provide rather than vendoring. When \texttt{cna} adds
+\texttt{sharp-runtime} as a subdirectory, it inherits this single \texttt{SHARP\_RUNTIME} link
+target directly --- there is no separate ``core'' versus ``extended'' split at the build-system
+level, matching the single-namespace-tree structure Section~2 above already described. One
+platform-specific wiring detail worth knowing precisely rather than assuming: on Android,
+\texttt{StoragePaths.cpp} calls \texttt{SDL\_GetPrefPath} / \texttt{SDL\_GetAndroidInternalStoragePath}
+directly, which means \texttt{sharp-runtime} depends on SDL3 being available on that one
+platform specifically --- but its own \texttt{CMakeLists.txt} does not vendor or find SDL3
+itself; it expects the parent project (\texttt{cna}) to have already configured a real
+\texttt{SDL3::SDL3} target via its own \texttt{cna\_configure\_vendored\_sdl()} call before
+\texttt{sharp-runtime}'s subdirectory is added, and links against it conditionally
+(\texttt{if(ANDROID AND TARGET SDL3::SDL3)}) only if that target already exists by the time this
+project's own \texttt{CMakeLists.txt} runs.
+
+\section{A local CI gate exists; a tracked CI pipeline deliberately does not}
+
+The absence of a GitHub Actions workflow is not evidence that sharp-runtime has no repeatable
+quality gate. Its real \texttt{scripts/local\_ci\_check.sh} is deliberately written as the
+local equivalent: strict shell failure handling; a fresh CMake configure; a parallel build whose
+captured log must contain zero \texttt{warning:} and zero \texttt{error:} matches; then the
+full \texttt{SharpRuntimeTests} binary. It exits at the first failed stage, making it suitable
+as a pre-push command rather than an advisory checklist. The CMake project independently
+registers that same test binary with GoogleTest discovery, so developers can also use
+\texttt{ctest}; the script intentionally invokes the binary directly to inspect its aggregate
+GoogleTest failure output itself.
+
+What is deliberately absent is a tracked remote trigger: sharp-runtime's current \texttt{NEXT.md}
+records that no \texttt{.github/workflows/*.yml} exists, and that adding one was offered to the
+project owner then declined. That is an external-resource decision, not a missing C\texttt{++}
+feature: a workflow activates real GitHub Actions execution, so the repository's own instructions
+forbid adding it unilaterally. The correct operational claim is therefore narrower than either
+``no CI'' or ``CI covers every change'': there is a concrete, fail-fast local gate, but it is
+not automatically run by a hosted service.
+
+\subsection{A small documentation conflict is itself a verification finding}
+
+The same sources show why a build claim must carry a date and scope. The README says that
+MinGW and Emscripten have each built the \texttt{SHARP\_RUNTIME} library cleanly in earlier
+stabilization work, while explicitly saying their GoogleTest binary was not cross-compiled.
+The newer continuation note, however, lists Windows and Emscripten as never compiled and needing
+verification. Those statements cannot both be a current, unqualified platform-status claim.
+Until a fresh cross-build resolves the record, this book treats the portable-library assertion as
+historical evidence only, and does not upgrade it to a current full-suite or runtime-validation
+claim. That distinction is practical: a native Linux test pass proves neither a cross compiler's
+headers/linker path nor a target platform's test execution.

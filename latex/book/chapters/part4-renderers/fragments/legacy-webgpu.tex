@@ -1,0 +1,368 @@
+\section{Legacy WebGPU Chapter Material}
+\label{ch:webgpu-backend}
+
+\texttt{WEBGPU} is CNA's fifth graphics backend, and its youngest: the project owner
+explicitly lifted a former prohibition on this backend and authorized its implementation.
+It targets native \texttt{wgpu-native} (pinned to version 29.0.1.1), selected the same way
+as every other backend via \texttt{-DCNA\_GRAPHICS\_BACKEND=WEBGPU}. Its own tracking plan
+spans fourteen phases and over 130 individually numbered tasks --- large enough that this
+chapter covers its trajectory rather than every task.
+
+\section{What ``experimental'' concretely means here}
+
+Unlike the four backends covered in the previous three chapters, \texttt{WEBGPU} is
+deliberately excluded from the cross-backend feature matrix used throughout
+Chapters~\ref{ch:sdl-renderer}--\ref{ch:vulkan-backend}, on the matrix's own stated grounds
+that its feature surface was not yet broad enough for a meaningful side-by-side comparison at
+the time that matrix was written. This chapter instead draws on the backend's own dedicated
+documentation and milestone history.
+
+\section{The native 2D baseline}
+
+Early milestones established device/surface setup, clear/present, a working
+\cnaclass{Texture2D} path, vertex/index buffer uploads, and a WGSL-based
+\cnaclass{SpriteBatch} implementation. A 120-frame clear-and-present lifecycle test, and a
+manually-reviewed \cnaclass{SpriteBatch} validation scene (covering cropping, tint/alpha,
+rotation, flips, filtering, and all three address modes), both passed before the native 2D
+baseline was declared closed. The most instructive milestone here, though, is an independent
+one: a real, independently-developed XNA-style game (a \emph{Windows Phone Speedy Blupi}
+port, from the \texttt{mobile-eggbert} sibling repository) was run against this backend on a
+real desktop, reached its main menu, rendered its \cnaclass{SpriteBatch} content
+pixel-correctly, and played through a real animated cutscene --- with progress bar and
+cross-fade --- triggered by a simulated button click, with no WebGPU validation errors of any
+kind. This is a genuinely different, and stronger, kind of proof than any of this backend's
+own purpose-built test scenes: an unmodified, independently-authored game simply working.
+
+\section{A bug a manual screenshot review missed, and a pixel assertion caught}
+
+One specific finding is worth naming as a methodological lesson in its own right: the
+SpriteBatch pipeline's blend factors did not actually match the non-premultiplied output the
+shader itself produced, so a translucent sprite --- one with an alpha value strictly between
+fully transparent and fully opaque --- rendered fully opaque instead. This was completely
+invisible to the earlier manual screenshot review covering rotation, flips, and filtering; it
+was only caught once a real pixel-value assertion replaced ``does this look right in a
+screenshot.'' The fix matched Vulkan's own blend-factor pairing. This is the same lesson
+Chapter~\ref{ch:spritebatch} drew from SDL\_Renderer's ignored-transform-matrix bug: a
+rendering pipeline can look entirely correct in every way a human screenshot review checks,
+and still be measurably wrong.
+
+\section{3D: real depth testing, a real gap found while adding it}
+
+The first 3D draw path (\texttt{DrawColoredPrimitives} / \texttt{DrawIndexedColoredPrimitives})
+was verified with a genuine near/far depth-ordering test rather than trusting draw order
+alone. Building it surfaced a real, previously-invisible gap: applying a
+\cnaclass{DepthStencilState} had no effect on this backend at all before this point --- the
+apply-state entry point was entirely unimplemented, meaning
+\texttt{GraphicsDevice.DepthStencilState} had silently done nothing on WebGPU up to that
+point. From there, \cnaclass{PbrEffect} (a real glTF~2.0 metallic-roughness BRDF, ported line
+for line from EasyGL's own GLSL implementation) and skinned variants of both
+\cnaclass{SkinnedEffect} and \texttt{PbrEffect} (bone-palette skinning up to 72 bones, again
+ported directly from EasyGL) were added and both pass their dedicated test suites in full.
+
+\subsection{A worked example: PbrEffect, a NOXNA metallic-roughness material}
+
+\cnaclass{PbrEffect} is worth a concrete look before moving on, since --- unlike every stock
+effect in Chapter~\ref{ch:stock-effects} --- it has no real-XNA counterpart at all: real XNA
+4.0 predates the glTF~2.0 metallic-roughness PBR model by years, so this is a \texttt{NOXNA}
+addition ported line for line from EasyGL's own GLSL implementation, not a port of anything
+Microsoft ever shipped. Its property surface mixes ordinary \cnaclass{IEffectMatrices}/%
+\cnaclass{IEffectLights} / \cnaclass{IEffectFog} plumbing (identical in shape to every stock
+effect) with a genuinely new four-texture-map PBR material:
+
+\begin{lstlisting}
+PbrEffect effect(getGraphicsDeviceProperty());
+effect.setWorldProperty(worldMatrix);
+effect.setViewProperty(camera.View());
+effect.setProjectionProperty(camera.Projection());
+
+effect.setTextureProperty(&baseColorMap);               // glTF "baseColorTexture"
+effect.setNormalMapProperty(&normalMap);
+effect.setMetallicRoughnessMapProperty(&metalRoughMap); // one texture: G=rough, B=metal
+effect.setOcclusionMapProperty(&aoMap);
+effect.setEmissiveMapProperty(&emissiveMap);
+
+// Both factors multiply the map's channel value (glTF's own "value * factor" convention),
+// or stand alone with no map bound:
+effect.setMetallicFactorProperty(1.0f);
+effect.setRoughnessFactorProperty(1.0f);
+effect.setEmissiveFactorProperty(Vector3(0.0f, 0.0f, 0.0f));
+
+effect.setLightingEnabledProperty(true);
+effect.EnableDefaultLighting();
+\end{lstlisting}
+
+The \texttt{MetallicRoughnessMap} single-texture, two-channel packing above is not an
+implementation shortcut CNA introduced --- it is glTF~2.0's own real specified layout for this
+material model (green channel roughness, blue channel metallic, red and alpha unused), and
+\texttt{PbrEffect} follows it exactly so a metallic-roughness texture exported by any
+standards-conformant glTF pipeline can be bound directly with no channel-repacking step. This
+is also, concretely, the effect Chapter~\ref{ch:models-meshes}'s two independent skinning
+systems both connect to on this backend: the WebGPU port adds a skinned variant of
+\texttt{PbrEffect} alongside skinned \cnaclass{SkinnedEffect}, so a glTF character rig
+authored with a metallic-roughness material and driven by \cnaclass{AnimationPlayer} reaches
+GPU skinning through this effect rather than through \cnaclass{SkinnedEffect} at all.
+
+\section{Render targets, environment mapping, instancing, and mip generation}
+
+\cnaclass{RenderTarget2D} support combines depth and stencil into a single format regardless
+of what was requested (unlike Vulkan's newer per-render-target depth-format selection,
+Chapter~\ref{ch:vulkan-backend}),
+and needed a real type-safety fix when sampling a render target back as an ordinary texture.
+MSAA support, once implemented, initially appeared to fail its own dedicated test --- but
+investigation found the infrastructure was already correct, and the reported failure was a
+defect in the \emph{test itself} (a missing \texttt{RasterizerState::CullNone}), not in the
+MSAA implementation. \cnaclass{EnvironmentMapEffect} and genuine hardware instancing were
+added together, with instancing implemented as a real per-instance vertex stream needing no
+bind-group changes, unlike the effect families that do require one per draw.
+\cnaclass{RenderTargetCube} support surfaced a new, cross-cutting, still-unfixed bug worth
+flagging directly: sprite geometry is computed from the back buffer's own logical dimensions
+unconditionally, never from whichever render target is currently bound --- meaning a
+\cnaclass{SpriteBatch::Draw()} call into a smaller or differently-sized off-screen target may
+not actually cover it the way a caller would expect. Mip generation for \cnaclass{Texture2D}
+and \cnaclass{TextureCube} is implemented as a genuine filtered downsample (a series of
+full-screen-triangle render passes, since \texttt{wgpu-native} v29 has no direct
+blit-image-equivalent call) --- and, notably, this backend auto-regenerates mip content on
+every level-0 write to a plain \cnaclass{Texture2D} / \cnaclass{TextureCube}, which neither real
+XNA/FNA nor any other CNA backend does (every other backend only regenerates mips on
+render-target unbind). This is documented explicitly as a deliberate divergence that makes
+this specific behavior strictly \emph{better} than every other backend's, while still being
+genuinely different --- worth knowing if you are relying on mip regeneration timing to match
+across backends.
+
+\begin{sourcenote}
+The default surface is equally independent of public presentation-format fields, but its
+choice is unusually visible. \texttt{ConfigureSurface()} prefers BGRA8-sRGB, then
+RGBA8-sRGB, before either UNORM variant. Thus a public \texttt{Color} request can accompany
+a native sRGB swapchain, the opposite default-color policy from Vulkan. Its fixed depth
+texture uses \texttt{Depth24PlusStencil8}. The backend recreates it for every non-minimized
+surface, including when the public depth value is \texttt{None}. SDL performs any fullscreen window transition;
+the next frame detects its physical size and reconfigures the surface, but neither requested
+format enum participates.
+\end{sourcenote}
+
+\subsection{A worked example: the still-open render-target-size trap}
+
+The \cnaclass{RenderTargetCube} sprite-geometry bug named above is easy to reproduce
+mentally, and worth walking through precisely because it produces no error of any kind ---
+only a subtly wrong result:
+
+\begin{lstlisting}
+// e.g. a 256x256 render target, while the game window itself is 1920x1080:
+device.SetRenderTarget(&smallOffscreenTarget);
+spriteBatch.Begin();
+spriteBatch.Draw(sourceTexture, Vector2::Zero, Color::White); // "fill the target"
+spriteBatch.End();
+\end{lstlisting}
+
+On a backend without this bug, a sprite meant to cover the entire currently-bound render
+target is sized and positioned relative to \emph{that target's own} dimensions. On this
+backend, sprite geometry is instead computed from the back buffer's logical dimensions
+unconditionally --- so the same \texttt{Draw()} call above, intended to fill a
+$256\times256$ off-screen target, is actually sized as though it were filling the full
+$1920\times1080$ window, silently covering far more (or, depending on aspect ratio,
+differently-shaped) area than the render target it is actually being drawn into. Nothing about
+this throws or logs; the only symptom is visually wrong content in the resulting render
+target, which then propagates into whatever samples it afterward. The practical mitigation
+until this is fixed: avoid drawing \cnaclass{SpriteBatch} content into a render target whose
+dimensions differ from the back buffer's own on this specific backend, or verify the result
+with an actual pixel readback rather than trusting the call to behave as documented.
+
+\subsection{A worked example: \texttt{RenderTargetCube} and its former silent cast failure}
+
+\cnaclass{RenderTargetCube} support (Task WEBGPU-114) landed after the plain
+\cnaclass{RenderTarget2D} path above, and reused most of its design directly: one shared
+6-array-layer \texttt{WGPUTexture} (the same layout \texttt{WebGPUTextureCubeBackend} uses
+for an ordinary sampled, readback-capable \cnaclass{TextureCube}), one shared
+\texttt{size}$\times$\texttt{size}
+depth/stencil texture reused across all six faces (only one face is ever bound at a time, the
+same choice Vulkan's own \cnaclass{RenderTargetCube} backend makes), and a
+\texttt{WGPUTextureViewDimension\_2D} view per face for the render-pass color attachment
+alongside one \texttt{WGPUTextureViewDimension\_Cube} view spanning all six layers for sampling
+the whole thing back later.
+
+That whole-cube sampling view is where a real, previously-invisible bug lived. Before this
+task, \cnaclass{EnvironmentMapEffect}'s \texttt{envMap} field on this backend was hardcoded to
+the concrete type \texttt{const WebGPUTextureCubeBackend*} --- so binding an ordinary
+\cnaclass{TextureCube} as \texttt{EnvironmentMapEffect.EnvironmentMap} worked, but
+binding a \cnaclass{RenderTargetCube} (a different concrete class implementing the same
+\cnaclass{ITextureCubeBackend} interface) did not: the hardcoded-type cast failed silently,
+and the effect fell back to its own 1$\times$1 white cube default instead of throwing or
+producing an obviously wrong image. The fix is a small shared interface, read directly from
+the real header:
+
+\begin{lstlisting}
+// WEBGPU-114: the cube-map sibling of IWebGPUSamplable -- lets both
+// WebGPUTextureCubeBackend and WebGPURenderTargetCubeBackend
+// (render-into) resolve safely to their own whole-cube view wherever a
+// GpuDrawParams::envMap needs to be sampled, via a dynamic_cast that
+// degrades to nullptr for a null or incompatible-type input.
+class IWebGPUCubeSamplable
+{
+public:
+    virtual ~IWebGPUCubeSamplable() = default;
+    [[nodiscard]] virtual WGPUTextureView CubeView() const = 0;
+};
+\end{lstlisting}
+
+Both concrete classes now implement \texttt{IWebGPUCubeSamplable} alongside their own primary
+interface --- \texttt{WebGPUTextureCubeBackend} and \texttt{WebGPURenderTargetCubeBackend}
+alike --- and the draw-dispatch code resolves through it with a single \texttt{dynamic\_cast}
+rather than the old hardcoded
+concrete-type cast:
+
+\begin{lstlisting}
+[[nodiscard]] const IWebGPUCubeSamplable* ResolveCubeSamplable(const ITextureCubeBackend* tex)
+{
+    return tex != nullptr ? dynamic_cast<const IWebGPUCubeSamplable*>(tex) : nullptr;
+}
+// ...
+command.envMap = ResolveCubeSamplable(params.envMap);
+\end{lstlisting}
+
+\texttt{examples/webgpu\_rendertargetcube\_test.cpp}'s own Check C is built specifically to
+prove this fix rather than merely exercise the feature: it clears all six faces of a real
+\cnaclass{RenderTargetCube} to blue, binds it as \texttt{EnvironmentMapEffect.EnvironmentMap},
+draws a full-screen reflective quad, and asserts the center pixel is genuinely blue --- a check
+that could not have passed under the old hardcoded-type cast no matter how correctly the rest
+of the render-target machinery worked, since the cast itself was the failure point.
+
+The same test file's Check D is worth walking through on its own, because it targets a
+different, easy-to-get-wrong question: does switching \emph{into} a cube face and back
+correctly restore the backbuffer's own render pass, with nothing leaking either direction?
+
+\begin{lstlisting}
+device.SetRenderTarget(nullptr);              // targeting the backbuffer
+device.Clear(Color::Blue);
+device.SetRenderTarget(&cubeTarget, CubeMapFace::PositiveZ);
+device.Clear(Color::Red);                     // targets the cube face, not the backbuffer
+device.SetRenderTarget(nullptr);              // back to the backbuffer
+
+// The backbuffer's own centre pixel must STILL be Blue -- the intervening
+// cube-face Clear(Red) must not have leaked into it -- and the cube face
+// itself must genuinely have received Red, not been silently skipped.
+\end{lstlisting}
+
+This mirrors the identical architecture check Task WEBGPU-53/54 already established for plain
+\cnaclass{RenderTarget2D} in the section above, extended to confirm the same "eager flush on
+target switch" design generalizes correctly to a third target kind rather than being
+coincidentally correct for the two it was originally built against. Two scope cuts are
+documented honestly rather than silently: mip-chain regeneration throws for
+\cnaclass{RenderTargetCube} (\texttt{mipMap=true} is rejected, matching plain
+\cnaclass{RenderTarget2D}'s own precedent on this backend), and MSAA is not implemented ---
+\texttt{MultiSampleCount} is accepted and ignored, always reporting \texttt{0} honestly rather
+than silently pretending to honor a request it cannot fulfil.
+
+\subsection{Why block-compressed texture upload stays open: a real investigation, not a shrug}
+
+The ``no backend anywhere in the project does real block-compressed texture upload'' gap named
+below is worth a fuller account on this backend specifically, because it was genuinely
+investigated here rather than assumed unfixable. A direct diagnostic against this project's own
+pinned \texttt{wgpu-native} v29.0.1.1, run on the real development GPU, confirmed the hardware
+side is not the obstacle at all: \texttt{wgpuAdapterHasFeature(adapter,
+TextureCompressionBC)} returned true, and requesting a device with that feature in
+\texttt{requiredFeatures} succeeded too --- this machine's real adapter genuinely supports
+DXT1/3/5 upload today. The actual blocker sits one layer up, and applies project-wide, not just
+to \texttt{WEBGPU}: \texttt{Texture2D::FromStream()} always fully CPU-decompresses DXT-compressed
+source bytes to plain RGBA8 \emph{before} any backend ever sees them, and the shared
+\texttt{CNA::Internal::Graphics::ImageData} struct every backend's texture-creation path
+consumes has no field at all for a surface format or a compressed-bytes flag --- it is
+hardcoded to a plain \texttt{std::vector<uint8\_t>} of RGBA8 pixels. A WebGPU-only workaround
+was considered and deliberately rejected: hand-crafting a direct \texttt{IGraphicsBackend::%
+CreateTexture()} call with raw BC1 bytes stuffed into that RGBA8-typed field would compile and
+might even render correctly on this one backend, but would be reachable by no real game (nothing
+in the actual \cnaclass{Texture2D} loading path could ever produce it) and would misrepresent
+\texttt{ImageData}'s own documented contract --- exactly the shape of shortcut this project's
+own culture treats as worse than leaving the gap honestly open. Closing this for real needs a
+cross-backend \texttt{ImageData} design change (or a parallel compressed-texture entry point)
+plus a matching \texttt{Texture2D.cpp} change to stop always-decompressing DXT source data ---
+deliberately scoped out of any single backend's own task list, tracked as a dedicated follow-up
+instead.
+
+\section{Three former limitations that are no longer true}
+
+The WebGPU plan moved quickly after this chapter's first draft, so three earlier shorthand
+limitations need a precise correction rather than being allowed to turn into folklore. First,
+an arbitrary plain \cnaclass{Texture2D} now has a real backend-level \texttt{GetData()} path.
+That method on \texttt{WebGPUTextureBackend} copies the requested mip level into a temporary
+\texttt{MAP\_READ} buffer with WebGPU's required row alignment, waits through the asynchronous
+map callback, and then extracts the requested $x,y,w,h$ rectangle. The dedicated
+\texttt{WebGPU\_Texture2D\_GetData} test proves three independently useful cases: an exact
+full-gradient round trip, a non-origin $2\times2$ sub-rectangle, and a distinct level-one mip
+round trip. That is deliberately tested through \texttt{IGraphicsBackend}, not merely through
+the public \cnaclass{Texture2D}: the latter normally returns its shared CPU pixel shadow for a
+plain texture, so an XNA-layer round trip alone could pass while this GPU copy path remained a
+silent base-class no-op.
+
+Second, culling, scissor, and viewport state are no longer merely stored values. Culling is
+baked into the WebGPU 3D pipeline key and mapped to \texttt{WGPUCullMode}; a differential
+pixel test proves that a deliberately chosen winding disappears under one XNA cull mode and
+remains visible under the other. Scissor and viewport are genuine dynamic render-pass state via
+\texttt{wgpuRenderPassEncoderSetScissorRect} and
+\texttt{wgpuRenderPassEncoderSetViewport}. Wiring the latter exposed an otherwise-hidden
+logical-versus-physical-size hazard: CNA's stored logical viewport can exceed the real
+swapchain dimensions. The backend therefore clamps it at application time, which is both a
+WebGPU API requirement and what restored the pre-existing 2D and 3D regression tests.
+The application point is once per encoded pass --- backbuffer, 2D render target, or cube face
+--- before that pass's queued SpriteBatch and 3D commands. Thus both draw families and all
+three target kinds see the feature, but they all see the one live value sampled when the pass
+is recorded; changing viewport/scissor repeatedly between deferred draws in the same pass is
+not preserved as per-draw history. A disabled or zero scissor is expanded to the full current
+target instead of issuing an invalid zero-area native rectangle.
+
+Third, this is not a claim that every state object is complete. \cnaclass{FillMode}'s
+\texttt{WireFrame} value is stored but has no effect because the pinned WebGPU API offers no
+polygon-mode switch; full \cnaclass{BlendState} mapping remains incomplete; and the backend
+stores the complete stencil configuration but has deliberately not yet baked stencil operations
+into its many pipeline families. The last deferral is evidence-based rather than cosmetic:
+the cull-mode mapping itself required a pixel test to correct an initially plausible but wrong
+winding interpretation, so copying a stencil front/back mapping without an equivalent
+differential stencil test would risk making an invisible wrongness look ``implemented.''
+
+\section{Clear is selective on two target types, unconditional on the third}
+
+Three pending Booleans independently select colour, depth, and stencil load operations for the
+backbuffer and a preserve-content \cnaclass{RenderTarget2D}; a discard-content target forces all
+three, as its usage permits. Switching targets flushes the outgoing pass and consumes the
+flags. Values are nevertheless global, so repeated clears before that flush collapse rather
+than interleave with already-queued draws.
+
+``Preserve-content'' here means only the exact Preserve enum value. Shared construction treats
+Platform as a false preserve Boolean, so WebGPU forces all three clear load ops for Platform
+too even though shared bind code issues no implicit black clear. Conversely, the backbuffer's
+\texttt{Presentation\allowbreak{}Parameters.Render\allowbreak{}Target\allowbreak{}Usage} is
+never consulted, and plural binding inherits the interface's first-target-only fallback rather
+than creating MRT.
+
+\cnaclass{RenderTargetCube} is different. The backend interface never conveyed the cube's
+preserve-contents usage, so every cube-face pass unconditionally clears all three attachments
+from the current global values. Shared \cnaclass{GraphicsDevice} also fails to retain the
+singular cube in its active-target list, leaving its depth format invisible to the FNA-style
+mask. Existing readback proves immediate colour replacement and the combined 2D-target path;
+it does not isolate these cube/option edges. The full comparison is
+\S\ref{sec:backend-clear-matrix}; the separate usage matrix is
+\S\ref{sec:backend-rendertarget-usage-matrix}.
+
+\section{What remains open}
+
+Several gaps are shared with every other CNA backend rather than unique to this one: no
+backend anywhere in the project does real block-compressed texture upload (the paragraph above
+covers exactly why, and why it is a shared architectural gap rather than a per-backend one),
+and the cross-backend design change that would make it reachable from a real game remains
+larger than any one backend task. Specific to this backend: multiple simultaneous render
+targets, actual stencil-operation mapping (not merely the already-stored state and dynamic
+reference value), complete \cnaclass{BlendState} mapping, \texttt{WireFrame} rendering,
+custom \cnaclass{SpriteBatch} effects, and custom WGSL effects authored outside the stock-effect
+set. The two \cnaclass{RenderTargetCube} scope cuts also remain honest: mipmapped cube targets
+throw at construction, and their per-target MSAA request is accepted but reports zero rather
+than claiming an unimplemented multisampled array-texture resolve. Browser/Emscripten WebGPU is
+entirely out of scope so far --- this backend is native \texttt{wgpu-native} only.
+
+\section{Verification methodology, and how it differs from D3D9's}
+
+This backend's own verification runs on a native automated CTest suite (gracefully skipping
+where no Wayland/X11 display is available) plus a battery of dedicated pixel-assertion tests
+per feature area, and the one independent real-game integration test described above. It is
+explicitly \emph{not} covered by the oracle-versus-real-XNA methodology
+Chapter~\ref{ch:direct3d-backends} describes for \texttt{D3D9} / \texttt{D3D11} / \texttt{D3D12}
+--- that comparison against a genuine, running XNA~4.0 reference is reserved for the three
+Direct3D backends specifically, not applied here.

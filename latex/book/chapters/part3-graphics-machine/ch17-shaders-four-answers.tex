@@ -1,0 +1,380 @@
+\chapter{Shaders: Four Answers to XNA's .fx}
+\label{ch:shaders-four-answers}
+\label{ch:shader-fx-gap}
+
+Chapter~\ref{ch:what-is-cna} named this the single biggest real gap in CNA. This short
+chapter explains precisely what the gap is, why it is architectural rather than an
+oversight, and what does exist today as a real, working alternative.
+
+\section{What real XNA actually ships}
+
+A real XNA game never ships \texttt{.fx} shader source text. The XNA content pipeline
+compiles \texttt{.fx} effect files to a proprietary compiled bytecode format at build time,
+and the compiled bytecode --- not the HLSL source --- is what ships inside the game's
+\texttt{.xnb} content files and gets loaded at runtime via
+\texttt{new Effect(GraphicsDevice, byte[])}. On the real Xbox 360/Windows XNA runtime, that
+bytecode is interpreted directly; FNA instead ships MojoShader, a from-scratch bytecode
+\emph{parser and cross-compiler} that turns the same compiled Direct3D~9 shader bytecode into
+GLSL (or other target shading languages) at load time, which is exactly what lets FNA run
+real, unmodified, historical XNA content unchanged.
+
+\section{Why \texttt{Effect(GraphicsDevice\&, byte[])} always throws in CNA}
+
+CNA has no equivalent of MojoShader. Its \cnaclass{Effect} constructor that takes a raw
+bytecode buffer --- the one a real \texttt{.xnb}-loaded custom effect would call --- always
+throws \texttt{NotImplementedException} (Chapter~\ref{ch:stock-effects}). This is not a
+missing feature that simply has not been gotten to yet in the way, say, a missing
+\texttt{SurfaceFormat} is; it is a genuinely large, separate compiler-engineering project ---
+parsing Direct3D~9 shader bytecode's own instruction format and re-targeting it to
+GLSL/SPIR-V/WGSL/HLSL-for-D3D11-12 for each of CNA's own backends is comparable in scope to
+building a second MojoShader from scratch. The project's own planning documents
+(\texttt{docs/shader-effect-vs-fx-bytecode.md} and \texttt{docs/fx-bytecode-support-plan.md})
+track this as a distinct, deliberately-scoped future phase rather than a task sitting in an
+ordinary backlog.
+
+\section{The measurable cost of the gap}
+
+This gap has a precise, checkable cost, not a vague one: it is the reason 23 of the 86
+official XNA samples ported in the sibling \texttt{cna-samples} repository
+(Chapter~\ref{ch:ecosystem-map}) do not run on CNA today. Any sample whose content pipeline
+compiles a custom \texttt{.fx} effect --- rather than relying only on the five stock effects
+from Chapter~\ref{ch:stock-effects} --- hits this exact constructor and throws. This is also
+precisely the number this book's migration-guide chapter uses to help you judge, before
+starting a port, whether an existing XNA/FNA game is likely to need this gap closed or not:
+a game built entirely on stock effects and \cnaclass{SpriteBatch} ports cleanly; a game with
+even one custom \texttt{.fx} shader compiled into its content does not, yet.
+
+\section{What does exist today: ShaderEffect, a runtime-compiled alternative}
+
+CNA does not leave custom shading entirely unaddressed, but ``cross-backend'' needs a precise
+definition here. \cnaclass{ShaderEffect} (\texttt{NOXNA}) presents one constructor shape and
+one \cnaclass{IEffectBackend} contract to every backend. A backend factory override proves
+only that an effect object is returned. It does \emph{not} prove that arbitrary source is
+compiled, that every setter has meaning, or that a 3D draw consumes the resulting program.
+Reading the live implementations and their registered tests gives this narrower matrix:
+
+\begin{longtable}{@{}p{0.18\textwidth}p{0.76\textwidth}@{}}
+\toprule
+\textbf{Backend} & \textbf{Input and path that actually consumes it} \\
+\midrule
+\endhead
+\textbf{EasyGL} &
+GLSL source is compiled and linked by the active GL driver. \cnaclass{SpriteBatch} and the
+general 3D draw paths consume it. Uniform names and array setters are real; 2D, cube, and
+volume-texture binds each have a dedicated pixel test. \\
+\textbf{SDL GPU} &
+GLSL source is compiled at runtime to SPIR-V through \texttt{libshaderc}, then consumed by
+\cnaclass{SpriteBatch}'s fixed 32-byte vertex contract and 128-byte uniform block. This includes
+a tested two-output MRT shader. \\
+\textbf{Vulkan} &
+The two \texttt{std::string} arguments carry raw, precompiled SPIR-V bytes --- not GLSL source.
+\cnaclass{SpriteBatch} consumes them through a fixed 32-byte vertex contract and 128-byte
+push-constant layout, verified by \texttt{Vulkan\_ShaderEffect\_SpirV}. \\
+\textbf{D3D9} &
+HLSL is compiled at runtime to the active SM2/SM3 profile and consumed by
+\cnaclass{SpriteBatch}, with a real color-inversion pixel test. \\
+\textbf{D3D11/12} &
+HLSL is compiled at runtime as \texttt{vs\_5\_0}/\texttt{ps\_5\_0} and consumed by
+\cnaclass{SpriteBatch}'s fixed vertex and 128-byte constant-buffer contracts. Scalar/vector
+setter names are ignored; the sprite texture and sampler still arrive through
+\texttt{t0}/\texttt{s0}. \\
+\textbf{BGFX} &
+No input is accepted through this API: \texttt{CompileProgram()} always returns false. The
+object reports that BGFX requires precompiled binary shaders, but \cnaclass{ShaderEffect}
+exposes no route that loads those binaries. \\
+\textbf{SDL renderer} &
+There is no effect backend, so construction leaves \texttt{IsEffectValid()} false. Passing the
+non-null object to \cnaclass{SpriteBatch}\texttt{::Begin()} throws
+\texttt{std::runtime\_error}; merely constructing it does not throw. \\
+\bottomrule
+\end{longtable}
+
+WebGPU and DX3/free-direct likewise inherit the null \texttt{CreateEffectBackend()} default
+rather than compiling a public custom program; their \cnaclass{SpriteBatch} implementations
+reject a non-null custom effect. Canvas rejects it for the same no-programmable-stage reason.
+The Software and Headless overrides serve different testing purposes, not real shader
+execution: Software accepts any non-empty pair and marks it valid while continuing to render
+through its fixed CPU shading path, whereas Headless records compilation, bind, uniform, and
+2D-texture activity without producing shader pixels. These are useful contracts, but calling
+either one custom-shader support would be misleading.
+
+None of these paths is bytecode compatibility. A game cannot reuse an existing compiled
+\texttt{.fx} blob: it must provide backend-specific source for EasyGL, SDL GPU, and Direct3D,
+or precompile the exact SPIR-V contract Vulkan expects. Even among the working implementations,
+the public setter names and supported draw shapes are not portable promises. The API is thus a
+real, pixel-verified alternative on a bounded set of paths, not a write-once shader format for
+all CNA backends.
+
+\cnaclass{GpuDrawParams} (Chapter~\ref{ch:stock-effects}) does carry a
+\texttt{customEffectBackend} pointer. \cnaclass{ShaderEffect} populates it through its
+\texttt{FillGpuDrawParams()} override. At present, however, only EasyGL's general 3D draw
+dispatch reads that field.
+Vulkan and SDL GPU retain similarly named custom-effect pointers inside their
+\emph{SpriteBatch-specific} snapshots; the Direct3D custom paths are also SpriteBatch
+facilities. The default-no-op setters on \cnaclass{IEffectBackend}
+(Chapter~\ref{ch:backend-architecture}) are another deliberate capability boundary: a public
+\texttt{SetUniformXxx()} call may be structurally accepted without changing GPU state unless
+that concrete backend overrides it.
+
+\subsection{Object lifetime, submission, and cloning are deliberately narrow}
+
+The constructor takes its two source arguments by reference but immediately copies both into
+the effect. It is therefore safe to construct from temporary or subsequently modified strings;
+the program is compiled from the construction-time copies, not from caller-owned character
+storage. If the device has a backend, construction asks it once for an
+\cnaclass{IEffectBackend}. A returned but invalid backend does not make the common constructor
+throw: it writes that backend's \texttt{GetCompileError()} text to standard error and leaves
+\texttt{IsEffectValid()} false. A null backend and a failed compile are intentionally collapsed
+to the same public boolean, and there is no public \cnaclass{ShaderEffect} accessor for the
+diagnostic. Backends may of course fail before returning from their own factory, so this is not a
+promise that every backend-specific setup failure becomes a boolean.
+
+Treat that validity result as a precondition, not a delayed exception. \cnaclass{Effect}\texttt{::Apply()}
+does reject an already disposed effect, but its common code calls \texttt{OnApply()} and then
+makes the effect current. \cnaclass{ShaderEffect}\texttt{::OnApply()} merely writes a debug
+message when its backend is absent or invalid; it does not bind a fallback program. Calling
+\texttt{Apply()} on an invalid custom effect can therefore still replace the device's current
+effect pointer. There is no automatic retry or source recompilation in this object; construct a
+new effect after correcting source or changing the backend circumstances.
+
+The uniform and texture calls are submission calls, not an XNA-style parameter collection.
+\cnaclass{ShaderEffect} keeps no uniform dictionary, no sampler table, and no texture ownership:
+each \texttt{SetUniformXxx()} forwards its name and scalar or caller buffer immediately to the
+backend if one exists, while each \texttt{SetTexture()} immediately forwards the address of the
+texture's backend. It performs no common-layer check of a uniform name, sampler-unit range,
+array count, or matrix/array pointer. EasyGL uploads/binds at that call; some other backends copy
+into a fixed staging block; inherited interface defaults can do nothing; and Headless records a
+raw texture-backend pointer for tracing. Thus a successful call is not a portable guarantee of a
+binding, and it never gives the effect ownership of the texture. Keep every texture alive by its
+normal owner and set it again whenever the target backend/path requires rebinding. The standalone
+setters also do not inspect \texttt{IsDisposed}; unlike \texttt{Apply()}, they continue to
+forward while the backend object remains alive, so disposal must be treated as terminal by the
+caller.
+
+\texttt{Clone()} is equally source-only. It returns an owning raw \cnaclass{Effect} pointer
+whose concrete object is constructed afresh as
+\texttt{new ShaderEffect(*device\_, vertSrc\_, fragSrc\_)}: it recompiles an independent
+backend program and restores the three \cnaclass{IEffectMatrices} values to identity. It does
+not copy submitted uniforms, texture binds, name/tag metadata, or a compiled-program handle;
+its base effect begins with its own empty parameter collection and one Default/P0 technique.
+Use an owning smart pointer at the call site and reapply all desired state to the clone. The
+existing \texttt{ShaderEffectTests} test proves only distinct object identity, equal copied
+source strings, and equal validity on the default test device; it does not exercise a real
+compile, matrix/state transfer, texture lifetime, invalid-apply behavior, or a backend reset.
+
+\subsection{A worked example: a minimal GLSL ShaderEffect, adapted from a real test}
+
+Adapted from \texttt{easygl\_shadereffect\_texturecube\_test.cpp}, a minimal
+cube-map-sampling fragment shader and its construction:
+
+\begin{lstlisting}
+const char* vertSrc = R"(#version 300 es
+precision highp float;
+layout(location = 0) in vec3 aPosition;
+void main() { gl_Position = vec4(aPosition, 1.0); }
+)";
+
+const char* fragSrc = R"(#version 300 es
+precision highp float;
+out vec4 FragColor;
+uniform samplerCube CubeSampler;
+uniform vec3 direction;
+void main() { FragColor = texture(CubeSampler, direction); }
+)";
+
+ShaderEffect effect(getGraphicsDeviceProperty(), vertSrc, fragSrc);
+if (!effect.IsEffectValid()) {
+    // compilation failed -- check the backend's own log output before drawing
+}
+
+effect.SetUniformInt("CubeSampler", 0);
+effect.SetUniformVec3("direction", dx, dy, dz);
+effect.SetTexture(0, environmentCube); // TextureCube overload, Task 1081
+\end{lstlisting}
+
+\texttt{IsEffectValid()} is the one check worth never skipping: unlike a stock effect, which
+is guaranteed to compile because its shader source ships with CNA itself, a
+\cnaclass{ShaderEffect} compiles arbitrary game-supplied source at runtime, so a typo or an
+unsupported GLSL feature on a given driver is a real, first-class failure mode this method
+exists specifically to surface --- silently drawing with an invalid program is exactly the
+kind of ``it compiles and something appears on screen'' failure Chapter~\ref{ch:spritebatch}
+already warned against.
+
+\subsection{A worked example: the identical technique in real D3D9 HLSL}
+
+\cnaclass{ShaderEffect}'s own constructor takes exactly one pair of source strings regardless
+of backend --- there is no separate HLSL-specific overload --- so the same call shape from the
+GLSL example above, aimed at a Direct3D backend instead, simply compiles a different source
+language through the same API. A minimal color-inversion effect (the identical idea as above,
+adapted from a real D3D9 test rather than EasyGL) makes the language difference concrete:
+D3D9's own SM2/SM3 HLSL dialect, verified against \texttt{Macros.fxh}'s real
+\texttt{DECLARE\_TEXTURE} / \texttt{SAMPLE\_TEXTURE} macro expansion, the same expansion the
+vendored stock \texttt{SpriteEffect.fx} itself already compiles with in this toolchain:
+
+\begin{lstlisting}
+const char* vertexSrc = R"(
+float2 vpSize;
+struct VSInput { float3 Position : POSITION0; float4 Color : COLOR0; float2 TexCoord : TEXCOORD0; };
+struct VSOutput { float4 Position : POSITION0; float4 Color : COLOR0; float2 TexCoord : TEXCOORD0; };
+VSOutput main(VSInput input) {
+    VSOutput output;
+    float2 ndc = (input.Position.xy / vpSize) * 2.0 - 1.0;
+    output.Position = float4(ndc.x, -ndc.y, 0.0, 1.0);
+    output.Color = input.Color;
+    output.TexCoord = input.TexCoord;
+    return output;
+}
+)";
+
+const char* pixelSrc = R"(
+texture2D Texture;
+sampler TextureSampler : register(s0) = sampler_state { Texture = (Texture); };
+float4 main(float4 color : COLOR0, float2 texCoord : TEXCOORD0) : COLOR0 {
+    float4 texColor = tex2D(TextureSampler, texCoord);
+    return float4(1.0 - texColor.rgb, 1.0); // the same inversion the GLSL example performs
+}
+)";
+
+ShaderEffect invertEffect(getGraphicsDeviceProperty(), vertexSrc, pixelSrc);
+// ... same IsEffectValid() check as the GLSL example ...
+
+SamplerState pointClamp = SamplerState::PointClamp;
+spriteBatch_->Begin(SpriteSortMode::Deferred, BlendState::Opaque,
+                     &pointClamp, nullptr, nullptr, &invertEffect);
+spriteBatch_->Draw(texture, destRect, Color::White);
+spriteBatch_->End();
+\end{lstlisting}
+
+\texttt{vpSize} is worth pausing on, because it is doing real work rather than being decorative:
+a custom vertex shader supplied this way has no other way to map \cnaclass{SpriteBatch}'s
+pixel-space \texttt{Position} input into normalized device coordinates, so this uniform (set
+automatically by the backend, not by game code) is what makes the sprite land at the correct
+screen location at all --- the same real test this example is adapted from separately verifies
+that sampling \emph{outside} the sprite's destination rectangle stays the clear color, proving
+this NDC math is genuinely correct rather than happening to paint something plausible-looking
+over the whole screen. One small, harmless documentation inaccuracy worth knowing if you go
+reading \cnaclass{ShaderEffect}'s own header next: its class-level doc comment describes it as
+a ``GLSL-source-based effect.'' That is accurate for EasyGL and SDL GPU, but this exact worked
+example proves the same class compiles HLSL on Direct3D, while Vulkan interprets the strings as
+raw SPIR-V bytes. The comment is stale cross-backend documentation, not a constraint enforced
+by the public constructor.
+
+\subsection{Beyond SpriteBatch: driving a real 3D draw call}
+
+Both worked examples so far apply a \cnaclass{ShaderEffect} through
+\cnaclass{SpriteBatch}. The wider path described in this subsection is specifically
+\textbf{EasyGL support}; no other backend's general 3D draw dispatch currently reads
+\texttt{GpuDrawParams::customEffectBackend}. For a long stretch of this project's history that was the only
+place a \cnaclass{ShaderEffect} could actually take effect: applying one before a raw
+\cnaclass{GraphicsDevice}\allowbreak\texttt{::DrawIndexedPrimitives()} call --- the call
+shape \cnaclass{ModelMesh}\allowbreak\texttt{::Draw()} and a hand-rolled
+\cnaclass{RawMesh} both use --- was silently ignored. Because
+\cnaclass{ShaderEffect} did not yet implement \cnaclass{IEffectMatrices}
+(Chapter~\ref{ch:stock-effects}) and its \texttt{FillGpuDrawParams()} override still ran
+the \cnaclass{Effect} base class's no-op, \texttt{GpuDrawParams} stayed at its default,
+zero value on every 3D draw, and \textbf{EasyGL}'s
+\texttt{DrawIndexedPrimitivesEx()} fell back to selecting one of its own built-in,
+stride-keyed shaders regardless of whatever custom effect the caller had just applied ---
+exactly the same silent-fallback failure shape Chapter~\ref{ch:graphicsdevice}'s
+\texttt{ExtractMatrices()} section already documents for stock effects, one layer further
+out.
+
+This was closed by three coordinated changes, verified directly against
+\texttt{ShaderEffect.hpp} / \texttt{.cpp} and \texttt{EasyGLGraphicsBackend.cpp}: (1)
+\texttt{GpuDrawParams} gained a \texttt{customEffectBackend} field; (2)
+\cnaclass{ShaderEffect} now implements \cnaclass{IEffectMatrices} --- real
+\texttt{World} / \texttt{View} / \texttt{Projection} properties, extracted by the same
+\texttt{GraphicsDevice::ExtractMatrices()} every stock effect already goes through --- and
+overrides \texttt{FillGpuDrawParams()} to populate \texttt{customEffectBackend}; (3)
+EasyGL's \texttt{DrawPrimitivesEx()} / \texttt{DrawIndexedPrimitivesEx()} check that field
+first and, when it is set, bind the custom compiled program and its
+\texttt{World} / \texttt{View} / \texttt{Projection} uniforms directly, bypassing the
+built-in stride-selected shaders entirely.
+
+A worked example, adapted from \texttt{easygl\_shadereffect\_3d\_test.cpp}, makes the
+wiring concrete. The shader is a minimal N-dot-L diffuse lighting pass over a single
+textured quad, using the same GLSL attribute-location convention (\texttt{location = 0/1/2}
+for \texttt{Position} / \texttt{Normal} / \texttt{TexCoord}) as
+\cnaclass{VertexPositionNormalTexture}'s existing 32-byte stride:
+
+\begin{lstlisting}
+auto* fx = dynamic_cast<ShaderEffect*>(fxBase_.get());
+fx->setWorldProperty(world);
+fx->setViewProperty(Matrix::CreateLookAt(Vector3(0, 0, 3), Vector3::Zero, Vector3::Up));
+fx->setProjectionProperty(Matrix::CreatePerspectiveFieldOfView(
+    MathHelper::PiOver4, aspectRatio, 0.1f, 100.0f));
+fx->Apply();                          // binds the compiled program first
+fx->SetTexture(0, whiteTex_);
+fx->SetUniformVec3("uLightDir", 0.0f, 0.0f, 1.0f);
+fx->SetUniformVec3("uDiffuseColor", 200.0f / 255.0f, 100.0f / 255.0f, 50.0f / 255.0f);
+
+device.SetVertexBuffer(vb_.get());
+device.setIndicesProperty(ib_.get());
+device.DrawIndexedPrimitives(PrimitiveType::TriangleList, 0, 0, 4, 0, 2);
+\end{lstlisting}
+
+The real test behind this example is deliberately built to rule out a false positive: it
+draws the same quad twice, once with \texttt{World = Identity} (facing the light, world
+normal \texttt{(0,0,1)}, expected color close to the full \texttt{(200,100,50)} diffuse
+value) and once with \texttt{World = CreateRotationY(180\textdegree{})}. A
+\(90\)\textdegree{} rotation was deliberately \emph{not} chosen for the second case ---
+it would turn the quad edge-on to the camera, so ``renders nothing'' and ``renders
+black'' would look identical in a single-pixel readback. \(180\)\textdegree{} keeps the
+exact same on-screen footprint (the quad is X-symmetric, so mirroring X does not change
+its silhouette) while flipping the world-space normal to \texttt{(0,0,-1)}, which the
+shader's own \texttt{max(dot(...), 0.0)} clamps to a genuinely lit black. Only a
+\texttt{World} matrix that is actually reaching the vertex shader and actually affecting
+world-space lighting can produce that second, specific result rather than merely happening
+to draw something.
+
+\subsection{A second, narrower gap this one uncovered, then closed: arbitrary layouts}
+
+The first version of the 3D draw path above recognized only the five byte-strides EasyGL's
+then-existing \texttt{ApplyLayout()} switch knew about (16/20/24/32/52). Later PBR and
+vertex-color work expanded the fixed family to 48/56/68 too, but a stride is still not a
+description of its internal fields. Arbitrary layouts were deliberately scoped out of the
+first task, since several real ported sample shaders
+(\texttt{NormalMapping.fx}'s \texttt{Position+Normal+Binormal+Tangent+TexCoord} layout,
+among others) need element arrangements that match none of those fixed interpretations. A
+truly custom \cnaclass{VertexDeclaration} --- arbitrary element count, arbitrary per-element
+offset, any \cnaclass{VertexElementFormat} --- reads back correctly through the same 3D
+\cnaclass{ShaderEffect} draw path via a second, separately-tracked fix:
+\texttt{VertexBuffer::SetDataRaw()}
+now pushes the buffer's own \cnaclass{VertexDeclaration} down to the backend through a new
+\texttt{IVertexBuffer}\allowbreak{}\texttt{Backend::}\allowbreak{}%
+\texttt{SetVertexDeclaration()} call (default no-op, so
+Vulkan/BGFX/SDL\_Renderer needed zero code changes for this to stay correct), and
+\texttt{ApplyLayout()} binds
+generically from that declaration when one is present --- GLSL attribute location equals
+the element's own index within the declaration --- falling straight through to the
+original stride-keyed switch, unchanged, whenever no declaration was supplied. This is a
+purely additive capability, not a replacement of the fixed-stride path the first worked
+example already exercises.
+
+The real test behind this (\path{easygl_shadereffect_custom_vertex_layout_test.cpp})
+is worth citing for its own verification technique, not just its result: it declares a
+5-element, 48-byte layout (\texttt{Position} / \texttt{Normal} / \texttt{Tangent} / %
+\texttt{TextureCoordinate} / \texttt{Color}). CNA now also has a fixed 48-byte PBR layout,
+but that one contains a four-float tangent and no trailing color; sharing a total stride does
+not make the records equivalent. The test diagnostically encodes three of the four
+non-position attributes directly into the output pixel
+(\texttt{FragColor = vec4(Normal.x, Tangent.y, TexCoord.x, Color.r)}) and draws the same
+quad twice with two independently-chosen sets of attribute values. Distinct, correctly-offset
+readback values across both draws is what proves each attribute is being read from its own
+correct byte offset --- not aliased to a neighbor, and not a value that happens to be
+correct by coincidence.
+
+\section{The honest summary}
+
+If your porting target relies only on \cnaclass{SpriteBatch} and the five stock effects from
+Chapter~\ref{ch:stock-effects}, this gap does not touch you at all. If it relies on a custom
+compiled \texttt{.fx} shader loaded from content, it does --- today, on every backend, full
+stop, since bytecode compatibility itself does not exist anywhere yet. What changes per
+backend is whether a \cnaclass{ShaderEffect} rewrite is usable at all and which contract it
+must target: EasyGL takes GLSL and alone extends the effect to general 3D draws; SDL GPU takes
+GLSL through shaderc; Vulkan takes precompiled SPIR-V; D3D9/11/12 take HLSL for SpriteBatch;
+BGFX has no valid public path; and the non-programmable or not-yet-wired backends reject,
+simulate, or only record the object. This is precisely the kind of qualified, specific claim
+Chapter~\ref{ch:what-is-cna} promised this book would preserve: not ``shaders don't work,''
+and not ``shaders are fully supported,'' but a named, bounded gap with a measured cost
+(23 of 86 samples) and several real, deliberately narrower alternatives already built.

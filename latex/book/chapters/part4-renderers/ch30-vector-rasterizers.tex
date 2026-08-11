@@ -1,0 +1,418 @@
+\chapter{2D and Vector Rasterizers}
+\label{ch:vector-rasterizers}
+\label{ch:sdl-renderer}
+
+\texttt{SDL\_RENDERER} is CNA's simplest backend, its most exhaustively audited, and the one
+whose scope is narrowest by explicit design: a 2D-only rendering path built directly on
+SDL3's own 2D texture-blit renderer, with no 3D pipeline, no programmable shader stage, no
+depth/stencil buffer, and no multisample antialiasing at all.
+
+\section{Scope, by design}
+
+Every 3D-facing entry point on this backend --- \texttt{CreateVertexBuffer},
+\texttt{DrawColoredPrimitives}, and the rest of the 3D draw dispatch from
+Chapter~\ref{ch:backend-architecture} --- throws immediately, with a consistent
+\texttt{"SDL\_Renderer does not support 3D"} message. This is not treated as a bug: a
+systematic full-suite run confirms exactly thirteen known, expected pre-existing test
+failures, every one of them this exact throw, matching the backend's documented scope
+precisely. A custom \cnaclass{Effect} passed to \texttt{SpriteBatch::Begin(effect)} also
+throws, for the same underlying reason --- there is no shader stage to run it on.
+
+\subsection{The 2D boundary is at execution, not at every 3D-looking object}
+
+``2D-only'' does not mean that every type normally associated with 3D becomes impossible to
+construct.  CNA deliberately distinguishes a backend-independent description of work from
+the first operation that asks this particular backend to execute that work.  A
+\cnaclass{VertexDeclaration}, for example, is only a stride plus a list of
+\cnaclass{VertexElement} records; it has no \cnaclass{GraphicsDevice} ownership and no
+backend allocation.  All four of its public constructor shapes therefore work on
+\texttt{SDL\_RENDERER}.  The same declaration becomes unsupported only when it is handed to a
+real draw call:
+
+\begin{lstlisting}
+VertexDeclaration decl(16, {
+    VertexElement(0, VertexElementFormat::Vector3,
+                  VertexElementUsage::Position, 0),
+    VertexElement(12, VertexElementFormat::Color,
+                  VertexElementUsage::Color, 0)
+});
+static const VertexPositionColor vertices[3] = {
+    {Vector3::Zero, Color::White}, {Vector3::Zero, Color::White},
+    {Vector3::Zero, Color::White}
+};
+
+// Construction above is pure data. This execution request throws here:
+device.DrawUserPrimitives(PrimitiveType::TriangleList, vertices, 0, 1, decl);
+\end{lstlisting}
+
+This is not merely an API-design claim.  The backend's dedicated regression test constructs
+the declaration, confirms that it retains the supplied stride and two elements, then makes the
+\texttt{DrawUserPrimitives} call and verifies that the failure happens there rather than while
+declaring the layout.  It finally clears and reads back the 2D device successfully, proving
+the exception did not leave renderer state unusable.  This boundary lets portable tools and
+asset code prepare vertex layouts without a false backend failure, while still refusing the
+first request that would require an SDL renderer 3D pipeline it does not have.
+
+The same split applies to the five stock 3D effects.  \cnaclass{BasicEffect},
+\cnaclass{AlphaTestEffect}, \cnaclass{DualTextureEffect}, \cnaclass{EnvironmentMapEffect},
+and \cnaclass{SkinnedEffect} can all be constructed, have ordinary properties assigned, and
+run \texttt{Apply()} on this backend.  They are data/configuration objects until a primitive
+draw is attempted; that draw still throws.  In particular, the effect test assigns a real
+\cnaclass{Texture2D} where applicable but deliberately leaves
+\cnaclass{EnvironmentMapEffect}'s \cnaclass{TextureCube} pointer null, separating this
+verified lifecycle rule from the still-blocked question of cube-texture construction.
+
+There is a third, easy-to-miss case: \cnaclass{RasterizerState} and
+\cnaclass{DepthStencilState} assignments also round-trip as data, but their backend application
+is an intentional no-op.  SDL\_Renderer inherits the interface's no-op
+\texttt{ApplyRasterizerState} and \texttt{ApplyDepthStencilState} defaults because neither
+state can affect a 2D texture-blit draw.  Code can therefore store and inspect a desired
+\texttt{CullMode} or depth-enable bit without an exception; it must not infer that either
+state will change pixels.  By contrast, \cnaclass{VertexBuffer} and \cnaclass{IndexBuffer}
+constructors immediately call their backend factories and fail before their own argument
+validation runs.  On this backend even a zero or negative requested count therefore produces
+the same explicit ``does not support 3D'' runtime error, rather than an
+\texttt{ArgumentOutOfRangeException}.  The ordering is observable and tested, so callers that
+need portable validation should validate their input before asking SDL\_Renderer to allocate a
+3D buffer.
+
+\subsection{A worked example: the one backend that answers every capability honestly}
+
+Chapter~\ref{ch:backend-architecture}'s \cnaclass{GraphicsCapability} mechanism defaults to
+answering \texttt{true} for everything unless a backend overrides it --- and reading
+\texttt{SdlGraphicsBackend.hpp} directly shows this backend takes the blanket, honest opposite
+stance rather than enumerating exceptions one at a time:
+
+\begin{lstlisting}
+bool SupportsCapability(GraphicsCapability /*capability*/) const override
+{
+    // 2D-only by design: none of the capabilities GraphicsCapability currently
+    // enumerates are supported on this backend.
+    return false;
+}
+\end{lstlisting}
+
+Every single \cnaclass{GraphicsCapability} value --- not just \texttt{ThreeD}, but
+\texttt{DepthStencilBuffer}, \texttt{Multi\allowbreak{}Sample\allowbreak{}AntiAliasing},
+\texttt{OcclusionQuery}, all
+eight --- returns \texttt{false} on \texttt{SDL\_RENDERER}, unconditionally. This makes it the
+one backend in the whole project where \texttt{SupportsCapability} genuinely never needs a
+per-feature audit the way Chapter~\ref{ch:backend-architecture}'s own
+\cnaclass{MultipleRenderTargets} finding showed was necessary elsewhere --- a real, useful
+asymmetry to know before trusting any other backend's answer the same way:
+
+\begin{lstlisting}
+if (device.SupportsCapability(GraphicsCapability::ThreeD)) {
+    DrawModel(model, world, view, projection);
+} else {
+    // Reached on SDL_RENDERER (and CANVAS) -- checking first here is strictly better
+    // than letting CreateVertexBuffer() or DrawColoredPrimitives() throw
+    // "SDL_Renderer does not support 3D" and catching it after the fact.
+    DrawFlatPlaceholderSprite();
+}
+\end{lstlisting}
+
+\section{The Phase 70 audit: fifteen real bugs, two still open}
+\label{sec:phase70-audit-bugs}
+
+The single most thorough backend audit in the project (Tasks~666--731, 65 tasks total)
+found and fixed fifteen real bugs, spanning almost every area \cnaclass{SpriteBatch}
+touches:
+
+\begin{itemize}
+  \item \textbf{SpriteBatch (2 bugs).} \texttt{SDL\_RenderTextureRotated}'s rotation-pivot
+        convention did not match XNA's own --- fixed by offsetting the destination
+        rectangle. The \texttt{transformMatrix} argument to \texttt{Begin()} was silently
+        ignored in its entirety --- fixed via a new path using
+        \texttt{SDL\_RenderTextureAffine}, used only for a genuinely non-identity transform
+        (Chapter~\ref{ch:spritebatch} covers both in full).
+  \item \textbf{SpriteFont (1 bug, shared across every backend).} The
+        \cnaclass{SpriteEffects} flip bug described in Chapter~\ref{ch:spritebatch} ---
+        fixed once, in the shared \texttt{SpriteBatch.cpp}, benefiting every backend at
+        once rather than being an SDL\_Renderer-specific fix.
+  \item \textbf{BlendState (2 bugs).} Only \texttt{Opaque} and \texttt{Additive} were
+        specially handled; every other preset mapped incorrectly. Separately,
+        \texttt{SpriteBatch::Begin()} was unconditionally clobbering whatever blend mode had
+        already been set, every single call.
+  \item \textbf{SamplerState (1 bug).} Four of nine \cnaclass{TextureFilter} values were
+        silently downgraded to nearest-neighbor sampling rather than mapping to their real
+        \texttt{SDL\_ScaleMode} equivalent.
+  \item \textbf{RenderTarget2D (4 bugs).} A shared depth-clear code path crashed outright
+        when asked to clear the depth buffer of a render target with
+        \texttt{DepthFormat::None} (i.e., no depth buffer at all, which is every render
+        target on this 2D-only backend). A second bug performed an unchecked, unsafe
+        downcast between two sibling backend classes when sampling a render target as an
+        ordinary texture --- a genuine memory-safety hazard, not merely a logic error. The
+        requested \texttt{DepthFormat} itself is honestly acknowledged as emulated: it is
+        silently accepted and echoed back, but no functional depth test exists behind it at
+        all on this backend. A new \texttt{HasRealDepthBuffer()} check was added specifically
+        so calling code can ask, rather than assume. The persistent SDL target texture also
+        makes shared \cnaclass{RenderTargetUsage} behavior unusually direct: Discard is
+        black-cleared on bind, while Preserve and Platform retain color. The strong usage test
+        proves the first two with pixels, but its ``every bind'' wording omits CNA's divergence
+        from FNA: a redundant bind clears again here, while FNA returns early.
+  \item \textbf{Present timing (1 fixed runtime bug, 1 remaining construction asymmetry).}
+        Runtime \texttt{PresentInterval::Two} used to collapse silently to
+        \texttt{One}. \texttt{SetSwapInterval()} now sends the exact value~2 to
+        \texttt{SDL\_SetRenderVSync()} and falls back to~1 if the driver rejects it. The
+        constructor still uses \texttt{swapInterval > 0 ? 1 : 0}, despite SDL3 supporting
+        integer intervals there too. This usually stays hidden because \cnaclass{Game}
+        constructs with the default~1 and later requests arrive through the repaired reset
+        path; direct \cnaclass{GraphicsDevice} construction with \texttt{Two} still loses the
+        distinction. ASCII wraps this same renderer and inherits both behaviors.
+  \item \textbf{Presentation formats (stored, not selected).} Neither the constructor nor a
+        later reset receives the requested backbuffer/depth format: the factory passes only
+        window, logical-presentation, and swap-interval fields. SDL chooses the renderer's
+        window output, while every CNA-created SDL texture is RGBA32 and no depth/stencil
+        attachment exists. Fullscreen is different: shared device code still makes SDL's
+        window transition request before the backend's empty format hook.
+        The dedicated fullscreen test therefore proves stored state, no throw, and continued
+        pixels --- not display acceptance under Xvfb. ASCII inherits this complete split too.
+  \item \textbf{Disposed-resource guards (3 bugs).} A missing disposed-texture check inside
+        the internal sprite-push path; a missing equivalent check in
+        \texttt{SetRenderTargets}; and a dangling backend pointer left behind after
+        \texttt{RenderTarget2D::Dispose()}.
+  \item \textbf{OcclusionQuery (1 bug).} Construction previously succeeded silently even with
+        a null backend --- now throws, consistent with the 2D-only-backend pattern of
+        failing loudly at construction rather than producing a query object that can never
+        do anything.
+\end{itemize}
+
+\section{Two blocked decisions, and why they are genuinely blocked}
+
+Two gaps remain open specifically because closing them requires a project-owner
+architecture decision, not more engineering effort:
+
+\begin{description}
+  \item[\texttt{TextureAddressMode::Wrap} / \texttt{Mirror} via \texttt{SpriteBatch}.]
+        \texttt{SDL\_RenderTexture}'s own \texttt{srcrect} handling has exactly one fixed,
+        clamp-like behavior at the edges. SDL3 does expose
+        \texttt{SDL\_SetRenderTextureAddressMode}, but it only affects
+        \texttt{SDL\_RenderGeometry} --- an entirely different draw call than the one this
+        backend's \texttt{Draw()} actually issues. Three concrete options were identified and
+        none chosen: throw unconditionally whenever \texttt{Wrap} / \texttt{Mirror} is
+        requested, rewrite \texttt{Draw()} onto \texttt{SDL\_RenderGeometry} project-wide, or
+        a hybrid that only throws when the source rectangle actually exceeds the texture's
+        bounds (the common case where it does not would keep working, coincidentally, under
+        the existing clamp-like behavior).
+  \item[\texttt{Texture3D} / \texttt{TextureCube} construction.] These currently succeed
+        silently with a null backend rather than throwing. Prototyping a fix that makes
+        construction throw instead was found to have a 94-test blast radius (33 tests in one
+        file, 42 in another, 19 in a third) --- large enough that the change was left
+        unresolved rather than made unilaterally.
+\end{description}
+
+\subsection{A worked example: exactly what ``clamp-like, by coincidence'' means in pixels}
+
+The blocked \texttt{TextureAddressMode::Wrap} / \texttt{Mirror} decision above is easy to read
+as an abstract API gap; a concrete pixel case makes it precise instead. Take a $2\times1$
+texture, texel~0 red and texel~1 blue, and draw it with a source rectangle \emph{twice} the
+texture's own width --- source texel range $[0,4]$ against a 2-texel-wide texture, the classic
+XNA scrolling-background tiling technique, which FNA's real \cnaclass{SpriteBatch} never clamps
+\texttt{sourceRectangle} to the texture's own bounds to prevent:
+
+\begin{lstlisting}
+Texture2D redBlue(getGraphicsDeviceProperty(), 2, 1);
+const Color pixels[2] = {Color::Red, Color::Blue};
+redBlue.SetData(pixels, 2);
+
+Rectangle oversizedSource(0, 0, 4, 1); // spans texel [0,4] on a 2-texel-wide texture
+spriteBatch_->Begin(SpriteSortMode::Deferred, BlendState::Opaque, &pointClamp, nullptr, nullptr);
+spriteBatch_->Draw(redBlue, destRect, oversizedSource, Color::White);
+spriteBatch_->End();
+\end{lstlisting}
+
+Reading back the destination pixel corresponding to source position $1.25$ (three-quarters of
+the way into the oversized range, past the real 2-texel-wide texture entirely) is where the
+``clamp-like, by coincidence'' finding becomes a concrete, checkable number rather than a
+qualitative claim: with \texttt{PointClamp} requested, the correct XNA answer is
+\textbf{blue} --- clamped to the texture's last real texel --- and \texttt{SDL\_RenderTexture}'s
+one fixed edge behavior genuinely produces exactly that, with zero production code written to
+make it happen. Requesting \texttt{PointWrap} at the identical source position is where the
+still-open gap becomes equally concrete: the XNA-correct answer for a wrapped read at position
+$1.25$ is \textbf{red} (wrapping back around to texel~0), but this backend's \texttt{Draw()}
+produces \textbf{blue} again --- the same fixed clamp-like behavior applies regardless of which
+\cnaclass{TextureAddressMode} was actually requested, since (per the finding above)
+\texttt{SDL\_RenderTexture} has no address-mode parameter reachable from this specific draw
+path at all. A game relying on horizontally-scrolling tiled backgrounds --- a common enough
+technique that this is not a hypothetical edge case --- gets the wrong pixel on this backend
+today, silently, with no exception and no visual artifact obviously identifiable as ``wrong''
+unless you already know to look for texel~0 failing to reappear at the wrap boundary.
+
+\section{What is honestly emulated versus what is real}
+
+Beyond the \texttt{DepthFormat} case above, \texttt{TextureAddressMode::Clamp} is flagged as
+working ``by coincidence'' --- it matches \texttt{SDL\_RenderTexture}'s own fixed
+out-of-bounds behavior, not because any real sampler-state value is being honored.
+\texttt{MultiSampleCount} is accepted and ignored, always reporting zero. Fullscreen
+toggling round-trips correctly at the API level, but the audit is explicit that genuine
+OS-level fullscreen state cannot actually be verified inside this project's own headless
+\texttt{Xvfb} test environment. \texttt{ClearOptions::DepthBuffer} / \texttt{Stencil} expose
+a shared-routing distinction from the rest of this chapter's 3D methods. The backend's six
+direct combination hooks do call \texttt{ThrowNo3D}, but public
+\cnaclass{GraphicsDevice}\texttt{.Clear} first sees \texttt{SupportsDepthStencil()==false} and masks
+both bits away. A depth/stencil-only request is therefore an FNA-faithful silent no-op; adding
+\texttt{Target} still clears colour. The two SDL-specific tests that expect public throws
+predate that mask and are stale (Task~1113), not proof that the direct hooks are reachable.
+Chapter~\ref{ch:graphicsdevice} and \S\ref{sec:backend-clear-matrix} separate the shared and
+backend layers in full. Five real, multi-frame compatibility samples --- a 2D
+demo, a bouncing-sprite physics scene, a keyboard-driven sprite, a two-glyph
+\cnaclass{SpriteFont} test, and an animated spritesheet --- are registered as genuine
+\texttt{ctest} entries rather than left as manual verification, giving this backend
+end-to-end coverage beyond its unit-level pixel tests.
+
+Viewport and scissor expose a more subtle 2D-state boundary. There is no
+\texttt{SetViewport()} override, so a custom public viewport changes stored state and
+\cnaclass{Viewport}'s own projection mathematics but never remaps an SDL sprite. Scissor
+\emph{does} reach SDL: a positive \texttt{ScissorRectangle} installs a renderer clip, and a
+non-positive size disables it. However, the rasterizer-state hook is also absent. The clip is
+consequently active solely because
+the rectangle is non-empty, even when
+\texttt{RasterizerState.ScissorTestEnable == false}. The existing rasterizer construction test
+cannot detect this: it verifies no-throw assignment and getter round trip, then clears one
+pixel, but never sets a scissor rectangle or asks whether drawing outside it survives. This is
+the precise distinction the fourteen-product matrix in
+\S\ref{sec:backend-viewport-scissor-matrix} preserves.
+
+\section{Reading the feature matrix for this backend}
+
+\texttt{docs/graphics-backend-feature-matrix.md}'s own snapshot for
+\texttt{SDL\_RENDERER} shows a 67-of-67 integration-test pass rate; the custom-\cnaclass{Effect}
+throw-by-design is the matrix's own explicit gap marker, alongside SDL\_Renderer's two named
+BLOCKED rows (\texttt{Wrap} / \texttt{Mirror}, and \texttt{Texture3D} / \texttt{TextureCube}
+construction) --- the same two items covered above, and, notably, two of only four
+project-wide entries anywhere in the whole feature matrix that carry the ``blocked, needs a
+project-owner decision'' status rather than either a solid pass or an openly acknowledged,
+still-being-worked gap.
+
+\section{A real screenshot, captured headlessly under Xvfb}
+
+Every screenshot elsewhere in this book credited to CNA's \texttt{SOFTWARE} backend
+(Chapter~\ref{ch:graphicsdevice}) was reachable with no display at all, since that backend
+never touches SDL video/X11/a GPU. \texttt{SDL\_RENDERER} is different: it opens a real SDL3
+window and issues real \texttt{SDL\_RenderTexture} calls through a real OpenGL context, so a
+genuine screenshot requires a genuine (if virtual) display. This book's own screenshot-feasibility
+notes had long identified \texttt{Xvfb} plus Mesa's software \texttt{llvmpipe} renderer as
+plausible for exactly this case but explicitly left it \emph{untested} pending someone actually
+trying it --- CNA's own \texttt{CNA\_TEST\_DISPLAY} CMake cache variable already anticipates the
+technique, defaulting to the real desktop's \texttt{:0} but documented as overridable to a
+virtual display such as \texttt{:99} for exactly this reason.
+
+Building this backend (\texttt{cmake -B build-sdlrenderer -DCNA\_GRAPHICS\_BACKEND=SDL\_RENDERER})
+and running a small headless demo under \texttt{xvfb-run} confirms the technique works end to
+end. The demo reuses the exact same scene as the real golden-image regression test
+\texttt{examples/easygl\_spritebatch\_rotation\_golden\_test.cpp} (Task~465/417, also the basis
+of Chapter~\ref{ch:spritebatch}'s own rotate-around-origin worked example): a
+$100\times100$ \cnaclass{Texture2D} whose top-left $20\times20$ block is red and the remainder
+blue, drawn through \cnaclass{SpriteBatch} rotated $90$ degrees ($\texttt{MathHelper::PiOver2}$)
+around \texttt{origin}~$(100,100)$ --- the source's own bottom-right corner --- then captured
+with the same \texttt{SaveBackBufferScreenshotEXT} helper the \texttt{SOFTWARE}-backend
+screenshots use:
+
+\begin{lstlisting}
+xvfb-run -a --server-args="-screen 0 1024x768x24" \
+    env -u WAYLAND_DISPLAY ./build-sdlrenderer/cna_xvfb_screenshot_demo
+\end{lstlisting}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.5\textwidth]{images/ch17-spritebatch-rotation-sdlrenderer.png}
+\caption{Real, unedited output of the rotate-around-origin \cnaclass{SpriteBatch} scene,
+rendered by \texttt{SDL\_RENDERER} under a virtual \texttt{Xvfb} display, no physical GPU or
+real desktop involved. The red marker lands in the destination rectangle's top-right corner,
+exactly where a $90$-degree rotation about the source's bottom-right corner should place it.}
+\label{fig:ch17-spritebatch-rotation}
+\end{figure}
+
+Figure~\ref{fig:ch17-spritebatch-rotation} is that real output: the rotated red marker lands
+in the destination rectangle's top-right corner, matching the same geometric derivation the
+golden test itself already relies on (Chapter~\ref{ch:spritebatch}). This closes the one
+remaining ``untested, not confirmed feasible'' item this book's own screenshot-infrastructure
+notes had left open for the two backends needing a virtual display rather than a headless
+software rasterizer.
+
+\section[Why every pixel test needs one specific presentation mode]{Why every
+pixel-verification test on this backend needs one specific presentation mode}
+
+A detail silently underlies every worked example so far in this chapter, and every one of the
+Phase~70 audit's own regression tests: read the real source comment on any of them ---
+\texttt{sdlrenderer\_blendstate\_opaque\_test.cpp}, \texttt{sdlrenderer\_sample\_bouncing\_}
+\texttt{sprite\_test.cpp}, dozens more --- and each carries an identical one-line dependency,
+credited back to a single real finding:
+
+\begin{quote}
+\emph{Requires \texttt{PresentationMode::NativeBackBuffer} (Task~915 finding):
+\texttt{SDL\_RenderReadPixels} operates in physical output coordinates, while this backend's
+default presentation mode (\texttt{FixedHeightDynamicWidth}) does not map logical pixels 1:1
+to physical ones.}
+\end{quote}
+
+\texttt{GetBackBufferData()} on this backend is, underneath, a call to SDL3's own
+\texttt{SDL\_RenderReadPixels} --- and that function has no concept of CNA's own logical/virtual
+resolution scaling at all; it reads back whatever the OS-level render target's physical pixel
+grid actually contains. Chapter~\ref{ch:graphicsdevice}'s own \cnaclass{PresentationMode}
+coverage already establishes why \texttt{FixedHeightDynamicWidth} exists (letterboxing a fixed
+logical resolution into whatever physical window size is actually available) --- but that exact
+letterboxing is precisely what breaks a naive pixel readback: a logical coordinate a test
+computed against the game's own virtual resolution does not correspond to the same physical
+pixel offset once scaling and letterboxing have been applied. \texttt{NativeBackBuffer}
+sidesteps the whole problem by disabling the logical/physical distinction entirely --- the
+backbuffer's physical size \emph{is} the logical size, one to one, so a coordinate computed
+either way lands on the identical pixel. This is why every pixel-precision worked example this
+chapter has shown so far quietly works: each one was built on a test harness that already sets
+this mode, not because logical/physical scaling happens not to matter on this backend.
+
+\subsection{A worked example: animated spritesheet frame selection}
+
+\texttt{examples/sdlrenderer\_sample\_animated\_spritesheet\_test.cpp} (Task~730, sample~5 of a
+5-sample real-XNA-idiom compatibility suite --- Section~\ref{sec:phase70-audit-bugs} above
+covers Phase~70's own single-frame API checks; these five samples are deliberately
+multi-\texttt{Update()} instead) exercises a different code path than any single-frame pixel
+check: \texttt{SpriteBatch::Draw}'s \texttt{sourceRectangle} parameter, re-selected every
+\texttt{Update()} call to animate through a spritesheet, the classic 2D XNA idiom for
+walk-cycle/effect-frame animation. The sheet is deliberately tiny and deterministic --- an
+$8\times4$ texture, left $4\times4$ solid red (frame~0), right $4\times4$ solid green
+(frame~1) --- with a fixed per-\texttt{Update()} frame-index increment rather than real
+elapsed-time-based timing, so the outcome never depends on wall-clock frame speed:
+
+\begin{lstlisting}
+void Update(GameTime&) override
+{
+    if (done_) return;
+    ++frameCounter_;
+    ++updatesRun_;
+}
+
+void Draw(const GameTime&) override
+{
+    // ...
+    const int frameIndex = frameCounter_ % 2;
+    const Rectangle srcRect(frameIndex * kFrameSize, 0, kFrameSize, kFrameSize);
+    const Rectangle destRect(2, 2, kFrameSize, kFrameSize);
+
+    sb_->Begin();
+    sb_->Draw(*sheet_, destRect, srcRect, Color::White);
+    sb_->End();
+    // ...
+}
+\end{lstlisting}
+
+After exactly three \texttt{Update()} calls, \texttt{frameCounter\_ \% 2} evaluates to
+\texttt{1}, so the animation should have settled on the green frame. The test's own check does
+not stop at asserting that arithmetic fact in isolation --- it reads back the actual drawn
+pixel and confirms the color genuinely reaching the screen is green, not merely that the frame
+index variable computed the expected value:
+
+\begin{lstlisting}
+Color px(0, 0, 0, 0);
+Rectangle region(3, 3, 1, 1);
+dev.GetBackBufferData(&region, &px, 0, 1);
+check(px.getRProperty() <= 15 && px.getGProperty() >= 240 && px.getBProperty() <= 15,
+      "genuinely shows frame 1 (green) -- sourceRectangle selection reached the real Draw call");
+\end{lstlisting}
+
+That distinction matters precisely because of the presentation-mode dependency above: a version
+of this test built without \texttt{PresentationMode::NativeBackBuffer} could compute the
+correct frame index every time and still fail the pixel check, for a reason that has nothing to
+do with the animation logic under test at all --- the classic shape of a flaky-looking test
+whose real root cause is a setup precondition, not the feature it claims to exercise.

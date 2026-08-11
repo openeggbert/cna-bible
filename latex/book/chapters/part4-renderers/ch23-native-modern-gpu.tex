@@ -1,0 +1,518 @@
+\chapter{Native Modern GPU APIs}
+\label{ch:native-modern-gpu}
+\label{ch:vulkan-backend}
+
+Vulkan is CNA's second-most-mature backend by the project's own account, and the backend
+whose history best illustrates a recurring theme in this Part: a class of bug where an
+interface method accepts every parameter it is supposed to, but the implementation behind it
+quietly discards most of them.
+
+\section{Current test baseline}
+
+At the time of writing, the full unit suite passes 4{,}371 of 4{,}373 tests (with two
+hardware-dependent skips), and the Vulkan-specific \texttt{ctest} suite passes 126 of 127.
+The single remaining failure, \texttt{Vulkan\_DepthBias}, is a narrow one: only the most
+extreme tested magnitude of depth bias produces no observable effect
+(\S\ref{sec:vulkan-depthbias}), a symptom shared with an equivalent finding on
+\texttt{D3D9}. Historically this backend also carried five failing \cnaclass{BlendState}
+tests and three segfaulting skinned-model content tests --- both fully resolved, with no
+test exclusions needed to reach the current clean baseline.
+
+\section{BlendState: from ``almost entirely fake'' to fully real}
+
+The single most serious historical bug on this backend, in the project's own words, is that
+its blend-state implementation was ``almost entirely fake'': one hardcoded blend equation was
+applied regardless of what \cnaclass{BlendState} actually requested, confirmed failing across
+five independent pixel tests before the fix. The fix replaced this with a genuine
+per-\cnaclass{Blend} / \cnaclass{BlendFunction} mapping, applied consistently across all nine
+of this backend's own pipeline-creation call sites --- meaning the fix had to be threaded
+through every place a graphics pipeline object gets built, not just one central function.
+
+\section{Stencil testing: the same ``discarded parameters'' bug shape}
+
+\cnaclass{DepthStencilState} (Chapter~\ref{ch:state-objects}) had an almost identical
+history. The backend's own state-application entry point accepted fifteen parameters but
+genuinely stored only two of them (the depth-enable and depth-write flags) --- every
+stencil-related parameter passed through the call was simply discarded, and the pipeline's
+own stencil-test-enable flag was never set at all, on any pipeline. Five separate,
+independently-run checks (the enable flag itself, the stencil masks, front-face operations,
+two-sided stencil mode, and reference-stencil propagation) each separately confirmed this
+failure mode. The fix added real per-pipeline depth-compare operations, full front- and
+back-face \texttt{VkStencilOpState} configuration, and dynamic-state reference/mask values ---
+and, as a direct side effect of the same fix, connected \texttt{ReferenceStencil}'s
+independent-override path (Chapter~\ref{ch:state-objects}) on Vulkan specifically, something
+still broken on EasyGL and BGFX. A second, smaller bug found in the same investigation: depth
+format selection tried a stencil-\emph{less} format before it tried any stencil-capable
+alternative.
+
+\section{OcclusionQuery: from never-wired to a genuinely discriminating query}
+
+Before its fix, occlusion queries on this backend were not merely inaccurate --- they were
+never connected to anything at all. This backend defers 3D and 2D draws into a pending-batch
+snapshot, recorded into real Vulkan commands only once per frame, well after
+\texttt{Begin()} / \texttt{End()} had already returned synchronously; queries therefore always
+reported zero, regardless of what was actually visible. The fix required resolving three
+genuinely non-obvious design questions: how to tag an individual pending draw with the query
+that should observe it; whether a single query may legitimately span multiple draw calls
+(resolved: yes, as long as they share one render pass, tracked via contiguous-run detection,
+with an explicit, documented limitation that a query spanning a render-pass \emph{boundary}
+is not correctly summed --- a real capability gap against what a real device could do, stated
+plainly rather than silently assumed); and how per-frame query-pool resets need to be
+sequenced before any render pass begins. Verified in both directions --- a visible quad
+producing a positive pixel count, an occluded quad behind a nearer opaque object producing
+none --- plus a genuine multi-draw-span case (two non-overlapping half-quads inside one
+\texttt{Begin} / \texttt{End} span, summing correctly), discriminating for real in this
+project's own software Vulkan implementation.
+
+\subsection{A worked example: using an OcclusionQuery correctly on this backend}
+
+The real \cnaclass{OcclusionQuery} surface is small --- \texttt{Begin()}, \texttt{End()},
+\texttt{getIsCompleteProperty()}, \texttt{getPixelCountProperty()} --- and the standard
+visibility-culling pattern is exactly what the verification above tested directly:
+
+\begin{lstlisting}
+OcclusionQuery query(getGraphicsDeviceProperty());
+
+query.Begin();
+DrawBoundingProxyGeometry(occluderCandidate); // a cheap stand-in, not the real detailed mesh
+query.End();
+
+// One or more frames later, once rendering has actually reached the GPU:
+if (query.getIsCompleteProperty() && query.getPixelCountProperty() > 0) {
+    DrawFullDetailMesh(occluderCandidate); // visible -- worth the real draw cost
+}
+\end{lstlisting}
+
+The one genuine gotcha this backend's own verification surfaced, worth restating as a rule
+rather than only as a finding: a single query's \texttt{Begin()} / \texttt{End()} span may
+legitimately cover \emph{multiple} draw calls (useful for querying a whole cluster of small
+objects with one query instead of one per object), but only as long as every draw in that span
+stays within one render pass. A query spanning a render-pass boundary --- switching render
+targets, or anything else that closes and reopens a Vulkan render pass mid-span --- is not
+correctly summed on this backend today. A conservative rule that avoids the gap entirely:
+never let a render-target switch happen between an \cnaclass{OcclusionQuery}'s \texttt{Begin()}
+and \texttt{End()}.
+
+\section{Remaining limitation}
+\label{sec:vulkan-depthbias}
+
+Exactly one genuine, unresolved gap remains on this backend at the time of writing: an
+isolated \cnaclass{RasterizerState.DepthBias} extreme-magnitude sub-case, where real hardware
+bias produced no observable effect at any tested magnitude in this project's own sandboxed
+environment --- suspected to be an environment or driver limitation shared with an equivalent
+finding made independently on \texttt{D3D9} (Chapter~\ref{ch:direct3d-backends}), rather than
+a Vulkan-specific defect.
+
+\section{Two distinct render-target black-render bugs, both now closed}
+\label{sec:vulkan-rendertarget-black}
+
+The repository's still-stale \texttt{docs/rendertarget-support.md} describes two confirmed
+black-render defects as open. The live plan, source, and tests close both. Preserving the
+mechanisms still matters because the first is part of the current clear architecture and the
+second is a useful lesson in re-verifying an old diagnosis.
+
+Task~875 was not specific to cube targets. \texttt{VulkanGraphicsBackend::Clear()} once changed
+only global clear scalars, while render passes were collected solely from real draw calls. A
+clear-only target therefore never entered command recording:
+
+\begin{lstlisting}
+device.SetRenderTarget(&probe, CubeMapFace::PositiveZ);
+device.Clear(Color::CornflowerBlue);
+device.SetRenderTarget(nullptr); // no intervening draw: the former Task 875 trigger
+\end{lstlisting}
+
+The fix adds the active target to a deduplicated \texttt{clearedRTs\_} list from both
+\texttt{Clear()} and \texttt{ClearColorAndDepth()}; command recording seeds its used-target
+list from there before scanning queued SpriteBatch and 3D draws. The dedicated clear-only
+\cnaclass{RenderTarget2D} regression fills two targets without a draw, forces the necessary
+frame boundaries, then samples both. Disabling both insertions
+reproduced black; restoring them returned the exact fills. One important limit remains:
+\texttt{clearedRTs\_} guarantees that a pass exists, but does not make the pass's attachment
+load operations reflect each \cnaclass{ClearOptions} subset
+(\S\ref{sec:backend-clear-matrix}).
+
+Task~876 was the separate all-six-faces path: real SpriteBatch content was rendered into a
+\cnaclass{RenderTargetCube}, unbound, then sampled through \cnaclass{EnvironmentMapEffect}.
+The same original regression now produces the exact expected blue centre across five repeated
+runs plus its registered test invocation. No weakened replacement test was substituted.
+The project did not retroactively bisect which intervening change fixed it; the substantial
+Task~907 cube-view/layout rework is the leading inference, but its most obvious transition fix
+is mip-count-gated while this regression uses one level. The honest current conclusion is
+therefore ``verified closed, precise historical fixing commit unknown,'' not ``still open.''
+
+\section{Clear values are real; \texttt{ClearOptions} selectivity is not}
+
+Task~871's cross-frame tests establish that colour, depth, and stencil values can all reach a
+real Vulkan attachment. They do not make \cnaclass{ClearOptions} an issue-ordered command.
+The backbuffer render pass always uses \texttt{LOAD\_OP\_CLEAR} for every existing attachment,
+and a discard-content render target does the same. All calls made before queued draws merely
+replace global clear scalars; the final values apply once at pass start, before every draw,
+regardless of call order.
+
+Preserve-content targets expose a different failure: their render pass fixes colour to
+\texttt{LOAD} and depth/stencil to \texttt{DONT\_CARE}. Adding the target to
+\texttt{clearedRTs\_} guarantees a pass will exist, but an explicit clear does not select a
+different render-pass variant. \texttt{ClearDepth()} is narrower still: it changes only the
+global depth scalar and does not add an otherwise-unused current target to that list. These
+limits are separate from Task~875's now-fixed ``no pass at all'' defect and are tabulated
+against the other thirteen products in \S\ref{sec:backend-clear-matrix}.
+
+The constructor comparison creates two additional usage boundaries. Only exact
+\texttt{Preserve\allowbreak{}Contents} reaches the backend as true, so
+\texttt{Platform\allowbreak{}Contents} selects the discard pass even though shared code issues
+no matching black clear. The MSAA pass has no load variant at all, so Preserve+MSAA also
+discards. Cube targets cannot convey usage through the common factory, and MRT uses a separate
+always-clear pass; both discard for every enum. The non-MSAA two-frame usage test proves only
+the color Discard/Preserve split, not these depth, MSAA, cube, MRT, or Platform cases. See
+\S\ref{sec:backend-rendertarget-usage-matrix}.
+
+\section{A confirmed non-gap: device-feature gating}
+
+Not every investigation into this backend found a bug. A dedicated check of whether optional
+device features (\texttt{fillModeNonSolid}, needed for wireframe rendering, and
+\texttt{samplerAnisotropy}) are properly negotiated before being requested found the gating
+already correctly implemented --- both are queried via \texttt{vkGetPhysicalDeviceFeatures}
+before being enabled, with a graceful fallback if the underlying device lacks either one.
+This is included here deliberately: a book that only ever reports bugs found would give a
+skewed picture of a backend whose overall health is, in fact, good.
+
+\section{Notable feature-matrix specifics}
+
+A cube-map render target's MSAA support is real but indirect: rather than a genuinely
+multisampled cube attachment, it is implemented as an ordinary (non-cube) multisampled 2D
+texture array paired with a separately cube-flagged resolve texture. Multiple render targets
+are capped at four by shared, cross-backend code mirroring FNA's own
+\path{MAX_RENDERTARGET_BINDINGS} constant --- notably \emph{not} because Vulkan's own
+device capability is the limiting factor, since a typical device supports eight. Uploading
+\texttt{Texture2D} data at a mip level above zero is now real: the image and view allocate
+the public level count, a level-specific barrier and staged copy update the requested
+subresource, and the dedicated minification test samples its authored color. The former
+silent no-op recorded earlier in this chapter's source history was fixed by Task~925; see
+Chapter~\ref{ch:backend-architecture}, \S\ref{sec:texture2d-update-matrix}, for the current
+cross-backend matrix and proof boundary. Forwarding a real, non-\texttt{Color}
+\cnaclass{SurfaceFormat} shares the identical blocked/architectural
+limitation already covered for EasyGL in Chapter~\ref{ch:easygl-backend} --- both backends
+are blocked by the same upstream \texttt{Texture::ValidateFormat} contract, not by anything
+Vulkan-specific.
+
+\section{Three tracked gaps, checked against live source rather than trusted from the doc}
+
+This project's own \texttt{docs/rendertarget-support.md} --- the same document
+\S\ref{sec:vulkan-rendertarget-black} already drew Tasks~875/876 from --- lists three further
+tracked tasks for this backend as still open: real GPU mip generation for a render target
+(Task~878), real render-target MSAA (Task~879), and any actual GPU effect from a custom
+sub-region \cnaclass{Viewport} at all (Task~880, ``zero wiring on any backend''). Reading
+\texttt{VulkanGraphicsBackend.cpp} directly, rather than trusting that document's own status
+column, finds all three already resolved --- each superseded by a later task number
+(\texttt{Task~903} / \texttt{907}) whose own comments the doc was never updated to reflect, one
+more real instance of the recurring ``a status that looked settled turned out to be stale''
+pattern this book has run into more than once. \texttt{VulkanRenderTargetBackend::%
+MaybeGenerateMips()} runs a real, per-level \texttt{vkCmdBlitImage} cascade against a render
+target's just-rendered (and, if applicable, just-MSAA-resolved) level-0 content immediately
+after its render pass ends --- the direct Vulkan equivalent of EasyGL's own
+\texttt{glGenerateMipmap}-on-unbind. Render-target MSAA is real for both
+\cnaclass{RenderTarget2D} and \cnaclass{RenderTargetCube} (the cube case exactly as described
+above). And \texttt{SetViewport()} genuinely reaches \texttt{vkCmdSetViewport} at
+command-buffer-record time, mirroring \texttt{SetScissorRect}'s own identical storage-then-apply
+shape --- with one honestly-scoped limitation worth stating precisely rather than rounding up to
+``fixed'': a custom sub-region \cnaclass{Viewport} is only honored for the backbuffer pass. A
+render-target pass stays hardcoded to that target's own full size, because this backend's
+deferred, potentially-multiple-render-targets-per-frame recording model has no way to recover
+\emph{which} \cnaclass{Viewport} was actually active at the moment each render target's own draws
+were originally issued, by the time a frame's commands actually get recorded.
+
+The same scope limit applies to scissor, not only viewport. Each render-target pass hardcodes
+both a full-target \texttt{VkViewport} and \texttt{VkRect2D}; the stored custom values are read
+only for the backbuffer pass, with \texttt{ScissorTestEnable=false} or a zero rectangle falling
+back to the full swapchain. One dynamic viewport/scissor pair is installed before both
+\texttt{drawSpritesFor()} and \texttt{draw3DFor()}, so the last live state when the command
+buffer is recorded governs every queued sprite and 3D draw in that backbuffer pass. It is not
+snapshotted per draw at the time the game issued it. Dedicated pixel tests prove the custom
+backbuffer viewport and enabled/disabled scissor cases; the shared render-target reset test
+proves the full-size reset visible after switching targets, not a custom sub-region inside a
+Vulkan target.
+
+\section{How a swapchain gets built: format, color space, and present mode}
+\label{sec:vulkan-swapchain}
+
+\texttt{VulkanGraphicsBackend::CreateSwapchain()} is where two real, easy-to-get-wrong
+decisions get made once, at swapchain-creation time, rather than left to chance: which pixel
+format the swapchain presents through, and which \texttt{VkPresentModeKHR} actually governs
+frame pacing. Both are worth reading directly rather than assumed, since Vulkan's own API
+surface makes it easy to pick a format that looks equivalent but silently changes what a game
+sees on screen.
+
+\subsection{UNORM, not SRGB: a deliberate color-space decision}
+
+A physical device typically reports several supported \texttt{(VkFormat, VkColorSpaceKHR)}
+swapchain pairs, and it is common in Vulkan tutorials to prefer an SRGB-variant format (e.g.\
+\texttt{VK\_FORMAT\_B8G8R8A8\_SRGB}) for its automatic linear-to-sRGB gamma encode on every
+presented pixel. This backend deliberately does the opposite, and says why directly in its own
+source comment: real XNA's default backbuffer format, \cnans{SurfaceFormat}\texttt{::Color}
+(Appendix~\ref{ch:api-quick-reference}), is linear --- a separate,
+NOXNA\allowbreak{} \texttt{ColorSrgbEXT} value exists specifically for the gamma-encoded
+variant (Appendix~E) --- so an SRGB swapchain format would apply an automatic gamma encode XNA
+itself never performed, silently darkening every frame relative to what a real XNA game
+produced. The fix is a preference search rather than a hardcoded pick, since not every device
+lists the exact pair in the same order:
+
+\begin{lstlisting}
+VkSurfaceFormatKHR fmt = fmts[0];  // fallback: whatever the device lists first
+for (auto& f : fmts)
+    if (f.format == VK_FORMAT_B8G8R8A8_UNORM &&
+        f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+    { fmt = f; break; }
+\end{lstlisting}
+
+The two fields answer two different questions, which is exactly the subtlety worth stating
+plainly: \texttt{colorSpace} here is \texttt{VK\_COLOR\_SPACE\_SRGB\_NONLINEAR\_KHR} regardless
+--- that value describes the \emph{display}'s own expected color space (the near-universal
+default virtually every consumer monitor and every Vulkan implementation supports), not
+whether the swapchain itself gamma-encodes on write. \texttt{format} is the field that
+controls the encode: \texttt{\_UNORM} writes the raw bytes a game submits with no
+transformation, while a sibling \texttt{\_SRGB} format of the identical byte layout would
+gamma-encode automatically. Picking \texttt{UNORM} with the standard nonlinear color space is
+therefore not a contradiction --- it is precisely ``present to a normal monitor, but do not
+add an encode step XNA's own \texttt{Color} format never had.'' A porting engineer who
+free-associates ``SRGB'' with ``correct color space, always prefer it'' and swaps this one
+line risks introducing a real, visible darkening regression across every scene in the game,
+not just an edge case.
+
+\begin{sourcenote}
+That deliberate UNORM choice is fixed backend policy, not a response to the caller's current
+\texttt{BackBufferFormat}. The Vulkan factory discards both presentation format ordinals:
+it prefers this same B8G8R8A8 UNORM pair even when public
+\cnaclass{PresentationParameters} reports something else, and always creates a
+device-selected depth image (D24S8, then D32S8, then D32) even for
+\texttt{DepthFormat::None}. Render-target depth formats use a newer, genuinely per-target
+selection path and must not be confused with this default-backbuffer behavior. SDL can still
+change the window to fullscreen; a later out-of-date/resize rebuild follows the surface size
+without consuming \texttt{isFullScreen} itself.
+\end{sourcenote}
+
+\subsection{SwapInterval to VkPresentModeKHR: the same three-way switch Chapter~\ref{ch:game-loop} introduced}
+
+\cnaclass{PresentationMode}'s \texttt{PresentInterval} (Immediate / Default-a.k.a.-One / Two,
+Chapter~\ref{ch:game-loop}) is not merely stored on this backend --- it selects among the
+device's actually-supported present modes with an explicit fallback chain for each case,
+verified directly against \texttt{CreateSwapchain()}:
+
+\begin{lstlisting}
+VkPresentModeKHR mode = VK_PRESENT_MODE_FIFO_KHR; // safe default: guaranteed available
+if (swapInterval_ == 0) {         // Immediate: tearing allowed, lowest latency
+    // prefer true IMMEDIATE; MAILBOX (triple-buffered, no tearing) is the fallback
+    // if IMMEDIATE isn't supported; FIFO if neither is
+} else if (swapInterval_ == 2) {  // Two: allow a slower-than-vsync present without stalling
+    // prefer FIFO_RELAXED; falls through to FIFO if unsupported
+}
+// swapInterval_ == 1 (Default/One): FIFO unconditionally -- always available, real VSync
+\end{lstlisting}
+
+Two things about this chain are worth internalizing rather than skimming past. First,
+\texttt{FIFO} is the only present mode the Vulkan specification \emph{guarantees} every
+conformant implementation supports --- choosing it as the unconditional starting value, and as
+every fallback's own final fallback, is what makes swapchain creation itself never fail for
+lack of an exotic present mode, on any device. Second, \texttt{PresentInterval::Two}'s mapping
+to \texttt{FIFO\_RELAXED} is a deliberately different request from \texttt{Immediate}'s: FIFO
+Relaxed still waits for vsync when the application is keeping up, and only presents
+immediately (accepting a single tear) on the specific frame where the application would
+otherwise have missed vsync and stalled --- the Vulkan-native shape of ``prefer vsync, but
+don't let a single slow frame cascade into a visible stutter,'' not a request for tearing as a
+matter of course the way \texttt{Immediate} is. A game that sets \texttt{PresentInterval::Two}
+expecting literally half the refresh rate (the historical, D3D9-era ``present interval two''
+reading some porting engineers carry over) will not get that on this backend --- it gets FIFO
+Relaxed's own, different throughput/latency tradeoff instead, worth checking explicitly against
+a real target frame-rate requirement before assuming interval semantics carried over unchanged
+from a Direct3D background.
+
+\begin{sourcenote}
+That switch runs only in \texttt{CreateSwapchain()}, from the interval captured by the
+backend constructor. \texttt{VulkanGraphics\allowbreak Backend} does not override
+\texttt{IGraphicsBackend::SetSwap\allowbreak Interval()}, so a later
+\cnaclass{GraphicsDevice}\texttt{::Reset()} stores the new public value but cannot update
+\texttt{swapInterval\_} or recreate the swapchain for it. This is especially visible through
+\cnaclass{Game}: its device is eagerly built with default \texttt{PresentInterval::Default}
+before the derived constructor can set
+\texttt{GraphicsDevice\allowbreak Manager.SynchronizeWith\allowbreak VerticalRetrace=false}.
+The subsequent
+\texttt{ApplyChanges()} therefore still leaves Vulkan in FIFO mode. Only constructing a
+\cnaclass{GraphicsDevice} directly with the desired parameters (or using CNA's separate
+test-only full-backend recreation helper) can currently change that initial choice. No
+dedicated test queries or times the real Vulkan present mode.
+\end{sourcenote}
+
+\section[Two frames in flight, and the deferred-present trick]{Two frames in flight, and
+the deferred-present trick that makes readback pixel-safe}
+\label{sec:vulkan-frames-in-flight}
+
+Everything in \S\ref{sec:vulkan-swapchain} covers how the swapchain itself gets built; this
+section covers what actually happens every frame once it exists. This backend double-buffers
+its own CPU-side work against the GPU --- \texttt{MaxFramesInFlight} is a real, fixed
+\texttt{constexpr int} value of~\texttt{2}, read directly from
+\texttt{VulkanGraphicsBackend.hpp} --- with one \texttt{VkFence}, one pair of
+\texttt{VkSemaphore}s (image-available, render-finished), and one command buffer per
+in-flight frame, indexed by a wrapping \texttt{currentFrame\_} counter.
+
+\subsection{The ordinary present path}
+
+\texttt{Present()} calls the backend's real \texttt{SubmitFrame(bool deferSwap)} with
+\texttt{deferSwap=false}. Reading it directly shows five sequential steps, each with a real
+purpose rather than boilerplate:
+
+\begin{lstlisting}
+vkWaitForFences(device_, 1, &inFlightFences_[currentFrame_], VK_TRUE, UINT64_MAX);
+// ... vkAcquireNextImageKHR, vkResetFences, RecordCommandBuffer ...
+vkQueueSubmit(graphicsQueue_, 1, &si, inFlightFences_[currentFrame_]);
+// deferSwap == false: present immediately
+vkQueuePresentKHR(presentQueue_, &pi);
+currentFrame_ = (currentFrame_ + 1) % MaxFramesInFlight;
+\end{lstlisting}
+
+The opening \texttt{vkWaitForFences} is the throttle that makes double-buffering safe at all:
+before this frame's slot can be reused, the GPU must have finished the \emph{previous} frame
+that used the same slot two frames ago, or the CPU would start overwriting a command buffer
+the GPU might still be reading. \texttt{vkAcquireNextImageKHR} signals
+\texttt{imageAvailableSemaphores\_[currentFrame\_]} when the swapchain image is actually ready
+to be written to (not necessarily immediately --- the presentation engine may still be
+displaying it); \texttt{vkQueueSubmit} makes the GPU work wait on that same semaphore before
+touching the image, and signals \texttt{renderFinishedSemaphores\_[currentFrame\_]} when done;
+and \texttt{vkQueuePresentKHR} waits on that render-finished semaphore before handing the image
+to the presentation engine. Three separate synchronization primitives, three separate
+questions each one alone answers: is the CPU allowed to reuse this frame slot yet (fence), is
+the GPU allowed to start rendering into this image yet (image-available semaphore), and is the
+presentation engine allowed to display it yet (render-finished semaphore).
+
+\subsection{The deferred path: why \texttt{GetBackBufferData} cannot simply call \texttt{Present}}
+
+\cnaclass{GraphicsDevice}\texttt{::GetBackBufferData} (Chapter~\ref{ch:graphicsdevice}) needs a
+real answer to a question the ordinary present path never has to ask: are the exact pixels the
+GPU just rendered still readable, or has the presentation engine already taken ownership of
+the image and possibly begun compositing it to the screen? Reading
+\texttt{ReadBackbuffer()}'s own code comment states the race directly: \emph{``SubmitFrame(true)
+renders and waits for the GPU but HOLDS the present, so we read the staging buffer below
+BEFORE the image is handed to the presentation engine --- no race possible.''} The mechanism is
+the same \texttt{SubmitFrame()} used for ordinary presentation, called with
+\texttt{deferSwap=true} instead:
+
+\begin{lstlisting}
+if (deferSwap) {
+    // Wait for render + readback copy to complete, but hold the image. The caller
+    // (ReadBackbuffer) reads the staging buffer before the image is presented, so
+    // presentation-engine timing can never corrupt the captured pixels.
+    vkWaitForFences(device_, 1, &inFlightFences_[currentFrame_], VK_TRUE, UINT64_MAX);
+    deferredPresentImageIndex_ = imageIndex;
+    hasDeferredPresent_        = true;
+    return true;
+}
+\end{lstlisting}
+
+\texttt{RecordCommandBuffer} has already copied the whole swapchain image into a real staging
+buffer (\texttt{readbackStagingBuf\_}) as part of the same command buffer the ordinary render
+work goes into --- so this second \texttt{vkWaitForFences} call (on top of the one at the very
+start of \texttt{SubmitFrame}) blocks until that copy is guaranteed complete on the GPU side,
+before \texttt{ReadBackbuffer} maps \texttt{readbackStagingMem\_} and reads it directly.
+\emph{Only after} the CPU has finished reading does \texttt{ReadBackbuffer} call
+\texttt{FinishDeferredPresent()}, which performs the \texttt{vkQueuePresentKHR} call that
+\texttt{SubmitFrame(true)} deliberately skipped --- late, but still exactly once, so no frame
+is silently dropped from the screen because it was read back.
+
+\subsection{Two further real findings from the same read path}
+
+Reading \texttt{ReadBackbuffer()}'s own surrounding logic in full surfaces two further details
+worth knowing, neither one hypothetical:
+
+\begin{description}
+  \item[A real read cache, not a re-render-every-call assumption.] A naive readback
+        implementation might call \texttt{SubmitFrame(true)} unconditionally on every
+        \texttt{GetBackBufferData} call --- but the real code guards it behind
+        \texttt{hasNewWork \textbar\textbar{} !readbackStagingValid\_}, where
+        \texttt{hasNewWork} checks whether any pending 3D or batched 2D draws actually exist
+        since the last present. The code's own comment states why this matters concretely:
+        re-presenting an already-rendered, empty-queue frame would re-render whatever
+        \texttt{Clear} color is currently set and silently destroy the content every read
+        after the first one would have returned, for any caller reading the same frame's
+        backbuffer more than once (a golden-image test that reads several sub-regions of one
+        frame, for instance).
+  \item[\texttt{vkAcquireNextImageKHR} can genuinely fail on the very first frame.] A real,
+        environment-specific comment in the same function notes that swapchain-out-of-date is
+        \emph{``common on first frame under Wayland/RADV''} --- handled by zeroing the output
+        buffer and returning, rather than throwing, so a caller can detect a blank frame and
+        retry instead of crashing outright on a platform combination this specific to trigger.
+\end{description}
+
+A genuinely small but real detail rounds out the picture: swapchain images are frequently
+\texttt{VK\_FORMAT\_B8G8R8A8\_UNORM} (per the color-space decision in
+\S\ref{sec:vulkan-swapchain}), which stores channels in the opposite byte order from the RGBA
+layout every other backend and \cnaclass{Color} itself use --- \texttt{ReadBackbuffer} checks
+\texttt{swapchainFormat\_} directly and performs a real per-pixel \texttt{B} / \texttt{R} channel
+swap only when the format is actually BGRA, rather than assuming one fixed byte order across
+every device this backend might run on.
+
+\section{A real, hittable ceiling: 512 live descriptor sets, shared across two resource types}
+\label{sec:vulkan-descriptor-ceiling}
+
+Every \cnaclass{Texture2D} and every \cnaclass{RenderTarget2D} constructed on this backend
+allocates one \texttt{VkDescriptorSet} from a single shared pool, sized at construction time
+and never grown:
+
+\begin{lstlisting}
+static constexpr uint32_t MaxDescriptorSets = 512;
+// ...
+VkDescriptorPoolSize ps{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MaxDescriptorSets };
+VkDescriptorPoolCreateInfo ci{};
+ci.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+ci.maxSets = MaxDescriptorSets;
+ci.poolSizeCount = 1;
+ci.pPoolSizes = &ps;
+vkCreateDescriptorPool(device_, &ci, nullptr, &descriptorPool_);
+\end{lstlisting}
+
+\cnaclass{VulkanTextureBackend}'s own constructor and \cnaclass{VulkanRenderTargetBackend}'s
+own constructor both allocate from this identical \texttt{descriptorPool\_} --- confirmed by
+reading both call sites directly, not just the pool's own creation code --- so the real budget
+a game actually has is 512 \emph{simultaneously live} \cnaclass{Texture2D} plus
+\cnaclass{RenderTarget2D} instances combined on this backend, not 512 of each independently.
+The \texttt{VK\_DESCRIPTOR\_POOL\_CREATE\_FREE\_DESCRIPTOR\_SET\_BIT} flag means this is a real
+budget of \emph{concurrently undisposed} resources, not a lifetime total: each backend's own
+\texttt{ReleaseVulkanResources()} calls \texttt{vkFreeDescriptorSets} on \texttt{Dispose()},
+returning its slot to the pool for reuse. A game that creates and disposes textures across many
+frames --- streaming a level's assets in and out, for instance --- never accumulates toward the
+ceiling as long as disposal genuinely keeps pace with creation.
+
+The failure mode itself is a clean, loud exception rather than a silent cap or a corrupted
+allocation, confirmed by reading the allocation call site directly:
+
+\begin{lstlisting}
+if (vkAllocateDescriptorSets(dev, &dsInfo, &descriptorSet_) != VK_SUCCESS)
+    throw std::runtime_error("vkAllocateDescriptorSets (texture) failed");
+\end{lstlisting}
+
+A 513th simultaneously-live \cnaclass{Texture2D} or \cnaclass{RenderTarget2D} throws at
+construction time, on this backend specifically --- not a per-frame budget, and not shared with
+any other backend's own resource limits (EasyGL and BGFX have no equivalent fixed-pool
+ceiling at all; each stock effect type on this same Vulkan backend additionally has its own,
+separately-sized dedicated pool --- \texttt{descriptorPoolEnvMap\_},
+\texttt{descriptorPoolSkinned\_}, \texttt{descriptorPoolPbr\_}, and others --- so this specific
+512-set ceiling applies only to plain \cnaclass{Texture2D} / \cnaclass{RenderTarget2D}
+allocation, not to how many objects can simultaneously use a given stock effect). A game
+targeting Vulkan specifically with a very large, non-atlased texture library, or one that
+creates many short-lived render targets without disposing the previous batch first, is the
+realistic way to reach this ceiling in practice --- worth knowing as a real, backend-specific
+constraint before assuming texture/render-target counts that work fine on EasyGL port
+unchanged to Vulkan.
+
+\section{A documented, not a hidden, coverage gap}
+
+One honest gap in \emph{testing}, not rendering: at the time of writing there is no dedicated
+pixel test for \cnaclass{SpriteBatch}'s sort-mode/rotation/scale/crop/flip behavior, for
+\cnaclass{SpriteFont} glyph placement, or for a multi-mesh \cnaclass{Model} hierarchy on this
+backend specifically --- confirmed by directly searching the test suite for matching test
+names and finding none, despite basic \cnaclass{SpriteBatch}/2D-demo smoke tests passing.
+This does not mean the underlying shared C\texttt{++} code is wrong (it is the same code
+every other backend runs), only that this specific backend has not had these specific
+features independently re-verified against its own rendering path.
+
+% Phase C: preserve the two other pre-existing native-modern renderer chapters as
+% sections until the source-grounded Part IV rewrite redistributes this material.
+\input{chapters/part4-renderers/fragments/legacy-webgpu.tex}
+\input{chapters/part4-renderers/fragments/legacy-sdlgpu.tex}

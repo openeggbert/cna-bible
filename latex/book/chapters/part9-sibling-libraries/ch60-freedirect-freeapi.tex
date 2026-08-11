@@ -1,0 +1,66 @@
+\chapter{free-direct and free-api}
+\label{ch:freedirect-freeapi}
+\label{ch:freedirect-deep-dive}
+
+This book's DX3 backend chapter covered how CNA fronts \texttt{free-direct}; this short
+chapter covers \texttt{free-direct} itself, kept deliberately brief --- it is a peripheral
+dependency for CNA, backing exactly one 2D-only backend, not a project on the scale of
+\texttt{sharp-runtime} or \texttt{easy-gl}.
+
+\section{A narrow subset, defined by two real games}
+
+\texttt{free-direct} does not aim at DirectX~3 compatibility in general. Its own scope is
+defined entirely by what two specific legacy Windows games --- \emph{Speedy Blupi} (via the
+sibling \texttt{free-eggbert} repository) and \emph{Planet Blupi} --- actually call, confirmed
+by a real, reproducible call-site audit against both games' own source at named, dated
+commits, not by guessing at what a typical DirectDraw-era game might need. Its own
+\texttt{include/dplay.h}, for instance, defines only the DirectPlay error codes, flags, and
+two interfaces (\texttt{IDirectPlay}, \texttt{IDirectPlay2A}) those two games' call sites
+actually exercise --- there is no \texttt{IDirectPlay3A} at all, no group or lobby methods,
+and even \texttt{DPID\_ALLPLAYERS}/\texttt{DPID\_SYSMSG} are absent, confirmed by direct grep
+rather than assumed missing.
+
+\section{Three subsystems, three different maturity levels}
+
+\textbf{DirectDraw} is the most complete: primary and offscreen surface creation,
+\texttt{Blt}/\texttt{BltFast} with clipping and source color-key handling, palette support,
+a minimal clipper, and \texttt{Lock}/\texttt{Unlock} for direct pixel access, all real. Some
+paths are deliberately minimal rather than incomplete by accident ---
+\texttt{SetDisplayMode}, \texttt{IsLost}, and \texttt{Restore} are thin, matching what the
+target games actually need rather than a full DirectDraw device-loss model.
+
+\textbf{DirectSound} is partially real: SDL3-backed playback of static PCM buffers, real
+volume and constant-power panning for mono sources, real lock/unlock semantics --- but
+looping is accepted and silently ignored, and a playing buffer's position is not genuinely
+seekable.
+
+\textbf{DirectPlay} is the most surprising of the three, precisely because it is more real
+than its narrow scope might suggest: genuine session hosting, joining, player management, and
+unicast/broadcast message delivery all work between two \texttt{free-direct} processes, over
+either a default loopback transport or a real, optional ENet-backed UDP transport with real
+LAN host discovery --- explicitly \emph{FreeDirect-to-FreeDirect only}, never wire-compatible
+with genuine Microsoft DirectPlay at the packet level. Seven previously-open DirectPlay design
+questions (broadcast semantics, ENet host discovery, LAN discovery, host routing, player
+names, duplicate-player detection, player-lost state) have all been asked of, and answered by,
+the project owner and are now either implemented or deliberately left unimplemented by
+explicit decision, not by default.
+
+\section{A revealing implementation detail: DPID as a hazard}
+
+One specific detail is worth naming as a small lesson in porting fidelity: \texttt{free-direct}
+types its \cnaclass{DPID} player-identifier as a raw \texttt{DWORD\_PTR} rather than a stable,
+opaque handle --- a genuine hazard flagged directly in the project's own call-site audit,
+since code that assumes a \texttt{DPID} is a small, stable integer can behave unexpectedly if
+that assumption is violated. This is exactly the kind of small representational choice this
+book has flagged elsewhere (Chapter~\ref{ch:networking}'s \cnaclass{PacketReader}/%
+\cnaclass{PacketWriter} \cnaclass{Color} asymmetry, for instance) as worth knowing about
+before writing code against an API, even when it does not manifest as an outright bug in
+either of the two games the library currently targets.
+
+\section{Non-goals, restated}
+
+Consistent with this book's coverage: no hardware-accurate emulation, no Direct3D pipeline at
+all (matching the target games, which never used one), and no expansion of the supported API
+surface beyond what \emph{Speedy Blupi} and \emph{Planet Blupi} actually call --- a third
+game wanting to use \texttt{free-direct} would need its own call-site audit first, not an
+assumption that the existing surface is already broad enough.

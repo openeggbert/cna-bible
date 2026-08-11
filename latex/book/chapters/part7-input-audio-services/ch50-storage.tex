@@ -1,0 +1,281 @@
+\chapter{Storage and Persistence Boundaries}
+\label{ch:storage}
+
+\cnans{Microsoft::Xna::Framework::Storage} is small --- three headers, two real classes and
+one exception type --- and easy to overlook next to Graphics or Audio. It is also, per CNA's
+own README, one of the namespaces reported at full presence alongside Graphics, Audio, and
+Input/Touch, and it is worth its own short chapter precisely because it is the namespace
+responsible for something every real game eventually needs: saving and loading user data.
+
+\section{The XNA 4.0 fake-async pattern, once more}
+
+\cnaclass{StorageDevice}'s own class documentation states its governing convention directly:
+it ``uses the XNA 4.0 fake-async pattern: \texttt{BeginXxx} completes synchronously and the
+paired \texttt{EndXxx} extracts the result.'' This is the same synchronous-but-async-shaped
+pattern this book has already met repeatedly --- \cnaclass{LeaderboardReader}'s
+\texttt{Begin} / \texttt{End} pairs (Chapter~\ref{ch:gamerservices}), \cnaclass{NetworkSession}'s own async
+operations (Chapter~\ref{ch:networking}), \cnaclass{AvatarDescription::BeginGetFromGamer} (Chapter~\ref{ch:avatar}) --- and
+\cnaclass{StorageDevice} is arguably where the pattern originated in spirit: real XNA's
+storage API had to accommodate a genuinely slow, UI-driven device-selection flow on a real
+Xbox 360 (a player physically choosing which memory unit or hard drive to save to), even
+though CNA's own desktop-filesystem-backed implementation completes every one of these calls
+instantly.
+
+\section{StorageDevice: free space, connection state, and device selection}
+
+\cnaclass{StorageDevice} exposes \texttt{FreeSpace} and \texttt{TotalSpace} (both in bytes,
+reporting real values from the underlying filesystem) and \texttt{IsConnected}. Opening a
+container follows the fake-async pattern:
+\texttt{BeginOpenContainer(displayName, callback, state)} / \texttt{EndOpenContainer(result)};
+\texttt{DeleteContainer(titleName)} removes an entire container's directory tree outright.
+Four overloads of the static \texttt{BeginShowSelector} / \texttt{EndShowSelector} pair cover
+every combination real XNA supports --- with or without a specific \cnaclass{PlayerIndex},
+with or without an explicit required free-space and directory-count --- for showing the
+device-selection UI, even though, again, there is only ever one real ``device'' (the local
+filesystem) for this to resolve to.
+
+Two \texttt{NOXNA} static methods exist specifically because CNA has no Xbox-360-style
+concept of a physically distinct storage device to select in the first place:
+\texttt{SetAppNameEXT(appName)} sets the application name used to build a real,
+per-application storage root directory on the host filesystem, and
+\texttt{GetStorageRootEXT()} returns that resolved root path. A game is expected to call
+\texttt{SetAppNameEXT} once, early --- the class's own documentation recommends the
+\cnaclass{Game} constructor --- before any other storage call, since the storage root is
+lazily resolved and cached on first use.
+
+One further detail distinguishes this namespace from the other fake-async ports this book has
+covered: every \texttt{Begin} / \texttt{End} result here is a real \texttt{std::unique\_ptr}, not
+a caller-owned raw pointer requiring a matching manual \texttt{delete} the way
+\cnaclass{NetworkSession}'s and \cnaclass{Guide}'s own \texttt{Begin} / \texttt{End} families do
+(Chapters~\ref{ch:networking} and~\ref{ch:gamerservices}). \texttt{EndOpenContainer} returns a
+\texttt{std::unique\_ptr<StorageContainer>}, and \texttt{EndShowSelector} returns a
+\texttt{std::unique\_ptr<StorageDevice>} --- a cleaner ownership story than most of the rest of
+this book's ported XNA surface, not a deviation CNA needed to call out defensively, since it
+only makes the caller's life easier.
+
+\begin{lstlisting}
+// Worked example: the full device-selection-to-open-container lifecycle,
+// once per application (typically in the Game constructor).
+StorageDevice::SetAppNameEXT("MyGame");
+
+auto selectResult = StorageDevice::BeginShowSelector(nullptr, nullptr);
+std::unique_ptr<StorageDevice> device = StorageDevice::EndShowSelector(selectResult.get());
+
+auto openResult = device->BeginOpenContainer("MyGame Save Data", nullptr, nullptr);
+std::unique_ptr<StorageContainer> container = device->EndOpenContainer(openResult.get());
+// No delete needed anywhere above -- every intermediate result is a
+// unique_ptr that cleans itself up when it goes out of scope.
+\end{lstlisting}
+
+\section{StorageContainer: a real, if modest, virtual filesystem}
+
+\cnaclass{StorageContainer} inherits \texttt{System::Object} and \texttt{System::IDisposable},
+and provides exactly the file and directory operations a save-data system needs, all relative
+to the container's own root: \texttt{CreateDirectory} / \texttt{DirectoryExists} /
+\texttt{DeleteDirectory}, \texttt{GetDirectoryNames()} (with a glob-pattern overload),
+\texttt{CreateFile} / \texttt{FileExists} / \texttt{DeleteFile}, \texttt{GetFileNames()} (with the
+same glob-pattern overload), and a three-overload \texttt{OpenFile} family covering file mode
+alone, mode plus access, and mode plus access plus sharing --- each returning a real
+\cnaclass{System::IO::Stream} (Chapter~\ref{ch:sharp-runtime-namespaces} covers \texttt{sharp-runtime}'s own \cnaclass{Stream}
+type) for a game to read or write through directly. Every relative path
+passed to any of these methods is resolved against the container's own root, which is itself
+resolved against \texttt{StorageDevice::GetStorageRootEXT()} --- meaning the entire
+namespace, end to end, ultimately roots itself in that one \texttt{NOXNA} extension point.
+
+\begin{lstlisting}
+// Worked example: writing then reading back a save file, continuing
+// directly from the container opened above.
+{
+    std::unique_ptr<System::IO::Stream> writeStream =
+        container->CreateFile("savegame.dat");
+    std::vector<SharpRuntime::bytecs> saveData = SerializeGameState();
+    writeStream->Write(saveData.data(), 0, static_cast<int>(saveData.size()));
+    // writeStream goes out of scope here and closes/flushes automatically.
+}
+
+if (container->FileExists("savegame.dat"))
+{
+    std::unique_ptr<System::IO::Stream> readStream =
+        container->OpenFile("savegame.dat", System::IO::FileMode::Open);
+    std::vector<SharpRuntime::bytecs> loaded(readStream->getLengthProperty());
+    readStream->Read(loaded.data(), 0, static_cast<int>(loaded.size()));
+}
+
+container->Dispose();
+\end{lstlisting}
+
+\subsection{A real, currently unguarded gap: relative-path resolution does not sandbox \texttt{..}}
+
+Every method in the worked example above --- \texttt{CreateFile}, \texttt{FileExists},
+\texttt{DeleteFile}, \texttt{CreateDirectory}, and the rest --- routes its \texttt{relative}
+parameter through one shared private helper, \texttt{ResolvePath(relative)}, whose entire real
+implementation is a single line: \texttt{(fs::path(storagePath\_) / relative).string()}. Reading
+it directly confirms there is no check anywhere in this namespace, in that helper or any of its
+callers, rejecting a relative path that climbs back out of the container's own root via
+\texttt{..} segments --- only an empty-string check exists, guarding against a blank filename,
+not a traversal attempt. \texttt{container->CreateFile("../../outside.txt")} resolves and
+creates a file two directories above the container's own storage root exactly as
+\texttt{std::filesystem} would normally compose that path, with no exception, no truncation, and
+no sandboxing of any kind.
+
+This matters in exactly the situation this namespace's own \texttt{OpenFile} family exists for:
+a game trusting a filename that ultimately came from outside its own hardcoded save-slot
+naming (a player-chosen save name, a value read from network or downloadable content, or any
+other externally-influenced string handed to \texttt{CreateFile} / \texttt{OpenFile} without
+first validating it) has no protection from this namespace against that filename escaping the
+sandboxed storage root the whole \cnaclass{StorageContainer} abstraction is meant to represent.
+A game whose own save-name input is always a fixed, hardcoded string (as the worked example
+above uses) or is validated by the caller before ever reaching this API is unaffected in
+practice; a game that passes an unvalidated, externally-influenced string directly through is
+not. Neither the class's own header documentation nor its test suite currently mentions this
+as a deliberate, scoped decision the way this book's other real gaps are --- it is a genuine,
+unaddressed gap as of this writing, worth validating any externally-influenced filename against
+before calling into this namespace, rather than relying on the namespace to do it for you.
+
+\subsection{A second, compounding gap: zero automated test coverage for the whole namespace}
+
+The \texttt{..}-traversal gap above is worth reading alongside a second fact this book has not
+yet stated about \cnans{Storage}: it is the one ported XNA namespace in this whole project
+with no automated test coverage at all. \cnaclass{CnaTests}, the project's shared GoogleTest
+binary, mirrors \texttt{Microsoft::Xna::Framework}'s own namespace tree one directory per
+namespace --- \texttt{Audio}, \texttt{Content}, \texttt{GamerServices}, \texttt{Graphics},
+\texttt{Input}, \texttt{Media}, and \texttt{Net} each have their own test directory, and
+several smaller namespaces get their own flat \texttt{XxxTests.cpp} file instead (this
+project's own \texttt{TitleContainerTests.cpp} and \texttt{GameTests.cpp} are two examples
+sitting right alongside where a \texttt{Storage} directory or file would be). No
+\texttt{tests/Microsoft/Xna/Framework/Storage/} directory exists, no flat
+\texttt{StorageDeviceTests.cpp} / \texttt{StorageContainerTests.cpp} exists, and grepping both
+\texttt{tests/} and \texttt{examples/} for \texttt{StorageContainer} or \texttt{StorageDevice}
+turns up nothing but two incidental, unrelated mentions in an unrelated demo and an unrelated
+\cnans{GamerServices} test file --- confirmed directly against the actual test tree and CMake
+test registration, not inferred from the absence of a \texttt{plan\_storage.md} (no such file
+exists for this namespace either, so there is no dated task history to check against in the
+first place).
+
+This means \texttt{ResolvePath}'s missing \texttt{..}-guard was never something a test suite
+had the opportunity to catch --- there is no regression test for \emph{any} behavior in this
+namespace, guarded or not, so the gap's survival is not evidence anyone reviewed the traversal
+question and accepted the risk; it is evidence no one has systematically exercised this
+namespace's behavior at all yet. The same absence covers \texttt{StorageContainer}'s own small
+hand-rolled glob matcher backing the \texttt{GetFileNames} / \texttt{GetDirectoryNames} search-pattern
+overloads --- a real, from-scratch backtracking \texttt{*} / \texttt{?} pattern matcher (not a
+thin wrapper over a library glob or a regex translation), whose correctness on edge cases like
+adjacent \texttt{**} runs or a pattern with no \texttt{*} at all currently rests entirely on
+manual code reading rather than a single asserted test case.
+
+\section{Where the storage root actually resolves to}
+
+\texttt{GetStorageRootEXT()}'s own real implementation, \texttt{EnsureStorageRoot()}, is worth
+reading directly rather than trusting the one-line summary given above --- it is a real,
+three-tier platform-resolution chain, not a single fixed path, and it is lazily evaluated and
+cached (\texttt{storageRootInitialized\_}) exactly once per application-name change:
+
+\begin{lstlisting}
+// From EnsureStorageRoot(), the real resolution order:
+// 1. SDL_GetPrefPath(nullptr, app) -- SDL3's own per-platform, per-app
+//    preference-directory API (creates the directory as a side effect).
+// 2. XDG_DATA_HOME/<app>, if SDL_GetPrefPath failed and the environment
+//    variable is set and non-empty.
+// 3. HOME/.local/share/<app>, if XDG_DATA_HOME is unset.
+// 4. The current working directory, as a last-resort fallback if even
+//    HOME is unset.
+\end{lstlisting}
+
+\texttt{SDL\_GetPrefPath} is the tier that actually resolves on every desktop platform this
+project targets --- on Linux it typically returns something under
+\texttt{\$XDG\_DATA\_HOME/<org>/<app>/} or \texttt{\textasciitilde/.local/share/<org>/<app>/} itself,
+so tiers 2 and 3 exist specifically for the case where SDL's own call genuinely fails (a
+sandboxed or unusual environment with no writable preference directory at all), not as the
+common path. Tier 4, the current working directory, is a real fallback with a real practical
+consequence worth stating plainly: a game whose save data ends up here because every preceding
+tier failed is one \texttt{cd} away from writing (or reading) save data from a completely
+different location the next time it runs --- the least robust of the four tiers by a wide
+margin, and worth knowing about before assuming \texttt{GetStorageRootEXT()} always returns a
+stable, session-independent path.
+
+\texttt{SetAppNameEXT()}'s own implementation is worth a specific, reassuring note against a
+plausible-sounding bug that turns out not to exist: calling it a \emph{second} time (contrary
+to the class's own ``call once, early'' guidance) does not leave a stale, already-cached root
+behind. The setter explicitly clears \texttt{storageRoot\_} and resets
+\texttt{storageRootInitialized\_} to \texttt{false} every time it runs, forcing the next
+\texttt{EnsureStorageRoot()} call to re-resolve from scratch under the new application name ---
+a defensive detail that makes the ``call once'' guidance a recommendation for predictability,
+not a hard requirement the implementation would silently violate if ignored.
+
+\subsection{A related, smaller finding: \texttt{IsConnected} tolerates a root that does not exist yet}
+
+\texttt{getIsConnectedProperty()}'s own real logic is worth naming precisely, because it is not
+simply ``does \texttt{GetStorageRootEXT()}'s path exist'': if the resolved root itself has never
+been written to yet (a brand-new install, before the first save), the property walks \emph{up}
+the path one component at a time until it finds an ancestor directory that does exist, and
+reports connected as long as any such ancestor is found. On a real desktop filesystem this is
+almost always true --- even a completely fresh per-app directory sits under a real, already-existing
+\texttt{\textasciitilde/.local/share/} or equivalent --- so \texttt{IsConnected} reporting
+\texttt{true} is not itself proof the per-app storage directory has actually been created; only
+a real \texttt{BeginOpenContainer} / \texttt{EndOpenContainer} call (which does create it, via
+\cnaclass{StorageContainer}'s own constructor) confirms that.
+
+\section{A real, previously-undocumented gap: \texttt{OpenFile}'s \texttt{fileShare} parameter has nowhere to go}
+
+\cnaclass{StorageContainer}'s three-overload \texttt{OpenFile} family accepts a
+\texttt{System::IO::FileShare} argument on its fullest overload, matching real XNA's own
+signature exactly. Reading \texttt{StorageContainer.cpp}'s own implementation of that overload
+shows the parameter is not merely unused --- it cannot be honored at all, structurally, by
+anything currently in this codebase:
+
+\begin{lstlisting}
+std::unique_ptr<System::IO::Stream> StorageContainer::OpenFile(
+    const std::string& file, System::IO::FileMode fileMode,
+    System::IO::FileAccess fileAccess, System::IO::FileShare /*fileShare*/)
+{
+    if (file.empty())
+        throw std::invalid_argument("Parameter file must contain a value.");
+    return std::make_unique<System::IO::FileStream>(
+        ResolvePath(file), fileMode, fileAccess);
+}
+\end{lstlisting}
+
+The parameter name is commented out in its own declaration --- the same
+\texttt{/*paramName*/} convention this project uses project-wide to mark a genuinely unused
+parameter deliberately, rather than leaving a named-but-ignored parameter that reads as an
+accidental oversight. Confirming this is not simply an oversight in \emph{this} function
+specifically: \texttt{sharp-runtime}'s own \cnaclass{System::IO::FileStream} --- the concrete
+type \texttt{OpenFile} constructs --- has exactly three constructors (path alone; path plus
+\texttt{FileMode}; path plus \texttt{FileMode} plus \texttt{FileAccess}), read directly from
+its own header, and none of them accepts a \texttt{FileShare} value at all. There is no
+constructor overload \texttt{OpenFile} could forward a share mode to even if its own
+implementation wanted to. The underlying \texttt{std::fstream} this class wraps has no built-in
+concept of an OS-level share lock either, on the platforms this project currently targets, so
+the gap is not one missing forwarding call away from being closed --- it would need real,
+new file-locking logic added to \texttt{FileStream} itself first.
+
+Practically, this means every value of \texttt{FileShare} --- \texttt{None} (request exclusive
+access), \texttt{Read} (allow other readers only), \texttt{ReadWrite} (allow full concurrent
+access) --- currently produces byte-identical behavior: whatever the host OS's own default
+file-sharing semantics happen to be for a plain \texttt{std::fstream} open (unrestricted
+concurrent access on every platform this project currently builds for). A game relying on
+\texttt{FileShare::None} to prevent a second process from touching the same save file
+concurrently --- a real, if uncommon, XNA-era pattern for guarding against a save-corruption
+race --- gets no such protection here. As with the \texttt{..}-traversal gap earlier in this
+chapter, this is a genuine, currently open gap rather than a documented, deliberate scope
+decision; unlike that gap, this book is the first place this specific limitation has been
+written down at all.
+
+\section{StorageDeviceNotConnectedException}
+
+\cnaclass{StorageDeviceNotConnectedException} is the one exception type this namespace adds,
+thrown when an operation requires a connected storage device that is not currently available
+--- present for API completeness with real XNA's own exception surface, even though CNA's own
+always-available local-filesystem backing means this condition is rare in practice compared
+to a real Xbox 360, where a memory unit could genuinely be physically removed mid-session.
+
+\section{Why this namespace is worth remembering}
+
+\cnans{Storage} is a good, compact illustration of a pattern this book has now shown several
+times: an XNA namespace originally designed around real, physical, removable hardware and a
+console's own UI conventions, faithfully reproduced in API shape, but backed by a
+straightforward, always-available local filesystem underneath. The fake-async pattern, the
+device-selection UI stubs, and the \texttt{NOXNA} app-name/storage-root extension together
+tell the same story Chapter~\ref{ch:what-is-cna} told about the project as a whole: preserve the real API's
+shape precisely, even where the platform reality underneath it is simpler than what the API
+was originally built to abstract over.

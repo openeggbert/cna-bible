@@ -1,0 +1,425 @@
+\chapter{BGFX, Magnum, LLGL, and Diligent}
+\label{ch:abstraction-layers-one}
+\label{ch:bgfx-backend}
+
+\texttt{BGFX} integrates the third-party \texttt{bkaradzic/bgfx} rendering library (fetched
+directly via CMake's \texttt{FetchContent}, Chapter~\ref{ch:backend-architecture}) behind the
+same contract every other backend implements, using bgfx's own native API --- window and
+platform initialization, texture creation, sprite draws, frame submission --- rather than
+routing through SDL\_Renderer.
+
+\begin{sourcenote}
+The abstraction boundary also owns this backend's default attachments. CNA passes bgfx a
+window, dimensions, renderer selection, and reset flags, but neither the requested
+\cnaclass{SurfaceFormat} nor \cnaclass{DepthFormat}. The exact platform backbuffer and
+depth/stencil format are therefore bgfx choices which CNA neither selects nor queries, even
+though it submits depth/stencil clear flags. A shared SDL fullscreen call can still resize or
+restyle the window, after which \texttt{EnsureViewState()} notices the dimensions and calls
+\texttt{bgfx::reset}; the empty presentation-format hook does not prevent that window route.
+\end{sourcenote}
+
+\section{One view clear is broader than seven public combinations}
+
+\texttt{EnsureViewState()} always installs the colour, depth, and stencil
+\texttt{BGFX\_CLEAR} flags; it does not vary those flags with
+\cnaclass{ClearOptions}. Colour and stencil entry points also touch the view, while
+\texttt{ClearDepth()} merely changes the global scalar and cannot initiate an otherwise-empty
+view. If a draw is later submitted, the full three-attachment clear still happens once at view
+start. Multiple public clears in one unadvanced frame consequently collapse to the last global
+values and precede all submitted draws. The cross-frame stencil regression proves the stencil
+value is real, not same-view issue ordering or attachment selectivity; see
+\S\ref{sec:backend-clear-matrix}.
+
+BGFX's persistent view state makes target usage observable. When a 2D target requests
+Preserve, the backend disables view clearing with
+\texttt{BGFX\_\allowbreak{}CLEAR\_\allowbreak{}NONE}; Discard relies on the shared implicit
+clear to install all three flags. Platform is passed to the backend as ``not preserve'' but
+receives no shared clear, so it can inherit whatever clear flags that recycled view ID last
+held. Cube binding and MRT creation likewise lack a usage-specific clear reset. The named BGFX
+usage test only proves two-frame bind/unbind does not crash; despite its comments, it contains
+no pixel oracle. The full distinction is
+\S\ref{sec:backend-rendertarget-usage-matrix}.
+
+\section{Test baseline and the Phase 72 closure}
+
+At the time of writing, the full unit suite passes 4{,}375 of 4{,}377 tests (two hardware
+skips), and the backend-specific \texttt{ctest} suite passes 103 of 105. The two remaining
+failures are both environment ceilings, not code defects: one render-target MSAA-resolve test
+fails because this project's own headless \texttt{Xvfb} display has no DRI3 support to
+resolve against, and one render-target-cube depth-format test (a
+\texttt{Depth24Stencil8}-attached cube face producing no color output) has been investigated
+three separate times without finding a root cause, and remains formally deferred rather than
+silently dropped. A first complete, row-by-row triage of this backend originally found
+thirty-eight real gaps; thirty-seven were fixed in a single closing session, leaving only the
+depth-bias item covered below --- which was itself subsequently fixed too, closing the phase
+in full.
+
+\section{Choosing bgfx's underlying native renderer}
+\label{sec:bgfx-renderer-selection}
+
+Unlike every other backend in this book, \texttt{BGFX} is itself an abstraction over several
+further, distinct native graphics APIs --- OpenGL, OpenGL ES, Vulkan, Direct3D~11/12, and
+Metal --- and CNA exposes a real, previously-undocumented mechanism to choose among them: the
+\texttt{CNA\_BGFX\_RENDERER} environment variable, resolved through three small, dedicated
+functions in \texttt{BgfxRendererSelection.cpp}. \texttt{GetDefaultRendererType()} picks
+\texttt{bgfx::RendererType::OpenGL} on Linux specifically and \texttt{Count} (bgfx's own
+``let the library auto-detect'' sentinel) everywhere else; \texttt{ParseRendererTypeOverride()}
+case-insensitively accepts \texttt{AUTO}, \texttt{OPENGL}, \texttt{OPENGLES}, \texttt{VULKAN},
+\texttt{METAL}, \texttt{DIRECT3D11} / \texttt{D3D11}, \texttt{DIRECT3D12} / \texttt{D3D12}, and
+\texttt{NOOP} (bgfx's own headless no-op renderer, useful for pure logic testing with no GPU
+work issued at all), throwing a \texttt{std::runtime\_error} naming every valid value for
+anything else; \texttt{ResolveRendererType()} ties the two together, falling back to the
+platform default whenever the environment variable is unset or empty.
+
+\subsection{A worked example: routing one specific test around a real bgfx/GL limitation}
+
+This mechanism exists for a concrete, real reason, not as a speculative escape hatch:
+\texttt{examples/bgfx\_rendertarget2d\_msaa\_test.cpp}'s own header comment documents a genuine
+investigation. In this project's own Linux development sandbox, bgfx's default OpenGL renderer
+negotiates only a legacy OpenGL~2.1 context --- confirmed via \texttt{glxinfo} that the
+underlying Mesa/RadeonSI driver actually supports OpenGL~4.6 with full hardware acceleration,
+so this is bgfx itself requesting an old context by default, not a driver ceiling --- and
+MSAA-flagged framebuffer-attached textures do not actually resolve with real sub-pixel blending
+under that legacy GL~2.1 path, despite \texttt{bgfx::getCaps()} itself reporting
+\texttt{BGFX\_CAPS\_FORMAT\_TEXTURE\_FRAMEBUFFER\_MSAA} support for the exact format requested.
+The investigation ruled out a CNA-side defect specifically: forcing bgfx onto its Vulkan
+renderer instead (\texttt{CNA\_BGFX\_RENDERER=VULKAN}, routing through the identical GPU) made
+both of the test's own checks pass cleanly, including a genuine intermediate (blended) pixel
+value along the test triangle's diagonal edge, with \emph{zero} code changes on either side ---
+proof the C++ wiring itself is correct and backend-agnostic, and the gap is specifically in
+bgfx's own default legacy-GL-context resolve path. The real \texttt{ctest} registration
+(\texttt{cmake/Tests/BgfxTests.cmake}) reflects this finding directly rather than leaving it as
+a comment nobody acts on:
+
+\begin{lstlisting}
+cna_register_backend_test(NAME Bgfx_RenderTarget2D_MsaaResolve
+    COMMAND cna_test_bgfx_rendertarget2d_msaa
+    TIMEOUT 30
+    ENVIRONMENT "SDL_VIDEODRIVER=x11;DISPLAY=${CNA_TEST_DISPLAY};CNA_BGFX_RENDERER=VULKAN")
+\end{lstlisting}
+
+This is worth reading alongside, not instead of, this chapter's own ``Test baseline'' section
+above and \texttt{docs/graphics-backend-feature-matrix.md}'s repeatedly-reconfirmed count
+(spanning multiple independently-dated task closures) that \texttt{Bgfx\_RenderTarget2D\_%
+MsaaResolve} remains one of exactly two still-failing tests in \emph{that} project's own
+tracked baseline, attributed there to a related but distinctly-framed cause: ``this sandbox's
+\texttt{Xvfb} has no DRI3 support.'' The two explanations are not actually in tension --- DRI3
+is specifically what a windowed OpenGL context needs to negotiate real hardware acceleration
+under X11 indirect rendering, so its absence is a plausible reason bgfx's OpenGL path falls
+back to a legacy context in the first place, while Vulkan's own presentation integration does
+not depend on the same DRI3/GLX negotiation at all. What this book cannot independently confirm
+is whether the specific sandbox behind that repeatedly-cited count genuinely has real Vulkan/GPU
+access available to the \texttt{CNA\_BGFX\_RENDERER=VULKAN} override the way the test's own
+comment describes, or whether that particular environment lacks real GPU access down either
+path --- this book's own screenshot-feasibility investigation (Chapter~\ref{ch:graphicsdevice})
+independently confirmed no GPU passthrough at all in \emph{this} book-writing session's own
+container, a genuinely different environment from CNA's own separate development sandbox. Both
+real, sourced explanations are given here rather than silently picking one, consistent with
+this book's own methodology of not resolving an ambiguity the underlying sources themselves
+leave open.
+
+\section{DepthBias: a real gap in the underlying library, not just CNA}
+
+\cnaclass{RasterizerState.DepthBias} is the one feature in this chapter whose fix required
+working around a genuine absence in bgfx itself, confirmed by reading bgfx's own vendored
+source directly: its high-level state API has no depth-bias mechanism of any kind --- no
+corresponding flag in its own headers, and no \texttt{glPolygonOffset} call anywhere in its
+vendored OpenGL renderer backend. The fix emulates the feature entirely at the CNA level, via
+a per-draw vertex-shader Z-offset (a new \texttt{u\_depthBias} uniform threaded through every
+3D vertex shader). \texttt{SlopeScaleDepthBias}, by contrast, remains \emph{deliberately}
+unimplemented --- a project-owner decision, not an oversight --- because a true
+per-fragment, screen-space-slope computation would force every 3D shader off the GPU's
+early-Z optimization path, a cost judged not worth paying for this specific, rarely-used
+parameter.
+
+\section{Render-target readback crashes: one root cause, five fixes}
+
+Five of six render-target-related \texttt{glReadPixels} / \texttt{Xvfb} crashes were traced to
+a single, shared root cause: bgfx processes its internal views in ascending ID order every
+frame, which means any render-target view is always the \emph{last} one processed --- and
+therefore still GL-bound at the exact moment \texttt{glReadPixels()} fires for a screenshot.
+The fix adds a dedicated ``flush'' view, touched immediately before every screenshot
+specifically to force the correct view to be current first. Only the render-target-cube
+depth-format crash mentioned above has a different, still-unidentified root cause and was
+not resolved by this fix.
+
+\section{View IDs: a free-list-backed pool, not a hardcoded slot}
+\label{sec:bgfx-view-ids}
+
+The ``flush view'' fix in the previous section (Task~951) is one visible symptom of a broader
+architectural fact worth explaining directly: bgfx organizes all drawing into numbered
+\emph{views}, an ordering mechanism distinct from render-target binding itself --- every
+\texttt{bgfx::submit()} call targets a specific numeric view id, and bgfx processes views in
+ascending id order every frame regardless of the order draws were actually submitted in. This
+backend's own render-target support (\texttt{Detail::AllocateRtViewId()}) originally handed out
+a single hardcoded view id --- ``the old hardcoded 1'' its own fix comment calls it --- for
+every render target, 2D or cube, MRT or single-target alike. Task~910 replaced that with a real,
+free-list-backed pool:
+
+\begin{lstlisting}
+static bgfx::ViewId AllocateRtViewId()
+{
+    static constexpr bgfx::ViewId kMaxBgfxViews = kBackbufferFlushViewId;
+    auto& pool = RtViewIdFreeList();
+    if (!pool.empty()) {
+        const bgfx::ViewId id = pool.back();
+        pool.pop_back();
+        return id;
+    }
+    static bgfx::ViewId nextId = 1;   // 0 is permanently reserved for the backbuffer
+    if (nextId >= kMaxBgfxViews)
+        throw std::runtime_error("Bgfx: exhausted view ids (more concurrently-live "
+                                  "render targets than bgfx supports views)");
+    return nextId++;
+}
+\end{lstlisting}
+
+Three real numbers are reserved by construction, not by convention alone: view id \texttt{0} is
+permanently the backbuffer's own view and is never handed out by this allocator at all;
+\texttt{kBackbufferFlushViewId} --- the same reserved, highest-numbered view Task~951's own
+flush-view fix touches every frame, precisely \emph{because} it is guaranteed to sort last in
+bgfx's own ascending-id processing order --- sits at the top of the id space, one past the
+allocator's own exclusive upper bound; and every id strictly between those two bookends is a
+real, currently-live render target's own view. A newly-freed id returns to the pool
+(\texttt{RtViewIdFreeList()}) for reuse by the \emph{next} render target created, rather than
+the counter monotonically climbing forever --- the free-list is specifically what keeps a
+long-running game that creates and destroys render targets across many frames (a shadow-map
+pool being cycled, a portal-camera render target rebuilt on level load) from eventually
+exhausting bgfx's own hard \texttt{BGFX\_CONFIG\_MAX\_VIEWS} ceiling (256 by default) and
+throwing \texttt{std::runtime\_error} on a perfectly ordinary render target creation, purely
+because ids were never being recycled. A CNA game with a genuinely unbounded number of
+\emph{simultaneously live} render targets --- not created-and-destroyed-over-time, but all
+open at once --- can still exhaust the pool; the free-list solves churn, not an unbounded
+working set, and the thrown exception is the correct, honest response to that specific case
+rather than a bug to route around.
+
+\section{Sampling a render target: a wrong-handle-type cast, since fixed}
+\label{sec:bgfx-wrong-handle-cast}
+
+Chapter~\ref{ch:vulkan-backend} named this backend's own, now-resolved
+\cnaclass{RenderTargetCube}-sampling bug as ``a genuine wrong-handle-cast, diagnosed precisely''
+in contrast to Vulkan's own still-unresolved equivalent --- this section is that precise
+diagnosis, including how it was actually closed. Both \texttt{BgfxSpriteBatchBackend::Draw} and
+\cnaclass{BgfxGraphicsBackend}'s own \texttt{envMapping} branch (the code path
+\cnaclass{EnvironmentMapEffect}, per Chapter~\ref{ch:stock-effects}, reaches) used to
+unconditionally \texttt{static\_cast} whatever \cnaclass{ITextureBackend} / \cnaclass{%
+ITextureCubeBackend} they were handed to the plain, ordinary-texture concrete type.
+\cnaclass{RenderTarget2D} and \cnaclass{RenderTargetCube} are each backed by their own,
+entirely separate sibling backend class --- consistent with
+Chapter~\ref{ch:backend-architecture}'s own \cnaclass{IRenderTargetBackend} interface design,
+not a shortcut specific to this backend. Both of those sibling classes'
+\emph{first data member} is a framebuffer handle, not a texture handle.
+
+The reason this compiled cleanly and never crashed, rather than failing loudly the moment it was
+exercised, is a genuinely instructive piece of type-confusion: bgfx represents both handle kinds
+identically at the ABI level, as a bare \texttt{struct \{ uint16\_t idx; \}}. The cast was
+structurally valid C\texttt{++} --- both types really do have that exact layout --- so the
+compiler had no basis to reject it, and the resulting object did not crash on access, because
+\texttt{idx} really was a valid, in-range integer. It was simply the \emph{wrong} integer: an
+index into bgfx's framebuffer handle pool, read and used as though it indexed the texture handle
+pool instead. The practical consequence was a render target that silently sampled whatever
+texture happened to occupy the coincidentally-matching slot in the wrong pool --- confirmed by
+direct memory-layout analysis and by new smoke tests added specifically to prove the cast
+\emph{did not crash} on either \cnaclass{RenderTarget2D} or \cnaclass{RenderTargetCube}, which is
+exactly why ordinary ``does it crash'' testing had not caught this before. Both call sites are
+now fixed (Tasks~873/874, closed by Task~907's own follow-up): \texttt{BgfxSpriteBatchBackend::%
+Draw} now reaches a render target's real dimensions through \cnaclass{ITextureBackend}'s own
+virtual \texttt{GetWidth()} / \texttt{GetHeight()} rather than an unsafe cast, and the
+\texttt{envMapping} branch resolves a bound cube texture through a real \texttt{dynamic\_cast} to
+a shared \texttt{IBgfxCubeSamplable} interface instead --- a render-to-texture technique (a
+portal, a security-camera view, a reflection probe rendered as an ordinary 2D texture rather than
+through the dedicated cube-face path) that samples its own render target back through
+\cnaclass{SpriteBatch} or \cnaclass{EnvironmentMapEffect} on this backend can now be trusted,
+where it previously could not have been even though nothing about running the code signaled that
+anything was wrong. This chapter's own closing summary below already reflected this fix
+implicitly, by not naming Tasks~873/874 among the backend's remaining open items --- the
+paragraph above exists so that omission reads as a confirmed, explained resolution rather than
+as an unexplained gap between two sections of the same chapter.
+
+\section{A real, found-and-fixed rendering bug: silent black meshes}
+
+One bug is worth naming for how invisible it was until specifically tested: this backend's
+graphics-backend class never overrode the effect-aware indexed-draw entry point at all. Any
+indexed draw bound to an \cnaclass{Effect} whose vertex format lacked a \texttt{Color}
+attribute --- which describes essentially any \cnaclass{Model} loaded through
+\texttt{ContentManager} (Chapter~\ref{ch:models-meshes}) --- silently fell back to the base
+class's default implementation, discarding the entire \cnaclass{GpuDrawParams} struct and
+reading an unbound color attribute (which GL defaults to black). The practical, visible
+consequence: any loaded 3D model rendered as a solid black silhouette on this backend,
+regardless of its real diffuse color, texture, or lighting --- fixed by adding a real
+override.
+
+\subsection{A worked example: recognizing the trigger condition before hitting it}
+
+The black-mesh bug's real trigger condition --- a vertex format with no \texttt{Color}
+attribute, which is essentially every \cnaclass{Model} loaded from content rather than
+hand-authored with vertex colors baked in --- is checkable directly against a real
+\cnaclass{VertexDeclaration}, grounded in \texttt{VertexElement}'s real accessor:
+
+\begin{lstlisting}
+bool HasColorAttribute(const VertexDeclaration& decl)
+{
+    for (const VertexElement& element : decl.GetVertexElements()) {
+        if (element.getVertexElementUsageProperty() == VertexElementUsage::Color) {
+            return true;
+        }
+    }
+    return false;
+}
+\end{lstlisting}
+
+Before this bug's fix, any effect-aware indexed draw where \texttt{HasColorAttribute} would
+have returned \texttt{false} was exactly the condition that silently rendered solid black on
+this backend --- which, per the finding above, covers essentially every ordinary
+\cnaclass{Model} draw, since a typical imported mesh carries position/normal/texture-coordinate
+data but no per-vertex color. This is precisely why the bug was invisible for so long despite
+being this common: nothing about it depended on an unusual asset or an edge-case vertex
+layout, only on whether anyone had specifically pixel-tested a textured, unlit 3D model on
+this one backend.
+
+\section[OcclusionQuery: a real implementation, correctness not provable here]{OcclusionQuery: a real implementation whose correctness cannot be fully proven here}
+
+\cnaclass{OcclusionQuery} was previously a pure no-op on this backend; the fix wires the
+query handle into bgfx's own dedicated submit-with-occlusion-query overload, across all
+twelve 3D-draw submission call sites --- no separate correlation/tagging machinery was
+needed the way Vulkan's fix required, since bgfx submits synchronously. Two honestly-documented
+caveats remain: first, pixel/query correctness genuinely \emph{cannot} be established in this
+project's own sandbox, because sabotaging the fix back to a pure no-op produces identical
+\texttt{IsComplete()} / \texttt{PixelCount()} output to the fixed version --- the sandbox's own
+software Mesa driver returns a non-null result even for a query that was never submitted
+anywhere at all, a real ceiling of the software renderer itself, not a CNA defect. Second,
+bgfx's own official usage example attaches an occlusion measurement to a separate, dedicated
+view specifically so the query is not polluted by other geometry sharing the same depth
+buffer; CNA's current fix instead shares whichever view the game's own 3D draw already
+targets --- a real, acknowledged architecture gap against true scene-depth query correctness,
+not yet attempted.
+
+\section{Instancing: a real, working implementation with no dedicated test of its own}
+\label{sec:bgfx-instancing}
+
+\cnaclass{GraphicsDevice}\allowbreak{}\texttt{::DrawInstancedPrimitives()} reaches a real
+backend implementation --- \texttt{BgfxGraphicsBackend::DrawInstancedPrimitivesEx()} is a
+genuine, roughly seventy-line implementation, not a stub --- but grepping
+\texttt{cmake/Tests/BgfxTests.cmake} directly for anything instancing-related finds nothing at
+all, in contrast to \texttt{D3D9}, \texttt{EASYGL}, \texttt{Vulkan}, and \texttt{WebGPU}, each
+of which has its own dedicated instancing test file under \texttt{examples/} (a real
+\texttt{*instanced*.cpp} naming pattern, one file per backend). This backend is the one real
+gap in that otherwise complete cross-backend picture --- implemented, never independently
+pixel-verified.
+
+The real mechanism, read directly from \texttt{GraphicsDevice.cpp}: a game marks one bound
+\cnaclass{VertexBuffer} as the per-instance data source by giving its
+\cnaclass{VertexBufferBinding} an \texttt{InstanceFrequency} greater than zero when calling
+\texttt{SetVertexBuffers()}; \texttt{DrawInstancedPrimitives()} then scans every currently
+bound binding, takes the \emph{first} one whose \texttt{InstanceFrequency} is positive, and
+passes only that one buffer's backend pointer through as \texttt{GpuDrawParams::instanceVb}:
+
+\begin{lstlisting}
+for (const auto& binding : currentVertexBuffers_) {
+    if (binding.getInstanceFrequencyProperty() > 0) {
+        if (auto* vb = binding.getVertexBufferProperty()) {
+            p.instanceVb = &vb->GetBackend();
+            break;
+        }
+    }
+}
+\end{lstlisting}
+
+This pointer-only bridge is why ``fully wired'' would overstate compatibility. The actual
+frequency value is discarded after its greater-than-zero test, both bindings' offsets are
+discarded, and every later positive-frequency stream is ignored. BGFX therefore receives no
+way to reproduce a divisor above one or a third input stream. Its fixed instancing program
+consumes the narrower CNA convention rather than the complete binding array FNA sends to
+FNA3D. Chapter~\ref{ch:backend-architecture},
+\S\ref{sec:drawex-instancing-matrix}, compares that public narrowing and its proof boundary
+across every backend.
+
+Two real, silent-failure paths follow directly from this backend's own implementation of the
+receiving end, worth naming precisely rather than assuming instancing either works or throws:
+if no bound \cnaclass{VertexBufferBinding} has a positive \texttt{InstanceFrequency} at all
+(an easy mistake --- \texttt{SetVertexBuffers()} still succeeds with an ordinary,
+zero-frequency binding), \texttt{p.instanceVb} stays \texttt{nullptr}, and
+\texttt{DrawInstancedPrimitivesEx()}'s own first line, \texttt{if (params.instanceVb ==
+nullptr) return;}, draws nothing at all --- no exception, no logged warning, just an
+instanced draw call that silently does not happen. Separately, even with a correctly-marked
+instance buffer, \texttt{bgfx::getAvailInstanceDataBuffer()} is checked against the requested
+instance count \emph{before} any data is copied or submitted, and an insufficient result
+(this specific renderer or driver genuinely cannot supply enough transient instance-buffer
+capacity for the requested count) takes the identical silent early return --- a real, correct
+response to a real bgfx-level capacity ceiling, but indistinguishable, from the caller's own
+point of view, from the missing-\texttt{InstanceFrequency} mistake above. A game relying on
+GPU instancing on this backend --- a large tiled foliage field, a particle system driven
+through the instanced path rather than \cnaclass{SpriteBatch} --- that silently renders
+nothing should check both of these specific conditions before assuming a deeper rendering
+bug.
+
+One further real detail is worth stating precisely because it is easy to assume otherwise:
+the draw call's own \texttt{world} matrix parameter is explicitly unused on this path (a
+commented-out parameter name in the real signature, \texttt{const Matrix\&
+/*world*/}), because per-instance world transforms are expected to arrive already baked into
+each instance's own per-instance vertex data, not supplied once as a shared uniform the way a
+single, non-instanced draw's \texttt{World} property works --- only \texttt{view} and
+\texttt{projection} are combined into the one \texttt{vp} uniform every instance in the batch
+shares.
+
+\section{Texture3D and TextureCube readback: copy first, then read}
+
+For a long time, \cnaclass{Texture3D} and \cnaclass{TextureCube} had a more serious
+limitation on BGFX than an absent convenience overload: their shared backend interfaces'
+default \texttt{GetData()} implementation was a silent no-op. Task~914 closes that gap without
+making ordinary sampled textures pay for a readback-only usage flag. BGFX documents
+\texttt{BGFX\_TEXTURE\_READ\_BACK} as incompatible with a texture that is also a normal GPU
+resource, so marking the game texture itself readback-capable would undermine the very texture
+that an effect needs to sample.
+
+Instead, each \texttt{GetData()} call creates a short-lived transfer texture exactly matching
+the requested region. For a cube source it is a 2D RGBA8 destination; \texttt{bgfx::blit()}
+selects the requested cube face through the source Z coordinate. For a volume source it is a
+matching 3D destination, so the requested $x,y,z,w,h,depth$ sub-volume remains explicit on
+both sides of the copy. A temporary destination is marked for a blit destination and for
+readback; the ordinary source texture keeps its normal sampled form.
+
+This is not synchronous memory access. \texttt{bgfx::readTexture()} returns the frame at which
+its bytes become available. The shared \texttt{AdvanceFramesUntil()} helper advances up to four
+BGFX frames before the transfer texture is destroyed, so the caller's buffer is not handed back
+before the asynchronous copy completes.
+If a selected BGFX renderer cannot create the temporary transfer texture, CNA now logs the
+missing \texttt{BGFX\_CAPS\_TEXTURE\_BLIT}/\texttt{READ\_BACK} capability instead of reverting
+to the old indistinguishable no-op. The project's Xvfb/llvmpipe OpenGL environment was checked
+to support both capabilities before this path was adopted.
+
+The same change also finally made mip allocation testable: \texttt{mipMap} is now passed through
+to BGFX's \texttt{createTexture3D} and \texttt{createTextureCube} calls instead of being silently
+hardcoded false. Four already-backend-agnostic programs are registered for BGFX rather than being
+reimplemented as cosmetic duplicates: a distinct-slice volume round trip, a non-origin cube
+partial rectangle, a three-level volume mip round trip, and a per-face cube mip round trip.
+Together they distinguish a correct transfer from reading level zero, the wrong cube face, or a
+CPU buffer left untouched by the former interface default.
+
+\section{Viewport and scissor deliberately have different submission scope}
+
+Both public setters first become stored BGFX-side values, but that similarity ends at
+submission. An enabled, nonzero scissor is reissued through \texttt{bgfx::setScissor()} before
+every 3D submit and every SpriteBatch submit, because bgfx scissor is per draw and otherwise
+resets to ``none.'' The Boolean from \cnaclass{RasterizerState} is retained independently from
+the rectangle. \texttt{bgfx\_scissor\_test} proves both halves, then disables the test again to
+exclude a one-way/stuck-state implementation.
+
+Viewport is a view-level rectangle rather than per-draw state. CNA reapplies a stored custom
+rectangle only before 3D submissions and only when the current view ID is zero, the backbuffer.
+SpriteBatch's \texttt{EnsureViewState()} establishes its own full-size view, and render-target
+views stay full target because one frame-global viewport value cannot reconstruct which value
+belonged to which deferred target. The public min/max depth values are discarded as an explicit
+bgfx limitation. The dedicated sub-region test is nevertheless a real public 3D pixel proof:
+a full-NDC quad fills only the left half under a custom viewport, then both halves after the
+full viewport is restored. Section~\ref{sec:backend-viewport-scissor-matrix} places that strong
+test beside its narrower SpriteBatch/render-target scope.
+
+\section{Where this leaves the backend}
+
+The original Phase~72 closure is a useful historical snapshot, but not a freeze-frame: the
+later readback and mip work above is one example of a real capability that would be invisible if
+the old ``only depth bias remains'' shorthand were repeated literally. The still-deliberate
+\texttt{SlopeScaleDepthBias} omission and the two environment-bound render-target checks remain
+important limitations, while later feature work should be evaluated from the current backend
+plan and its registered tests rather than from that earlier closure slogan alone.
