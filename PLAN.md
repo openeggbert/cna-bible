@@ -71,8 +71,8 @@ current, not stale.
 | **A — source audit** | **Complete. 10 of 10 areas delivered and on disk in `audit/`.** |
 | **B — new Table of Contents** | **Complete.** The 12-Part / 79-chapter structure, appendices and old-to-new disposition map are settled in §4. |
 | **C — structural migration** | **Complete.** The 12-Part / 79-chapter / 8-appendix migration, context-sensitive terminology pass, current selector/identifier migration, and module-owned source-path sweep are complete and PDF-verified clean at 645 pages. |
-| **D — chapter writing** | **In progress.** Five verified batches complete: Chapters 19–63. Continue in verified 8–10 chapter batches. |
-| **E — appendices** | Not started. |
+| **D — chapter writing** | **Complete.** Seven verified batches rewrote Chapters 19–79 against the pinned source and sibling evidence. |
+| **E — appendices** | **Next.** Audit and reconcile Appendices A–H as one bounded batch. |
 | **F — whole-book consistency** | Not started. |
 | **G — final verification** | Not started. |
 
@@ -342,6 +342,7 @@ log grep replaces.
 | 2026-08-12 | Phase D batch 4, Chapters 46–54 | **683 pages**, build clean; makeindex 2,395 / 0 / 0; Media, Devices, GamerServices, Storage, networking, Avatar and sharp-runtime integration rewritten against current source; physical pages 456–523 rendered and reviewed; one long-path overflow fixed and re-rendered cleanly |
 | 2026-08-12 | Phase D batch 5, Chapters 55–63 | **691 pages**, build clean; makeindex 2,396 / 0 / 0; sharp-runtime object model and audit layers, sibling foundation libraries, platform contract, MinGW cross-build and Wine engagement completed; physical pages 523–573 rendered and reviewed; one table overlap fixed and re-rendered cleanly |
 | 2026-08-12 | Phase D batch 6, Chapters 64–72 | **689 pages**, build clean; makeindex 2,369 / 0 / 0; Web build/main-loop/evidence split, Android/macOS evidence boundary, CnaTests architecture, reproducible counting, oracle taxonomy, hostile-host verification and discipline gates completed; physical pages 573–607 rendered and reviewed as 9 contact sheets, with tables and long literals inspected full-size; all automated and visual checks green |
+| 2026-08-12 | Phase D batch 7, Chapters 73–79 | **685 pages**, build clean; makeindex 2,289 / 0 / 0; current CI execution boundary, migration procedure, Blupi case study, critical xna4-spec use, samples/examples catalogs, durable project practice and source-grounded roadmap completed; physical pages 607–640 rendered and reviewed as 4 contact sheets through the Appendix A boundary, with the performance table, long headings, lists and query literals inspected full-size; all automated and visual checks green |
 
 ---
 
@@ -513,3 +514,19 @@ mid-session at the owner's direction, so the build and visual passes are availab
   automated checks green. Rendered physical pages 573–607 and reviewed all 35 as nine contact
   sheets; inspected both tables, long monospace literals and gate lists at full size. No clipping,
   overlap, unreadable table, broken heading or other visual defect remains in batch 6.
+
+### 2026-08-12 — Phase D batch 7: Chapters 73–79
+
+- Replaced the CI chapter's workflow inventory with an execution-path audit: six automatic and
+  two dispatch-only workflows, three dead obsolete-selector legs, the narrow Windows corpus,
+  targeted sanitizer/validation coverage, deterministic fuzz cases, dry-run mutation and the
+  absence of code-coverage measurement are now stated separately.
+- Rewrote the migration, xna4-spec, samples/examples, project-practice and roadmap chapters from
+  current pinned evidence. Preserved the Blupi case study's source audit while correcting CNJ and
+  renderer terminology. Recorded the xna4-spec 550/544 contradiction, the 153-sample and 249-demo
+  catalogs, sharp-runtime's query-derived task/ticket counts, and the 54-finding static-audit
+  boundary without converting historical prose into current claims.
+- Ran `tools/verify-book.sh`: 685 pages, makeindex 2,289 accepted / 0 rejected / 0 warnings, all
+  automated checks green. Rendered physical pages 607–640 and reviewed all 34 as four contact
+  sheets; inspected the performance table, long headings, lists and database query at full size.
+  No clipping, overlap, unreadable table, broken heading or other visual defect remains.

@@ -1,264 +1,108 @@
 \chapter{cna-samples and cna-examples}
 \label{ch:samples-and-examples}
 
-This book's ecosystem chapter introduced both of these sibling repositories briefly, as two
-different kinds of proof that CNA works. This chapter returns to them from a practical
-angle: what each one is actually useful for, if you are learning CNA or evaluating it for a
-port.
+The two sibling repositories answer different questions.  \texttt{cna-samples} translates
+Microsoft's historical XNA sample programs and exposes compatibility pressure.  \texttt{cna-examples}
+is one CNA-native catalog application designed to demonstrate the current API.  Neither is a
+substitute for CNA's tests, and neither repository's status prose should be read without its pinned
+revision and evidence type.
 
-\section{cna-samples: historical fidelity, and a precise measurement of one gap}
+\section{cna-samples: ports with provenance}
 
-\texttt{cna-samples} is a direct C\texttt{++} port of the official Microsoft XNA Game
-Studio~4.0 sample collection --- eighty-six samples in the full upstream set --- licensed
-Ms-PL specifically because it is derived Microsoft content, unlike \texttt{cna-examples}
-below. Building it follows the same sibling-checkout pattern as CNA itself
-(Chapter~\ref{ch:building-cna}): \texttt{../cna} and \texttt{../sharp-runtime}
-must sit alongside it on disk.
+At commit \texttt{149a19f}, the repository tracks the official XNA Game Studio~4.0 collection
+under the Microsoft Permissive License.  It expects CNA and sharp-runtime as sibling directories
+and builds each completed sample as an independent executable.
 
-Its real value to a reader of this book is as a precise, checkable measurement of the
-\texttt{.fx} bytecode gap from Chapter~\ref{ch:shader-fx-gap}: 23 of the 86 samples fail to
-run today. Most, but not quite all, of those 23 failures trace to that same root cause --- a
-compiled custom effect the content pipeline cannot load; the exact breakdown is worth stating
-precisely rather than rounding up to ``all of them,'' and the next section does exactly that.
-If you are trying to judge, before starting a port, whether an existing XNA game is likely to
-run on CNA without hitting this gap, \texttt{cna-samples} is the closest thing to a real,
-checkable answer available: a sample that runs is evidence the gap does not block content
-shaped like it; a sample that fails is further, specific confirmation of exactly which content
-shapes still do.
+Its plan accounts for 153 source-archive directories in three populations: 63 completed ports,
+23 tracked placeholders, and 67 explicitly ignored entries.  The filesystem corroborates the
+first two numbers: 86 sample directories each carry a \texttt{missing.md}, and 63 contain a sample
+CMake target.  The ignored set covers tools, redundant training material, platform/service-bound
+programs, and other declared non-targets rather than pretending every archive directory is a
+portable game.
 
-\section{The 23 failures, by actual root cause}
+These are catalog statuses, not fresh run results.  ``Done'' means real port source and a build
+target exist; it does not mean pixel equality, all original scenes, or all current CNA renderers.
+The plan itself records the instructive SimpleAnimation correction: an entry already marked done
+later revealed two CNA graphics defects when re-reviewed.  A sample is excellent integration
+pressure precisely because its behavior crosses boundaries that unit tests may isolate away.
 
-Checking every one of the 23 blocked samples' own \texttt{missing.md} write-ups directly,
-rather than assuming they all share one cause, finds three distinct gaps, not one. Sixteen ---
-\texttt{DistortionSample}, \texttt{NonPhotoRealistic}, \texttt{NormalMapping},
-\texttt{PerPixelLighting}, \texttt{VertexLighting}, \texttt{ShadowMapping},
-\texttt{BillboardSample}, \texttt{InstancedModel}, \texttt{ShatterEffect},
-\texttt{Particles3D}, \texttt{XmlParticles}, \texttt{NetRumble}, \texttt{ShipGame},
-\texttt{ColorReplacement}, \texttt{BloomSample}, and \texttt{CustomModelEffect} --- do trace to
-the \texttt{.fx} bytecode gap this book has already named. \texttt{Spacewar} is blocked on a
-compound of gaps that includes a custom shader among others (a custom \cnaclass{Model},
-\cnaclass{RenderTarget2D} content, and XACT audio, per its own write-up), which this book counts
-in the same bucket since the shader gap alone would already block it. That leaves seven
-failures with a genuinely different cause. Four --- \texttt{CustomModelAnimation},
-\texttt{SkinningSample}, \texttt{SkinnedModelExtensions}, and \texttt{CPUSkinning} --- are
-blocked on skeletal animation playback: CNA can render a static or rigidly-jointed
-\cnaclass{Model} (Chapter~\ref{ch:models-meshes}), but has no equivalent of XNA's own
-\texttt{AnimationClip} / \texttt{Keyframe} / \texttt{AnimationPlayer} pipeline, and no per-vertex
-bone-weight field in the \texttt{.model.json} format at all --- a real, unimplemented CNA
-capability, not merely an unconverted asset. Two more --- \texttt{SplitScreen} and
-\texttt{TankOnHeightmap} --- are blocked on a narrower, related gap: CNA's \texttt{.model.json}
-reader builds only a single flat root bone per model today, so a rigid multi-part mesh whose
-parts must move independently (a tank's turret and wheels, in both samples' case) has nowhere
-to attach a per-mesh transform, even though no animation playback is involved at all. Both of
-these are smaller, more tractable gaps than the shader problem --- narrow, specific, engine-level
-features with a known shape --- but they are not the same gap, and a reader judging a real
-game's own portability by this project's 23-of-86 figure should check which of the three
-buckets their own content actually needs before assuming the \texttt{.fx} story is the whole
-picture.
+\section{Read each missing file as a dated case record}
 
-\section{A sample marked ``Done'' can still hide a real bug}
+Every tracked sample's \texttt{missing.md} explains whether it is complete, simplified, blocked,
+or deliberately scoped.  These files record concrete asset substitutions, content-reader gaps,
+hardware fallbacks, and framework defects found during translation.  They are better evidence
+than a single top-level ratio because they name the affected program and mechanism.
 
-The 63-of-86 samples that do build and run are not, individually, a guarantee of pixel-perfect
-correctness --- and this project's own history has one concrete, instructive case of finding
-that out the hard way. \texttt{SimpleAnimation} (the tank-with-independently-animated-parts
-sample behind the multi-bone gap the previous section just described) was marked ``Done'' once
-the underlying \cnaclass{ModelBone} hierarchy fix landed. A later session, actually building and
-running it rather than trusting the status line, found two real, previously-unnoticed CNA
-bugs: a systematic tank-mesh winding reversal, and a \cnaclass{GraphicsDevice} default-state
-depth-occlusion defect --- both fixed, and both invisible to every earlier check that stopped at
-``does it compile and does the multi-bone hierarchy resolve.'' This is the same lesson
-Chapter~\ref{ch:migration-guide} draws from a different angle and worth restating precisely
-here: a status label of ``Done'' answers ``does this build and run,'' not ``is this pixel-correct
-against the real original,'' and this discovery was serious enough that \texttt{cna-samples}'
-own maintainers responded by opening a dedicated, one-task-per-sample re-audit covering all 153
-samples this project has ever catalogued --- including the 67 never even attempted --- rather
-than trusting any existing ``Done'' status line at face value going forward.
+They also age.  The pinned top-level plan still says XNB is unsupported, while CNA now has a real
+XNB stack.  Some historical paths point to repositories or layouts that no longer exist.  A
+placeholder must therefore be re-tested against current CNA before it is counted as still blocked.
+The right workflow is: read the old reason, locate the current API and test, then either port the
+sample or replace the reason with a new, evidenced boundary.
 
-\subsection{Two real framework bugs a sample found that no unit test had}
+\section{Why official samples remain valuable}
 
-Two further findings from this same porting effort are worth naming because they are not
-sample-specific workarounds at all --- they are genuine CNA framework gaps that a real,
-externally-authored sample happened to exercise in a way no existing unit test did.
-\texttt{LensFlare}'s own occlusion-query technique deliberately draws a small test polygon with
-\cnaclass{BlendState.ColorWriteChannels} set to \texttt{None}, specifically so that polygon
-stays invisible while still occluding the depth/stencil test the query reads --- and on
-\texttt{EasyGL}, it renders as a solid white square instead. Reading
-\texttt{EasyGLRenderer.cpp} directly confirms why: there is no \texttt{glColorMask} call
-anywhere in the file at all, so \cnaclass{ColorWriteChannels} is accepted by the public API and
-silently never reaches the GPU on this renderer --- a real, currently open gap, not something
-this specific sample can work around on its own.
+An official sample combines API calls in the order and lifecycle Microsoft taught users to rely
+on.  That makes it good at finding defects such as default-state mismatch, model winding,
+component timing, asset transformation, or a renderer path that works in isolation but not in a
+whole game.
 
-A second, related finding has a more encouraging ending. The same porting effort's own bug
-list once read that \texttt{GraphicsDevice::Clear(Color)}'s single-argument overload --- the
-overload every 3D sample in the repository actually uses --- never cleared the depth buffer at
-all, only the color target, diverging from real XNA/FNA's own behavior (which clears
-target/depth/stencil together through this exact overload). Reading the real, current
-implementation directly shows this has since been fixed: the single-\texttt{Color} overload now
-forwards to the full \texttt{ClearOptions::Target} / \texttt{DepthBuffer} / \texttt{Stencil}
-form, using the device's own \emph{current} viewport \texttt{MaxDepth}
-as the clear depth --- matching FNA's real \texttt{Viewport.MaxDepth} reference exactly rather
-than a hardcoded \texttt{1.0}, per the fix's own explanatory comment. Both findings make the
-same point about this book's own methodology as much as about CNA itself: a real, externally
-authored sample exercising a code path incidentally (an occlusion-query trick, an ordinary
-\texttt{Clear} call every 3D scene makes) surfaces gaps a unit test built specifically to check
-one property in isolation would never think to combine.
+It is not automatically an independent correctness oracle.  A C\texttt{++} translation can
+misread the C\# source, replace assets, skip a scene, or work around a CNA gap.  The strongest use
+pairs the port with the original sample or another implementation, preserves inputs, and compares
+screenshots or traces.  Only two entries in the plan have direct official MonoGame sample
+counterparts, so that differential opportunity is narrower than the catalog size suggests.
 
-\subsection{The largest framework bug a sample ever found: a project-wide vertex-corruption defect}
+\section{cna-examples: one navigable CNA-native application}
 
-The two findings above are real, but modest in blast radius --- each affects one code path.
-Porting \texttt{InverseKinematics} surfaced something categorically bigger: a silent
-vertex-data corruption bug reachable by \emph{every} \cnaclass{Model} loaded through
-\cnaclass{ContentManager} with a particular, extremely common vertex layout, confirmed as
-the likely true cause of a symptom family this project had been chasing across several
-unrelated samples for multiple sessions.
+At commit \texttt{fa0b49a}, \texttt{cna-examples} contains one application with 13 areas, 79
+categories, and 249 registered demo screens.  A read-only run of its
+\texttt{tools/check\_catalog.py} at that pin confirms every screen is defined, registered exactly
+once, and documented.  Areas span framework, math, content, storage, diagnostics, input, audio,
+devices, networking, media, avatars, and 2D/3D graphics.
 
-The investigation itself is worth walking through, because the isolation technique is as
-instructive as the bug. A straightforward port of a 418-vertex cylinder mesh built and
-loaded without error --- \cnaclass{ContentManager} reported the correct mesh count, vertex
-count, and primitive count --- but the model never rendered, at any camera distance, scale,
-or cull mode, even reduced to one full-scale, unlit, untextured triangle drawn through the
-ordinary \cnaclass{Model} / \cnaclass{ModelMesh}\allowbreak{}\texttt{::Draw()} path. A
-hand-built triangle bypassing the content pipeline entirely failed identically, and so did
-an already-shipped, already-working \texttt{.model.json} loaded fresh into the same code
---- ruling out this one mesh's own data as the cause. A much larger model (3{,}252
-vertices) rendered correctly through the exact same code path at every scale tested,
-including scaled down to match the failing cases' size --- the detail that pointed at the
-\emph{reader} itself, not any one sample's asset or draw call, and hinted that whatever was
-wrong was sensitive to something about the failing meshes specifically, not to rendering in
-general.
+The application offers menu navigation, substring search, direct \texttt{--demo} selection,
+scripted actions, bounded frame counts, and screenshots.  This makes a screen useful both to a
+human exploring the API and to a headless sweep.  Global state restoration matters because all
+screens share one process; the Framework sweep explicitly checks that a resolution-changing demo
+returns the back buffer to its prior size.
 
-The root cause, confirmed by direct source read and a standalone \texttt{sizeof()} probe
-rather than guessed: every CNA vertex struct
-(\cnaclass{VertexPositionColor}, \cnaclass{VertexPositionTexture},
-\cnaclass{VertexPositionColorTexture}, \cnaclass{VertexPositionNormalTexture}) publicly
-inherits the polymorphic \cnaclass{IVertexType}, so every instance carries an 8-byte vtable
-pointer real XNA's own clean, unpadded C\# layouts never had:
+\section{A screenshot sweep needs semantic companions}
 
-\begin{lstlisting}
-sizeof(VertexPositionColor)         = 40   (XNA/clean size: 16)
-sizeof(VertexPositionTexture)       = 32   (XNA/clean size: 20)
-sizeof(VertexPositionColorTexture)  = 56   (XNA/clean size: 24)
-sizeof(VertexPositionNormalTexture) = 40   (XNA/clean size: 32)
-\end{lstlisting}
+The repository distinguishes several verification forms:
 
-The reader, at the time, selected which typed \texttt{VertexBuffer::SetData} overload to
-call for a mesh by comparing the \texttt{.model.json}'s own declared \texttt{"vertexStride"}
---- always one of the clean XNA sizes, since every offline conversion tool writes the
-tightly-packed layout, never the vtable-inflated one --- directly against \texttt{sizeof()}
-of these now-inflated structs. None of the four clean stride values equals its
-\emph{intended} struct's real, inflated size any more --- \textbf{except one}: a declared
-stride of 32 happens, by pure coincidence of \cnaclass{VertexPositionTexture}'s own
-particular field-count-plus-padding arithmetic (8-byte vtable + 12-byte position + 8-byte
-texture-coordinate, padded to 32 for 4-byte alignment), to equal \texttt{sizeof(Vertex}\allowbreak{}
-\texttt{PositionTexture)} --- which is also 32. Every single \texttt{Content.Load<Model>}-based
-sample in the entire \texttt{cna-samples} repository declares stride 32, because every
-conversion tool only ever emits \cnaclass{VertexPositionNormalTexture} data. The reader
-therefore always silently dispatched to the \emph{wrong} branch, reinterpreting raw,
-vtable-free file bytes (laid out as position[12] + normal[12] + texcoord[8], with no
-vtable at all) as an array of real, vtable-shifted \cnaclass{VertexPositionTexture} objects
---- reading each vertex's position and texture-coordinate fields from byte offsets that
-matched neither the file's actual layout nor the struct's own intended one, silently
-corrupting the GPU-bound vertex data for every stride-32 model in the repository, not just
-the one sample that happened to surface it.
+\begin{itemize}
+  \item real hardware interaction for keyboard, mouse, and much of audio;
+  \item Xvfb screenshot/behavior sweeps for Framework and Media;
+  \item C\texttt{++} claim programs for Math, CNJ, and XACT statements rendered on screen;
+  \item self-checking 3D screens that turn readback or occlusion results into a visible verdict;
+  \item graceful explanatory screens for unavailable controller, touch, sensor, camera, or dialog
+        hardware.
+\end{itemize}
 
-This is very likely the true root cause of a symptom family this project had already spent
-several sessions attributing, without ever directly inspecting the rasterizer itself, to
-``near-plane clipping'' across multiple unrelated samples: a corrupted, effectively
-arbitrary byte-offset reinterpretation of a mesh's own position data produces exactly the
-two symptoms already on record --- a degenerate thin line, if the corrupted positions still
-land roughly in the same region of space, or full invisibility, if they land outside the
-view frustum entirely --- without any actual clip-space or projection defect being involved
-at all.
+This separation prevents a caught exception from painting a clean explanatory screen and being
+mistaken for a successful API demonstration.  A screenshot checker can detect blank output or
+overflow; a claim program or self-check must decide whether the described operation was correct.
 
-The fix landed in \texttt{cna} itself --- confirmed by a direct source read of
-\texttt{ContentManager.cpp}'s own
-\texttt{BuildVertexBuffer\allowbreak{}FromRawBytes()} function, whose code comment
-explicitly credits where the bug was actually found:
+\section{The pinned documentation uses obsolete renderer names}
 
-\begin{lstlisting}
-// Task 927: `stride` is always one of XNA's own "clean" (tightly packed, no
-// vtable) sizes -- 16/20/24/32/52/56 -- ... Every CNA vertex struct below
-// publicly inherits the polymorphic IVertexType (a vtable pointer XNA's own
-// C# interface never carried), inflating its real sizeof() past that clean
-// size -- comparing `stride` against sizeof(...) directly, then
-// reinterpret_cast-ing the tightly-packed bytes as an array of those
-// inflated structs, silently reads every vertex field from the wrong byte
-// offset (confirmed the true cause of a long-tracked "near-plane-clipping"/
-// invisible-model symptom family in ../cna-samples). Read each vertex's
-// fields explicitly from the buffer's own known-clean offsets instead...
-\end{lstlisting}
+\texttt{cna-examples} predates CNA's renderer terminology migration.  Its README and build
+examples use the retired backend-named option with internal value \texttt{EASYGL}; current CNA
+uses \texttt{CNA\_GRAPHICS\_RENDERER} with \texttt{OPENGLES3} or another public identity.  The repository's recorded
+249-of-249 EasyGL sweep refers to the implementation family now selected publicly as an EasyGL-
+backed identity.  It must not be copied as a current configure command.
 
-The fix reads each vertex's fields explicitly at known-clean offsets and constructs real,
-normally-initialized C\texttt{++} objects field by field --- letting the compiler resolve
-member layout correctly --- rather than reinterpreting raw bytes as an inflated struct at
-all; two further, larger skinned/PBR stride values sidestep the whole class of risk by
-uploading raw bytes directly (\texttt{SetDataRaw()}) instead of ever constructing a
-vtable-carrying struct from file data. Rebuilding the full sample suite against this fix and
-re-running a previously-affected sample confirmed it live: a tank mesh previously invisible
-at that sample's own camera distance rendered as a complete, correctly-shaped solid
-silhouette afterward, no other change. This is, by a wide margin, the most consequential
-single bug this project's sample-porting effort has ever surfaced --- not because any one
-sample's code was unusual, but precisely because it was not: an ordinary, correctly-written
-port of ordinary content, run far enough to notice that ``the mesh loads without error but
-never appears'' is not the same claim as ``the mesh loaded correctly.''
+The SDL-renderer sweep remains conceptually useful: its 2D-only capability causes 3D demos to
+explain their unavailability rather than throw.  Yet the recorded sweep is a dated result, not a
+run performed during this book audit.  Revalidation should update selector names first and retain
+screenshots plus tool output.
 
-\subsection{The 67 samples beyond the 86: not forgotten, each excluded for a named, structural reason}
+\section{Use both repositories as triangulation}
 
-The ``153 samples this project has ever catalogued'' figure above is worth breaking down
-precisely rather than leaving as one round number, because the 67 beyond the official XNA
-Game~Studio~4.0 collection's own 86 are not an unattempted backlog --- every single one carries
-an individually recorded, structural reason it is permanently out of CNA's own scope, not a gap
-awaiting engineering effort. A first group --- Xbox~LIVE Avatar animation-blending demos
-(\texttt{AvatarAnimationBlending}, \texttt{AvatarMultipleAnimations},
-\texttt{AvatarShadows}, and similar), each depending on the same real Xbox~LIVE Avatar
-body/animation content service this book's own Avatar chapter already covers as permanently
-retired --- is explicitly revisitable only if CNA's own opt-in substitute-body rendering
-(Chapter~\ref{ch:avatar}) is ever judged faithful enough to stand in for it, a decision already
-made and recorded, not merely deferred by omission. A second group is structural for an entirely
-different reason: WinForms design-time tools (\texttt{BitmapFontMaker}, \texttt{CurveEditor},
-\texttt{XnaGraphicsProfileChecker}), content-pipeline-extension-only projects with no
-executable at all, and real Windows-Phone-hardware demos with no portable equivalent
-(\texttt{PushNotifications}, \texttt{SavingEmbeddedImages}) are not \texttt{Game}s in any sense
-this book's own API surface could run at all, regardless of CNA's own capability. A third,
-larger group of 42 samples was never even given an individual tracking entry, precisely because
-each one shares its own exclusion reason identically with every other sample in its group: pre-%
-4.0 XNA archives (2.0/3.0/3.1-era samples this repository's own scope never covered to begin
-with), pure art/rigging asset packs with no C\# code at all, a Visual Basic-language duplicate of
-an already-ported C\# sample, Silverlight/Windows-Phone-native lifecycle demos with no XNA
-\texttt{Game} anywhere in them, and a handful of unofficial, third-party community kits outside
-the official Microsoft collection this project deliberately scopes itself to. None of these 67
-carry a ``revisit trigger'' pointing back at CNA's own engineering backlog the way the 23
-shader-blocked or 6 animation/multi-bone-blocked samples above do --- the honest, checkable
-distinction this book keeps returning to is exactly the one between ``still open, waiting on
-CNA'' and ``permanently out of scope for a reason that has nothing to do with CNA's own
-capability at all,'' and this 67-sample breakdown is precisely that distinction, applied
-completely.
+For learning, start with \texttt{cna-examples}: one build, searchable screens, current CNA-shaped
+code, and explicit evidence helpers.  For migration risk, inspect \texttt{cna-samples}: original
+program provenance, per-sample scope records, and failures driven by realistic combinations.
 
-\section{cna-examples: a coherent, in-app tour, and a project still early}
-
-\texttt{cna-examples} answers a different question, and is deliberately original,
-MIT-licensed work rather than a Microsoft-derived port --- precisely so it can carry a
-license \texttt{cna-samples} cannot. Conceptually modeled on JavaFX's own \texttt{Ensemble}
-sample browser, it is a single, cross-platform application (desktop, Web, and mobile) that
-lets a user navigate from a top-level area (Input, Audio, Devices, Net, Media, 2D Graphics,
-3D Graphics, and so on) down through categories to individual, runnable demonstrations, all
-inside one binary rather than as eighty-six separate small programs.
-
-At the time of writing, this project is an early skeleton: the application boots, shows its
-home menu, and navigates from an area down to a category, but individual demo screens
-themselves are not yet implemented, and only the \texttt{EasyGL} graphics renderer is
-currently targeted. This book states that plainly rather than describing the project by its
-aspiration --- it is worth knowing about specifically because its \emph{intended} final shape
-(one coherent, navigable catalog spanning the 2D/3D graphics machinery of Parts~III--IV and
-the input/audio/devices/networking surface of Part~VII) is a genuinely useful thing to watch for
-as it matures, not because it is usable as a comprehensive demo catalog today.
-
-\section{Reading them together}
-
-The two repositories are complementary rather than redundant. \texttt{cna-samples} tells you
-whether \emph{historical, real XNA content} runs, at the granularity of eighty-six real,
-external samples CNA did not design around. \texttt{cna-examples} is intended to tell you
-whether \emph{CNA's own capabilities}, area by area, are demonstrable in one coherent
-application --- a question \texttt{cna-samples}, being a fixed port of pre-existing content,
-cannot answer on its own, since it can only ever demonstrate what the original eighty-six
-samples happened to exercise.
+For framework confidence, make the two disagree productively.  If a CNA-native screen passes but
+an official port fails, inspect translation and lifecycle.  If both fail across one renderer but
+pass another, localize the renderer.  If both pass yet differ from XNA, bring in a real-XNA or FNA
+oracle.  Examples demonstrate; samples integrate; tests and independent references decide.

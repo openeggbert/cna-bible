@@ -11,8 +11,8 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
 |---|---|
 | cna-bible branch | `next`; local commits are ahead of `origin/next` (push requires explicit external-publication approval) |
 | CNA pinned SHA | `7a64362efef4119bf880459ef1704fb2c52199e2` (`develop` == `origin/develop`, 2026-08-11) |
-| Book builds | **yes** — 691 pages, all automated checks green; Phase D batches 1–5 visually verified |
-| Phase | **A, B, and C complete. Phase D in progress:** five verified batches, Chapters 19–63, are complete. |
+| Book builds | **yes** — 685 pages, all automated checks green; all seven Phase D batches visually verified |
+| Phase | **A, B, C, and D complete:** Chapters 19–79 have been rewritten and verified. Phase E appendices are next. |
 
 ## What is done
 
@@ -103,13 +103,22 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     pages. Every touched physical page 573–606 plus the Chapter 73 boundary at 607 was rendered
     and inspected as nine contact sheets. The Web evidence and counting tables, long literals,
     and gate checklists were also read at full size; no visual correction was required.
+18. **Phase D batch 7 is complete and verified.** Chapters 73–79 now distinguish workflow
+    presence from executed CI; replace the stale migration guide with a current evidence ladder;
+    preserve the source-grounded Blupi case study while translating obsolete selectors; audit
+    xna4-spec as a 544-entry documentation corpus rather than CNA's live gate; reconcile the
+    samples/examples catalogs; derive durable project counts from their sources; and close with
+    a roadmap grounded in the 54 static CNA findings. The consolidated book is 685 pages. Every
+    touched physical page 607–640 through the Appendix A boundary was rendered and inspected;
+    the performance table, long headings, lists and database query were checked at full size.
+    No visual correction was required.
 
 ## Do this next
 
-**Finish Phase D with Chapters 73–79** as the final seven-chapter batch: current CI reality;
-the migration guide and case study; xna4-spec auditing; samples/examples; durable project
-practice; and the source-grounded roadmap. Re-read the relevant audit sections before changing
-each chapter, then run one consolidated build and visual pass through the appendices boundary.
+**Begin Phase E with Appendices A–H.** Audit every quick-reference table and checklist against
+the pinned source and the now-complete chapter text. Preserve useful lookup density, remove stale
+API/count/status claims, and verify the appendix range as one bounded batch before starting the
+whole-book consistency sweep.
 
 ## Do not do these
 
@@ -127,10 +136,10 @@ each chapter, then run one consolidated build and visual pass through the append
 
 ## Verification status
 
-Everything through Phase D batch 6 is verified:
+Everything through Phase D batch 7 is verified:
 
-- `make -C latex book` succeeds; **689 pages**.
-- makeindex: 2,369 entries accepted, 0 rejected, 0 warnings.
+- `make -C latex book` succeeds; **685 pages**.
+- makeindex: 2,289 entries accepted, 0 rejected, 0 warnings.
 - No undefined references, no undefined control sequences, no duplicate labels, no doubled-
   backslash `\ref`, no hard-coded chapter numbers.
 - `git diff --check` clean.
@@ -153,9 +162,12 @@ Everything through Phase D batch 6 is verified:
 - Phase D batch 6 rendered and reviewed every touched physical page, 573–606, as 9 contact sheets
   through the Chapter 73 boundary at 607; the two tables, long literals and gate checklist were
   inspected at full size and were clean on the first visual pass.
+- Phase D batch 7 rendered and reviewed every touched physical page, 607–640, as 4 contact sheets
+  through the Appendix A boundary at 641; the performance table, long headings, lists and query
+  literals were inspected at full size and were clean on the first visual pass.
 
-**No completed writing batch is pending PDF verification.** Continue with the final seven
-chapters, 73–79, as one closing Phase D batch.
+**No completed writing batch is pending PDF verification.** Continue with Appendices A–H as
+Phase E, then perform the whole-book consistency sweep.
 
 ## Environment notes
 
@@ -169,5 +181,5 @@ chapters, 73–79, as one closing Phase D batch.
 
 Ten source-audit reports and the 42-family draw-path matrix are complete against pinned CNA
 `7a64362e`. Phase B settled a 12-Part, 79-chapter, 8-appendix edition; Phase C put it on disk,
-migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–6
-rewrote Chapters 19–72 and verified the resulting 689-page book; Chapters 73–79 are next.
+migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–7
+rewrote Chapters 19–79 and verified the resulting 685-page book; Appendices A–H are next.

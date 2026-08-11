@@ -5,9 +5,10 @@ Every gap and capability this book has described for \texttt{free-direct}
 (Chapter~\ref{ch:freedirect-deep-dive}, and the \texttt{FREEDIRECT} renderer chapter earlier in this book) was
 shaped by two real, specific legacy Windows games: \emph{Speedy Blupi} (via the sibling
 \texttt{free-eggbert} repository) and \emph{Planet Blupi}. This chapter is a worked example of
-the migration methodology from Chapter~\ref{ch:migration-guide}, applied to a real, completed
-case rather than a hypothetical one --- and a demonstration of what a genuine call-site audit
-looks like in practice, not just in principle.
+the migration methodology from Chapter~\ref{ch:migration-guide}, applied to a completed
+compatibility layer and a separately documented native-CNA feasibility study. The games really
+run through \texttt{free-direct}; the direct CNA port remains a proposal, not a completed port.
+Together they demonstrate what a genuine call-site audit looks like in practice.
 
 \section{The methodology: grep both games first, then decide}
 
@@ -246,7 +247,7 @@ DirectDraw surfaces. This is a deliberate choice to isolate the migration's actu
 the new rendering path produce the same pixels?) from an unrelated one (does touching 98 call
 sites introduce new logic bugs?) by not touching those call sites' own signatures at all in the
 first pass. \texttt{SetTransparent2}'s existing color-key-\emph{range} semantics are singled
-out as the one piece of that surface CNA's own built-in \texttt{.cnb} metadata cannot express
+out as the one piece of that surface CNA's current \texttt{.cnj} metadata cannot express
 directly (it represents a single exact RGB value, not an inclusive range), so a
 \emph{Free Eggbert}-specific loader would need to read pixels and zero alpha across the
 requested range by hand via \texttt{GetData} / \texttt{SetData} --- described as
@@ -310,8 +311,11 @@ coverage precisely: start on \texttt{SDL\_RENDERER} for the first portable 2D im
 against \texttt{FREEDIRECT} specifically \emph{because} it depends on \texttt{free-direct} and
 therefore gives a real differential bridge between the old and new public APIs during
 migration, exactly the role this whole chapter has already documented \texttt{free-direct}
-filling; then validate \texttt{EasyGL} independently before claiming true framework-level
-portability, rather than trusting a single renderer's result. \texttt{FREEDIRECT} is explicitly framed
+filling; then validate the current public \texttt{OPENGLES3} identity independently before
+claiming true framework-level portability, rather than trusting a single renderer's result. The
+feasibility document predates the renderer naming migration and calls this identity
+\texttt{EASYGL}; it names the same shared implementation family, not a still-selectable public
+value. \texttt{FREEDIRECT} is explicitly framed
 as a migration tool to be discarded, not a destination: a build still linking \texttt{FREEDIRECT} has
 adopted CNA's API surface but has not actually removed the DirectDraw-era dependency this whole
 port exists to retire.

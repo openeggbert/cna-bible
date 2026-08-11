@@ -1,161 +1,149 @@
 \chapter{Roadmap, Open Gaps, and How to Re-Audit This Book}
 \label{ch:roadmap}
 
-This closing chapter gathers the open threads left throughout the book into one place:
-incremental API coverage first, then the specific named gaps, then cross-platform
-strengthening. It also illustrates one final project lesson: a roadmap is a dated snapshot.
-CNA's own top-level README and graphics feature matrix both still contain claims that newer
-plans, tests, and implementation have superseded. The source and executable evidence win.
+This roadmap is a snapshot against CNA \texttt{7a64362e} and the sibling revisions pinned in the
+edition plan.  It deliberately avoids one global completion percentage.  API presence, behavior,
+renderer evidence, platform execution, and automation are different axes, and several CNA
+documents carrying headline percentages are already stale about XNB, glTF, renderers, or tests.
 
-\section{Continued API coverage, class by class}
+\section{Triage correctness before expanding breadth}
 
-The largest item on CNA's own roadmap is also its least dramatic: continuing to expand XNA
-API coverage and behavior parity incrementally, class by class, rather than in one large
-push. Chapter~\ref{ch:what-is-cna} gave the dated headline count --- 227 of 245 public FNA
-types present (92.7\%, computed 2026-07-11). That is a raw public-type-presence count, not a
-behavioral score: it cannot express the later binary-content work implemented under internal
-\texttt{CNA::Internal::Xnb} readers, and its accompanying README prose still describes
-\texttt{.Media} shells that Chapter~\ref{ch:media-system}'s later audit closed. This kind of
-gap closes the way most of this book's own bug histories closed: one class, one audit, one
-fix at a time, tracked through the \texttt{plan\_*.md} / \texttt{AUDIT.md} mechanism from
-Chapter~\ref{ch:project-practice}.
+The source audit recorded 54 CNA findings in \texttt{cnabugs.md}.  They were derived by static
+reading and configuration analysis; CNA itself was not built or modified during that audit.  The
+first upstream step is therefore triage and focused reproduction, not bulk patching.
 
-\section{The single biggest named gap: compiled .fx bytecode}
+High-value starting points have small counterexamples and broad consequences: aliased
+\texttt{Matrix::Transpose} corrupts \texttt{Plane::Transform}; StorageContainer lacks path
+containment; the CNJ parser has no depth bound; the main CI workflow cannot configure; several
+capability queries promise operations their renderer refuses.  Each should receive a minimal
+failing test, a scoped fix, controls on unaffected renderers, and a current evidence record.
 
-Chapter~\ref{ch:shader-fx-gap} covered this in full, and it remains, in the
-project's own words, the single biggest real gap in CNA: no support for loading a compiled
-\texttt{.fx} shader bytecode blob the way a real XNA content pipeline would produce one, with
-a real, measured cost of 23 of the 86 official XNA samples in \texttt{cna-samples}
-(Chapter~\ref{ch:samples-and-examples}) failing to run as a direct result. The
-\texttt{ShaderEffect} runtime-HLSL-compilation path on the three Direct3D renderers
-(Chapter~\ref{ch:direct3d-backends}) is a real, working alternative for new or adapted
-shaders, but is not bytecode compatibility, and closing this gap for real would mean building
-something comparable in scope to a second MojoShader-style bytecode cross-compiler.
+The audit list must not become a second stale bug tracker.  Once triaged upstream, rows need an
+issue or commit pointer and a status tied to a reproducer.  Findings rejected as intentional
+behavior should move into the documented-deviation contract rather than disappear.
 
-\section{The .xnb content pipeline: real, with explicit boundaries}
+\section{Complete capability truth before adding renderers}
 
-The ``active reconsideration'' described by an earlier version of this chapter is over.
-Every planned phase through G is complete, and the implementation contains a
-real read-side pipeline: container and primitive parsing, LZX decompression, textures,
-\cnaclass{SpriteFont}, audio and video references, all five stock effects, and the
-\cnaclass{Model} object graph. A single idempotent registration helper gives a game one
-startup call, while \cnaclass{ContentManager} resolves \texttt{.xnb} ahead of a
-literal path and \texttt{.cnj}. Chapter~\ref{ch:content-and-assets} covers the reader set,
-real external fixtures, fuzzing findings, and custom-reader extension point in detail.
+CNA already exposes 46 identities across 42 families.  The next renderer milestone is not a
+larger count; it is truthful answers from the existing contract.  HEADLESS, SOFTWARE, and WEBGPU
+advertise MRT while rejecting multi-target use; WebGPU and bgfx overclaim custom effects; several
+query and stencil reports disagree with implementation; DIRECTX10 inherits an unconditional
+colored extended-draw downgrade.
 
-What remains is bounded rather than architectural uncertainty. CNA deliberately consumes but
-does not produce \texttt{.xnb}; the general \texttt{EffectReader} still rejects compiled
-platform shader bytecode, tying directly to the preceding \texttt{.fx} gap; implicit
-\texttt{ReflectiveReader<T>} content must be rebuilt around an explicit writer/reader pair;
-unregistered closed generic-reader combinations remain unsupported; and LZ4-compressed
-MonoGame content has a recognized but unimplemented decoder path. The broader official-sample
-compatibility inventory is \texttt{plan\_xnb.md}'s deliberately deferred Phase~I. Those are
-specific compatibility boundaries around a working pipeline, not evidence that the pipeline
-itself is merely being considered.
+Build a table-driven capability conformance suite that pairs every \texttt{true} with a usable
+factory/draw case and every \texttt{false} with a deterministic refusal.  Keep capability tests
+renderer-owned where one configure can exercise them and retain cross-renderer public fixtures as
+controls.  A registry count cannot substitute for this behavioral matrix.
 
-\section{Named architecture-decision gaps}
+\section{Close the arbitrary-effect boundary deliberately}
 
-Three specific gaps recur across this book's renderer chapters, each requiring a project-owner
-decision rather than more engineering effort on its own:
+The public compiled-effect constructor and general XNB \texttt{EffectReader} remain unsupported.
+FNA3D proves that real XNA stock \texttt{.fxb} blobs can execute through MojoShader, while D3D9
+vendors source and compares much of its compiled instruction stream.  These are strong foundations,
+not a completed arbitrary-effect pipeline.
 
-\begin{itemize}
-  \item \texttt{SDL\_RENDERER}'s \cnaclass{TextureAddressMode::Wrap} / \texttt{Mirror} via
-        \cnaclass{SpriteBatch} (Chapter~\ref{ch:sdl-renderer}) --- blocked on choosing between
-        three concrete implementation strategies, each with a real tradeoff.
-  \item \texttt{SDL\_RENDERER}'s \cnaclass{Texture3D} / \cnaclass{TextureCube} construction
-        (Chapter~\ref{ch:sdl-renderer}) --- blocked because the safer fix (throwing at
-        construction rather than silently succeeding) has a confirmed 94-test blast radius.
-  \item \texttt{EasyGL}'s real, non-\texttt{Color} \cnaclass{SurfaceFormat} GPU forwarding
-        (Chapter~\ref{ch:easygl-backend}) --- blocked because it conflicts with an
-        already-shipped \texttt{Texture::ValidateFormat} contract the project has already
-        committed tests against.
-\end{itemize}
+A roadmap decision must define accepted bytecode, reflection, parameter and technique mapping,
+renderer translation routes, failure behavior, and licensing/provenance.  Vulkan needs a path from
+MojoShader's output to SPIR-V; bgfx expects offline binaries; several renderers intentionally have no
+custom-effect support.  Do not hide that matrix behind one Boolean or widen the public constructor
+until each supported identity has an engagement test.
 
-\section{A closed texture-architecture gap, and the narrower remainder}
+\section{Harden content symmetrically}
 
-The removed fourth item is not an editorial omission. It was closed in the implementation,
-and keeping it would repeat a stale row in
-\texttt{docs/\allowbreak{}graphics-\allowbreak{}renderer-\allowbreak{}feature-\allowbreak{}matrix.md}.
-The current source separates four facts that the old summary collapsed:
+XNB support is real and substantial.  Remaining work includes whole-file size enforcement, named
+unsupported reader/version policy, LZ4's explicit deferred status, writer/tooling decisions, and
+continued hostile-input tests.  CNJ needs the same depth/size/fuzz discipline already applied to
+XNB; its current recursive parser is an obvious first target.
 
-\begin{center}
-\small
-\begin{tabular}{lp{9.0cm}}
-\toprule
-\textbf{Layer} & \textbf{Current implementation} \\
-\midrule
-Public hierarchy &
-  \cnaclass{Texture3D} and \cnaclass{TextureCube} both derive from \cnaclass{Texture}, matching
-  FNA. Their regression suites assign each type into a real
-  \cnaclass{GraphicsDevice::Textures} slot. \\
-Generic texture collection &
-  \cnaclass{TextureCollection} currently stores, returns, and removes disposed resources; no
-  draw path consumes the collection for \emph{any} texture type. This is broader unfinished
-  plumbing, not a cube/volume inheritance block. \\
-Custom \cnaclass{ShaderEffect} &
-  Typed 2D, cube, and volume overloads exist. EasyGL overrides all three renderer hooks and has
-  dedicated cube/volume shader pixel tests; the other effect renderers inherit no-op
-  cube/volume hooks. This is the real, narrower renderer-coverage remainder. \\
-Stock effects &
-  Their typed draw parameters are independent of the generic collection. In particular,
-  \cnaclass{EnvironmentMapEffect} already drives real cube sampling on the Direct3D paths
-  covered earlier in this book. \\
-\bottomrule
-\end{tabular}
-\end{center}
+The façade has additional contract work: \texttt{Unload()} disposes nothing,
+\texttt{CanDeserializeIntoExistingObject} is never consulted, Song/Video can resolve a same-name
+CNJ they cannot parse, and manifest data is introspection rather than resolution.  Fixes should
+retain the separation between caller-selected asset paths and file-internal reference containment.
 
-Chapter~\ref{ch:textures-rendertargets} already records the Task~863 inheritance correction.
-The lesson here is about roadmap maintenance: an attractive earlier seven-renderer comparison was still
-wrong because its premise had expired. The actionable work is to wire and verify typed custom
-effect binding on additional programmable renderers, or separately decide whether
-\cnaclass{GraphicsDevice::Textures} should become a real draw-time binding source for all
-texture types.
+\section{Finish glTF semantics, not just import coverage}
 
-\section{Strengthening cross-platform execution and validation}
+The conformance ladder proves D1--D4 and D8 repairs and exposes remaining material and animation
+limits.  Runtime import still discards a computed PBR UV-set mismatch warning, ignores declared
+required extensions, supports only the first mesh group in one route, and applies position-only
+morphing to some PBR strides without diagnosis.  D6/D7-era material and rigid-animation work
+remain the clearest compatibility targets.
 
-The roadmap's final, broadest item is exactly what this Part's cross-platform chapters
-covered in depth: deepening validation on Windows (moving from Wine-verified to genuinely
-Windows-hardware-verified, an open item on every one of the three Direct3D renderers), the
-Web (moving \texttt{CANVAS} from code-reviewed to actually pixel-verified in a real browser,
-Chapter~\ref{ch:canvas-ascii-backends}), and Android (broadening beyond the single real
-x86\_64 emulator configuration this project currently verifies against).
+Advance one independently generated fixture at a time.  Update the manifest, scene digest,
+semantic golden, runtime/offline parity, and renderer evidence together.  Run a pinned external
+glTF validator rather than claiming generator self-validation that the current tool does not
+perform.
 
-This item is not purely aspirational --- it already has a real, concrete precedent worth citing
-as evidence the strategy works, not just as a plan. The Android sensor bridge's own
-bounded-timeout bug (Chapter~\ref{ch:android-ndk}) was invisible to careful manual review and
-to the ordinary test suite alike; it was found only once a dedicated \texttt{devices-tsan} run
-was specifically constructed against real, concurrent \texttt{Start()} / \texttt{Stop()} traffic
-under load. The same is true of \texttt{sharp-runtime}'s own \cnaclass{Channel} deadlock
-(Chapter~\ref{ch:sharp-runtime-namespaces}) and the D3D9 renderer's real swap-chain format restriction
-(Chapter~\ref{ch:windows-wine}), each surfaced only once the corresponding platform's own
-verification loop was deepened past what a prior pass had considered sufficient. ``Strengthen
-cross-platform validation'' is not a vague aspiration in this project's own history --- it is a
-strategy already shown, independently, three separate times, to find real bugs no earlier pass
-had caught, which is the strongest argument available for continuing to invest in it rather
-than treating current coverage as good enough.
+\section{Turn platform claims into retained artifacts}
 
-\section{A gap in this book itself, closed: \texttt{SDL\_GPU} now has its own chapter}
+Android needs a fresh graphics build and emulator frame before any renderer is claimed.  Retain
+the APK, configure log, logcat, screenshot, ABI/API/NDK identity, and lifecycle trace.  Then cover
+background, foreground, low-memory, termination, asset access through ContentManager, and physical
+hardware.
 
-An earlier pass through this chapter named a gap in this book itself, not in CNA's own code:
-\texttt{SDL\_GPU}, a real, extensively-verified renderer, had never received dedicated Part~IV
-coverage despite maturing alongside every other renderer this book covers. That gap is closed as
-of this pass --- Chapter~\ref{ch:sdlgpu-backend} now gives it the same full treatment every
-other renderer receives (the Y-flip bug a real screenshot caught, the storage-buffer workaround
-for a real undocumented push-uniform cap, the runtime \texttt{libshaderc} compile, and the
-render-target use-after-free closed before it ever shipped). This is left here, briefly, as a
-tracking pointer rather than deleted outright, the same convention
-Chapter~\ref{ch:project-practice} already describes for a superseded task row in this
-ecosystem's own \texttt{plan\_*.md} files --- a reader who remembers this chapter naming the gap
-should not be left looking for it here once it no longer exists, but pointed forward to where
-the real content actually landed.
+The adapted Metal tree needs a native compile, link, validation, pixel, Retina, and frame-pacing run;
+the historical pre-adaptation workflow does not close that boundary.  iOS/tvOS require a designed
+host and remain explicit non-claims.  WebGL1, WebGL2, and Canvas need the HTTP-served browser verdict
+and compositor pattern already demonstrated by HTML-DOM/SVG-DOM, plus context-loss and shader
+compilation evidence.
 
-\section{A closing note on how to use this chapter}
+For Windows, retain the MinGW/Wine route while adding genuine native MSVC evidence where the public
+support table claims it.  Every result must name translation runtime, GPU/software device, display,
+and prefix.  A compatibility-layer pass is valuable and is not a native-Windows pass.
 
-Every gap named in this chapter began with a specific, dated source --- \texttt{NEXT.md}, a
-\texttt{plan\_*.md} file, or a renderer's own documentation, per the practice conventions from
-Chapter~\ref{ch:project-practice}. This final audit found that two such sources had themselves
-gone stale: the README still described the absence of an XNB reader, and the graphics matrix
-still described the pre-Task~863 texture hierarchy. The right way to use this chapter is
-therefore not to trust even its cited summaries indefinitely, but to follow them to current
-headers, implementations, and tests. That is the same discipline this project asks of itself,
-and the same discipline this book has tried to model throughout.
+\section{Repair the verification apparatus itself}
+
+Replace obsolete \texttt{EASYGL} workflow selectors with public identities and make the full Linux
+and sanitizer legs reach compilation.  Update the four post-modularization validator paths, run the
+Direct2D mutation campaign rather than only anchor dry-run, fix Device filter drift, and decide one
+authoritative direct-binary-versus-CTest policy for the full suite.
+
+Label all renderer registrations consistently or publish generated selectors that do not depend on
+labels.  Make link-closure evidence generator-independent instead of silently skipping under the
+project's own presets.  Bring SVG-DOM's existing browser runner into automation and ensure the
+release gates, not only their non-release validators, are exercised.
+
+Add code-coverage tooling only with a defined question.  Line coverage can identify untouched code
+but cannot replace oracle authority, mutation sensitivity, or runtime engagement.  Keep API-surface
+``coverage'' under a different name so the metrics cannot be confused.
+
+\section{Make CNA consumable as a package}
+
+The pinned build is designed around sibling \texttt{add\_subdirectory} composition and has no
+complete install/export package for CNA.  A mature consumer path should define installed module
+targets, public headers, renderer selection, dependency discovery, version compatibility, and a
+small out-of-tree package consumer test.  Sibling libraries such as meta-gl already demonstrate
+that installed-package and exported-symbol tests can make this boundary executable.
+
+Packaging work must preserve the one-SDL-instance invariant and optional-module closure.  It should
+not force every renderer dependency onto a consumer that selects one identity.
+
+\section{Reconcile documentation from generated facts}
+
+Remove or banner claims that CNA cannot read XNB, that WebGL2 or Android graphics is pixel-verified,
+that 42 means public identities, or that old source paths still register gates.  Generate renderer
+identity/family tables, reader inventories, workflow summaries, and test-selection tables from the
+same sources their validators use.
+
+Dated reports may remain for history if their revision and superseding authority are prominent.
+Comments should explain why; scripts and tests should establish whether.  The fastest way to create
+new drift is to copy a corrected number into five prose files without a derivation.
+
+\section{How to re-audit this edition}
+
+A future edition should repeat a bounded protocol:
+
+\begin{enumerate}
+  \item pin CNA and every cited sibling SHA; record branch divergence and keep them read-only;
+  \item enumerate physical modules, public renderer identities/families, build options, workflows,
+        scripts, test registration paths, content readers, and sample/example catalogs mechanically;
+  \item re-run focused source audits by subsystem and record contradictions separately from defects;
+  \item verify every explicit path and identifier in the manuscript against the pin;
+  \item rebuild the complete book, require clean references/index/stale-term checks, render every
+        changed physical page, and inspect high-risk tables and listings at full size;
+  \item update \texttt{PLAN.md} and \texttt{NEXT.md} with commands, counts, page ranges, visual
+        findings, fixes, and the next bounded batch.
+\end{enumerate}
+
+The edition should change when evidence changes, not merely when prose ages.  The final lesson of
+CNA's own verification culture applies to this book as well: a claim is durable only when a future
+reader can prove that the intended source, runtime, oracle, and page actually engaged.

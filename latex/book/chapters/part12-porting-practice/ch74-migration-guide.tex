@@ -1,281 +1,132 @@
 \chapter{Migrating an XNA or FNA Game to CNA}
 \label{ch:migration-guide}
 
-This chapter is the practical payoff of the preceding parts: a checklist for judging, before you
-start, how much of an existing XNA or FNA game's own code and content will simply work on
-CNA, and which specific gaps this book has already named in detail are the ones likely to
-cost you real time.
+CNA preserves much of XNA's public shape in C\texttt{++}; it does not make a C\# game binary- or
+source-compatible.  A successful migration is a controlled translation with explicit asset,
+renderer, service, and verification decisions.  The steps below use the implementation and
+evidence boundaries established in the preceding Parts rather than CNA's stale migration prose.
 
-\section{Step one: is this a C\# port, or a from-scratch rewrite?}
+\section{Freeze a behavioral baseline first}
 
-Be clear about which kind of migration you are actually doing. CNA preserves XNA's API
-shape, not its language --- porting an existing C\# XNA/FNA game means rewriting its logic in
-C\texttt{++} against the equivalent CNA classes, following the same conventions
-Chapter~\ref{ch:design-philosophy} described for CNA's own internal porting work:
-matching class and method names exactly, using \texttt{sharp-runtime}'s type aliases rather
-than raw C\texttt{++} primitives, and translating C\# properties into the
-\texttt{getXProperty()} / \texttt{setXProperty()} convention. This is mechanical translation
-work for code that only ever touched the public XNA surface, and genuinely difficult work for
-code that reached into .NET-specific behavior (reflection, real garbage collection timing,
-LINQ) that \texttt{sharp-runtime} (Chapter~\ref{ch:sharp-runtime-overview}) deliberately does
-not reproduce.
+Before changing language or framework, record the original game at a named commit and capture
+inputs that matter: deterministic simulation traces, representative screenshots, save files,
+network packets, audio events, and asset inventories.  Record resolution, fixed-step interval,
+random seeds, locale, and platform.  A port without a baseline can become internally consistent
+while drifting from the game it was meant to preserve.
 
-\begin{lstlisting}
-// Worked example: a small, typical XNA Update()/Draw() pair, and its
-// mechanical CNA translation -- the shape every line maps to directly.
+Classify the starting point.  A C\# XNA or FNA game requires a language translation; an existing
+C\texttt{++} reconstruction may need only its platform-service boundary replaced.  Keep these
+risks separate.  Translating game logic and redesigning rendering in one pass destroys the
+ability to attribute a mismatch.
 
-// --- Original C# (XNA/FNA) ---
-// protected override void Update(GameTime gameTime)
-// {
-//     float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
-//     position += velocity * dt;
-//     if (Keyboard.GetState().IsKeyDown(Keys.Space))
-//         velocity.Y = -jumpSpeed;
-//     base.Update(gameTime);
-// }
-//
-// protected override void Draw(GameTime gameTime)
-// {
-//     GraphicsDevice.Clear(Color.CornflowerBlue);
-//     spriteBatch.Begin();
-//     spriteBatch.Draw(texture, position, Color.White);
-//     spriteBatch.End();
-//     base.Draw(gameTime);
-// }
+\section{Translate the API shape mechanically}
 
-// --- Mechanical CNA C++23 translation ---
-void MyGame::Update(GameTime& gameTime)
-{
-    float dt = static_cast<float>(gameTime.getElapsedGameTimeProperty().getTotalSecondsProperty());
-    position_ += velocity_ * dt;
-    if (Keyboard::GetState().IsKeyDown(Keys::Space))
-        velocity_.Y = -jumpSpeed_;
-    Game::Update(gameTime);
-}
+Namespaces and type/member names generally map directly from dots to C\texttt{++} scopes.  The
+largest systematic difference is properties: a C\# read of \texttt{obj.Value} becomes
+\texttt{obj.getValueProperty()}, and an assignment becomes
+\texttt{obj.setValueProperty(value)}.  Events, nullable values, collections, ownership, and
+\texttt{ref}/\texttt{out} arguments also need explicit C\texttt{++} idioms.
 
-void MyGame::Draw(const GameTime& gameTime)
-{
-    getGraphicsDeviceProperty().Clear(Color::CornflowerBlue);
-    spriteBatch_->Begin();
-    spriteBatch_->Draw(texture_, position_, Color::White);
-    spriteBatch_->End();
-    Game::Draw(gameTime);
-}
-\end{lstlisting}
+Do not redesign names while translating.  First reach compiling, behaviorally comparable code;
+then isolate genuinely game-owned abstractions.  Compiler errors are useful inventory signals when
+the translation remains mechanical.  Broad wrapper layers that hide every mismatch too early can
+make an unimplemented CNA behavior look like a game bug.
 
-\section{Step two: audit content against the two biggest named gaps}
+\section{Inventory content by actual reader route}
 
-Before touching gameplay code, check the game's own content against the two gaps this book
-has returned to most often:
+CNA can read real XNB files.  Its binary stack handles the container, LZX, a registered reader
+table, shared resources, stock effects, graphics assets, models, and several audio encodings, with
+30 checked-in fixtures at the audited revision.  Old statements that XNB is entirely unsupported
+are false.
 
-\begin{itemize}
-  \item \textbf{Compiled \texttt{.fx} shader bytecode} (Chapter~\ref{ch:shader-fx-gap}).
-        Any custom shader compiled into the original game's content pipeline will hit
-        \cnaclass{Effect}'s bytecode constructor, which always throws. A game built entirely
-        on the five stock effects and \cnaclass{SpriteBatch} (Chapter~\ref{ch:stock-effects})
-        is unaffected; \texttt{cna-samples}' own 23-of-86 failure count
-        (Chapter~\ref{ch:samples-and-examples}) is a real, checkable proxy for how common
-        this gap actually is across real XNA content.
-  \item \textbf{The \texttt{.xnb} content pipeline} (Chapter~\ref{ch:content-and-assets}).
-        Real \texttt{.xnb} compiled assets do not load directly except through the specific
-        readers that exist for them --- \cnaclass{Model} has a genuine, wire-compatible
-        \texttt{.xnb} reader today (Chapter~\ref{ch:models-meshes}); most other asset types do
-        not yet, and need converting to CNA's raw-file-plus-JSON-descriptor convention
-        instead.
-\end{itemize}
+The boundary is still narrower than XNA's build pipeline.  CNA does not produce XNB files, the
+reader registry is explicit rather than reflective, several reader forms remain unsupported, LZ4
+is refused, and the general \texttt{EffectReader} rejects compiled platform shader bytecode by
+name.  Stock-effect XNB readers are distinct and do work.  Test every concrete asset against the
+selected route rather than reasoning from its extension alone.
 
-\section{Step three: check vertex layouts against the five recognized strides}
+Loose assets use CNJ envelopes, native image/audio/video formats, or direct glTF/GLB model loading.
+Runtime glTF and offline \texttt{gltf\_to\_cnj} share one import core but retain material,
+animation, and multi-group limitations described in Part~VI.  A migration manifest should map
+every source asset to one of these routes, its expected reader, sidecars, and verification oracle.
 
-If the game does any custom 3D rendering, Chapter~\ref{ch:textures-rendertargets}'s vertex
-layout finding is worth checking directly: every hardware renderer selects its GPU
-vertex-attribute layout by raw byte stride, not by the \cnaclass{VertexDeclaration} you
-actually wrote, and only five specific strides (16, 20, 24, 32, and 52 bytes, corresponding to
-the standard \cnaclass{VertexPositionColor} / \texttt{Texture} / \texttt{ColorTexture} /
-\texttt{NormalTexture} structs and one skinned layout) are guaranteed to render correctly
-everywhere. A custom vertex format outside that set will degrade differently on each renderer
---- Chapter~\ref{ch:textures-rendertargets} gives the specific per-renderer fallback behavior
---- so this is worth checking before porting any custom mesh format, not after seeing
-incorrect rendering on one specific renderer.
+\section{Treat custom shaders as renderer contracts}
 
-\begin{lstlisting}
-// Worked example: computing a custom vertex format's stride by hand
-// before porting it, the check this step actually means in practice.
-struct MyCustomVertex
-{
-    Vector3 Position;  // 12 bytes
-    Vector3 Normal;    // 12 bytes
-    Vector2 TexCoord;  // 8 bytes
-    Vector4 Tangent;   // 16 bytes
-};
-// sizeof(MyCustomVertex) == 48 bytes -- NOT one of the five recognized
-// strides (16/20/24/32/52), so this format is not guaranteed to render
-// identically across every renderer. Decide up front: drop the Tangent
-// field to reach the 32-byte NormalTexture stride, or accept and test
-// the per-renderer fallback behavior Chapter 17 documents for an
-// unrecognized stride, rather than discovering the mismatch as a visual
-// bug later.
-static_assert(sizeof(MyCustomVertex) == 48);
-\end{lstlisting}
+\texttt{Effect(GraphicsDevice\&, byte[])} still throws for arbitrary compiled XNA effect bytecode,
+and the general XNB Effect reader is a named refusal.  This remains a major porting boundary.
+FNA3D's execution of six vendored XNA stock \texttt{.fxb} blobs through MojoShader is real but does
+not make the public arbitrary-effect constructor work.
 
-\section[Step four: networking and gamer services needs]{Step four: check what your game actually needs from networking and gamer services}
+\texttt{ShaderEffect} is the user-facing source/program route, and accepted language varies by
+renderer: GLSL on several GL paths, HLSL on Direct3D paths, SPIR-V bytes on Vulkan, marker-gated
+SkSL on Skia, and explicit refusal or null on others.  Choose the target renderer before choosing
+a shader migration strategy.  A portable game may need renderer-specific programs or may need to
+stay within stock effects.
 
-If the original game used Xbox Live features, Chapter~\ref{ch:networking} and
-Chapter~\ref{ch:gamerservices} give you the exact real-versus-stub breakdown: system-link
-multiplayer, local achievements, and local leaderboards are genuinely functional; matchmaking,
-Xbox Live friends, and most of the \cnaclass{Guide} system's UI are documented stubs with no
-local equivalent to fall back to, because there is no local substitute for a service that
-required a live Xbox Live connection to begin with. A game whose multiplayer was always
-system-link/LAN-based (as \emph{Speedy Blupi} and \emph{Planet Blupi} were, per
-Chapter~\ref{ch:blupi-case-study}) ports its networking with comparatively little friction;
-a game built around Xbox Live matchmaking or friends lists does not have a real target to
-port that part to at all. One specific, easy-to-miss gotcha worth checking before porting any
-achievement-toast UI: \cnaclass{Achievement} objects \cnaclass{SignedInGamer::GetAchievements()}
-returns carry real \texttt{Key} / \texttt{IsEarned} / \texttt{EarnedDateTime} data, but
-\texttt{Name}, \texttt{Description}, and \texttt{GamerScore} stay at fixed, empty defaults ---
-the original game's own achievement catalog metadata never had a local source of truth to begin
-with (Chapter~\ref{ch:gamerservices}'s own worked example covers this precisely). A game whose
-achievement-earned toast reads directly from the returned \cnaclass{Achievement} object's own
-\texttt{Name} / \texttt{GamerScore} fields will port and compile cleanly, then silently render a
-blank name and \texttt{+0G} for every single achievement --- the fix is maintaining your own
-small achievement-metadata table keyed by \texttt{Key}, not something this namespace can supply
-for you.
+\section{Audit vertex layouts and model assumptions}
 
-A second, equally easy-to-miss gotcha in the same namespace, worth checking before porting any
-code that relies on a specific session capacity: every \cnaclass{NetworkSession::Create}/%
-\texttt{BeginCreate} overload's own \texttt{maxGamers} argument is silently never honored ---
-the constructed session's real \texttt{MaxGamers} is always a hardcoded \texttt{69}, matching
-genuine historical Xbox~360/Windows XNA~4.0 behavior for this exact call shape, not a CNA bug
-(Chapter~\ref{ch:networking}'s own worked example covers the precise mechanism). A game that
-calls \texttt{Create(SystemLink, maxLocalGamers, 8)} expecting an eight-player cap and enforces
-nothing further at the application level will accept a ninth, tenth, or sixty-ninth join before
-the framework itself ever refuses one --- if the original game's own design assumed the
-requested cap was load-bearing, that enforcement needs to move into the game's own code
-explicitly, not stay implicit in the constructor call.
+The glTF importer recognizes seven packed strides, while the upload path has eight cases because
+one semantic form expands the dispatch.  A custom XNA \texttt{VertexDeclaration} is not guaranteed
+to fit every renderer or importer route.  Record element offsets, formats, usages, stride, index
+width, primitive topology, and whether data comes through XNB, glTF, CNJ, or direct buffers.
 
-\section{Step five: pick and verify your graphics renderer}
+Models have four routes with different evidence: hand-built runtime objects, binary XNB,
+runtime glTF/GLB, and CNJ/offline import.  Skinning also has two ordering systems.  Preserve joint,
+scene-node, and palette index spaces explicitly; do not infer that a model drawing on one backend
+proves every route or renderer.
 
-Part~IV gave a full per-renderer account; for a porting decision specifically,
-three questions matter most. Is the game 2D-only? \texttt{SDL\_RENDERER} or \texttt{OPENGLES3}
-are both mature, exhaustively pixel-verified choices (Chapters~\ref{ch:sdl-renderer}
-and~\ref{ch:easygl-backend}). Does it need real 3D with stock effects only?
-\texttt{OPENGLES3} or \texttt{VULKAN} are the most broadly verified choices, with BGFX close
-behind (Chapters~\ref{ch:easygl-backend}--\ref{ch:bgfx-backend}). Does correctness against
-real, historical XNA rendering matter more than portability --- for instance, a game whose
-original visual reference is what a screenshot-comparison test suite checks against?
-the \texttt{DIRECTX9} renderer's oracle-verified Direct3D~9 pixel authenticity
-(Chapter~\ref{ch:direct3d-backends}) is the only renderer built specifically for that bar,
-at the cost of being Windows-only
-(cross-compiled and Wine-verified, per Chapter~\ref{ch:windows-wine}).
+\section{Select a renderer by evidence, not by name}
 
-\section{Step six: use xna4-spec, not memory, to check what you ported}
+Renderer selection is a CMake-time choice from 46 public identities backed by 42 families.  First
+filter by platform admissibility and required capabilities: 2D/3D, custom effects, MRT, render
+targets, texture forms, instancing, readback, and occlusion queries.  Then inspect the evidence tier
+for the exact identity and host.
 
-Once a subsystem is ported, Chapter~\ref{ch:xna4-spec-auditing}'s auditing method --- checking
-against the real XNA~4.0 specification directly, not against FNA's own source or against
-recollection --- is the single most reliable way to confirm you did not miss a member or
-introduce an unmarked extension, for exactly the reason Chapter~\ref{ch:media-system}'s
-\cnaclass{Song} finding illustrated: FNA itself is not always a perfectly faithful stand-in
-for the real spec.
+A useful progression begins with one well-verified desktop renderer, adds a structurally
+independent control, and only then crosses to Web or mobile.  Compile the same game against each
+identity; do not add renderer-specific conditionals to game logic unless the capability contract
+requires them.  A colored inherited draw fallback or a headless skip is not a parity result.
 
-\section{Step seven: troubleshooting the build and the first run}
+\section{Make service differences explicit}
 
-The six steps above assume the port compiles and the graphics renderer actually starts.
-\texttt{docs/migration-guide.md} in the \texttt{cna} repository (Task 486, the source this
-whole chapter draws its structure from) closes with two practical troubleshooting tables ---
-real configure-time and runtime failures a porter is likely to hit, each checked directly
-against the current \texttt{CMakeLists.txt}/source rather than assumed from general CMake or
-XNA knowledge. Both are reproduced here, condensed, since they are exactly the kind of
-concrete, checkable-cost information this chapter's own closing section already asks you to
-value over a general sense of the project's maturity.
+List every use of input, audio, media, storage, GamerServices, networking, sensors, and platform
+dialogs.  CNA's implementations are not equally deep: local GamerServices identities are
+synthetic, Storage containment differs between selectors and files, network Local delivery is not
+a normal transport, Web discovery and persistence diverge, Android lifecycle coverage is partial,
+and media depends on the FFmpeg configuration.
 
-\subsection{Configure-time failures}
+Timing deserves its own line item.  Set \texttt{TargetElapsedTime} from the original simulation
+instead of accepting CNA's default.  Decide how pause, background, slow frames, variable-step mode,
+and shutdown map on every host; the Emscripten loop does not yet mirror all native semantics.
 
-\begin{center}
-\begin{longtable}{>{\raggedright\arraybackslash}p{0.32\textwidth}>{\raggedright\arraybackslash}p{0.58\textwidth}}
-\toprule
-\textbf{Symptom} & \textbf{Cause and fix} \\
-\midrule
-\endhead
-\texttt{CNA: Missing sibling repository 'sharp-runtime'} / \texttt{'easy-gl'} & These are
-  sibling checkouts next to \texttt{cna}, \emph{not} git submodules ---
-  \texttt{git submodule update --init} will not fetch them. Clone the missing repo as a
-  sibling directory instead; the real error message prints the exact URL. \\[4pt]
-\texttt{Missing vendored 'SDL' \dots} right after a fresh clone & Downloaded a ZIP/release
-  archive instead of cloning with Git, or forgot to init submodules --- vendored
-  \texttt{third\_party/SDL} / \texttt{SDL\_image} / \texttt{SDL\_mixer} are empty. Run
-  \texttt{git submodule update --init --recursive}, or configure with
-  \texttt{-DCNA\_USE\_SYSTEM\_SDL=ON} to use system SDL3 packages instead. \\[4pt]
-\texttt{Could not find a package configuration file for Vulkan} (\texttt{VULKAN} renderer) &
-  No Vulkan SDK/loader installed. Install your distribution's \texttt{vulkan-sdk}/%
-  \texttt{libvulkan-dev} package, or the LunarG SDK, before configuring. \\[4pt]
-CMake \texttt{FetchContent} hangs or fails cloning \texttt{bgfx.cmake} (\texttt{BGFX} renderer)
-  & \texttt{BGFX} fetches \texttt{bgfx.cmake} from GitHub at configure time --- needs network
-  access, and the first fetch can be slow. Retry, or pre-seed a local clone and point
-  \texttt{FETCHCONTENT\_SOURCE\_DIR\_BGFX\_CMAKE} at it. \\[4pt]
-\cnaclass{VideoPlayer}-related link errors & Missing FFmpeg dev packages --- hits every
-  renderer, not just video code. Install \texttt{libavcodec-dev libavformat-dev
-  libavutil-dev libswresample-dev}. \\
-\bottomrule
-\end{longtable}
-\end{center}
+\section{Build a verification ladder for the port}
 
-\subsection{Runtime failures}
+Use increasingly independent checks:
 
-\begin{center}
-\begin{longtable}{>{\raggedright\arraybackslash}p{0.32\textwidth}>{\raggedright\arraybackslash}p{0.58\textwidth}}
-\toprule
-\textbf{Symptom} & \textbf{Cause and fix} \\
-\midrule
-\endhead
-Any 3D call throws \texttt{std::runtime\_error} & You are on \texttt{SDL\_RENDERER} --- not a
-  bug, it is 2D-only by design (Chapter~\ref{ch:sdl-renderer}). Switch to \texttt{OPENGLES3},
-  \texttt{VULKAN}, or \texttt{BGFX} for 3D. \\[4pt]
-\texttt{bgfx::init failed}, or a native-window-handle error on \texttt{BGFX} & No usable
-  native window handle for \texttt{bgfx}'s chosen renderer under the current SDL video
-  driver. Check \texttt{SDL\_GetCurrentVideoDriver()}'s output (printed in the real error
-  message); try forcing a renderer explicitly (see below). \\[4pt]
-\texttt{BGFX} picks an unavailable graphics API (e.g.\ Vulkan on a machine with no Vulkan
-  ICD) & \texttt{bgfx}'s own renderer auto-detection picked something unavailable. Set the
-  \texttt{CNA\_BGFX\_RENDERER} environment variable to force one explicitly: \texttt{AUTO},
-  \texttt{OPENGL}, \texttt{OPENGLES}, \texttt{VULKAN}, \texttt{METAL}, \texttt{DIRECT3D11},
-  \texttt{DIRECT3D12}, or \texttt{NOOP} (case-insensitive; an unsupported value throws
-  immediately with this exact list). \\[4pt]
-Blank/black window, or an OpenGL-based renderer fails to create a context in CI/headless
-  environments & No real X server or GPU driver --- common under \texttt{Xvfb} with only a
-  software (\texttt{llvmpipe}) GL driver (Chapters~\ref{ch:sdl-renderer}
-  and~\ref{ch:easygl-backend} both now include a real, confirmed-working example of exactly
-  this setup). Expected in headless CI; tests still run against software rendering. If an
-  entire run fails rather than just individual pixel-tolerance edge cases, confirm a display
-  is actually reachable (the \texttt{DISPLAY} environment variable, or
-  \texttt{-DCNA\_TEST\_DISPLAY=:99} at configure time to point the whole \texttt{ctest} suite
-  at a specific \texttt{Xvfb} display). \\[4pt]
-A pixel-comparison example or test fails right after an intentional rendering change &
-  Golden images are stale references, not a bug. Re-run the specific test with
-  \texttt{CNA\_UPDATE\_GOLDEN=1} set to regenerate the golden PNG, then review the diff before
-  committing it (Chapter~\ref{ch:verification-methodology} covers this golden-image mechanism
-  in full). \\[4pt]
-Flaky test failures that do not reproduce in isolation & \textbf{Never run multiple
-  renderers' full \texttt{ctest} suites concurrently} --- confirmed to cause transient
-  GPU/driver-contention false failures. Run renderer test suites sequentially, and re-run any
-  single anomalous test in isolation (\texttt{ctest -R <TestName>}) before treating it as a
-  real regression, not a race. \\
-\bottomrule
-\end{longtable}
-\end{center}
+\begin{enumerate}
+  \item compile-time surface and negative-compilation checks;
+  \item deterministic logic tests with no renderer;
+  \item asset-load tests for every reader form and malformed boundary;
+  \item single-pixel and small golden checks on the primary renderer;
+  \item differential screenshots or numeric traces against the frozen original;
+  \item a second renderer as a localization control;
+  \item browser, compatibility-layer, emulator, and physical-host engagement evidence.
+\end{enumerate}
 
-Before filing anything as a new CNA bug during a port, check three sources in this order:
-\texttt{docs/xna-4-api-coverage.md}'s per-renderer support table and its ``Known deviations
-from XNA/FNA'' list, then \texttt{NEXT.md}'s own actively-maintained current bug section ---
-most currently-open gaps already have a task number and a documented root cause. If a symptom
-genuinely is not covered by any of the three, it is more likely a real, new finding worth its
-own report than a known, already-tracked limitation.
+Record skips and runtime identity.  A Wine result must prove DXVK/vkd3d/DirectDraw engagement; a
+browser result must reach a frame through a window verdict; a mobile result must retain its APK,
+logs, screenshot, and lifecycle trace.  ``Built everywhere'' and ``behaves everywhere'' are
+separate milestones.
 
-\section{A realistic expectation, stated plainly}
+\section{Troubleshoot from the boundary inward}
 
-Every chapter in this book that has named a real, still-open gap has also named its measured
-cost where one exists --- 23 of 86 samples, a specific 94-test blast radius, a specific
-still-open leak in \texttt{NetworkSession::BeginCreate}. Use those numbers, not a general
-sense of the project's maturity, to judge your own porting timeline: a 2D, stock-effects-only,
-system-link-multiplayer game is a comparatively mechanical port today; a game leaning on
-custom compiled shaders, Xbox Live matchmaking, or an unusual vertex format will hit named,
-real, and in some cases still-unresolved gaps, and this book has tried throughout to tell you
-exactly which ones, rather than leave you to discover them yourself.
+Configure failures usually indicate a wrong public renderer name, a missing sibling dependency,
+an inadmissible platform/renderer pair, or a feature option that changes the source closure.  Link
+failures often expose module ownership or missing external runtime libraries.  Keep the exact
+configure command and generated renderer definition.
+
+At runtime, classify the first failure before editing: asset resolution, reader registration,
+window/device creation, frame lifetime, renderer engagement, or behavioral oracle.  Log working
+directory and content root; preserve the original exception; test the smallest asset or draw that
+reproduces it.  The fastest migration is not the one with the fewest red results, but the one in
+which every red result names the boundary that actually failed.

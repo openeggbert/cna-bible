@@ -1,204 +1,104 @@
 \chapter{Auditing Compatibility with xna4-spec}
 \label{ch:xna4-spec-auditing}
 
-Every coverage percentage this book has cited --- 227 of 245 public FNA types, 92.7\%,
-Chapter~\ref{ch:what-is-cna} --- came from comparing CNA against a ground truth rather than
-against memory or against FNA's own source. This chapter covers that ground truth directly:
-\texttt{xna4-spec}, and what auditing against it actually looks like.
+\texttt{xna4-spec} is an offline, machine-readable conversion of Microsoft's XNA~4.0
+documentation.  It is useful for asking what the documented API surface contains.  It is not part
+of CNA's build, test, or oracle chain, and it is not the source of CNA's dated 227-of-245 FNA type
+count; that number was produced by diffing FNA's public type list against CNA headers.
 
-\section{What xna4-spec actually is}
+\section{What the repository contains}
 
-\texttt{xna4-spec} is a complete, machine-readable XML transcription of the official XNA~4.0
-documentation, originally published at Microsoft's own
-\texttt{learn.microsoft.com/\allowbreak{}.../\allowbreak{}previous-versions/\allowbreak{}windows/\allowbreak{}xna/}
-archive --- every class,
-struct, enum, interface, and delegate across all nineteen XNA namespaces, 544 types in total,
-with each type's original property, method, constructor, field, and event descriptions
-preserved. A master XSD schema and a top-level index of all 544 types organize the whole
-collection; one directory exists per namespace, mirroring the real
-\texttt{Microsoft.Xna.Framework.*} namespace tree exactly.
+At pinned commit \texttt{8f61207}, the top-level index references 544 XML type files across 19
+documented namespaces.  Each file records a kind, syntax, members, overloads, parameters, return
+text, remarks, and links derived from the former Microsoft documentation archive.  The collection
+includes runtime namespaces and the content-pipeline namespaces CNA does not aim to implement.
 
-Per-namespace type counts show where the real API surface concentrates.
-\texttt{Microsoft.\allowbreak{}Xna.\allowbreak{}Framework.\allowbreak{}Graphics} alone accounts
-for 175 of the 544 types.
-\cnans{GamerServices} (53) and \cnans{Content.Pipeline.Graphics} (46) are the next largest ---
-which is exactly why this book devoted an entire Part to Graphics and this Part gives
-GamerServices its own chapter, rather than the namespace breakdown being an arbitrary
-organizing choice on this book's part.
+The README's example tree says ``550 types,'' while its coverage table, index, plan numbering, and
+files all say 544.  This small internal drift is the first rule of using the corpus: treat even a
+machine-readable conversion as data to validate, not as an infallible executable specification.
+The repository's disclaimer also makes clear that the converted documentation remains Microsoft's
+content and is offered for informational and educational use.
 
-\section{Why this matters more than diffing against FNA}
+\section{Where it sits in CNA's authority hierarchy}
 
-Chapter~\ref{ch:media-system} already gave the sharpest illustration of why this distinction
-is not academic: eight separate audit rounds of CNA's \cnaclass{Song} class diffed against
-FNA's own source and missed a real gap (FNA itself omits \texttt{Album}, \texttt{Artist},
-\texttt{Genre}, and \texttt{ToString()} relative to the real reference assemblies), because
-every round trusted FNA as a stand-in for the real specification rather than checking the
-real specification directly. \texttt{xna4-spec} exists precisely to make that class of
-mistake avoidable: a diff against it checks CNA against the actual, original Microsoft
-documentation, with FNA's own gaps and quirks no longer able to hide a CNA gap behind them.
+No file in CNA references \texttt{xna4-spec}.  CNA's current port checklist instead names the XNA
+reference-assembly XML as the authority for API surface and FNA as the reference for behavior.
+Real XNA execution, FNA differential values, and image oracles then settle questions documentation
+cannot.
 
-\section{Running an audit yourself}
+\texttt{xna4-spec} is therefore a convenient complementary inventory.  It can expose a missing
+property that FNA itself omitted, supply remarks for manual review, and make namespace-wide audits
+scriptable.  It cannot prove CNA behavior, and a clean comparison against it is not an existing CNA
+gate.  A book or report must not promote an offline sibling repository into a runtime authority
+merely because its name contains ``spec.''
 
-The practical shape of an audit, drawn from how CNA's own coverage figures are produced
-(Chapter~\ref{ch:project-practice}'s \texttt{AUDIT.md} conventions), is a straightforward
-three-step comparison: pick a namespace or class from \texttt{xna4-spec}'s own index, read
-its full member list (properties, methods, constructors, fields, events) from the
-corresponding XML file, and check each member off against CNA's actual header for that class
---- present and correctly shaped, present but tagged \texttt{CNAEXT} (and therefore not really
-part of what you are checking), or missing. A member present in CNA but absent from
-\texttt{xna4-spec} and not tagged \texttt{CNAEXT} at all is the specific ``Extra-unmarked''
-finding category Chapter~\ref{ch:devices-sensors} showed a real instance of
-(\cnaclass{SensorBase}'s \texttt{TimeBetweenUpdatesChanged} event, found and then correctly
-retagged) --- exactly the class of bug the \texttt{CNAEXT} compile-time gate from
-Chapter~\ref{ch:testing-philosophy} exists to catch mechanically, with a manual
-\texttt{xna4-spec} audit as the complementary, judgment-requiring check for anything that
-gate cannot see on its own (a member that is tagged correctly but has the wrong signature, for
-instance).
+\section{A reproducible surface audit}
 
-\section{A worked audit: \cnaclass{Ray}, member by member}
+For one type, a disciplined comparison has six steps:
 
-The three-step process above is easiest to see against a small, complete type rather than a
-large one. \texttt{xna4-spec}'s own
-\texttt{Microsoft.Xna.Framework/Ray.xml} lists, in full: two fields (\texttt{Position},
-\texttt{Direction}, both \texttt{Vector3}), one constructor (\texttt{Ray(Vector3, Vector3)}),
-and six methods --- \texttt{Equals} (two overloads, one taking a boxed \texttt{Object} and one
-taking another \texttt{Ray}), \texttt{GetHashCode}, \texttt{ToString}, the \texttt{==} / \texttt{!=}
-operators, and \texttt{Intersects} against each of \cnaclass{BoundingBox}, \cnaclass{Plane},
-\cnaclass{BoundingSphere}, and \cnaclass{BoundingFrustum} (the first three of those each with a
-second, \texttt{ref} / \texttt{out} overload; \texttt{BoundingFrustum} has only the one
-return-value form in the real spec, not a \texttt{ref} / \texttt{out} pair, which matters below).
-Checking that list member-by-member against \cnaclass{Ray}'s real header
-(\texttt{modules/math/include/Microsoft/Xna/Framework/Ray.hpp}) finds a complete, correctly-shaped match for
-every one of them: both fields present with matching types; the two-argument constructor
-present; all four \texttt{Intersects} targets present, each with exactly the same
-value-returning/output-parameter overload pattern the spec lists --- including the detail that
-\texttt{BoundingFrustum} correctly has only the single return-value overload, with no spurious
-\texttt{ref} / \texttt{out} pair invented for it; \texttt{ToString}, and the free-function
-\texttt{operator==} / \texttt{operator!=} pair implementing \texttt{op\_Equality} /
-\texttt{op\_Inequality} exactly as this book's naming conventions predict.
+\begin{enumerate}
+  \item pin the \texttt{xna4-spec}, CNA, FNA, and reference-assembly revisions;
+  \item extract fields, properties, constructors, methods, events, and overload signatures from
+        the XML rather than counting prose mentions;
+  \item map C\# idioms explicitly: properties to getter/setter names, operators to C\texttt{++}
+        operators, \texttt{ref}/\texttt{out} to reference overloads, and iterators to CNAEXT;
+  \item compare CNA's public header and classify each row as exact surface, accepted language
+        adaptation, marked extension, unexplained extra, or missing;
+  \item read remarks and implementation for every hand-written accessor or behavior-bearing
+        method;
+  \item attach an executable oracle for semantics and record cases the XML cannot decide.
+\end{enumerate}
 
-Two small, precise deviations are worth naming exactly rather than glossing over, because they
-illustrate two different categories an audit needs to tell apart. First, \cnaclass{Ray} has no
-\texttt{Equals(Object)} overload at all --- and this is correctly not a gap: C\texttt{++} has no
-universal boxed root type the way every C\# value type inherits from \texttt{System.Object}, so
-there is no C\texttt{++} member this overload could ever correspond to. This is a third audit
-outcome distinct from both ``missing'' and ``present but \texttt{CNAEXT}-tagged'': a member that
-cannot be translated at all because the language feature it depends on does not exist on the
-C\texttt{++} side, and is therefore correctly absent with no tag needed to explain the absence.
-Second, \texttt{GetHashCode} returns \texttt{std::size\_t} in \cnaclass{Ray} rather than the
-spec's \texttt{int} --- a deliberate, sensible convention substitution (matching how
-C\texttt{++}'s own \texttt{std::hash} ecosystem represents a hash value) rather than a
-signature bug, the same class of considered adaptation Chapter~\ref{ch:migration-guide}
-described for the \texttt{getXProperty()} / \texttt{setXProperty()} translation of C\# properties.
-\cnaclass{Ray} also adds one member \texttt{xna4-spec} does not list at all: a defaulted
-zero-argument constructor (\texttt{Ray() = default;}). This is not flagged as an
-``Extra-unmarked'' finding in the sense Chapter~\ref{ch:devices-sensors}'s
-\cnaclass{SensorBase} case was --- default-constructibility is a baseline C\texttt{++}
-expectation for a plain aggregate struct, not a deliberate extension of the XNA surface, and
-this book's own audits do not require a \texttt{CNAEXT} tag for it.
+The mapping table is part of the result.  Otherwise \texttt{Equals(object)} looks like a missing
+member even though a C\texttt{++} value type has no universal boxed root, and a default constructor
+or iterator can look like an unmarked XNA extension even when it exists only for the target
+language's ordinary value/container idiom.
 
-\section{A second worked audit: \cnaclass{Viewport}, member by member}
+\section{Worked example: Ray}
 
-Every example above comes from \texttt{Microsoft.Xna.Framework}, the root namespace. The same
-three-step process applies unchanged to any of the other eighteen namespaces
-\texttt{xna4-spec} covers --- worth demonstrating once with a type from elsewhere in the tree,
-both to confirm the process generalizes and because this second audit turns up a genuinely
-different kind of finding than \cnaclass{Ray} did.
+\texttt{Microsoft.Xna.Framework/Ray.xml} describes the \texttt{Position} and \texttt{Direction}
+fields, the two-vector constructor, equality, hash and string methods, intersection overloads, and
+equality operators.  CNA's \texttt{modules/math/.../Ray.hpp} contains both fields, the constructor,
+value equality, \texttt{ToString}, four intersection target types, output-reference forms for box,
+sphere and plane, and free equality operators.
 
-\cnaclass{Viewport} lives in \cnans{Microsoft.Xna.Framework.Graphics}. \texttt{xna4-spec}'s
-own \texttt{Microsoft.\allowbreak{}Xna.\allowbreak{}Framework.\allowbreak{}Graphics/\allowbreak{}Viewport.xml} lists: two constructors
-(\texttt{Viewport(Rectangle)} and \texttt{Viewport(Int32, Int32, Int32, Int32)}), nine
-properties --- \texttt{AspectRatio} (get-only), \texttt{Bounds}, \texttt{Height},
-\texttt{MaxDepth}, \texttt{MinDepth}, \texttt{TitleSafeArea} (get-only), \texttt{Width},
-\texttt{X}, and \texttt{Y} --- and three methods: \texttt{Project}, \texttt{Unproject}, and
-\texttt{ToString}. No fields and no events are declared at all, matching \cnaclass{Viewport}'s
-own nature as a pure value-type view onto four coordinates and a depth range.
+The comparison also exposes adaptations.  CNA adds a default constructor, omits boxed
+\texttt{Equals(Object)}, and returns \texttt{std::size\_t} from \texttt{GetHashCode} rather than
+C\# \texttt{int}.  Those choices match CNA's documented C\texttt{++} conventions; they should be
+classified, not silently counted as either perfect matches or defects.
 
-Checking that list against the real header
-(\texttt{modules/graphics/include/\allowbreak{}Microsoft/\allowbreak{}Xna/\allowbreak{}Framework/\allowbreak{}Graphics/\allowbreak{}Viewport.hpp})
-finds every member present. Both constructors match exactly, including the same defaulted
-\texttt{MinDepth=0} / \texttt{MaxDepth=1} the spec's own remarks describe for each --- and, as
-with \cnaclass{Ray}, \cnaclass{Viewport} also adds one member the spec does not list: a
-defaulted zero-argument constructor, the same baseline-aggregate case already established as
-not requiring a \texttt{CNAEXT} tag. \texttt{Height}, \texttt{MaxDepth}, \texttt{MinDepth},
-\texttt{Width}, \texttt{X}, and \texttt{Y} are each backed by \texttt{DEF\_PROP} --- the same
-getter/setter-generating macro whose \texttt{getXProperty()} / \texttt{setXProperty()} naming
-convention Chapter~\ref{ch:migration-guide} already covers --- while \texttt{AspectRatio},
-\texttt{Bounds}, and \texttt{TitleSafeArea} are hand-written methods instead. That split is not
-an inconsistency; it tracks a real distinction in what each property actually is.
-\texttt{DEF\_PROP} models a property backed directly by one stored field; \texttt{AspectRatio}
-is computed from two fields with no field of its own, \texttt{Bounds} constructs a
-\cnaclass{Rectangle} from four fields (and, being settable, unpacks one back into all four on
-the way in), and \texttt{TitleSafeArea} --- see below --- is computed from \texttt{Bounds}
-again. None of the three can be expressed as a direct getter/setter pair over a single field,
-so all three fall outside what \texttt{DEF\_PROP} can generate and are written out by hand,
-exactly as the macro's own design would predict once you know what it does and does not cover.
-\texttt{Project} and \texttt{Unproject} both match the spec's four-parameter
-\texttt{(Vector3, Matrix, Matrix, Matrix)} shape exactly, confirmed directly against
-\texttt{Viewport.cpp}'s own implementation of each.
+The converted XML itself needs normalization.  Its \texttt{Intersects} list contains duplicate
+output overload records, and some signatures are labelled with the wrong target type even though
+the surrounding parameter text names Plane or BoundingSphere.  A script that compares signature
+strings blindly will invent duplicates and gaps.  Cross-checking the reference-assembly member IDs
+or the original documentation is necessary whenever converted fields disagree.
 
-The audit's one substantive finding sits inside that hand-written trio. \texttt{xna4-spec}'s
-own remarks for \texttt{TitleSafeArea} are specific about what the property is supposed to do:
-the title safe area is ``the part of the screen where text should be displayed,'' and the
-property itself ``reduces the title safe area of the viewport uniformly.'' A real console-era
-XNA implementation insets the returned rectangle by a fixed margin (historically an
-80\%-of-viewport safe region on Xbox 360, the platform the remark is written for).
-\cnaclass{Viewport}'s own header describes its C\texttt{++} member differently --- ``Same
-rectangle as Bounds'' --- and \texttt{getTitleSafeAreaProperty()}'s real implementation in
-\texttt{Viewport.cpp} bears that out exactly: \texttt{return getBoundsProperty();}, no inset
-applied at all. This is not an untested oversight either; \texttt{ViewportTests.cpp} carries a
-dedicated \texttt{TitleSafeAreaEqualsBounds} test that asserts precisely this behavior ---
-\texttt{TitleSafeArea} returning the same four coordinates as \texttt{Bounds} is the
-deliberate, regression-tested baseline, not a bug nobody has gotten to yet.
+\section{Worked example: Viewport}
 
-By the three-step process alone, \texttt{TitleSafeArea} is a clean pass: present, correctly
-named, correctly typed (\cnaclass{Rectangle}), get-only exactly as the spec describes, no
-\texttt{CNAEXT} tag needed because nothing about it is an addition. It is the first concrete
-instance in this chapter of the limitation the closing section below names in the abstract: a
-membership-and-shape audit has nothing further to say once a member exists and type-checks,
-even when --- as here --- its actual behavior openly diverges from what the specification's
-own prose says that member is for. Whether the divergence is the right call is a separate,
-judgment-requiring question (the physical off-screen bleed an 80\%-safe-area convention
-corrected for on a CRT-era television essentially does not exist on a modern flat-panel
-display, which is a real argument for leaving \texttt{Viewport} as-is) --- but that judgment is
-not something the audit itself can render; it can only surface the gap between documented and
-implemented behavior for a human to weigh next.
+The Viewport XML lists two non-default constructors, nine properties, and
+\texttt{Project}, \texttt{Unproject}, and \texttt{ToString}.  CNA's header provides those members
+through a mix of generated field properties and hand-written accessors.  It also has a default
+constructor that produces zero width/height and a 0-to-1 depth range.
 
-A practical heuristic falls out of how this specific finding was actually found: the properties
-worth reading past their signature are the hand-written ones, not the \texttt{DEF\_PROP} ones.
-A \texttt{DEF\_PROP}-backed property is a direct read or write of one stored field --- it either
-holds the value it was given or it does not, and \cnaclass{Ray}'s own audit above already
-establishes that class of check is straightforward. A hand-written accessor is where an
-implementation choice can hide, because it is free to compute something other than what its
-name and the spec's remarks describe. When auditing a type with a mix of both, reading every
-hand-written property's full \texttt{<remarks>} block in \texttt{xna4-spec}'s own XML --- not
-just its signature --- is the specific step that catches a case like \texttt{TitleSafeArea}.
+The surface comparison looks strong, but \texttt{TitleSafeArea} demonstrates why surface is not
+semantics.  CNA returns \texttt{Bounds} unchanged and pins that choice with
+\texttt{TitleSafeAreaEqualsBounds}.  The documentation describes a subset guaranteed visible on
+lower-quality displays.  A passing test proves CNA's chosen behavior is stable; it does not prove
+the choice matches XNA on every platform.
 
-\section{A licensing note worth stating plainly}
+The right outcome is a recorded behavioral deviation or a real-XNA experiment, not a surface-
+coverage percentage.  Hand-written properties deserve particular scrutiny because computation and
+policy can hide behind a signature that compares perfectly.
 
-\texttt{xna4-spec}'s own README is direct about its content's origin: the API names,
-descriptions, and everything else in the collection are derived from Microsoft's own XNA~4.0
-documentation and remain Microsoft's intellectual property. The repository presents itself as
-an unofficial, community-maintained conversion into a machine-readable format, intended
-solely for non-commercial, informational, and educational use --- the same spirit in which
-this book cites specific facts drawn from it.
+\section{What inventories cannot prove}
 
-\section{What an audit cannot tell you}
+An XML API inventory cannot establish default values produced by a runtime, floating-point edge
+behavior, exception type and timing, lifetime, GPU state, wire compatibility, content decoding, or
+platform substitution.  It also cannot tell whether a nominally present method is a stub, a safe
+refusal, or a complete implementation.
 
-One limit is worth naming directly: \texttt{xna4-spec} tells you whether a member exists and
-what it is documented to do --- it cannot tell you whether CNA's own implementation of a
-present, correctly-shaped member actually behaves correctly. That is exactly the job the
-pixel tests, differential testing, and oracle methodology from
-Chapter~\ref{ch:testing-philosophy} exist to do instead. A useful mental model for the rest of
-this Part: \texttt{xna4-spec} auditing answers ``is the surface complete and correctly
-shaped,'' while the testing mechanisms from the previous chapter answer ``does the surface
-that exists actually work.'' Both questions matter, and neither answers the other.
-
-The \cnaclass{Viewport} / \texttt{TitleSafeArea} case above is a concrete instance of exactly
-this limit, with a further wrinkle worth naming: \texttt{TitleSafeAreaEqualsBounds} is a real,
-passing unit test, so this is not a gap either kind of check would surface as a failure. The
-test faithfully verifies the implementation's own chosen behavior; it says nothing about
-whether that behavior matches \texttt{xna4-spec}'s remarks, because nothing in this project's
-test suite is written against \texttt{xna4-spec} directly. Closing a gap like this one, if it
-is ever judged worth closing, starts with the manual read this chapter demonstrates --- not
-with a red test, because there is not one.
+Use \texttt{xna4-spec} to generate questions and completeness rows.  Use CNA's compile-time CNAEXT
+gate to detect unmarked additions, reference assemblies to settle surface, FNA or real XNA to
+settle semantics, and the oracle hierarchy from Chapter~\ref{ch:oracles} to produce verdicts.  The
+most trustworthy audit is not the one with the highest percentage, but the one that preserves
+these authorities instead of collapsing them into one number.

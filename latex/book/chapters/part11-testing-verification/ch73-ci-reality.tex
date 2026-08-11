@@ -1,3 +1,101 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{What CI Actually Runs}
 \label{ch:ci-reality}
+
+A repository can contain excellent tests without running them automatically.  CNA's tree is a
+sharp example: thousands of assertions, hundreds of renderer programs, 56 verification scripts,
+and eight workflow files coexist with dead configuration legs, manual-only GPU jobs, and host
+boundaries no hosted runner has crossed.  This chapter describes the automation at the pinned
+revision, not the intended future matrix.
+
+\section{Eight workflows, six automatic triggers}
+
+Six workflows react to a push or pull request: general Linux tests, the Input matrix, Devices,
+HTML-DOM, Metal on macOS, and 32-bit arithmetic.  Direct3D and GDI workflows are
+\texttt{workflow\_dispatch}-only.  A workflow file's presence therefore proves neither that it
+runs for the current branch nor that its most expensive leg runs routinely.
+
+The general Linux job configures Debug with tests and examples, builds the default target, then
+runs unfiltered CTest with a known-failure classifier.  The Input matrix builds only
+\texttt{CnaTests} across five renderer/sanitizer combinations and invokes the single
+\texttt{input}-label entry, which repeats 541 selected cases five times in shuffled order.  The
+Devices workflow instead runs filtered GoogleTests directly, following the preset's warning that
+per-case CTest discovery can race shared temporary paths.
+
+HTML-DOM is the most complete Web route: pinned emsdk, Playwright Chromium, six HTTP-served pages,
+browser verdicts, and compositor samples.  Metal selects the native renderer on macOS~14, enables
+Metal validation variables, and runs Metal-named plus renderer-definition tests.  The 32-bit job
+builds three small arithmetic programs with \texttt{-m32}; it is a narrow integer-overflow gate,
+not a 32-bit CNA build.
+
+\section{A live configuration defect changes the matrix}
+
+At the audited SHA, \texttt{general-tests-ci.yml} and two Input legs pass the retired internal
+token \texttt{EASYGL} as the current renderer option's value.  It is an implementation family,
+not one of the 46 public values accepted by renderer selection.  The public native profile is
+\texttt{OPENGLES3} or another named GL identity.  Those jobs therefore stop at configure time.
+
+This defect removes more than nominal redundancy.  The general job is the only automatic
+unfiltered suite, and one dead Input leg is the only AddressSanitizer-plus-UndefinedBehaviorSanitizer
+combination in CI.  A workflow diagram read without its configure arguments would report both as
+coverage even though neither reaches compilation.
+
+The correct automation audit starts at the trigger and follows every step: branch/path filter,
+configure command, named build target, test selector, environment, artifact upload, and failure
+policy.  ``Workflow exists'' is merely the first row of that trace.
+
+\section{Windows jobs deliberately run a narrower corpus}
+
+The manual Direct3D matrix configures MSVC/Ninja for DirectX~11, DirectX~12, and Direct2D, disables
+examples and networking, then runs renderer-labelled CTests.  Direct2D adds debug-layer log
+verification and a WARP lifetime pass; DirectX~11 invokes the native HLSL verifier.  GDI builds 17
+named executables and runs its label.
+
+Neither workflow builds \texttt{CnaTests}.  Its comment blames POSIX \texttt{setenv} calls in test
+sources, but those calls were already migrated out of the CnaTests glob.  Thus the exclusion's
+stated blocker is stale even though renderer-specific Windows tests remain useful.  The native
+HLSL verifier also points to a pre-modularization source path and fails before it can import the
+shader manifest.
+
+Manual dispatch has a further consequence: five of the seven scripts referenced anywhere in CI
+live only in this D3D workflow.  On a routine push, the script layer exercised directly by
+workflows reduces to the two HTML-DOM runner layers.  CTest can invoke many other scripts, but only
+inside a configure that registers and executes their renderer.
+
+\section{Sanitizers and validation are targeted}
+
+CNA has a root \texttt{CNA\_SANITIZE} option and separate Devices presets that place raw sanitizer
+flags in \texttt{CMAKE\_CXX\_FLAGS}.  CI contains two sanitizer legs in source: the dead Input
+ASan+UBSan leg and a Devices UBSan preset.  No workflow runs ThreadSanitizer, and no general
+non-Devices sanitizer matrix exists.  Skia tests disable vptr sanitization because the pinned
+no-RTTI Skia archives cannot supply the required type information.
+
+GPU validation is renderer-specific.  Vulkan enables Khronos validation and synchronization
+validation; three tests assert that the layer actually loaded.  D3D11 and Direct2D request the
+debug device with a missing-SDK fallback.  Metal's workflow exports shader and debug-layer
+variables.  WebGPU pushes validation error scopes.  These mechanisms are not interchangeable,
+and a test must prove engagement rather than infer it from an environment variable.
+
+\section{Fuzzing, properties, and mutation are not continuous campaigns}
+
+Four GoogleTest source files contain eight fuzz-named cases for XACT, XNB/LZX, and SDL input.
+They are deterministic mutation loops inside \texttt{CnaTests}; there is no libFuzzer, AFL, or
+OSS-Fuzz target.  One SoundEffect reader file implements a hand-rolled property test.  These are
+valuable adversarial tests, but they do not provide coverage-guided exploration or a persistent
+crash corpus.
+
+Mutation testing exists for Direct2D only.  Its seven mutations can rebuild and invert the
+expected verdict, but CI runs just \texttt{--dry-run}, proving anchors still exist rather than
+proving the renderer tests kill each mutation.  The distinction between mutation machinery and a
+completed mutation campaign must remain explicit.
+
+\section{There is no code-coverage measurement}
+
+No build file, preset, script, or workflow configures gcov, lcov, gcovr, llvm-cov, or compiler
+coverage flags.  Documents named \texttt{coverage.md} describe API presence, feature matrices, or
+source-to-test mappings.  Their percentages are not line, branch, or function coverage.
+
+A credible CI summary should therefore report which configured paths executed, their skip and
+artifact records, and the gaps.  At this revision, automatic browser evidence is real, targeted
+native and sanitizer evidence exists, and much of the renderer apparatus remains manual or
+configuration-exclusive.  The honest result is not ``CI complete'' or ``CI absent,'' but a
+precise map of what ran and what merely exists.

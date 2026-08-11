@@ -1,246 +1,129 @@
 \chapter{Project Practice and Durable Task Tracking}
 \label{ch:project-practice}
 
-Chapter~\ref{ch:design-philosophy} covered the code-level house style CNA
-enforces on every file. This chapter covers the surrounding \emph{project} practice --- how
-work is planned, tracked, and handed off between sessions --- because reading CNA's own
-repository well enough to contribute to it, or even to just trust a specific claim in it,
-means knowing this layer exists and how to read it.
+CNA's repository is rich in plans, handoffs, audits, remediation ledgers, and integration records.
+That abundance is valuable and dangerous: an old plan can explain why code exists while being
+wrong about whether it exists today.  Durable practice is therefore not ``trust the tracking
+document.''  It is preserving a chain from intent to source, test, artifact, and current status.
 
-\section{Three tiers of tracking document}
+\section{Documents have roles, not equal authority}
 
-CNA's root directory carries three distinct kinds of tracking file, each with a different job,
-and confusing one for another is a real way to misread the project's own state.
+The root \texttt{NEXT.md} is a session and integration handoff.  At the pinned revision it opens
+with the eleven-lane renderer integration, frozen SHAs, merge order, identity arithmetic, and
+cross-lane defects.  Older sections remain below it.  It is operational history, not a normalized
+single source of current feature truth.
 
-\textbf{\texttt{NEXT.md}} is a \emph{session handoff} document --- written for whichever
-agent or engineer picks up work next, not a historical record. It is explicitly scoped to
-whichever development branch is currently active, and is candid about its own staleness in a
-way worth quoting directly, since it is a good model of the honesty this book has tried to
-carry throughout: one recent revision opens by telling its own reader that everything below a
-certain divider is ``stale, D3D9-branch-scoped content\ldots that ended up merged into this
-file's history\ldots not about this branch and should not be read as current status here.''
-Rather than deleting the stale material, it is left in place as a historical record, with an
-explicit warning attached. \texttt{NEXT.md} also carries genuinely operational notes with no
-equivalent anywhere else in the project --- for instance, running graphics/window tests
-against a dedicated Xvfb display rather than a real one, capping build parallelism well below
-the machine's full core count and pausing new heavy work above a specific CPU temperature
-threshold when the development machine is shared concurrently with other agents, and a
-reminder that \texttt{ctest} changes each test's working directory, which can silently break a
-test relying on a path relative to the repository root.
+\texttt{CHECKLIST.md} defines repeatable port rules: API surface comes from XNA reference
+assemblies, behavior from FNA, extensions require CNAEXT, and each public member needs tests or an
+explicit host-dependent exception.  It is a policy document; compliance still has to be checked
+against code and gates.
 
-\textbf{\texttt{AUDIT.md}} is a \emph{systematic, per-class comparison} between FNA (as
-reference) and CNA (as implementation), using a three-value legend --- done, in progress, not
-yet audited --- across every class and enum in every XNA namespace. Unlike \texttt{NEXT.md},
-this is meant to be read as a durable, cumulative record of what has actually been checked,
-not a snapshot of current work.
+\texttt{AUDIT.md} is a large historical class table.  It contains valuable provenance and many
+stale rows: it still describes Content as non-XNB, understates implemented effects, and cites old
+paths and counts.  It must be treated as a dated claim corpus rather than a durable current
+authority.  The same warning applies to source-audit files generated before modularization.
 
-\textbf{\texttt{CHECKLIST.md}} is the per-file porting checklist already introduced in
-Chapter~\ref{ch:design-philosophy} --- SPDX headers, the \texttt{CNAEXT} include requirement,
-line-by-line verification against FNA, mandatory \texttt{GetTypeName()} overrides, and full
-test coverage including out-ref overloads tested separately from their value-returning
-counterparts. It also maintains the project's own table of \emph{accepted} C\texttt{++}
-deviations from FNA --- for instance, the inconsistency already named in
-Chapter~\ref{ch:math-core-types} between \cnaclass{BoundingBox} throwing
-\texttt{System::ArgumentOutOfRangeException} for an out-of-range index versus
-\cnaclass{Input::Touch::TouchCollection} throwing \texttt{std::out\_of\_range} for the
-identical situation --- flagged explicitly as a known, project-wide inconsistency rather than
-silently tolerated or silently ``fixed'' to look more consistent than the codebase's actual
-history.
+\section{Subsystem plans preserve causality}
 
-\section{One plan file per subsystem}
+The CNA root contains 52 \texttt{plan\_*.md} files at the audited SHA, not a small fixed set.  Their
+numbered tasks record rationale, experiments, owner decisions, defects discovered while doing the
+work, and follow-up boundaries.  A stable identifier such as \texttt{GLTF-245} or
+\texttt{REMED-GFX-188} is useful because commits, tests, and later tasks can point back to the same
+decision.
 
-Beyond these three root-level files, CNA maintains a separate \texttt{plan\_<subsystem>.md}
-file for each major feature area under active or completed development --- at the time of
-writing, twenty of them, covering areas as different in scale as \texttt{plan\_ascii.md} (the
-ASCII renderer, Chapter~\ref{ch:canvas-ascii-backends}) and \texttt{plan\_cnj.md}
-(the glTF import pipeline). Each is organized into numbered phases and tasks --- the same
-\texttt{Task~123} citation style this book uses whenever
-attributing a specific bug or fix to its source. This is the mechanism that makes a claim
-like ``Task~868, fixed 2026-07-09'' (Chapter~\ref{ch:vulkan-backend}) a genuinely checkable
-one rather than an unsourced assertion: the task number names an exact entry in an exact
-plan file, not a vague reference to ``recent work.''
+A done marker is still a claim.  Several audits found tasks marked complete because code existed,
+not because their acceptance case ran; others found plan banners saying nothing was implemented
+above sections describing completed phases.  Before quoting a task, check its named path, test,
+commit, and present behavior.  If any one moved, update the forward pointer rather than erasing the
+old identifier.
 
-\section{A worked task entry, quoted almost in full}
+When a task expands across independent renderers or failure modes, split it.  The parent becomes a
+tracking pointer and each child receives its own acceptance evidence.  This keeps a partial fix
+from turning a broad row green and lets controls finish independently.
 
-The ``Task~123'' citation style is easiest to trust once you have actually seen one such row in
-its native habitat rather than only in this book's own paraphrase of it. \texttt{plan\_ascii.md}
-(the ASCII/glyph-grid renderer's own plan file) records its fortieth task, \texttt{ASCII-40}, like
-this, condensed only for length:
+\section{Integration records need immutable inputs}
 
-\begin{quote}
-\small
-\textbf{ASCII-40} --- \texttt{Present()} override: draw the quantized grid as textured glyph
-quads into the real visible window --- \textbf{status: done} --- \emph{``\ldots{}Real bug
-found and fixed: \texttt{presentSpriteBatch\_} never goes through
-\texttt{GraphicsDevice::BlendState} (only the real XNA-level \texttt{SpriteBatch} does), so the
-SDL renderer's blend mode was left at whatever it happened to default to --- not guaranteed
-alpha-aware. Confirmed empirically via the new pixel test: background fills were invisible, with
-the glyph's transparent `off' pixels silently overwriting the background with the texture's
-stored black RGB instead of leaving it alone. Fixed by calling
-\texttt{inner\_->ApplyBlendState(\ldots{})} with real XNA \texttt{BlendState.AlphaBlend} factors
-\ldots{} unconditionally before every grid draw, independent of whatever the game's own
-\texttt{BlendState} is.''}
-\end{quote}
+The renderer-integration campaign demonstrates a stronger form of handoff.  It records every
+feature lane's exact SHA, derives merge order from path interaction, preserves signed no-fast-
+forward merges, recomputes registry arithmetic, and names conflicts whose correct result could not
+be taken from either lane alone.  A later reader can reconstruct which trees were combined and why
+the result differs from each parent.
 
-Every element this chapter has described so far is visible in that one row at once: a stable
-task identifier a later chapter or a later task can cite by name; a terminal status symbol; a
-plain description of the intended change; and, critically, a real bug found and fixed
-\emph{while doing the intended work} rather than a separate, later-discovered item --- confirmed
-not by inspection alone but by ``the new pixel test,'' the same empirical-proof discipline
-Chapter~\ref{ch:testing-philosophy} covers as this project's testing philosophy in full. A reader
-who has only seen this book's own \texttt{Task~N} citations in passing can now recognize exactly
-what stands behind one of them.
+For work of this scale, a useful checkpoint packet contains:
 
-\section{Splitting a task that turns out to be too large}
+\begin{itemize}
+  \item base and input SHAs, branch roles, and proof no hidden worktree state was consumed;
+  \item path-overlap and ordering rationale;
+  \item exact configure/build/test commands with renderer and host identity;
+  \item machine-readable results, skip counts, logs, screenshots, and generated manifests;
+  \item newly found defects separated from the requested change;
+  \item a clean-tree/diff check and a handoff naming the next bounded step.
+\end{itemize}
 
-One further, real convention surfaces specifically in the larger \texttt{plan\_<subsystem>.md}
-files, and is worth naming since it is not obvious from the three-tier structure alone: when a
-single numbered task is discovered mid-flight to actually span multiple independent renderers ---
-each needing its own separate fix, at its own separate time --- this project splits it into one
-new numbered sub-task per renderer, rather than either forcing one task to cover all of them or
-silently expanding its own scope. \texttt{plan\_graphics.md} records this exact pattern twice,
-citing each other explicitly: Task~868 splits into Task~923 (and its own sibling sub-tasks), and
-Task~878 splits into Task~899, each split documented as following ``this project's established
-precedent for large multi-renderer fixes.'' The original, pre-split task row is not deleted once
-this happens --- it is kept in place and rewritten into what this project's own plan files call
-a \emph{tracking pointer}: a short note stating that the row itself is no longer attempted as one
-unit, with a direct reference to whichever new sub-task numbers now carry the real work. This
-matters for the same reason \texttt{NEXT.md}'s own stale-but-retained sections do
-(this chapter's opening section already named that pattern): a reader who
-encounters the original task number in an old commit message or an old chapter citation is not
-left looking at a dead end, but is pointed forward to wherever the work actually landed.
+A prose statement that ``all lanes passed'' cannot replace this packet, especially when one lane
+was only compile-checked or one renderer ran under a substitute runtime.
 
-\section{Status symbols, read consistently}
+\section{Executable ledgers resist prose drift}
 
-Across \texttt{NEXT.md} and the \texttt{plan\_*.md} files, a small set of symbols recur with
-consistent meaning: a hollow marker for work not yet started, a half-filled marker for a
-partially complete item, and a checkmark for done --- the same three-state shape
-\texttt{AUDIT.md} uses with different symbols. When this book's own chapters describe a
-feature as ``open'' or ``BLOCKED'' rather than simply absent, that distinction is drawn
-directly from this same convention: an open item is ordinary unstarted or in-progress work; a
-BLOCKED item, as Chapter~\ref{ch:sdl-renderer} covered for \texttt{SDL\_RENDERER}'s two
-BLOCKED rows, specifically means the work itself is understood but genuinely cannot proceed
-without a decision only the project owner can make.
+The glTF conformance work keeps known defects in both documentation and tests, then a meta-test
+asserts that the two sets agree.  Skia validators compare parity ledgers and decisions with live
+interfaces and enums.  Renderer identity gates compare the CMake and C\texttt{++} registries.
+Module probes inspect link closures.
 
-\section{Doxygen \texttt{@note Status:} tags: a secondary, human-readable hint}
+These mechanisms encode a general rule: if a plan row names a finite set that code can derive,
+derive and compare it.  Check row uniqueness, accepted status vocabulary, set equality, path
+existence, and non-empty parsing.  Keep negative fixtures and mutation so the validator can prove it
+goes red.
 
-\texttt{sharp-runtime} (Chapter~\ref{ch:sharp-runtime-overview}) layers one further,
-source-level convention on top of all of this: a \texttt{@note Status: Todo|Stub|Partial|%
-Implemented|Verified} Doxygen tag directly on individual classes and methods. Its own
-documentation is explicit that this tag is a \emph{secondary}, human-readable hint, not a
-source of truth --- the authoritative record of whether a given .NET type counts as ``ported''
-lives in \texttt{plan.sqlite3}'s own \texttt{task} table (Chapter~\ref{ch:sharp-runtime-overview}
-covers this database in full), and the two are not mechanically kept in sync with each other.
-A reader trusting only the source comment risks trusting a claim the project's own
-authoritative tracking database might already have superseded.
+Executable documents can rot too.  Four wired validators at the pin read paths removed by
+modularization.  A gate that cannot find its input is not current evidence.  Self-validation must
+include its input mapping, and a physical source move should update implementation, tests,
+validators, and cited docs atomically.
 
-\section{A pattern confirmed independently, across unrelated subsystems}
+\section{sharp-runtime's database makes scope measurable}
 
-The discipline the sections above describe in the abstract is worth grounding in how often it
-actually mattered while writing this book, because the same specific shape of finding recurred
-independently across subsystems tracked in entirely separate documents, with no cross-reference
-between them: a claim that looked settled --- a bug list item marked fixed, a status recorded
-as \texttt{CLOSED}, an audit round that had already run --- turned out to be stale once checked
-against the current, live source rather than trusted at face value. Four genuinely separate
-instances surfaced in the course of this book's own research alone: two oracle-methodology
-bugs the \texttt{EasyGL} renderer's own bug list still described as ``logged \dots{} not fixed''
-had in fact both been closed since (Chapter~\ref{ch:easygl-backend}); a
-\texttt{sharp-runtime} concurrency fix already marked \texttt{CLOSED} turned out to hide a
-second, deeper race that only a later, dedicated ThreadSanitizer run against real concurrent
-load actually caught (Chapter~\ref{ch:devices-sensors}'s Android sensor-bridge finding is the
-structurally identical pattern, one repository over); and a \texttt{cna-samples} bug report
-describing \texttt{GraphicsDevice::Clear(Color)} as still dropping the depth buffer turned out,
-on directly reading the current implementation, to already carry an explicit fix and its own
-explanatory comment (Chapter~\ref{ch:samples-and-examples}).
+The sharp-runtime sibling stores coarse classifications and concrete tickets in
+\texttt{plan.sqlite3}.  At pinned commit \texttt{f827a6c5}, the \texttt{task} table contains exactly
+16,201 rows: 1,082 \texttt{ported}, 14,979 \texttt{ignored}, and 140 \texttt{ignore}; 118 rows also
+carry \texttt{outofscope=1}.  The \texttt{ticket} table contains 2,183 work items with descriptions,
+acceptance criteria, priorities, estimates, status, and optional validation commands.
 
-A closely related fifth instance is worth naming precisely because it happened inside this book
-itself, not just inside the ecosystem it describes: an earlier pass through this project fixed
-the same stale D3D9 oracle-scene count (31, then 36, then the true current figure) in four
-locations at once --- Chapter~\ref{ch:testing-philosophy}, Chapter~\ref{ch:direct3d-backends},
-Appendix~\ref{ch:feature-matrix}, and this book's own opening prose in
-Chapter~\ref{ch:what-is-cna} --- and still missed a fifth: the very same chapter's own
-verification-scale summary table, a few sections further down the same file, still read
-``31-scene oracle'' until a later pass caught it directly while researching an unrelated
-chapter. The fix was not different in kind from the four that came before it --- the same
-number, the same underlying cause, the same file even --- it was simply a location the earlier
-sweep's own search terms happened not to reach. This is worth stating plainly rather than
-smoothing over: distrusting a written claim on principle only helps if the re-check is
-actually exhaustive, and a prior successful correction is no guarantee the next mention of the
-same fact was found too.
+The denominator matters more than the apparent percentage.  The database deliberately classifies
+vast areas of .NET that sharp-runtime will never implement.  ``1,082 ported'' means rows with a
+working C\texttt{++} counterpart under this schema; it is not a claim of 6.7\% behavioral parity
+with the whole BCL.  Doxygen \texttt{@note Status:} tags are secondary human hints and can drift
+from the database.
 
-None of these were found by doubting this ecosystem's documentation on principle --- each was
-found by doing exactly what this chapter's own account of the tracking layer recommends:
-treating a written status as a claim to re-verify against the live, current source rather than
-a settled fact, the same discipline every \texttt{NEXT.md} and \texttt{AUDIT.md} in this
-ecosystem asks of its own readers. That the pattern recurred independently across graphics,
-concurrency, and porting-tooling code, each tracked in its own separate document with its own
-separate history, is itself evidence this is a real property of how software drifts out from
-under its own status labels generally --- not a quirk specific to any one of these subsystems.
+The query should travel with the number:
 
-\section{Inside \texttt{plan.sqlite3}: the database behind the Doxygen tags}
+\begin{verbatim}
+SELECT status, COUNT(*) FROM task GROUP BY status;
+SELECT COUNT(*) FROM ticket;
+\end{verbatim}
 
-The previous section named \texttt{plan.sqlite3} as the authoritative record the
-\texttt{sharp-runtime} Doxygen \texttt{@note Status:} tags defer to, without showing what is
-actually inside it. Reading the real database directly turns that claim into something
-concrete rather than a name dropped in passing.
+This makes a future change visible and prevents an old book number from becoming an unexplained
+project constant.
 
-Its schema is two tables. \texttt{task} is the coarse-grained one --- one row per real .NET
-BCL type or member the project has ever classified, keyed by \texttt{(namespace, name, type)},
-with a single \texttt{status} column and an \texttt{outofscope} flag. \texttt{ticket} is the
-fine-grained one: one row per concrete unit of work, carrying a title, a free-text description,
-explicit \texttt{acceptance\_criteria}, an optional \texttt{validation\_command} a reviewer can
-literally run, a priority (\texttt{P0}--\texttt{Pn}), an estimated size, and a status. A real
-row from \texttt{ticket}, quoted in full, shows the shape every one of the 1{,}728 rows in the
-table follows:
+\section{Separate observations, inferences, and decisions}
 
-\begin{quote}
-\small
-\textbf{Ticket~29} --- \emph{Audit all \texttt{NotImplementedException} call sites} ---
-\textbf{priority P0}, \textbf{status done} --- \emph{description:} ``Classify every
-\texttt{NotImplementedException} as permanent deviation, real bug, or test-only expectation.
-Real bugs become implementation tickets.'' --- \emph{acceptance criteria:} ``The change is
-reviewed, documented where appropriate, builds cleanly with zero warnings, tests pass or the
-ticket records a precise blocker.'' --- \emph{validation command:} \texttt{cmake --build build
---parallel 4 \&\& ./build/SharpRuntimeTests}
-\end{quote}
+A robust task record distinguishes three things.  An observation is directly reproducible:
+``this shader compiler path imports a missing module.''  An inference connects evidence:
+``modularization left the workflow validator stale.''  A decision sets policy:
+``the release gate must fail closed on a missing manifest.''
 
-The \texttt{validation\_command} field is the detail worth dwelling on: a ticket does not just
-assert it is done, it names the exact command that proves it, the same discipline this book's
-own \texttt{Task~N} citations aspire to by naming a real test file rather than describing a fix
-in prose alone.
+Mixing them causes plans to outlive their premises.  A decision can remain valid after the cited
+bug moves; an observation can become false after a fix; an inference may need revisiting when a
+new control run appears.  Marking the category makes later re-audit cheaper.
 
-\subsection{A real number worth knowing: how much of .NET this project actually tracks}
+\section{Handoff is part of implementation}
 
-Querying \texttt{task} directly (\texttt{SELECT status, COUNT(*) FROM task GROUP BY status})
-answers a question this book has referenced obliquely --- how large is the real .NET BCL
-surface \texttt{sharp-runtime} keeps a classification for at all --- with an exact, checkable
-number rather than an impression: \textbf{16{,}201} total classified types and members, of
-which only \textbf{1{,}041} (6.4\%) carry status \texttt{ported} (a real, working C\texttt{++}
-implementation exists); the remaining 93.6\% are split between \texttt{ignored} (15{,}023 rows
---- classified and deliberately left unimplemented, the large majority of the whole table) and
-\texttt{ignore} (137 rows, a distinct status from a slightly different classification pass) ---
-plus a further 117 rows separately flagged \texttt{outofscope=1} regardless of their own status
-value. This is the honest denominator behind every ``sharp-runtime implements X'' claim this
-book makes: the project's own explicit position is that the overwhelming majority of the real
-.NET Base Class Library --- everything from \cnans{System.Xml.Schema} (300 tracked members, 0
-ported) to \cnans{System.Numerics.Tensors} (350 tracked, 0 ported) --- was never a goal to port
-at all, only to \emph{classify}, so that a reader encountering an unported .NET type can find a
-recorded, deliberate decision rather than an unexplained gap. \cnans{System} itself, the
-BCL's own root namespace, is the most heavily ported by count (492 tracked, 216 ported,
-44\%) --- unsurprising, since it is exactly the namespace Chapter~\ref{ch:sharp-runtime-overview}
-and Chapter~\ref{ch:sharp-runtime-namespaces} already cover in the most narrative depth.
+An effective handoff states what is complete, what was verified, what remains, which repositories
+are read-only, and which actions require external approval.  It includes failed approaches whose
+repetition would waste time and identifies known-stale documents that must not be used as status
+sources.  It does not paste an ever-growing transcript into one file.
 
-\section{Why this layer is worth knowing, not just tolerating}
-
-None of this is unusual in isolation --- plenty of large projects keep a TODO file and a set
-of per-feature planning documents. What is worth taking away from this chapter is the
-discipline threading through all of it: every one of these documents is written to be
-distrusted a little, and to tell you exactly how to check it against something more
-authoritative --- \texttt{NEXT.md} telling you which of its own sections are stale,
-\texttt{AUDIT.md} tracking currency per class rather than claiming a single global percentage,
-\texttt{CHECKLIST.md} recording known inconsistencies instead of hiding them, and
-\texttt{sharp-runtime}'s own Doxygen tags explicitly deferring to a database rather than
-claiming to be the final word themselves. This is the same discipline
-Chapter~\ref{ch:what-is-cna} named as this project's most distinctive trait in its very first
-pages, and it is worth recognizing it here again, now grounded in the specific documents that
-actually carry it.
+The final authority order is practical: current source and generated configuration; executable
+tests and retained artifacts; accepted integration/remediation records; then plans, audits,
+READMEs, and comments as context.  Comments often preserve the best explanation and the worst
+status.  Durable project practice keeps both facts visible by linking explanation to something a
+future maintainer can rerun.
