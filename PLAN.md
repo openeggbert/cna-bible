@@ -68,28 +68,32 @@ current, not stale.
 
 | Phase | State |
 |---|---|
-| **A — source audit** | 7 of 10 areas delivered (4 written to `audit/`, 3 pending file write); 3 still researching |
-| **B — new Table of Contents** | Part IV/renderers settled; rest blocked on the four in-flight areas |
-| **C — structural migration** | Started: all 112 hard-coded chapter references migrated to `\ref{}` |
-| **D — chapter writing** | Not started |
-| **E — appendices** | Not started |
-| **F — whole-book consistency** | Not started |
-| **G — final verification** | Not started |
+| **A — source audit** | **Complete. 10 of 10 areas delivered and on disk in `audit/`.** |
+| **B — new Table of Contents** | Part IV/renderers settled (§4 below). Parts I–III, V–IX not yet drafted — all research is in, this is a synthesis pass over `AUDIT.md` + `audit/*.md`, no further research needed. |
+| **C — structural migration** | Started: all 112 hard-coded chapter references migrated to `\ref{}`. Remaining: create/move/split chapter files once Phase B lands, rename `part4-backends/`, run the terminology sweep. |
+| **D — chapter writing** | Not started. No chapter prose has been rewritten yet. |
+| **E — appendices** | Not started. |
+| **F — whole-book consistency** | Not started. |
+| **G — final verification** | Not started. |
 
-### 3.1 Phase A research areas
+### 3.1 Phase A research areas — all delivered
 
-| Area | Report | State |
-|---|---|---|
-| Identity, architecture, modules, build | `audit/architecture-build.md` | **Delivered** |
-| Renderer catalog (46 identities) | `audit/renderer-catalog.md` | **Delivered** |
-| Graphics core, resources, effects, shaders | `audit/graphics-core-effects.md` | Delivered to coordinator; file write pending |
-| Content pipeline, XNB, type readers, CNJ | `audit/content-xnb-cnj.md` | **Delivered** |
-| 3D models, glTF, skinning, CNJ toolchain | `audit/3d-gltf-cnj.md` | **Delivered** |
-| Testing, verification, oracles, CI | `audit/testing-verification.md` | Delivered to coordinator; file write pending |
-| Input, devices, audio, media, net, services, storage | `audit/input-audio-net-services.md` | **In flight** |
-| Platforms | `audit/platforms.md` | **In flight** |
-| Sibling libraries | `audit/sibling-libraries.md` | Delivered to coordinator; file write pending |
-| Framework core and math | `audit/framework-core-math.md` | **In flight** |
+| Area | Report |
+|---|---|
+| Identity, architecture, modules, build | `audit/architecture-build.md` |
+| Renderer catalog (46 identities) | `audit/renderer-catalog.md` |
+| Graphics core, resources, effects, shaders | `audit/graphics-core-effects.md` |
+| Content pipeline, XNB, type readers, CNJ | `audit/content-xnb-cnj.md` |
+| 3D models, glTF, skinning, CNJ toolchain | `audit/3d-gltf-cnj.md` |
+| Testing, verification, oracles, CI | `audit/testing-verification.md` |
+| Input, devices, audio, media, net, services, storage | `audit/input-audio-net-services.md` |
+| Platforms | `audit/platforms.md` |
+| Sibling libraries | `audit/sibling-libraries.md` |
+| Framework core and math | `audit/framework-core-math.md` |
+
+Each report ends with its own "BOOK IMPACT" section proposing chapter-level changes for its area.
+`AUDIT.md` §4 carries a curated cross-report summary; the full detail (with `path:line` citations)
+is only in the individual reports — read the relevant one before writing any chapter.
 
 ### 3.2 Commissioned but not yet run
 

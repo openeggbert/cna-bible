@@ -309,18 +309,34 @@ Ch.38 free-direct (65 lines), Ch.49 roadmap (161), Appendix C glossary (162).
 Full per-area evidence lives in `audit/*.md`. This section carries the cross-cutting
 conclusions that drive the new edition's structure.
 
+**All ten Phase A research areas are complete and on disk.** Phase A itself (source audit) is
+done; the coordinator has not yet done the cross-report synthesis pass that Phase B (new Table
+of Contents) needs for Parts I–III and V–IX (Part IV is already settled — see §4.2 below and
+`PLAN.md` §4).
+
 | Area | Raw report | Status |
 |---|---|---|
-| Identity, architecture, modules, build | `audit/architecture-build.md` | Delivered |
-| 3D model runtime, glTF, skinning, CNJ tooling | `audit/3d-gltf-cnj.md` | Delivered |
-| Content pipeline, XNB, type readers, CNJ | `audit/content-xnb-cnj.md` | Delivered |
-| Renderer catalog (46 identities) | `audit/renderer-catalog.md` | In progress |
-| Graphics core, effects, shaders | `audit/graphics-core-effects.md` | In progress |
-| Input, devices, audio, media, net, services, storage | `audit/input-audio-net-services.md` | In progress |
-| Testing, verification, oracles, CI | `audit/testing-verification.md` | In progress |
-| Platforms | `audit/platforms.md` | In progress |
-| Sibling libraries | `audit/sibling-libraries.md` | In progress |
-| Framework core and math | `audit/framework-core-math.md` | In progress |
+| Identity, architecture, modules, build | `audit/architecture-build.md` | **Delivered** |
+| 3D model runtime, glTF, skinning, CNJ tooling | `audit/3d-gltf-cnj.md` | **Delivered** |
+| Content pipeline, XNB, type readers, CNJ | `audit/content-xnb-cnj.md` | **Delivered** |
+| Renderer catalog (46 identities) | `audit/renderer-catalog.md` | **Delivered** |
+| Graphics core, effects, shaders | `audit/graphics-core-effects.md` | **Delivered** |
+| Input, devices, audio, media, net, services, storage | `audit/input-audio-net-services.md` | **Delivered** |
+| Testing, verification, oracles, CI | `audit/testing-verification.md` | **Delivered** |
+| Platforms | `audit/platforms.md` | **Delivered** |
+| Sibling libraries | `audit/sibling-libraries.md` | **Delivered** |
+| Framework core and math | `audit/framework-core-math.md` | **Delivered** |
+
+### 4.0a Renderer count, settled
+
+**Four independent audit passes converged on the same figure**, each deriving it separately from
+source: **46 public renderer identities implemented by 42 families.** Verified three ways: (1)
+the CMake `STRINGS` block at `cmake/RendererSelection.cmake:15-16` has exactly 46 quoted tokens,
+46 unique, zero duplicates; (2) `modules/core/include/CNA/GraphicsRendererType.hpp`'s enum has 46
+enumerators; (3) `scripts/check_renderer_identities.py` mechanically pins both to a 46-entry
+table and fails configure if they diverge. `modules/CMakeLists.txt:156-162`'s
+`_cna_renderer_modules` list has 42 entries. Always print both numbers, labelled — see the F-001
+book rule below.
 
 ### 4.1 Content pipeline — headline conclusions
 
@@ -448,6 +464,49 @@ with `static_assert`ed sizes and offsets as the single source of truth for GPU b
 `GetBackBufferData` has to reconstruct each `Color(r,g,b,a)` from a byte vector rather than
 writing into a `Color*` directly. This is one of the cleanest "what porting C# to C++ actually
 costs" stories in the codebase and the book has no home for it yet.
+
+### 4.1b Input, audio, media, net, services — headline conclusions
+
+**F-033 — `CNA_DEVICES` defaults OFF and silently removes half of Part V's subject matter.**
+**Confidence: VERIFIED.** All 49 files of `modules/devices-ext` are `#ifdef CNA_DEVICES`-wrapped;
+in a default build the static library ships with zero defined symbols and its 10 test files
+register zero cases. `modules/devices` (the faithful `Microsoft::Devices::Sensors` port) is
+**not** gated by the same option at all — the option's own help string ("battery, camera,
+clipboard, …") misleadingly implies it covers sensors too.
+
+**F-034 — `Compass` and `Motion` are Android-only; every other platform gets a hardcoded refusal.**
+**Confidence: VERIFIED.** `getIsSupportedProperty()` returns `false` off Android because SDL3
+exposes no magnetometer or fused-orientation API on any platform CNA targets. The existing book
+chapter treats all four sensors as one family.
+
+**F-035 — `NetworkSession`'s `Local`/`LocalWithLeaderboards` deliver no data at all.**
+**Confidence: VERIFIED.** `RealNetworkingEnabled()` is true only for `SystemLink`; the entire
+`PacketSend` branch in `NetworkSession::Update()` is nested inside that gate. A test asserts this
+directly for all four synthetic session types. The book's existing table calls `Local`
+"loopback-style real" — wrong about delivery, though session lifecycle (`StartGame`/`EndGame`,
+events) is real.
+
+**F-036 — `GamerServicesDispatcher::Update()` is a permanent no-op, and it has already caused two
+real hangs.** **Confidence: VERIFIED.** Because `UpdateAsync()` returns `true` forever once
+initialized, any XNA-idiomatic `while (!result->IsCompleted) UpdateAsync();` spins at ~100% CPU.
+Both known instances were fixed by completing the action at construction instead
+(`NetworkSession::Create/Find/Join`, `SignedInGamer::BeginGetAchievements`); the underlying no-op
+remains, so any future `Begin*`/`End*` pair not adopting that pattern reproduces the hang.
+
+**F-037 — Storage has a live, untested, unguarded path-traversal hole.** **Confidence: VERIFIED.**
+`StorageContainer::ResolvePath` is `(fs::path(storagePath_) / relative).string()` with no
+containment check, and every file/directory operation routes through it. The sibling
+`StorageDevice::DeleteContainer` **is** guarded and is the subject of the module's only 5 tests —
+so the traversal question was reviewed and fixed in exactly the wrong place. Recorded as
+CNA-BUG-046 in `cnabugs.md`.
+
+**F-038 — `AvatarRenderer`'s faithful API is provably, deliberately inert; a separate CNAEXT path
+does real GPU-skinned rendering.** **Confidence: VERIFIED.** `getStateProperty()` forces
+`Unavailable` on every single read (not just initially), so `BindPose` always throws and `Draw()`
+validates 71 bones then does nothing — because the real Xbox avatar mesh/texture/animation data
+was always streamed from Xbox LIVE and never shipped in the reference assembly. Real rendering
+exists only via `EnableRealRenderingEXT`/`DrawRealEXT`, proven by pixel readback on EasyGL and
+Vulkan only.
 
 ### 4.2 3D and glTF — headline conclusions
 
