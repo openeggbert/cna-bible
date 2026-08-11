@@ -1,7 +1,7 @@
 \chapter{Roadmap, Open Gaps, and How to Re-Audit This Book}
 \label{ch:roadmap}
 
-This closing chapter gathers the open threads left throughout both volumes into one place:
+This closing chapter gathers the open threads left throughout the book into one place:
 incremental API coverage first, then the specific named gaps, then cross-platform
 strengthening. It also illustrates one final project lesson: a roadmap is a dated snapshot.
 CNA's own top-level README and graphics feature matrix both still contain claims that newer
@@ -27,7 +27,7 @@ project's own words, the single biggest real gap in CNA: no support for loading 
 \texttt{.fx} shader bytecode blob the way a real XNA content pipeline would produce one, with
 a real, measured cost of 23 of the 86 official XNA samples in \texttt{cna-samples}
 (Chapter~\ref{ch:samples-and-examples}) failing to run as a direct result. The
-\texttt{ShaderEffect} runtime-HLSL-compilation path on the three Direct3D backends
+\texttt{ShaderEffect} runtime-HLSL-compilation path on the three Direct3D renderers
 (Chapter~\ref{ch:direct3d-backends}) is a real, working alternative for new or adapted
 shaders, but is not bytecode compatibility, and closing this gap for real would mean building
 something comparable in scope to a second MojoShader-style bytecode cross-compiler.
@@ -55,7 +55,7 @@ itself is merely being considered.
 
 \section{Named architecture-decision gaps}
 
-Three specific gaps recur across this book's backend chapters, each requiring a project-owner
+Three specific gaps recur across this book's renderer chapters, each requiring a project-owner
 decision rather than more engineering effort on its own:
 
 \begin{itemize}
@@ -65,7 +65,7 @@ decision rather than more engineering effort on its own:
   \item \texttt{SDL\_RENDERER}'s \cnaclass{Texture3D} / \cnaclass{TextureCube} construction
         (Chapter~\ref{ch:sdl-renderer}) --- blocked because the safer fix (throwing at
         construction rather than silently succeeding) has a confirmed 94-test blast radius.
-  \item \texttt{EASYGL}'s real, non-\texttt{Color} \cnaclass{SurfaceFormat} GPU forwarding
+  \item \texttt{EasyGL}'s real, non-\texttt{Color} \cnaclass{SurfaceFormat} GPU forwarding
         (Chapter~\ref{ch:easygl-backend}) --- blocked because it conflicts with an
         already-shipped \texttt{Texture::ValidateFormat} contract the project has already
         committed tests against.
@@ -75,7 +75,7 @@ decision rather than more engineering effort on its own:
 
 The removed fourth item is not an editorial omission. It was closed in the implementation,
 and keeping it would repeat a stale row in
-\texttt{docs/\allowbreak{}graphics-\allowbreak{}backend-\allowbreak{}feature-\allowbreak{}matrix.md}.
+\texttt{docs/\allowbreak{}graphics-\allowbreak{}renderer-\allowbreak{}feature-\allowbreak{}matrix.md}.
 The current source separates four facts that the old summary collapsed:
 
 \begin{center}
@@ -93,9 +93,9 @@ Generic texture collection &
   draw path consumes the collection for \emph{any} texture type. This is broader unfinished
   plumbing, not a cube/volume inheritance block. \\
 Custom \cnaclass{ShaderEffect} &
-  Typed 2D, cube, and volume overloads exist. EasyGL overrides all three backend hooks and has
-  dedicated cube/volume shader pixel tests; the other effect backends inherit no-op
-  cube/volume hooks. This is the real, narrower backend-coverage remainder. \\
+  Typed 2D, cube, and volume overloads exist. EasyGL overrides all three renderer hooks and has
+  dedicated cube/volume shader pixel tests; the other effect renderers inherit no-op
+  cube/volume hooks. This is the real, narrower renderer-coverage remainder. \\
 Stock effects &
   Their typed draw parameters are independent of the generic collection. In particular,
   \cnaclass{EnvironmentMapEffect} already drives real cube sampling on the Direct3D paths
@@ -105,9 +105,9 @@ Stock effects &
 \end{center}
 
 Chapter~\ref{ch:textures-rendertargets} already records the Task~863 inheritance correction.
-The lesson here is about roadmap maintenance: an attractive seven-backend comparison was still
+The lesson here is about roadmap maintenance: an attractive earlier seven-renderer comparison was still
 wrong because its premise had expired. The actionable work is to wire and verify typed custom
-effect binding on additional programmable backends, or separately decide whether
+effect binding on additional programmable renderers, or separately decide whether
 \cnaclass{GraphicsDevice::Textures} should become a real draw-time binding source for all
 texture types.
 
@@ -115,7 +115,7 @@ texture types.
 
 The roadmap's final, broadest item is exactly what this Part's cross-platform chapters
 covered in depth: deepening validation on Windows (moving from Wine-verified to genuinely
-Windows-hardware-verified, an open item on every one of the three Direct3D backends), the
+Windows-hardware-verified, an open item on every one of the three Direct3D renderers), the
 Web (moving \texttt{CANVAS} from code-reviewed to actually pixel-verified in a real browser,
 Chapter~\ref{ch:canvas-ascii-backends}), and Android (broadening beyond the single real
 x86\_64 emulator configuration this project currently verifies against).
@@ -126,7 +126,7 @@ bounded-timeout bug (Chapter~\ref{ch:android-ndk}) was invisible to careful manu
 to the ordinary test suite alike; it was found only once a dedicated \texttt{devices-tsan} run
 was specifically constructed against real, concurrent \texttt{Start()} / \texttt{Stop()} traffic
 under load. The same is true of \texttt{sharp-runtime}'s own \cnaclass{Channel} deadlock
-(Chapter~\ref{ch:sharp-runtime-namespaces}) and the D3D9 backend's real swap-chain format restriction
+(Chapter~\ref{ch:sharp-runtime-namespaces}) and the D3D9 renderer's real swap-chain format restriction
 (Chapter~\ref{ch:windows-wine}), each surfaced only once the corresponding platform's own
 verification loop was deepened past what a prior pass had considered sufficient. ``Strengthen
 cross-platform validation'' is not a vague aspiration in this project's own history --- it is a
@@ -137,10 +137,10 @@ than treating current coverage as good enough.
 \section{A gap in this book itself, closed: \texttt{SDL\_GPU} now has its own chapter}
 
 An earlier pass through this chapter named a gap in this book itself, not in CNA's own code:
-\texttt{SDL\_GPU}, a real, extensively-verified backend, had never received a dedicated Part~IV
-chapter despite maturing alongside every other backend this book covers. That gap is closed as
+\texttt{SDL\_GPU}, a real, extensively-verified renderer, had never received dedicated Part~IV
+coverage despite maturing alongside every other renderer this book covers. That gap is closed as
 of this pass --- Chapter~\ref{ch:sdlgpu-backend} now gives it the same full treatment every
-other backend receives (the Y-flip bug a real screenshot caught, the storage-buffer workaround
+other renderer receives (the Y-flip bug a real screenshot caught, the storage-buffer workaround
 for a real undocumented push-uniform cap, the runtime \texttt{libshaderc} compile, and the
 render-target use-after-free closed before it ever shipped). This is left here, briefly, as a
 tracking pointer rather than deleted outright, the same convention
@@ -152,10 +152,10 @@ the real content actually landed.
 \section{A closing note on how to use this chapter}
 
 Every gap named in this chapter began with a specific, dated source --- \texttt{NEXT.md}, a
-\texttt{plan\_*.md} file, or a backend's own documentation, per the practice conventions from
+\texttt{plan\_*.md} file, or a renderer's own documentation, per the practice conventions from
 Chapter~\ref{ch:project-practice}. This final audit found that two such sources had themselves
 gone stale: the README still described the absence of an XNB reader, and the graphics matrix
 still described the pre-Task~863 texture hierarchy. The right way to use this chapter is
 therefore not to trust even its cited summaries indefinitely, but to follow them to current
 headers, implementations, and tests. That is the same discipline this project asks of itself,
-and the same discipline this book has tried to model throughout both volumes.
+and the same discipline this book has tried to model throughout.

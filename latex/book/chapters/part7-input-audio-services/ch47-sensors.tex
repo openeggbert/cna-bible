@@ -4,7 +4,7 @@
 
 This chapter covers two namespaces that share a directory prefix but almost nothing else:
 \cnans{Microsoft::Devices::Sensors} is a real, historical Windows Phone~7 API surface CNA
-faithfully ports; \cnans{CNA::Devices} is an entirely CNA-original, \texttt{NOXNA} desktop
+faithfully ports; \cnans{CNA::Devices} is an entirely CNA-original, \texttt{CNAEXT} desktop
 utility layer with no XNA or WP7 equivalent at all.
 
 \section{Microsoft::Devices::Sensors: a real WP7 API, engineered for real concurrency}
@@ -84,7 +84,7 @@ a game's own handler could vanish without a trace. The fix is a small, shared, d
 error code and message, device id, timestamp, severity) that any native call site can publish
 to without risking becoming a new throw-across-a-callback hazard itself, since the recording
 call internally wraps its own logging and callback-invocation in its own \texttt{try}/%
-\texttt{catch}. Exposed through debug-build logging plus \texttt{NOXNA} test hooks
+\texttt{catch}. Exposed through debug-build logging plus \texttt{CNAEXT} test hooks
 (\texttt{GetRecordCountForTesting()}, \texttt{GetLastRecordForTesting()}), it was wired into one
 concretely-identified real gap first --- the Android sensor bridge's own callback dispatch,
 which previously swallowed a handler's thrown exception with no trace at all, now correctly
@@ -175,7 +175,7 @@ process-lifetime shared instance reached only through \texttt{getDefaultProperty
 private constructor exists specifically because a phone has exactly one vibration motor, and
 a second, independently constructed instance could not meaningfully represent anything
 different. \texttt{Start(TimeSpan)} throws outside the documented $[0, 5\text{s}]$ WP7 range;
-a real \texttt{NOXNA} extension, \texttt{Start(TimeSpan, float intensity)}, exposes SDL3's
+a real \texttt{CNAEXT} extension, \texttt{Start(TimeSpan, float intensity)}, exposes SDL3's
 graduated rumble-strength parameter directly, since modern hardware supports variable
 intensity that a 2010-era WP7 phone's simple on/off buzzer never did. On Android specifically,
 a documented, source-verified hardware limitation is worth knowing: SDL3's own Android haptic
@@ -206,7 +206,7 @@ if (vibrate->getIsSupportedProperty())
 vibrate->Stop();
 \end{lstlisting}
 
-\section{CNA::Devices: a NOXNA desktop utility layer}
+\section{CNA::Devices: a CNAEXT desktop utility layer}
 
 Distinct from the sensor namespace above, \cnans{CNA::Devices} has no XNA or WP7 precedent at
 all --- every class in it is a CNA-original addition, built directly on an SDL3 capability

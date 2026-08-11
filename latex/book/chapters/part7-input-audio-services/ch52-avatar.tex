@@ -50,7 +50,7 @@ support is limited.''
 \section{SkinnedModelEXT: the separate, real-rendering extension}
 
 Real avatar rendering in CNA does not live inside the classes above at all --- it lives in a
-structurally independent, entirely \texttt{NOXNA} system, \cnaclass{SkinnedModelEXT}, built
+structurally independent, entirely \texttt{CNAEXT} system, \cnaclass{SkinnedModelEXT}, built
 specifically because \cnaclass{Model} / \cnaclass{ModelMesh} (Chapter~\ref{ch:models-meshes}'s models-and-meshes
 coverage) encode a rigid, per-mesh parent-bone hierarchy --- the wrong shape entirely for
 real per-vertex GPU skinning. \cnaclass{SkinnedModelEXT} owns its own bone hierarchy (a
@@ -110,7 +110,7 @@ genuinely sticks.
 The second bug is not avatar-specific in where it lives, only in how it was found: three
 consecutive rounds of tuning avatar ambient lighting to fix visibly-too-dark materials all
 failed, and the reason turned out to be a real formula bug in EasyGL's own shader generation,
-shared by every skinned, vertex-lit, and environment-mapped 3D draw on that backend, not
+shared by every skinned, vertex-lit, and environment-mapped 3D draw on that renderer, not
 avatars alone. \texttt{EmissiveColor} was multiplied by \texttt{DiffuseColor} \emph{twice} in
 three of EasyGL's shader-variant builders --- real FNA's own \texttt{Lighting.fxh} adds the
 emissive term \emph{after} the diffuse multiply, not as part of it. Because CNA pre-folds
@@ -305,14 +305,14 @@ by its own dedicated test:
         (index 99 and index $-5$) added to the same clip used above.
 \end{description}
 
-\section{Backend support and real content proof}
+\section{Renderer support and real content proof}
 
 Real GPU skinning through this extension is proven end-to-end via pixel readback on EasyGL;
 Vulkan and BGFX both have the real pipeline wiring in place (descriptor sets and per-frame
 bone uniform buffers) but had not, as of the source material this book draws from, been
 separately smoke-tested for this specific feature. On \texttt{SDL\_RENDERER}, any attempt to
 create the 3D resources this extension needs throws the same ``does not support 3D'' error
-already covered in Part~IV's backend chapters, consistent with that backend's documented
+already covered in Part~IV's renderer chapters, consistent with that renderer's documented
 scope. Beyond synthetic tests, a dedicated demo application loads real content and renders a
 complete, correctly proportioned, animated humanoid avatar in a real window, toggling between
 clips live --- alongside seven sibling demo applications covering an animation gallery,
@@ -325,7 +325,7 @@ of this chapter's story running at once.
 \begin{center}
 \begin{tabular}{lll}
 \toprule
-& \textbf{Base Avatar API (faithful)} & \textbf{SkinnedModelEXT (\texttt{NOXNA})} \\
+& \textbf{Base Avatar API (faithful)} & \textbf{SkinnedModelEXT (\texttt{CNAEXT})} \\
 \midrule
 Purpose & Byte-exact port of real XNA~4.0 & CNA-original, opt-in real renderer \\
 Bone rig & Fixed 71-bone array, always zero & Independent count (\raisebox{0.5ex}{\texttildelow}50--65), real skeleton \\

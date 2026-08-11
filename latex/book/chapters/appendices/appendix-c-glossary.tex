@@ -2,39 +2,45 @@
 \label{ch:glossary}
 
 \begin{description}
-\item[ASCII] One of CNA's twelve graphics backends: a text-glyph renderer layered on top of
-  \texttt{SDL\_RENDERER} rather than a standalone backend, decorating that backend's own output
-  with a luminance-to-glyph quantization step. See Chapter~\ref{ch:canvas-ascii-backends}.
-\item[BGFX] One of CNA's twelve graphics backends; a third-party rendering library integrated
+\item[ASCII] A removed public renderer identity. Its reusable quantization and glyph-atlas logic
+  now lives in the renderer-neutral \cnaclass{CNA::Graphics::AsciiPostProcessEffect} extension
+  under \texttt{modules/graphics-ext}; the former renderer's architecture is retained as history
+  in Chapter~\ref{ch:canvas-ascii-backends}.
+\item[BGFX] One of CNA's 46 public renderer identities; a third-party rendering library integrated
   directly via its native API. See Chapter~\ref{ch:bgfx-backend}.
-\item[CANVAS] CNA's Emscripten-only, HTML \texttt{<canvas>}-based 2D graphics backend. See
+\item[CANVAS] CNA's Emscripten-only, HTML \texttt{<canvas>}-based 2D graphics renderer. See
   Chapter~\ref{ch:canvas-ascii-backends}.
 \item[CNA] The project this book is about: a C\texttt{++}23 reimplementation of the XNA~4.0
-  programming model, built on SDL3 with a pluggable graphics-backend layer.
+  programming model, built on SDL3 with a pluggable graphics-renderer layer.
 \item[ContentManager] The central XNA class resolving an asset name to real loaded content,
   through a three-way resolution order this book returns to repeatedly: a real, compiled
   \texttt{.xnb} file first, then a \texttt{.cnj} sidecar, then a direct native-format load. See
   Chapter~\ref{ch:content-and-assets}.
-\item[D3D9] CNA's Direct3D~9 graphics backend, and the backend this book's own zero-tolerance
+\item[DIRECTX9 / D3D9] \texttt{DIRECTX9} is CNA's public selector for its Direct3D~9
+  renderer, and Direct3D~9 is the API this book's own zero-tolerance
   oracle methodology (see \textbf{Oracle (D3D9)} below) is built around, since a genuine XNA~4.0
   runtime itself targets Direct3D~9. See Chapter~\ref{ch:direct3d-backends}.
-\item[D3D11] CNA's Direct3D~11 graphics backend, sharing a common \texttt{D3DCommon} foundation
+\item[DIRECTX11 / D3D11] \texttt{DIRECTX11} selects CNA's Direct3D~11 renderer, sharing a common \texttt{D3DCommon} foundation
   with D3D12 but implementing mip-chain generation via one native, whole-resource
   \texttt{GenerateMips()} call where D3D12 cannot. See Chapter~\ref{ch:direct3d-backends}.
-\item[D3D12] CNA's Direct3D~12 graphics backend; unlike D3D11 it has no native convenience call
+\item[DIRECTX12 / D3D12] \texttt{DIRECTX12} selects CNA's Direct3D~12 renderer; unlike D3D11 it has no native convenience call
   for mipmap generation and instead implements it as an explicit, face-scoped CPU
   readback/downsample/upload loop. See Chapter~\ref{ch:direct3d-backends}.
 \item[Descriptor heap] A Direct3D~12-owned table of resource-view descriptions rather than the
-  resources themselves. CNA's D3D12 backend keeps separate RTV, DSV, CBV/SRV/UAV, and sampler
+  resources themselves. CNA's D3D12 renderer keeps separate RTV, DSV, CBV/SRV/UAV, and sampler
   heaps, currently using fixed-capacity bump allocation with no slot reclamation during a device
   lifetime; exhaustion is therefore a CNA implementation limit, not a Direct3D~12 resource-memory
   limit. See Chapter~\ref{ch:direct3d-backends}.
-\item[DX3] CNA's graphics backend fronting the sibling \texttt{free-direct} project; a 2D-only
-  backend, in the same spirit as \texttt{SDL\_RENDERER}. See Chapter~\ref{ch:dx3-freedirect-backend}.
-\item[EASYGL] CNA's OpenGL/OpenGLES graphics backend, built on the sibling \texttt{easy-gl}
-  project; CNA's most feature-complete backend by its own account. See Chapter~\ref{ch:easygl-backend}.
+\item[FREEDIRECT] CNA's graphics renderer fronting the sibling \texttt{free-direct} project;
+  a 2D-only renderer in the same spirit as \texttt{SDL\_RENDERER}. The former \texttt{DX3}
+  selector was renamed; current \texttt{DIRECTX3} denotes a different, genuine DirectX~3
+  implementation. See Chapter~\ref{ch:dx3-freedirect-backend}.
+\item[EasyGL profiles] \texttt{OPENGLES2}, \texttt{OPENGLES3}, \texttt{OPENGL33},
+  \texttt{WEBGL1}, and \texttt{WEBGL2} are distinct public identities sharing CNA's internal
+  EasyGL factory and the sibling \texttt{easy-gl} project. \texttt{EASYGL} is not an accepted
+  selector. See Chapter~\ref{ch:easygl-backend}.
 \item[Effect] The XNA base class for a shader program bound to a \cnaclass{GraphicsDevice}.
-  CNA ships five stock effects and, on three backends, a runtime-compiled custom
+  CNA ships five stock effects and renderer-specific runtime-compiled custom
   \texttt{ShaderEffect} path --- see the shader/.fx gap chapter, Chapter~\ref{ch:shader-fx-gap}.
 \item[ENet] The third-party, vendored UDP networking library backing CNA's real Networking
   namespace implementation, wrapped by an internal \texttt{ENetBackend}. The same library
@@ -43,9 +49,9 @@
   otherwise faithfully-XNA-shaped class, kept visually distinct from the real XNA members
   around it --- for example \cnaclass{GraphicsDevice}'s parameterless, headless-friendly
   constructor, or \texttt{MinimizeEXT()} / \texttt{RestoreEXT()} on \cnaclass{GameWindow}, which
-  XNA has no minimize/restore API for at all. A sibling of \texttt{NOXNA}: both mark non-XNA
+  XNA has no minimize/restore API for at all. A sibling of \texttt{CNAEXT}: both mark non-XNA
   additions, but \texttt{EXT} specifically marks an addition to an otherwise-real XNA class,
-  where \texttt{NOXNA} marks a whole declaration with no XNA counterpart. See Chapter~\ref{ch:game-loop}.
+  where \texttt{CNAEXT} marks a whole declaration with no XNA counterpart. See Chapter~\ref{ch:game-loop}.
 \item[FNA] An open-source, C\#, SDL2-based reimplementation of the XNA~4.0 API, maintained
   independently of CNA. FNA is CNA's primary behavioral reference and the subject of CNA's
   own differential-testing infrastructure --- not the same thing as the real Microsoft
@@ -63,23 +69,20 @@
   captured via \texttt{SaveBackBufferScreenshotEXT} / \cnaclass{Texture2D}\texttt{::SaveAsPng}, is
   compared pixel-for-pixel against a checked-in reference (``golden'') PNG, with a
   \texttt{CNA\_UPDATE\_GOLDEN} escape hatch to intentionally regenerate the reference when a
-  change is deliberate. This book's own real \texttt{SOFTWARE}-backend screenshots are built on
+  change is deliberate. This book's own real \texttt{SOFTWARE}-renderer screenshots are built on
   the same infrastructure. See Chapter~\ref{ch:graphicsdevice}.
-\item[HEADLESS] A CNA graphics backend that never rasterizes a real pixel at all --- it only
+\item[HEADLESS] A CNA graphics renderer that never rasterizes a real pixel at all --- it only
   tracks and reports the last \texttt{Clear()} color and similar logic-only state. Used for
-  fast unit testing, not counted among the book's headline twelve graphics backends, and unable
-  to produce a real screenshot for that reason. See Chapter~\ref{ch:graphicsdevice}.
+  fast unit testing and unable to produce a real screenshot for that reason. See
+  Chapter~\ref{ch:graphicsdevice}.
 \item[GraphicsCapability] The small enum \cnaclass{GraphicsDevice::SupportsCapability} takes,
-  letting game code ask whether the active backend supports a feature (3D rendering,
+  letting game code ask whether the active renderer supports a feature (3D rendering,
   occlusion queries, and so on) before attempting it, rather than attempting it and catching
-  the resulting exception. Not every value is yet wired to answer honestly on every backend
-  --- \cnaclass{MultipleRenderTargets}, \cnaclass{DepthStencilBuffer}, and
-  \cnaclass{CustomEffects} have confirmed false positives; \cnaclass{ThreeD} does on ASCII,
-  and \cnaclass{OcclusionQuery} does on WebGPU, SDL GPU, Software, and ASCII.
-  \cnaclass{MultiSampleAntiAliasing} is definitely false-positive on ASCII and Software and
-  fails to reflect several device-dependent clamps; \cnaclass{AnisotropicFiltering} is false
-  on ASCII, SDL GPU, and Software and does not consult D3D9's live cap. See Chapters~9
-  and~16 for the complete matrix.
+  the resulting exception. Not every value is yet wired to answer honestly on every renderer:
+  \cnaclass{MultipleRenderTargets}, \cnaclass{DepthStencilBuffer}, and
+  \cnaclass{CustomEffects} have confirmed false positives, and several device-dependent limits
+  cannot be represented by one Boolean. See Chapter~\ref{ch:renderer-contract} and
+  Appendix~\ref{ch:feature-matrix} for the qualified matrices.
 \item[GraphicsDevice] The central class every rendering operation in CNA passes through;
   covered in Chapter~\ref{ch:graphicsdevice}.
 \item[.cnj] CNA's own permanent, JSON-based content sidecar format --- ``CNA content JSON,''
@@ -100,15 +103,15 @@
   bytes for post-close \texttt{ToArray()} / \texttt{GetBuffer()} extraction. Its raw-buffer
   constructor is a known divergence: it creates a read-only stream where real .NET defaults to
   writable. See Chapter~\ref{ch:sharp-runtime-namespaces}.
-\item[NOXNA] CNA's marker convention (a macro, and a matching compile-time build option) for
+\item[CNAEXT] CNA's marker convention (a macro, and a matching compile-time build option) for
   any declaration inside the XNA namespace tree that is not part of the real XNA~4.0 API. See
   Chapter~\ref{ch:design-philosophy}.
-\item[Oracle (D3D9)] The pixel-for-pixel verification methodology comparing CNA's D3D9
-  backend against a genuinely running XNA~4.0 runtime under Wine, at zero tolerance. See
+\item[Oracle (D3D9)] The pixel-for-pixel verification methodology comparing CNA's
+  \texttt{DIRECTX9} renderer against a genuinely running XNA~4.0 runtime under Wine, at zero tolerance. See
   Chapter~\ref{ch:direct3d-backends}, and this book's Windows/Wine chapter, Chapter~\ref{ch:windows-wine}.
-\item[PbrEffect] A \texttt{NOXNA} glTF~2.0-style metallic-roughness PBR material effect ---
+\item[PbrEffect] A \texttt{CNAEXT} glTF~2.0-style metallic-roughness PBR material effect ---
   unlike the five stock effects, it has no real-XNA counterpart at all, since real XNA~4.0
-  predates the glTF PBR model. Available on the WebGPU backend. See Chapter~\ref{ch:webgpu-backend}.
+  predates the glTF PBR model. Available on the WebGPU renderer. See Chapter~\ref{ch:webgpu-backend}.
 \item[ReflectiveReader<T>] Real .NET's reflection-based automatic content-reader generation
   mechanism. CNA has no equivalent by permanent, explicit scope decision: only manually
   registered, explicit C\texttt{++} \cnaclass{ContentTypeReader}s are supported, so content
@@ -116,26 +119,25 @@
   \texttt{ContentTypeWriter}/reader pair rebuilt and registered before it will load. See
   Chapter~\ref{ch:content-and-assets}.
 \item[SDL3] The cross-platform windowing/input/audio library CNA is built on. Not itself a
-  graphics backend --- \texttt{SDL\_RENDERER} (one of CNA's twelve backends) is built on
+  graphics renderer --- \texttt{SDL\_RENDERER} is built on
   SDL3's own 2D renderer specifically.
-\item[SDL\_GPU] One of CNA's twelve graphics backends, and the newest at the time of writing:
-  a zero-new-dependency backend built directly on SDL3's own \texttt{SDL\_GPU} API, using a
+\item[SDL\_GPU] A CNA graphics renderer built directly on SDL3's own \texttt{SDL\_GPU} API, using a
   fixed HLSL-style resource-binding order and a runtime GLSL-to-SPIR-V compile via
   \texttt{libshaderc}. See Chapter~\ref{ch:sdlgpu-backend}.
-\item[SDL\_RENDERER] One of CNA's twelve graphics backends, and one of two platform-default
-  choices selected by \texttt{cmake/BackendSelection.cmake} (the other being \texttt{EASYGL});
+\item[SDL\_RENDERER] CNA's default renderer outside Linux and Emscripten, selected by
+  \texttt{cmake/RendererSelection.cmake};
   a thin, 2D-only wrapper over SDL3's own 2D renderer. See Chapter~\ref{ch:sdl-renderer}.
 \item[SharpRuntime / sharp-runtime] The sibling C\texttt{++} reimplementation of a subset of
   the .NET base class library that CNA depends on for its non-XNA-specific vocabulary
   (\texttt{System::Object}, \texttt{TimeSpan}, \texttt{EventHandler<T>}, and more). Covered in
-  full in Part~VI.
-\item[SkinnedModelEXT] The CNA-original, \texttt{NOXNA} real-rendering extension for the
+  full in Part~VIII.
+\item[SkinnedModelEXT] The CNA-original, \texttt{CNAEXT} real-rendering extension for the
   Avatar system, structurally separate from the faithful, inert base Avatar API. See
   Chapter~\ref{ch:avatar}.
-\item[SOFTWARE] One of CNA's twelve graphics backends: a real CPU triangle rasterizer (edge
+\item[SOFTWARE] A real CPU triangle rasterizer (edge
   functions, perspective-correct interpolation, per-pixel depth test) that never touches SDL
-  video/X11/a GPU at all, making it the one backend that can produce a genuine screenshot in a
-  headless, display-less environment --- the source of every real screenshot in this book. See
+  video/X11/a GPU at all, making it a renderer that can produce a genuine screenshot in a
+  headless, display-less environment. See
   Chapter~\ref{ch:graphicsdevice}.
 \item[SpriteBatch] The primary 2D rendering API in XNA and CNA alike. See Chapter~\ref{ch:spritebatch}.
 \item[Stock effects] The five built-in XNA shader effects --- \cnaclass{BasicEffect},
@@ -145,13 +147,14 @@
   small, XNA namespace for user-data persistence (\cnaclass{StorageDevice},
   \cnaclass{StorageContainer}), backed by a straightforward local-filesystem implementation
   underneath a faithfully-preserved fake-async API shape. See Chapter~\ref{ch:storage}.
-\item[VertexDeclaration] The backend-independent description of a vertex layout: a stride plus
+\item[VertexDeclaration] The renderer-independent description of a vertex layout: a stride plus
   \cnaclass{VertexElement} records naming offsets, formats, and usages. It is pure data and can
-  be constructed on CNA's 2D-only SDL\_Renderer backend; an actual 3D draw that uses it is where
-  that backend correctly throws. See Chapters~7, 15, and~17.
-\item[VULKAN] One of CNA's twelve graphics backends, targeting the Vulkan API directly. See
+  be constructed on CNA's 2D-only SDL renderer; an actual 3D draw that uses it is where
+  that renderer correctly throws. See Chapters~\ref{ch:math-conventions},
+  \ref{ch:stock-effects}, and~\ref{ch:shader-fx-gap}.
+\item[VULKAN] A CNA graphics renderer targeting the Vulkan API directly. See
   Chapter~\ref{ch:vulkan-backend}.
-\item[WEBGPU] CNA's experimental fifth graphics backend, targeting native \texttt{wgpu-native}.
+\item[WEBGPU] CNA's experimental graphics renderer targeting native \texttt{wgpu-native}.
   See Chapter~\ref{ch:webgpu-backend}.
 \item[XACT] Microsoft's Cross-platform Audio Creation Tool format/engine, the format CNA's own
   Audio namespace parses and plays back through SDL3\_mixer rather than a FAudio-equivalent

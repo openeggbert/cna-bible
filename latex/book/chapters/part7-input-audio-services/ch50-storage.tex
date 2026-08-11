@@ -34,7 +34,7 @@ with or without an explicit required free-space and directory-count --- for show
 device-selection UI, even though, again, there is only ever one real ``device'' (the local
 filesystem) for this to resolve to.
 
-Two \texttt{NOXNA} static methods exist specifically because CNA has no Xbox-360-style
+Two \texttt{CNAEXT} static methods exist specifically because CNA has no Xbox-360-style
 concept of a physically distinct storage device to select in the first place:
 \texttt{SetAppNameEXT(appName)} sets the application name used to build a real,
 per-application storage root directory on the host filesystem, and
@@ -80,7 +80,7 @@ alone, mode plus access, and mode plus access plus sharing --- each returning a 
 type) for a game to read or write through directly. Every relative path
 passed to any of these methods is resolved against the container's own root, which is itself
 resolved against \texttt{StorageDevice::GetStorageRootEXT()} --- meaning the entire
-namespace, end to end, ultimately roots itself in that one \texttt{NOXNA} extension point.
+namespace, end to end, ultimately roots itself in that one \texttt{CNAEXT} extension point.
 
 \begin{lstlisting}
 // Worked example: writing then reading back a save file, continuing
@@ -132,31 +132,19 @@ as a deliberate, scoped decision the way this book's other real gaps are --- it 
 unaddressed gap as of this writing, worth validating any externally-influenced filename against
 before calling into this namespace, rather than relying on the namespace to do it for you.
 
-\subsection{A second, compounding gap: zero automated test coverage for the whole namespace}
+\subsection{A second, compounding gap: the five tests stop at StorageDevice}
 
-The \texttt{..}-traversal gap above is worth reading alongside a second fact this book has not
-yet stated about \cnans{Storage}: it is the one ported XNA namespace in this whole project
-with no automated test coverage at all. \cnaclass{CnaTests}, the project's shared GoogleTest
-binary, mirrors \texttt{Microsoft::Xna::Framework}'s own namespace tree one directory per
-namespace --- \texttt{Audio}, \texttt{Content}, \texttt{GamerServices}, \texttt{Graphics},
-\texttt{Input}, \texttt{Media}, and \texttt{Net} each have their own test directory, and
-several smaller namespaces get their own flat \texttt{XxxTests.cpp} file instead (this
-project's own \texttt{TitleContainerTests.cpp} and \texttt{GameTests.cpp} are two examples
-sitting right alongside where a \texttt{Storage} directory or file would be). No
-\texttt{tests/Microsoft/Xna/Framework/Storage/} directory exists, no flat
-\texttt{StorageDeviceTests.cpp} / \texttt{StorageContainerTests.cpp} exists, and grepping both
-\texttt{tests/} and \texttt{examples/} for \texttt{StorageContainer} or \texttt{StorageDevice}
-turns up nothing but two incidental, unrelated mentions in an unrelated demo and an unrelated
-\cnans{GamerServices} test file --- confirmed directly against the actual test tree and CMake
-test registration, not inferred from the absence of a \texttt{plan\_storage.md} (no such file
-exists for this namespace either, so there is no dated task history to check against in the
-first place).
+The \texttt{..}-traversal gap above is worth reading beside the module's unusually narrow test
+boundary. \texttt{modules/storage/tests/Microsoft/Xna/Framework/Storage/StorageDeviceTests.cpp}
+contains the entire five-case Storage suite. Those cases prove that
+\cnaclass{StorageDevice::DeleteContainer} rejects an empty name, an absolute path, a long
+\texttt{..} escape, and \texttt{.}, while preserving a happy-path deletion. In other words,
+the traversal question was reviewed, guarded, and tested --- but only on the device operation.
 
-This means \texttt{ResolvePath}'s missing \texttt{..}-guard was never something a test suite
-had the opportunity to catch --- there is no regression test for \emph{any} behavior in this
-namespace, guarded or not, so the gap's survival is not evidence anyone reviewed the traversal
-question and accepted the risk; it is evidence no one has systematically exercised this
-namespace's behavior at all yet. The same absence covers \texttt{StorageContainer}'s own small
+No test mentions \cnaclass{StorageContainer}, \texttt{GetFileNames},
+\texttt{GetDirectoryNames}, or \texttt{GlobMatch}. The container path used by game file writes
+therefore remains unguarded even though its neighboring device path is protected. The same
+absence covers \texttt{StorageContainer}'s own small
 hand-rolled glob matcher backing the \texttt{GetFileNames} / \texttt{GetDirectoryNames} search-pattern
 overloads --- a real, from-scratch backtracking \texttt{*} / \texttt{?} pattern matcher (not a
 thin wrapper over a library glob or a regex translation), whose correctness on edge cases like
@@ -275,7 +263,7 @@ to a real Xbox 360, where a memory unit could genuinely be physically removed mi
 times: an XNA namespace originally designed around real, physical, removable hardware and a
 console's own UI conventions, faithfully reproduced in API shape, but backed by a
 straightforward, always-available local filesystem underneath. The fake-async pattern, the
-device-selection UI stubs, and the \texttt{NOXNA} app-name/storage-root extension together
+device-selection UI stubs, and the \texttt{CNAEXT} app-name/storage-root extension together
 tell the same story Chapter~\ref{ch:what-is-cna} told about the project as a whole: preserve the real API's
 shape precisely, even where the platform reality underneath it is simpler than what the API
 was originally built to abstract over.

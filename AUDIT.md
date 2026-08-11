@@ -578,6 +578,14 @@ boundaries accurately; **they are not for the book session to fix — CNA is rea
 | D-009 | `ExtractMesh`'s rejections throw plain `std::runtime_error` unwrapped, so `Load<Model>` on a TRIANGLE_STRIP `.glb` escapes a `catch (ContentLoadException&)`. | `GltfImportCore.cpp:1145-1155`; `ContentLoadException.hpp:10` | VERIFIED |
 | D-010 | `Model::Draw` uses a `static` process-wide scratch buffer, so two `Model`s drawn concurrently from different threads share it. | `Model.cpp:13, 107-110` | VERIFIED |
 
+### 5.2 Book remediation checkpoint
+
+The Phase C terminology/path migration closed the book-side staleness recorded by C-001 through
+C-004 and F-016 without changing the pinned CNA evidence: the compiled manuscript now uses the
+current 46-identity / 42-family registry, renderer terminology, current CMake selectors,
+`CNAEXT`, and module-owned paths. Historical spellings remain only when explicitly identified as
+historical. The full 645-page build and visual pass are recorded in `PLAN.md` §6 and §8.
+
 ---
 
 ## 6. Open questions for the project owner

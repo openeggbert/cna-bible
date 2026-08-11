@@ -35,7 +35,7 @@ per-sample Doppler shift. Pitch shifting uses XNA's exact exponential formula,
 $2^{\text{pitch}}$, and a real state-variable filter (low-pass, high-pass, or band-pass) is
 implemented via an SDL3\_mixer per-track callback matching FAudio's own filter algorithm
 precisely. \cnaclass{DynamicSoundEffectInstance} supports both integer and, as a
-\texttt{NOXNA} addition with no real-XNA equivalent, floating-point buffer submission; its
+\texttt{CNAEXT} addition with no real-XNA equivalent, floating-point buffer submission; its
 \texttt{PendingBufferCount} only decreases once a submitted chunk is genuinely consumed by
 playback, matching FNA's own behavior rather than decrementing eagerly at submission time.
 
@@ -46,7 +46,7 @@ header --- \texttt{MasterVolume}, \texttt{DistanceScale}, \texttt{DopplerScale},
 \texttt{SpeedOfSound} --- all consulted by every live \cnaclass{SoundEffectInstance} at once,
 not per-instance settings. Beyond \texttt{CreateInstance()} and the static, fire-and-forget
 \texttt{Play(volume, pitch, pan)} convenience helper already named above, three constructor
-families exist: a \texttt{NOXNA} file-path constructor for loading directly from an asset name
+families exist: a \texttt{CNAEXT} file-path constructor for loading directly from an asset name
 (not part of the real XNA~4.0 API, which only ever loads through
 \cnaclass{ContentManager}); two raw-buffer constructors (a full-format one taking explicit
 channel count/sample rate/loop points, and a simpler one assuming mono 16-bit PCM at a given
@@ -120,7 +120,7 @@ Chapter~\ref{ch:sharp-runtime-namespaces} covers this event type in full) fires 
 more data should be submitted; \texttt{SubmitBuffer(buffer)} (headerless 16-bit PCM, matching
 \cnaclass{SoundEffect}'s own raw-buffer requirement) queues one more chunk, with a second
 overload accepting an explicit offset/count sub-range of a larger buffer without copying it
-first. The \texttt{NOXNA} \texttt{SubmitFloatBufferEXT(buffer)} sibling accepts normalized
+first. The \texttt{CNAEXT} \texttt{SubmitFloatBufferEXT(buffer)} sibling accepts normalized
 \texttt{float} samples directly instead, for application code that already generates audio in
 floating-point form and would otherwise need to manually quantize to 16-bit integers first ---
 real XNA has no equivalent at all, since the strict API only ever accepts integer PCM.

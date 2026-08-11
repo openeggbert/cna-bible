@@ -15,8 +15,8 @@ book's own deliberately bounded scope.
 \midrule
 \texttt{cna} & The core C\texttt{++}23 XNA~4.0 reimplementation this book is about \\
 \texttt{sharp-runtime} & C\texttt{++} subset of the .NET base class library, CNA's foundation \\
-\texttt{easy-gl} & Toolkit-independent OpenGL/OpenGLES wrapper, backs the EASYGL backend \\
-\texttt{free-direct} & Narrow DirectDraw/DirectSound/DirectPlay reimplementation, backs DX3 \\
+\texttt{easy-gl} & Toolkit-independent OpenGL/OpenGLES wrapper used by CNA's GL renderers \\
+\texttt{free-direct} & Narrow DirectDraw/DirectSound/DirectPlay reimplementation, backs FREEDIRECT \\
 \texttt{xna4-spec} & Machine-readable XML spec of the real XNA~4.0 API, used for auditing \\
 \texttt{cna-samples} & C\texttt{++} ports of the 86 official Microsoft XNA~4.0 samples \\
 \texttt{cna-examples} & Original, MIT-licensed in-app demo catalog for CNA \\
@@ -33,7 +33,7 @@ and \texttt{cna-extended} each get a full paragraph below; the rest are covered 
 
 \texttt{cna-template} is a minimal starter template for building a new application on top of
 CNA --- at the time of writing, an early work in progress, with full build instructions,
-backend/platform coverage, and a porting guide for existing XNA~4.0 C\# games still being
+renderer/platform coverage, and a porting guide for existing XNA~4.0 C\# games still being
 added. It exists to give a new CNA project a working skeleton to start from, the same
 function a ``File $\to$ New Project'' template serves in a conventional IDE-based framework,
 rather than to demonstrate any specific CNA capability the way \texttt{cna-examples} does.
@@ -73,7 +73,7 @@ drawing, built specifically to give \texttt{galaxy-eggbert} (below) what it need
 becoming a general game engine; it deliberately has no ECS, physics, networking, or editor of
 its own. \texttt{cna-craft} is a C\texttt{++} port of the well-known \texttt{fogleman/Craft}
 voxel game onto CNA, with SQLite-backed world persistence, its own multiplayer server and wire
-protocol, and a WebAssembly build target alongside its native EASYGL/VULKAN/BGFX backends.
+protocol, and a WebAssembly build target alongside its EasyGL-based, Vulkan, and BGFX rendering paths.
 
 \section{Real games and tools built on this stack}
 
@@ -81,24 +81,24 @@ protocol, and a WebAssembly build target alongside its native EASYGL/VULKAN/BGFX
 Blupi} and \emph{Planet Blupi} --- whose real call sites shaped \texttt{free-direct}'s own API
 surface, covered as a worked case study in Chapter~\ref{ch:blupi-case-study}.
 \texttt{mobile-eggbert} (with a related \texttt{mobile-eggbert-legacy} and a libGDX variant)
-appeared directly in Chapter~\ref{ch:webgpu-backend}'s WebGPU backend coverage, as the independent, real XNA-style
-game whose unmodified run against that experimental backend was one of this book's strongest
-pieces of evidence for a backend actually working. Its own repository also carries a real,
+appeared directly in Chapter~\ref{ch:webgpu-backend}'s WebGPU renderer coverage, as the independent, real XNA-style
+game whose unmodified run against that experimental renderer was one of this book's strongest
+pieces of evidence for a renderer actually working. Its own repository also carries a real,
 narrow memory-usage investigation (\texttt{RAM.md}) worth naming precisely so it is not
 mistaken for a general CNA characteristic: a specific regression from roughly 28~MB to
-roughly 78~MB on the Vulkan backend was traced almost entirely to \texttt{cpuPixels\_}, a
+roughly 78~MB on the Vulkan renderer was traced almost entirely to \texttt{cpuPixels\_}, a
 CPU-side shadow copy every \cnaclass{Texture2D} started retaining once
 \cnaclass{ContentManager::Load<T>()} needed to be able to return by-value copies and
 \texttt{Texture2D::GetData()} needed a readback source (Chapter~\ref{ch:textures-rendertargets} covers this CPU-shadow
 mechanism for buffers; the equivalent exists for textures) --- a real, measured, downstream
-finding about one game's specific memory footprint on one backend, not a documented, general
+finding about one game's specific memory footprint on one renderer, not a documented, general
 CNA memory-budget feature.
 
 Three further projects are worth naming briefly, though none is covered in depth here.
 \texttt{mesh-craft} is a C\texttt{++}23 3D scene editor for its own \texttt{.mc3.xml} format,
 built as a sibling repository to CNA --- it adds real CSG (constructive solid geometry) via the
-Manifold library and glTF/GLB export, though its editor GUI specifically depends on the EASYGL
-backend to render (other backends compile but do not drive its interface). \texttt{mesh-world}
+Manifold library and glTF/GLB export, though its editor GUI specifically depends on the EasyGL-based
+renderer path (other renderers compile but do not drive its interface). \texttt{mesh-world}
 is a procedural world generator built on top of the MeshCraft ecosystem, combining C\texttt{++}
 chunk generators with Lua-scripted object generators (via sol2 and Lua~5.4), a planetary-map
 subsystem with quadtree level-of-detail and a 52-category biome classifier, and SQLite-backed

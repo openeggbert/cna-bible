@@ -1,14 +1,15 @@
 \chapter{CNAEXT: Marker and Engine-Layer Catalog}
 \label{ch:cnaext-catalog}
+% Compatibility alias retained for links emitted by the earlier edition.
 \label{ch:noxna-catalog}
 
-Chapter~\ref{ch:design-philosophy}'s design-philosophy discussion introduced \texttt{NOXNA} as CNA's marker
+Chapter~\ref{ch:design-philosophy}'s design-philosophy discussion introduced \texttt{CNAEXT} as CNA's marker
 convention --- and its matching compile-time purity check --- for any declaration inside the
 XNA namespace tree that is not part of the real XNA~4.0 API. This appendix is not, and could
-not responsibly be, an exhaustive line-by-line listing of every \texttt{NOXNA}-tagged member
+not responsibly be, an exhaustive line-by-line listing of every \texttt{CNAEXT}-tagged member
 in a codebase of several hundred header files; that list changes with every commit, and the
-project's own \texttt{NOXNA} build gate (Chapter~\ref{ch:design-philosophy}) already checks it mechanically, which a
-static list in a book cannot. What this appendix collects instead is every \texttt{NOXNA} (or
+project's own \texttt{CNAEXT} build gate (Chapter~\ref{ch:design-philosophy}) already checks it mechanically, which a
+static list in a book cannot. What this appendix collects instead is every \texttt{CNAEXT} (or
 the closely related \texttt{EXT}-suffixed) extension named specifically, by class and member,
 across this entire book --- organized by area, as a reference for the extensions this book
 itself considers significant enough to have explained in the main text, with a pointer back
@@ -36,21 +37,21 @@ to where each one is covered in full.
 \section{Graphics}
 
 \begin{description}
-\item[\cnaclass{Effect}] \texttt{Apply()} itself is \texttt{NOXNA} --- real FNA has no public
+\item[\cnaclass{Effect}] \texttt{Apply()} itself is \texttt{CNAEXT} --- real FNA has no public
   \texttt{Effect.Apply()}, only \texttt{EffectPass.Apply()} --- Ch.\ref{ch:stock-effects}.
 \item[\cnaclass{SkinnedEffect}] \texttt{VertexColorEnabled}, added for glTF-imported meshes
   carrying a \texttt{COLOR\_0} attribute; no such property exists on real XNA's own
   \cnaclass{SkinnedEffect} --- Ch.\ref{ch:stock-effects}.
 \item[\cnaclass{GraphicsDevice}] \texttt{SetContextRecoveryEnabled()} and
   \texttt{SetStringMarkerEXT()}: the former combines a shared texture-shadow policy with an
-  optional backend hook; the latter is native only on Vulkan, throws on D3D9, and is silent
+  optional renderer hook; the latter is native only on Vulkan, throws on D3D9, and is silent
   elsewhere --- Ch.\ref{ch:graphicsdevice}, Ch.\ref{ch:backend-architecture}.
-\item[\cnaclass{IGraphicsBackend}]
+\item[\cnaclass{IGraphicsRenderer}]
   \texttt{SetStringMarkerEXT()} and \texttt{UpdatePresentationFormatEXT()}, plus the recovery
   setter and the two debug loss/restore hooks --- Ch.\ref{ch:backend-architecture}.
 \item[Custom shaders] The entire \texttt{ShaderEffect} runtime-HLSL-compilation path on the
-  three Direct3D backends --- Ch.\ref{ch:shader-fx-gap}, Ch.\ref{ch:direct3d-backends}.
-\item[\cnaclass{PbrEffect}] An entire NOXNA glTF~2.0-style metallic-roughness PBR material
+  three Direct3D renderers --- Ch.\ref{ch:shader-fx-gap}, Ch.\ref{ch:direct3d-backends}.
+\item[\cnaclass{PbrEffect}] An entire CNAEXT glTF~2.0-style metallic-roughness PBR material
   effect with no real-XNA counterpart at all (\texttt{NormalMap}, \texttt{%
   MetallicRoughnessMap}, \texttt{EmissiveMap}, \texttt{OcclusionMap},
   \texttt{MetallicFactor} / \texttt{RoughnessFactor} / \texttt{EmissiveFactor}) --- Ch.\ref{ch:webgpu-backend}.
@@ -59,17 +60,17 @@ to where each one is covered in full.
   stride-68 tangent-equipped skinned-vertex layout (position, normal, tangent, UV, four weights
   and four byte indices). As with \cnaclass{SkinnedEffect}, game
   code supplies \texttt{AnimationPlayer::GetSkinTransforms()} to \texttt{SetBoneTransforms()}
-  every frame; the loader does not do that binding. This is entirely \texttt{NOXNA}: real XNA
+  every frame; the loader does not do that binding. This is entirely \texttt{CNAEXT}: real XNA
   predates both PBR and this PBR-plus-skinning combination. CNA keeps the class split in the
   same style as XNA's own distinct \cnaclass{BasicEffect} and \cnaclass{SkinnedEffect} types.
-  Every backend with a real \cnaclass{PbrEffect} shader implements this sibling except WebGPU,
+  Every renderer with a real \cnaclass{PbrEffect} shader implements this sibling except WebGPU,
   whose current PBR path remains unskinned --- Ch.\ref{ch:models-meshes}, Ch.\ref{ch:webgpu-backend}.
 \item[\cnaclass{AnimationPlayer}] The entire class, mirroring Microsoft's own unshipped XNA
   ``Skinned Model Sample'' reference code rather than anything in the real framework assembly
   --- \texttt{StartClip} / \texttt{Update} / \texttt{GetBoneTransforms}/\%
   \texttt{GetWorldTransforms} / \texttt{GetSkinTransforms}. Its companion
   \cnaclass{SkinningData}, plus \texttt{Keyframe} and \texttt{AnimationClip} aliases, are
-  likewise \texttt{NOXNA} sample-derived types: the content reader attaches a
+  likewise \texttt{CNAEXT} sample-derived types: the content reader attaches a
   \cnaclass{SkinningData} instance to \cnaclass{Model}'s \texttt{Tag}, preserving the original
   sample convention rather than inventing a new property on the faithful \cnaclass{Model}
   surface --- Ch.\ref{ch:models-meshes}.
@@ -99,11 +100,11 @@ to where each one is covered in full.
   before a game's own \texttt{GraphicsProfile} request can even be read) --- not exposed as a
   general runtime profile switch, since real XNA has none either --- Ch.\ref{ch:graphicsdevice}.
 \item[\cnaclass{PresentationParameters}] \texttt{getHeadlessEXTProperty()} /
-  \texttt{setHeadlessEXTProperty()} --- an opt-in, no-window device-creation mode for backends
+  \texttt{setHeadlessEXTProperty()} --- an opt-in, no-window device-creation mode for renderers
   that can genuinely operate without a swap chain (today: D3D12 only; D3D11 and EasyGL throw,
   since their device construction is inseparable from a real window). This is the same
-  no-window operating mode the \texttt{Headless} and \texttt{Software} backends already use
-  unconditionally, offered here as an opt-in for a backend that normally does want one --- the
+  no-window operating mode the \texttt{Headless} and \texttt{Software} renderers already use
+  unconditionally, offered here as an opt-in for a renderer that normally does want one --- the
   mechanism this book's own screenshot infrastructure (see \texttt{tools/cna-screenshot-infra/}
   in this repository) and Ch.\ref{ch:verification-methodology}'s verification methodology both depend on --- Ch.\ref{ch:graphicsdevice}.
 \end{description}
@@ -117,7 +118,7 @@ no real-XNA counterpart at all; the faithful \texttt{SubmitBuffer} overloads onl
 paused: submitting a float buffer switches the instance to float mode, and a subsequent
 int16-mode \texttt{SubmitBuffer} call throws \texttt{System::InvalidOperationException} rather
 than silently feeding raw int16 bytes into a live float-format stream, and symmetrically in the
-other direction --- a \texttt{NOXNA} safety guard protecting a code path real XNA never had to
+other direction --- a \texttt{CNAEXT} safety guard protecting a code path real XNA never had to
 guard against.
 
 \section{Media (Chapter~\ref{ch:media-system})}
@@ -127,15 +128,15 @@ guard against.
 \texttt{Video::FromUriEXT(std::string, GraphicsDevice*)} --- worth noting for a reason that
 cuts against this appendix's usual grain: their own header comments describe each one as ``an
 FNA extension beyond the original XNA~4.0 API surface,'' not a CNA invention. CNA's
-\texttt{NOXNA} marker and \texttt{EXT} suffix convention is applied faithfully to code ported
+\texttt{CNAEXT} marker and \texttt{EXT} suffix convention is applied faithfully to code ported
 from FNA's own multi-track-selection and URI-based video loading extensions, which already used
 this identical naming pattern upstream --- not every entry in this appendix originates in this
 project.
 
 \section{Input (Chapter~\ref{ch:input-system})}
 
-The largest concentration of \texttt{NOXNA} / \texttt{EXT} surface in the whole project. Whole
-\texttt{NOXNA} subsystems: \cnaclass{CNA::Input::Clipboard}, \cnaclass{Joysticks},
+The largest concentration of \texttt{CNAEXT} / \texttt{EXT} surface in the whole project. Whole
+\texttt{CNAEXT} subsystems: \cnaclass{CNA::Input::Clipboard}, \cnaclass{Joysticks},
 \cnaclass{Sensors}, \cnaclass{Power}, \cnaclass{Haptics}, \cnaclass{InputDevices}. Per-class
 \texttt{EXT} additions: \cnaclass{Keyboard}'s \texttt{GetKeyFromScancodeEXT}/%
 \texttt{GetModStateEXT} / \texttt{GetScancodeNameEXT}; \cnaclass{Mouse}'s
@@ -147,7 +148,7 @@ the entire \cnaclass{MouseCursor} class; \cnaclass{GamePad}'s \texttt{GetGUIDEXT
 
 \section{Devices and Sensors (Chapter~\ref{ch:devices-sensors})}
 
-The entire \cnans{CNA::Devices} namespace is \texttt{NOXNA} in spirit --- \cnaclass{Camera},
+The entire \cnans{CNA::Devices} namespace is \texttt{CNAEXT} in spirit --- \cnaclass{Camera},
 \cnaclass{SystemTray}, \cnaclass{DisplayInfo}, \cnaclass{MessageBox}, \cnaclass{FileDialog},
 \cnaclass{UrlLauncher}, \cnaclass{Locale}, \cnaclass{Clipboard}, \cnaclass{SystemInfo},
 \cnaclass{PowerInfo} --- since none has any real XNA/WP7 precedent at all. Within the
@@ -168,12 +169,12 @@ itself in.
 
 \section{Content and assets (Chapter~\ref{ch:content-and-assets})}
 
-The \texttt{.cnj} content format itself is a \texttt{NOXNA} system in its entirety, alongside
+The \texttt{.cnj} content format itself is a \texttt{CNAEXT} system in its entirety, alongside
 the Avatar system's separately-kept \cnaclass{SkinnedModelEXT} content pipeline
 (\texttt{.skinnedmodel.json} / \texttt{.skeleton.bin} / \texttt{.clip.bin}) and its own
-\texttt{NOXNA} vertex/track/clip types (\cnaclass{VertexPositionNormalTextureSkinned},
+\texttt{CNAEXT} vertex/track/clip types (\cnaclass{VertexPositionNormalTextureSkinned},
 \cnaclass{KeyframeEXT}, \cnaclass{BoneTrackEXT}, \cnaclass{AnimationClipEXT}) --- see
-Chapter~\ref{ch:avatar}. \cnaclass{ContentManager} itself adds three further \texttt{NOXNA} methods purely
+Chapter~\ref{ch:avatar}. \cnaclass{ContentManager} itself adds three further \texttt{CNAEXT} methods purely
 for build-time content auditing --- \texttt{RefreshContentManifest}, \texttt{%
 GetContentManifest}, \texttt{GetXnbReaderUsageSummary} --- letting a game (or this book's own
 research) enumerate every asset under a content root and which real \texttt{.xnb} reader name
@@ -181,7 +182,7 @@ actually loads it.
 
 \section{Avatar (Chapter~\ref{ch:avatar})}
 
-The entire \cnaclass{SkinnedModelEXT} real-rendering extension is \texttt{NOXNA} in its
+The entire \cnaclass{SkinnedModelEXT} real-rendering extension is \texttt{CNAEXT} in its
 entirety, deliberately opt-in and structurally separate from the faithful base Avatar API it
 sits alongside. It includes \texttt{AvatarRenderer}'s \texttt{EnableRealRenderingEXT()} and
 \texttt{DrawRealEXT()}, \texttt{SetAppearanceEXT()}, \cnaclass{AvatarAnimation}'s
@@ -212,7 +213,7 @@ practice, an unimplemented stub rather than a functioning property. \cnaclass{Ne
 and \cnaclass{NetworkSession} are sibling classes, not base/derived, so CNA's
 \cnaclass{NetworkSession::RemoveGamer()} could not have reached a real \texttt{private} setter
 even if one were faithfully preserved; the header documents this reasoning directly rather than
-silently exposing the setter. Marking it \texttt{NOXNA} and making it public is what lets this
+silently exposing the setter. Marking it \texttt{CNAEXT} and making it public is what lets this
 port's own \texttt{RemoveGamer()} make \texttt{HasLeftSession} actually functional, unlike the
 member it is restoring.
 
@@ -220,7 +221,7 @@ member it is restoring.
 
 Treat this list the same way this book has asked you to treat every other list of specifics
 it has offered: as a map into the source, not a replacement for it. The project's own
-\texttt{NOXNA} compile-time gate (build with the \texttt{NOXNA} CMake option enabled) is the
+\texttt{CNAEXT} compile-time gate (build with the \texttt{CNAEXT} CMake option enabled) is the
 authoritative, mechanically-enforced check for whether a given declaration inside the XNA
 namespace tree is correctly tagged --- this appendix exists to give a reader who has just
 finished this book a single place to recall which specific extensions it found significant

@@ -3,8 +3,8 @@
 \label{ch:math-core-types}
 
 Every CNA class covered later in this book --- \cnaclass{SpriteBatch}, \cnaclass{Model},
-every stock effect, every backend --- passes values of the types in this chapter across its
-API. They live directly under \texttt{include/Microsoft/Xna/Framework/} (not in the
+every stock effect, every renderer --- passes values of the types in this chapter across its
+API. They live under \texttt{modules/math/include/Microsoft/Xna/Framework/} (not in the
 \texttt{Graphics} sub-namespace), are all value types (C\texttt{++} \texttt{struct}s, matching
 XNA's own \texttt{struct} semantics rather than reference-type classes, with the sole
 exception of \cnaclass{BoundingFrustum}, discussed below), and most carry a private
@@ -118,7 +118,7 @@ full-array/range overloads; \texttt{TransformNormal} (Vector2/Vector3 only) appl
 transform with translation stripped out, the form correct for transforming surface normals
 rather than positions. Operators (\texttt{==}, \texttt{!=}, unary/binary \texttt{-},
 component-wise and scalar \texttt{*} / \texttt{/}, and \texttt{+}) are implemented as
-\texttt{friend} functions; \cnaclass{Vector3} alone adds \texttt{NOXNA} in-place
+\texttt{friend} functions; \cnaclass{Vector3} alone adds \texttt{CNAEXT} in-place
 \texttt{operator+=} / \texttt{operator-=} convenience overloads beyond the strict XNA surface.
 
 Both \cnaclass{Matrix} and \cnaclass{Quaternion} are only forward-declared in these headers
@@ -253,7 +253,7 @@ resulting normal, since \texttt{Cross(v1, v2) == -Cross(v2, v1)} for any two vec
 convenience overload --- it exists because transforming a 3D position by a full
 \cnaclass{Matrix} (in particular a perspective projection) genuinely produces a fourth
 component the source position never had, and \cnaclass{Vector3}'s own \texttt{Transform}
-silently discards exactly that component. Reading CNA's own \texttt{SOFTWARE} backend
+silently discards exactly that component. Reading CNA's own \texttt{SOFTWARE} renderer
 rasterizer (Chapter~\ref{ch:graphicsdevice}'s own worked examples both run through it) shows
 precisely where this matters in practice: every vertex it processes is transformed into clip
 space with \texttt{Vector4::Transform(position, combined)} --- taking a \cnaclass{Vector3}
@@ -306,14 +306,14 @@ and an output-ref overload. Arithmetic statics (\texttt{Add}, \texttt{Divide},
 translation\&) -> bool} round out the surface.
 
 One method exists purely to bridge XNA's conceptual row-major matrix into the graphics
-backends covered in Part~IV of this volume: \texttt{NOXNA void ToColumnMajor(float
+renderers covered in Part~IV: \texttt{CNAEXT void ToColumnMajor(float
 out[16]) const}, documented as returning ``this matrix in the transposed column-major form
 expected by OpenGL-style uniform uploads.'' OpenGL and Vulkan-style shader uniform layouts
-expect column-major data; without this bridge, every backend's \cnaclass{Effect}/shader
+expect column-major data; without this bridge, every renderer's \cnaclass{Effect}/shader
 implementation would need to re-derive the same transpose independently. Centralizing it on
 \cnaclass{Matrix} itself is a small but telling example of where CNA allows itself exactly
 one, clearly-marked graphics-motivated extension on an otherwise pure math type, rather than
-scattering the same transpose logic across twelve backend implementations.
+scattering the same transpose logic across renderer implementations.
 
 \subsection{Full factory method reference}
 \label{sec:matrix-full-reference}
@@ -381,7 +381,7 @@ $4\times4$ matrix multiplication rather than component-wise, and matrix-by-\text
 scalar), \texttt{Divide} (matrix-by-matrix component-wise, and matrix-by-\texttt{float}
 scalar), \texttt{Negate}, \texttt{Invert} (the matrix inverse --- undefined, and not checked
 for, when the matrix is singular), \texttt{Transpose} (swaps rows and columns --- distinct
-from, and unrelated to, the \texttt{NOXNA ToColumnMajor} bridge method above, which transposes
+from, and unrelated to, the \texttt{CNAEXT ToColumnMajor} bridge method above, which transposes
 for a completely different reason), and \texttt{Lerp} (component-wise linear interpolation
 across all sixteen fields --- rarely what an application actually wants for interpolating a
 \emph{rotation}, since lerping a full transform matrix component-wise does not produce the same
@@ -756,7 +756,7 @@ const Vector3 viaQuaternion = Vector3::Transform(testPoint, quaternionWorld);
 // viaMatrix and viaQuaternion are identical, component for component.
 \end{lstlisting}
 
-Built and run against this book's own \texttt{SOFTWARE}-backend tooling (the same headless
+Built and run against this book's own \texttt{SOFTWARE}-renderer tooling (the same headless
 pipeline behind Figure~\ref{fig:ch07-matrix-rotation}), this comparison is not an
 approximation: the maximum absolute difference across all sixteen components of
 \texttt{matrixWorld} versus \texttt{quaternionWorld} measured exactly \texttt{0}, and the
@@ -1060,7 +1060,7 @@ and \texttt{System::IEquatable<Color>}, storing its four \texttt{bytecs} channel
 (\texttt{R}, \texttt{G}, \texttt{B}, \texttt{A}) packed into a single \texttt{PackedValue}
 (\texttt{UInt32}) in \texttt{AABBGGRR} byte order --- a layout detail
 Chapter~\ref{ch:design-philosophy} names explicitly as one of the ``behavior fidelity''
-details CNA is required to preserve exactly, since backend code and any raw-bytes
+details CNA is required to preserve exactly, since renderer code and any raw-bytes
 interoperability depends on it.
 
 Roughly 140 named XNA/X11 web-color static constants are defined --- \texttt{Transparent},
@@ -1069,10 +1069,10 @@ traditional XNA project-template clear color already seen in
 Chapter~\ref{ch:first-game} --- each documented with its exact RGBA byte values. Construction
 accepts a \cnaclass{Vector4} (clamped to $[0,1]$, scaled to $[0,255]$), a \cnaclass{Vector3}
 (alpha forced to 255), three or four \texttt{float}s in $[0,1]$, or three or four
-\texttt{intcs} in $[0,255]$ (clamped) --- plus two \texttt{NOXNA}-marked byte-based
+\texttt{intcs} in $[0,255]$ (clamped) --- plus two \texttt{CNAEXT}-marked byte-based
 constructors explicitly documented as ``not part of the XNA 4.0 API. CNA convenience
 overload.'' \texttt{Lerp}, \texttt{FromNonPremultiplied}, and \texttt{Multiply(Color,
-float)} round out the static surface; a \texttt{NOXNA} commutative \texttt{float * Color}
+float)} round out the static surface; a \texttt{CNAEXT} commutative \texttt{float * Color}
 operator is added alongside the standard \texttt{Color * float}, again explicitly documented
 as a CNA-only convenience not present in XNA/FNA.
 
@@ -1089,7 +1089,7 @@ as a CNA-only convenience not present in XNA/FNA.
   intcs alpha)}] components in $[0,255]$, clamped; same opaque-alpha default for the
   three-argument form.
 \item[\texttt{Color(bytecs r, bytecs g, bytecs b)} / \texttt{Color(bytecs r, bytecs g, bytecs
-  b, bytecs alpha)}] \texttt{NOXNA} --- explicitly documented as a CNA convenience overload,
+  b, bytecs alpha)}] \texttt{CNAEXT} --- explicitly documented as a CNA convenience overload,
   not part of the XNA 4.0 API, for callers that already have byte-typed components on hand and
   want to skip the implicit \texttt{intcs} conversion.
 \item[\texttt{R} / \texttt{G} / \texttt{B} / \texttt{A}] each a \texttt{bytecs} property pair
@@ -1106,7 +1106,7 @@ as a CNA-only convenience not present in XNA/FNA.
   straight-alpha source image format needs to apply before storing pixel data as
   \cnaclass{Color}.
 \item[\texttt{Multiply(value, scale)}] scales all four channels (including alpha) by
-  \texttt{scale}; \texttt{NOXNA operator*(float, const Color\&)} adds the commutative
+  \texttt{scale}; \texttt{CNAEXT operator*(float, const Color\&)} adds the commutative
   scalar-first form alongside the standard \texttt{Color * float}.
 \end{description}
 
@@ -1130,7 +1130,7 @@ const Color right = Color::FromNonPremultiplied(200, 80, 40, 128);
 \section{MathHelper: constants and helpers, some public only because C\texttt{++} has no assembly visibility}
 
 \cnaclass{MathHelper} is static-only (its default constructor is \texttt{= delete}, tagged
-\texttt{NOXNA}), providing \texttt{Pi} / \texttt{PiOver2} / \texttt{PiOver4} / \texttt{TwoPi}/%
+\texttt{CNAEXT}), providing \texttt{Pi} / \texttt{PiOver2} / \texttt{PiOver4} / \texttt{TwoPi}/%
 \texttt{E} / \texttt{Log10E} / \texttt{Log2E} as \texttt{constexpr float} constants, plus
 \texttt{MachineEpsilonFloat} computed once via a private \texttt{GetMachineEpsilonFloat()}.
 Its own header comment is unusually direct about a translation artifact: ``FNA marks the
@@ -1142,7 +1142,7 @@ simply have no way to be hidden from a caller in C\texttt{++} the way FNA hides 
 other assemblies in C\#. \texttt{ClosestMSAAPower(intcs)} in particular is worth flagging as
 a graphics-relevant helper hiding in a math-only-looking class: it returns the closest valid
 MSAA sample-count power-of-two at or below the requested value, mirroring FNA's own internal
-MSAA helper, and is used wherever a backend needs to clamp a requested multisample count to
+MSAA helper, and is used wherever a renderer needs to clamp a requested multisample count to
 something the underlying graphics API actually supports.
 
 \subsection{Full method reference: MathHelper}
@@ -1475,7 +1475,7 @@ next --- or \texttt{Step}, where any position between this key and the next simp
 this key's value, no interpolation). \cnaclass{CurveKeyCollection} keeps its keys sorted by
 position at all times --- its \texttt{Add} method is documented as ``adds a key while
 preserving ascending position order,'' i.e.\ an insertion-sorted add, not an append --- and
-adds the same \texttt{NOXNA} C\texttt{++}-iterator convenience surface
+adds the same \texttt{CNAEXT} C\texttt{++}-iterator convenience surface
 (\texttt{iterator} / \texttt{const\_iterator} / \texttt{begin} / \texttt{end} / \texttt{cbegin}/%
 \texttt{cend}) already seen on \cnaclass{GameComponentCollection} in
 Chapter~\ref{ch:game-loop}.
@@ -1525,7 +1525,7 @@ curve happens to exercise it at evaluation time.
 
 \subsection{Full method reference: CurveKeyCollection}
 
-Beyond \texttt{Add} and the \texttt{NOXNA} iterator surface already named above,
+Beyond \texttt{Add} and the \texttt{CNAEXT} iterator surface already named above,
 \cnaclass{CurveKeyCollection} implements the same general-purpose ordered-collection surface
 \cnaclass{GameComponentCollection} does, read directly from its header:
 
@@ -1640,7 +1640,7 @@ dev.DrawPrimitives(PrimitiveType::TriangleList, 0, 1);
 \end{lstlisting}
 
 Figure~\ref{fig:ch07-matrix-rotation} is the real, unedited output of this exact program, built
-and run headlessly against CNA's \texttt{SOFTWARE} backend (the same CPU rasterizer
+and run headlessly against CNA's \texttt{SOFTWARE} renderer (the same CPU rasterizer
 Chapter~\ref{ch:graphicsdevice}'s own worked example used --- see
 \S\ref{sec:worked-drawprimitives} there for what it is and why it's the realistic choice for a
 headless screenshot in this book's own build environment). The triangle's un-rotated vertices
@@ -1655,7 +1655,7 @@ specified in source and silently ignored.
 un-rotated vertices point straight up, rendered after a real
 \texttt{Matrix::CreateRotationZ(30\textdegree{})}, composed with a real
 \texttt{CreateLookAt} / \texttt{CreatePerspectiveFieldOfView} view/projection chain, rendered
-headlessly through CNA's \texttt{SOFTWARE} backend.}
+headlessly through CNA's \texttt{SOFTWARE} renderer.}
 \label{fig:ch07-matrix-rotation}
 \end{figure}
 
@@ -1664,9 +1664,9 @@ headlessly through CNA's \texttt{SOFTWARE} backend.}
 It is worth being explicit about what this chapter does \emph{not} claim. CNA's root-level
 \texttt{NEXT.md} --- described in Chapter~\ref{ch:what-is-cna} as the single most reliable,
 actively-maintained bug list in the repository --- is almost entirely occupied by the Audio
-subsystem (XACT/FAudio parity work) and by graphics-backend porting phases; where it mentions
+subsystem (XACT/FAudio parity work) and by graphics-renderer porting phases; where it mentions
 \texttt{Matrix}, \texttt{Vector2} / \texttt{3}, or \texttt{Plane} by name, it is nearly always in
-the context of a \emph{backend's} shader or transform implementation (for example, a D3D9
+the context of a \emph{renderer's} shader or transform implementation (for example, a D3D9
 matrix-transform bug affecting \cnaclass{SpriteBatch} layer-depth sorting, covered in
 Chapter~\ref{ch:direct3d-backends}), not the core \cnaclass{Microsoft::Xna::Framework} types
 covered in this chapter. As of the source material this book draws from, none of

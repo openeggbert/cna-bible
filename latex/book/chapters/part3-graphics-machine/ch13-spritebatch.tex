@@ -2,8 +2,8 @@
 \label{ch:spritebatch}
 
 \cnaclass{SpriteBatch} is the API most CNA code touches most often, and --- because it is
-also the one class every one of the fourteen backend products in Part~IV must implement --- the class
-whose bugs and fixes best illustrate what ``backend parity'' actually costs to achieve. This
+also the one class all 46 public renderer identities in Part~IV must implement --- the class
+whose bugs and fixes best illustrate what ``renderer parity'' actually costs to achieve. This
 chapter covers its API surface, its supporting types (\cnaclass{SpriteSortMode},
 \cnaclass{SpriteEffects}, \cnaclass{SpriteFont}), and the specific, real bugs found while
 verifying it, because the bugs are as instructive as the API itself.
@@ -29,10 +29,10 @@ never read. FNA stores the caller's value (or
 \texttt{PrepRenderState()}. CNA instead leaves whatever rasterizer state was already on
 \cnaclass{GraphicsDevice}. The practical scissor consequence is direct: passing a rasterizer
 with \texttt{ScissorTestEnable=true} to the normal full \texttt{Begin()} overload cannot enable
-clipping on any backend; a previously-enabled state can also leak through a later default
+clipping on any renderer; a previously-enabled state can also leak through a later default
 \texttt{Begin()}. A game can work around the first half only by assigning
 \texttt{GraphicsDevice.RasterizerState} separately before drawing. Section
-\ref{sec:backend-viewport-scissor-matrix} then determines whether the selected backend can
+\ref{sec:backend-viewport-scissor-matrix} then determines whether the selected renderer can
 actually honor it.
 \end{sourcenote}
 
@@ -41,7 +41,7 @@ position-or-destination-rectangle, an optional source rectangle (represented as
 \texttt{std::optional<Rectangle>} rather than C\#'s nullable \texttt{Rectangle?}), color, and
 progressively more control over rotation, origin, scale (as either a uniform \texttt{float} or
 a non-uniform \cnaclass{Vector2}), \cnaclass{SpriteEffects}, and layer depth --- and three are
-\texttt{NOXNA} raw texture-and-rectangle convenience forms layered on top.
+\texttt{CNAEXT} raw texture-and-rectangle convenience forms layered on top.
 \texttt{DrawString} adds six more overloads (\texttt{string} or \texttt{StringBuilder}, each in
 a simple 4-argument form, a uniform-scale 9-argument form, and a non-uniform-scale
 (\cnaclass{Vector2} scale) 9-argument form).
@@ -51,9 +51,9 @@ a simple 4-argument form, a uniform-scale 9-argument form, and a non-uniform-sca
 The nine \texttt{Draw} overloads split cleanly into two families by their second parameter ---
 a \cnaclass{Vector2} \texttt{position} (four overloads, increasingly parameterized) or a
 \cnaclass{Rectangle} \texttt{destinationRectangle} that scales the texture to fit (three
-overloads) --- plus the two \texttt{NOXNA} raw \texttt{float x, float y} convenience forms
-already noted. Every real (non-\texttt{NOXNA}) overload takes an explicit \texttt{Color} tint
---- there is no overload that omits it, unlike the \texttt{NOXNA} convenience forms. The table
+overloads) --- plus the two \texttt{CNAEXT} raw \texttt{float x, float y} convenience forms
+already noted. Every real (non-\texttt{CNAEXT}) overload takes an explicit \texttt{Color} tint
+--- there is no overload that omits it, unlike the \texttt{CNAEXT} convenience forms. The table
 below abbreviates each overload's parameter names for width (\texttt{tex} for \texttt{texture},
 \texttt{pos} for \texttt{position}, and so on) --- the full, exact parameter names for every
 overload are given in the fully-parameterized worked example immediately below the table.
@@ -105,18 +105,18 @@ which reads as the sprite ``orbiting'' \texttt{spritePosition} in a circle rathe
 in place; the visual symptom is easy to misdiagnose as a rotation-math bug when the actual
 cause is simply the wrong \texttt{origin}.
 
-\section{The D3D9 half-pixel offset: real, backend-local, and a genuine mutation-testing trap}
+\section{The D3D9 half-pixel offset: real, renderer-local, and a genuine mutation-testing trap}
 
 Real XNA~4.0 ran exclusively on Direct3D~9, whose rasterizer places texel centers at integer
 pixel coordinates rather than pixel centers --- the well-known ``D3D9 half-pixel offset''
 problem, notorious enough that porting guides for other 2D APIs still warn about it decades
-later. \cnaclass{SpriteBatch}'s own shared, backend-agnostic \texttt{SpriteBatch.cpp} carries
-no trace of this compensation at all, which is exactly correct behavior for every backend built
+later. \cnaclass{SpriteBatch}'s own shared, renderer-agnostic \texttt{SpriteBatch.cpp} carries
+no trace of this compensation at all, which is exactly correct behavior for every renderer built
 on a modern API (EasyGL, Vulkan, BGFX, D3D11, D3D12, WebGPU): none of them share Direct3D~9's
 own texel-center convention, so there is nothing to compensate for, and adding an offset
-unconditionally would introduce a real bug on every backend that does not need one. On this
-one backend where the convention genuinely applies, the compensation lives one level down,
-inside \texttt{D3D9SpriteBatchBackend::BuildMatrixTransformEXT} specifically --- baked directly
+unconditionally would introduce a real bug on every renderer that does not need one. On this
+one renderer where the convention genuinely applies, the compensation lives one level down,
+inside \texttt{D3D9SpriteBatchRenderer::BuildMatrixTransformEXT} specifically --- baked directly
 into the projection matrix \cnaclass{SpriteBatch} constructs, the same technique the classic
 XNA~4.0 D3D9 fix itself used:
 
@@ -173,9 +173,9 @@ identical program. A game that submits sprites in scrambled A/B/A/B order and as
 \texttt{Texture} mode will always draw all of \texttt{A} before all of \texttt{B} (or vice
 versa) is relying on behavior the API never promised; only overlap-independent layouts (or an
 explicit depth/layer separation) are safe under \texttt{Texture} mode. A dedicated pixel test
-for the SDL\_RENDERER backend (Task~668) exists specifically because a mock backend can verify
+for the SDL\_RENDERER renderer (Task~668) exists specifically because a mock renderer can verify
 grouping and order but not that the real draw dispatch binds the correct texture to each
-reordered call --- the two are logically separate failure modes, and only a real backend can
+reordered call --- the two are logically separate failure modes, and only a real renderer can
 be wrong about the second one.
 
 \cnaclass{SpriteEffects} is where this chapter's first concrete, still-open gap lives:
@@ -195,14 +195,14 @@ flip of drawn text simply is not expressible today.
 
 Chapter~\ref{ch:design-philosophy} promised that this book would name specific, checkable
 bugs rather than paraphrase a changelog, and this one is worth naming in full because it
-affected every backend at once, which is unusual --- most of the bugs catalogued in Part~IV
-are backend-specific. Before Task~694, a \texttt{SpriteEffects} flip on
+affected every renderer at once, which is unusual --- most of the bugs catalogued in Part~IV
+are renderer-specific. Before Task~694, a \texttt{SpriteEffects} flip on
 \texttt{DrawString} only flipped each individual glyph's own texture sampling in place; it
 never mirrored the \emph{sequence or position} of the glyphs themselves, which is what FNA's
 real implementation does via a pair of axis-direction/axis-mirrored terms. The fix lives in
-the shared, backend-agnostic \texttt{SpriteBatch.cpp} --- meaning it was one fix that
-corrected the behavior identically on every one of CNA's graphics backends simultaneously,
-rather than something Part~IV's chapters need to revisit backend by backend.
+the shared, renderer-agnostic \texttt{SpriteBatch.cpp} --- meaning it was one fix that
+corrected the behavior identically on every one of CNA's graphics renderers simultaneously,
+rather than something Part~IV's chapters need to revisit renderer by renderer.
 
 \section{A real, lasting side effect: Begin() changes GraphicsDevice.BlendState}
 \label{sec:spritebatch-blendstate-leak}
@@ -226,7 +226,7 @@ device.DrawUserPrimitives(PrimitiveType::TriangleList, verts, 0, 2);
 \end{lstlisting}
 
 This was, until Task~956, a genuine bug rather than the faithfully-preserved FNA behavior
-described above: \texttt{EasyGLSpriteBatchBackend::Begin()} used to hardcode its own
+described above: \texttt{EasyGLSpriteBatchRenderer::Begin()} used to hardcode its own
 \texttt{SrcAlpha} / \texttt{OneMinusSrcAlpha} blend factors on the real GL state regardless of
 which \texttt{BlendState} was actually requested, and leave that hardcoded value in effect
 after \texttt{End()} --- so a following 3D draw inherited leftover \emph{implementation}
@@ -237,7 +237,7 @@ channel at a point away from the corner reads $\approx 100$ rather than $0$) mak
 \texttt{Begin()} apply the real requested state and leave it there, matching FNA exactly rather
 than merely avoiding a crash.
 
-A second, related caveat is still open rather than fixed: on the EasyGL backend, a
+A second, related caveat is still open rather than fixed: on the EasyGL renderer, a
 \textbf{full-backbuffer} \texttt{SpriteBatch} draw issued before any 3D draw in the same frame
 breaks that frame's 3D rendering entirely (Task~933) --- investigated at length (window-title
 readback state, viewport-reset ordering, and \texttt{RenderTarget2D} binding have each been
@@ -246,7 +246,7 @@ above is a different bug with a different, narrower trigger (a \emph{non-full-ba
 sprite specifically avoids Task~933's condition, which is exactly why the Task~956 regression
 test draws its verification sprite into only a $4\times4$ corner) --- do not conflate the two
 if you hit unexplained 3D-rendering corruption after a \texttt{SpriteBatch} pass on this
-backend; check whether the preceding sprite pass covered the full backbuffer before assuming
+renderer; check whether the preceding sprite pass covered the full backbuffer before assuming
 the blend-state fix above has regressed.
 
 \section{SpriteFont}
@@ -254,7 +254,7 @@ the blend-state fix above has regressed.
 
 \cnaclass{SpriteFont} is deliberately not a \cnaclass{GraphicsResource} --- a texture atlas,
 glyph bounds, cropping data, a character set, line spacing, character spacing, kerning data,
-and an optional default character. Its constructor is \texttt{NOXNA} and publicly callable,
+and an optional default character. Its constructor is \texttt{CNAEXT} and publicly callable,
 a direct consequence of Chapter~\ref{ch:content-and-assets}'s content model: real XNA's
 \cnaclass{SpriteFont} constructor is \texttt{internal}, reachable only from the compiled
 \texttt{.xnb} content pipeline's own \texttt{SpriteFontReader}; CNA has no such reader, so the
@@ -301,21 +301,21 @@ flip, and rotation/scale as pixel-correct on both \textbf{SDL\_Renderer} and \te
 On \textbf{Vulkan} and \textbf{BGFX}, the underlying logic is the same shared C\texttt{++} ---
 very likely correct by construction --- but has not been independently re-verified
 specifically for \cnaclass{SpriteFont} (flagged again in
-\texttt{docs/\allowbreak{}graphics-\allowbreak{}backend-\allowbreak{}feature-\allowbreak{}matrix.md},
+\texttt{docs/\allowbreak{}graphics-\allowbreak{}renderer-\allowbreak{}feature-\allowbreak{}matrix.md},
 Task~861). Combined-axis flip is not
-representable on any backend at all, for the \cnaclass{SpriteEffects} reason above.
+representable on any renderer at all, for the \cnaclass{SpriteEffects} reason above.
 
 \section{Two real, fixed SDL\_RENDERER bugs, as a preview of Part~IV's method}
 \label{sec:sdl-renderer-two-bugs}
 
-Two of the fifteen real bugs found during the SDL\_RENDERER backend's own Phase~70 audit
+Two of the fifteen real bugs found during the SDL\_RENDERER renderer's own Phase~70 audit
 (Chapter~\ref{ch:sdl-renderer} covers the full audit) live directly in \cnaclass{SpriteBatch}
 rendering and are worth previewing here as a template for how this book reports a bug
 throughout Part~IV: name the symptom, the root cause, and the fix. First,
 \texttt{SDL\_RenderTextureRotated}'s pivot convention differed from XNA's own rotation-origin
 convention; the fix offsets the destination rectangle rather than changing the rotation math
 itself. Second --- more serious --- the \texttt{transformMatrix} argument to
-\texttt{Begin()} was silently ignored \emph{entirely} on this backend; any code passing a
+\texttt{Begin()} was silently ignored \emph{entirely} on this renderer; any code passing a
 non-identity transform matrix (a common pattern for camera-style 2D scrolling) simply drew as
 if it had passed identity. The fix added a new rendering path using
 \texttt{SDL\_RenderTextureAffine}, used only when the transform actually differs from
@@ -335,7 +335,7 @@ void SpriteBatch::pushSprite(...)
 {
     // ...
     if (sortMode_ == SpriteSortMode::Immediate)
-        flushSingle(info);              // dispatched to the backend right here, right now
+        flushSingle(info);              // dispatched to the renderer right here, right now
     else
         spriteQueue_.push_back(info);   // deferred -- but only the SORT, not the draw call
 }
@@ -344,7 +344,7 @@ void SpriteBatch::flushBatch()
 {
     // ... optional std::stable_sort by layerDepth or texture pointer, per sort mode ...
     for (const SpriteInfo& s : spriteQueue_)
-        flushSingle(s);                 // still one backend->Draw() call per sprite
+        flushSingle(s);                 // still one renderer->Draw() call per sprite
     spriteQueue_.clear();
 }
 \end{lstlisting}
@@ -352,20 +352,20 @@ void SpriteBatch::flushBatch()
 Two real, checkable facts fall out of reading this directly rather than assuming from the
 class name. First, \texttt{SpriteSortMode::Immediate} is not merely ``skip the sort'' ---
 \texttt{pushSprite} routes straight to \texttt{flushSingle} for every \texttt{Draw()} call,
-meaning each sprite reaches the backend the instant it is submitted, with no queue involved at
+meaning each sprite reaches the renderer the instant it is submitted, with no queue involved at
 all; this is the only sort mode where a game can safely change render state (a different
-\cnaclass{Texture2D}'s \cnaclass{SamplerState}, say, via a raw backend call) \emph{between}
+\cnaclass{Texture2D}'s \cnaclass{SamplerState}, say, via a raw renderer call) \emph{between}
 two \texttt{Draw()} calls in the same \texttt{Begin()} / \texttt{End()} pair and have it take
 effect exactly where expected, since nothing is reordered or delayed. Second, and more
 consequential for the other four sort modes: ``batch'' here describes when the \emph{sort}
 happens, not how the GPU submission happens. Every sprite, in every sort mode, still becomes
-its own individual \texttt{backend->Draw()} call inside the \texttt{flushBatch()} loop above
+its own individual \texttt{renderer->Draw()} call inside the \texttt{flushBatch()} loop above
 --- there is no vertex-buffer-building step that merges many sprites into one draw call the
 way a true GPU-batched 2D renderer (or, within CNA's own codebase, a single
 \cnaclass{VertexBuffer} submitted once via \texttt{DrawIndexedPrimitives}) would. A porting
 engineer coming from an engine where ``sprite batching'' specifically means draw-call
 coalescing should recalibrate: CNA's \cnaclass{SpriteBatch} coalesces \emph{sort decisions},
-not draw calls, and a scene with a thousand sprites issues on the order of a thousand backend
+not draw calls, and a scene with a thousand sprites issues on the order of a thousand renderer
 draw calls regardless of which non-\texttt{Immediate} sort mode is chosen.
 
 A second, smaller finding lives in \texttt{pushSprite} itself: a
@@ -373,9 +373,9 @@ A second, smaller finding lives in \texttt{pushSprite} itself: a
 Real FNA's own \texttt{SpriteBatch.Draw} does not guard against a disposed texture at all ---
 its managed runtime simply throws whatever exception a stale reference happens to produce.
 C\texttt{++} has no equivalent safety net: reaching \texttt{flushSingle} with a fully-disposed
-\cnaclass{Texture2D} (its last owning \texttt{shared\_ptr} released, backend pointer now
-\texttt{nullptr}) would dereference a null \cnaclass{ITextureBackend} reference through
-\texttt{GetBackend()} --- a guaranteed crash, not a graceful failure. The explicit guard is
+\cnaclass{Texture2D} (its last owning \texttt{shared\_ptr} released, renderer pointer now
+\texttt{nullptr}) would dereference a null \cnaclass{ITextureRenderer} reference through
+\texttt{GetRenderer()} --- a guaranteed crash, not a graceful failure. The explicit guard is
 real, deliberate hardening beyond parity, not a faithfully-reproduced FNA behavior.
 
 \section{A parallel to the BlendState leak: DepthStencilState's own Task~803 history}
@@ -387,7 +387,7 @@ matching real FNA exactly. \texttt{DepthStencilState} had the mirror-image bug, 
 \texttt{depthStencilState} parameter was, for a real stretch of this project's history,
 accepted but never actually applied to \texttt{graphicsDevice\_} at all --- a
 \texttt{SpriteBatch} pass silently inherited whatever \texttt{DepthStencilState} the game's
-most recent 3D rendering (or each backend's own construction-time default) had last left in
+most recent 3D rendering (or each renderer's own construction-time default) had last left in
 place, rather than FNA's real, documented default of \texttt{DepthStencilState::None} when the
 caller passes \texttt{nullptr}. The two bugs are opposite shapes of the identical underlying
 discipline failure --- one state object leaking \emph{into} a pass that should have reset it,
@@ -438,7 +438,7 @@ rule is what makes a caller's own centering math (measure, then draw at the meas
 trustworthy: if the two implementations disagreed on this one case, text would measure as one
 width and render at another.
 
-\texttt{examples/easygl\_spritefont\_multiglyph\_spacing\_test.cpp} (Task~425) is a real,
+\texttt{modules/renderers/easygl/examples/\allowbreak{}easygl\_spritefont\_multiglyph\_spacing\_test.cpp} (Task~425) is a real,
 minimal fixture built specifically to prove the non-first-glyph branch is genuinely exercised,
 not merely present in the source. Its two-glyph font --- \texttt{'A'} and \texttt{'B'}, both
 $8\times8$, both with zero-valued kerning \texttt{(0, 8, 0)} --- and a \texttt{spacing} of
@@ -521,10 +521,10 @@ identical real-XNA exception type.
 
 \section{Where this leaves a porting engineer}
 
-\cnaclass{SpriteBatch} is, by a wide margin, the most exhaustively cross-backend-verified
-class in CNA --- every backend chapter in Part~IV returns to it, because every backend has
+\cnaclass{SpriteBatch} is, by a wide margin, the most exhaustively cross-renderer-verified
+class in CNA --- every renderer chapter in Part~IV returns to it, because every renderer has
 to implement it, and because its bugs (an ignored transform matrix, a mis-scoped flip, a
 silently-downgraded sampler filter) are exactly the class of bug that only surfaces under
 real pixel-readback testing rather than ``it compiles and something appears on screen.'' If
 you are porting existing 2D XNA/FNA game code (this book's migration chapter), this is also
-the API you can trust most: it is the one every backend is held to the same standard on.
+the API you can trust most: it is the one every renderer is held to the same standard on.

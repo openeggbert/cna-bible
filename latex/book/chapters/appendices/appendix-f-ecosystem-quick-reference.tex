@@ -17,14 +17,14 @@ single \texttt{GetState()} that returns an immutable snapshot --- \cnaclass{Keyb
 \texttt{IsKeyDown} / \texttt{IsKeyUp} / \texttt{GetPressedKeys()} query surface plus an indexer
 returning a \cnaclass{KeyState}) and \cnaclass{MouseState} (\texttt{X} / \texttt{Y},
 \texttt{LeftButton} / \texttt{MiddleButton} / \texttt{RightButton} / \texttt{XButton1} / \texttt{XButton2},
-and \texttt{ScrollWheelValue}) respectively. Both classes carry a cluster of \texttt{NOXNA/EXT}
+and \texttt{ScrollWheelValue}) respectively. Both classes carry a cluster of \texttt{CNAEXT/EXT}
 extensions that fill gaps a desktop port genuinely needs: \cnaclass{Keyboard}'s
 \texttt{GetModStateEXT} / \texttt{GetScancodeNameEXT} / \texttt{GetKeyNameEXT} (and their inverses)
 expose layout-independent versus layout-dependent key naming that XNA's console-era API never
 needed to distinguish; \cnaclass{Mouse}'s \texttt{SetCaptureEXT} / \texttt{GetGlobalPositionEXT}/%
 \texttt{WarpGlobalEXT} and relative-mouse-mode property support desktop window-manager
 interactions with no Xbox~360 equivalent at all. \cnaclass{MouseState} additionally carries a
-\texttt{NOXNA GetHorizontalScrollWheelValueEXT} property --- deliberately excluded from
+\texttt{CNAEXT GetHorizontalScrollWheelValueEXT} property --- deliberately excluded from
 \texttt{Equals} / \texttt{GetHashCode} so those two stay byte-identical to FNA's own, vertical-only
 comparison, even though the field itself is real and populated from SDL's horizontal wheel axis.
 
@@ -32,14 +32,14 @@ comparison, even though the field itself is real and populated from SDL's horizo
 \cnaclass{Mouse}::\texttt{SetPosition} do not have one uniform logical-presentation contract.
 SDL-renderer products have the complete mapping; EasyGL/Canvas cover only their default
 height-driven mode; WebGPU/SDL GPU mix window and physical-pixel spaces on high-density
-displays; Vulkan passes through after a non-1:1 resize; and DX3 changes behavior after its
+displays; Vulkan passes through after a non-1:1 resize; and FREEDIRECT changes behavior after its
 first \texttt{Present()}. See \S\ref{sec:input-logical-coordinate-routing} and the complete
-backend matrix in \S\ref{sec:backend-input-coordinate-matrix} before treating
+renderer matrix in \S\ref{sec:backend-input-coordinate-matrix} before treating
 \texttt{Mouse::GetState()} coordinates as rendered logical pixels.
 
 \cnaclass{GamePad} follows the same static-class shape, with \texttt{GetCapabilities}/%
 \texttt{GetState} (two overloads, the second taking an explicit \cnaclass{GamePadDeadZone} mode)
-and \texttt{SetVibration}. Its \cnaclass{NOXNA} surface is the largest of any class in this
+and \texttt{SetVibration}. Its \cnaclass{CNAEXT} surface is the largest of any class in this
 appendix, and reflects a real hardware gap rather than a naming inconsistency: XNA's Xbox~360
 gamepad model has no vocabulary at all for a modern controller's light bar, trigger vibration
 motors, touchpad, gyroscope, accelerometer, back paddles, or the several controller identity
@@ -47,7 +47,7 @@ queries (\texttt{GetGUIDEXT}, \texttt{GetSerialEXT}, \texttt{GetSteamHandleEXT},
 2020s USB/Bluetooth controller stack makes available and an Xbox~360 pad simply didn't have.
 \cnaclass{GamePadCapabilities} mirrors this exactly: roughly twenty real-XNA
 \texttt{HasXxxButton} / \texttt{HasXxxThumbStick} / \texttt{HasXxxTrigger} flags, plus ten further
-\texttt{NOXNA}-tagged \texttt{HasXxxEXT} flags for exactly the modern features above.
+\texttt{CNAEXT}-tagged \texttt{HasXxxEXT} flags for exactly the modern features above.
 
 \cnaclass{Touch::TouchPanel} is, like \cnaclass{Keyboard} / \cnaclass{Mouse} / \cnaclass{GamePad}, a
 static class --- \texttt{GetState()} returns a \cnaclass{Touch::TouchCollection} (an
@@ -56,7 +56,7 @@ STL-container-shaped, technically-always-mutable collection that nonetheless rep
 rather than \\ "fixing" it) and \texttt{ReadGesture()} dequeues the next
 \cnaclass{Touch::GestureSample}. \texttt{DisplayWidth} / \texttt{DisplayHeight}/%
 \texttt{DisplayOrientation} and \texttt{EnabledGestures} round out the public surface; a cluster
-of \texttt{NOXNA} methods (\texttt{SetFinger}, \texttt{INTERNAL\_onTouchEvent}, \texttt{Update})
+of \texttt{CNAEXT} methods (\texttt{SetFinger}, \texttt{INTERNAL\_onTouchEvent}, \texttt{Update})
 mark the platform-input-bridge plumbing FNA itself keeps \texttt{internal}, exposed here only
 because C\texttt{++} has no assembly-internal visibility modifier to fall back on.
 
@@ -66,7 +66,7 @@ because C\texttt{++} has no assembly-internal visibility modifier to fall back o
 \cnaclass{SoundEffect} is move-only (matching FNA's own single-object instance-tracking
 contract, where disposing the source effect cascades to every \cnaclass{SoundEffectInstance} it
 created) and offers three constructor families: loading a file directly
-(\texttt{NOXNA}, since real XNA never constructs a \cnaclass{SoundEffect} from a bare path
+(\texttt{CNAEXT}, since real XNA never constructs a \cnaclass{SoundEffect} from a bare path
 outside the content pipeline), and two raw-PCM-buffer constructors --- one plain, one with
 explicit loop points --- that both require genuinely headerless, signed 16-bit PCM samples
 rather than a whole WAV file's bytes, a documented and easy mistake to make. \texttt{Play()}
@@ -79,7 +79,7 @@ approximation, since SDL3\_mixer itself has no native 3D audio model to fall bac
 \texttt{Pitch} / \texttt{IsLooped} properties, and \texttt{Apply3D} (an attenuation-and-pan
 approximation over listener/emitter positions, not a real 3D mixer feature). Its subclass
 \cnaclass{DynamicSoundEffectInstance} adds a \texttt{BufferNeeded} event and
-\texttt{SubmitBuffer} (plus a \texttt{NOXNA SubmitFloatBufferEXT} float32 variant) for
+\texttt{SubmitBuffer} (plus a \texttt{CNAEXT SubmitFloatBufferEXT} float32 variant) for
 streaming/procedural audio that has no pre-loaded \cnaclass{SoundEffect} behind it at all.
 
 \cnaclass{Song} is a content handle rather than a playback controller --- \texttt{Name},
@@ -112,7 +112,7 @@ every derived class implements against its own hardware.
 \cnaclass{Accelerometer} adds a static \texttt{IsSupported} and a \texttt{State} property ---
 the one strict-XNA-API member of \cnaclass{SensorState} among this namespace's four sensor
 classes, per that enum's own documentation; \cnaclass{Compass} / \cnaclass{Gyroscope} / \texttt{Motion}
-expose the identical property only as a \texttt{NOXNA} symmetry addition, since the real WP7
+expose the identical property only as a \texttt{CNAEXT} symmetry addition, since the real WP7
 \cnaclass{Compass} class has no \texttt{State} member at all. \cnaclass{Accelerometer} also
 carries a legacy \texttt{ReadingChanged} event, deprecated on real WP7 7.1 in favor of
 \texttt{CurrentValueChanged} but still present and still raised here for API completeness with
@@ -164,7 +164,7 @@ genuine probabilistic latency/loss injection scoped to application data only. \c
 (\texttt{Id}, \texttt{IsHost}, \texttt{IsLocal}, \texttt{IsReady}, \texttt{RoundtripTime}) is a
 second, smaller example of the same pattern: several of its properties (\texttt{Id} always~0,
 \texttt{IsHost} always~\texttt{true}) are permanently hardcoded stubs in FNA itself, restored to
-real, wire-negotiated values here via \texttt{NOXNA} setters FNA has no equivalent for.
+real, wire-negotiated values here via \texttt{CNAEXT} setters FNA has no equivalent for.
 
 \cnaclass{LeaderboardReader} provides paged access to a leaderboard via three static
 \texttt{Read} overloads (a plain page, a page centered on a pivot gamer, or a page restricted to
@@ -189,7 +189,7 @@ display name; \texttt{DeleteContainer} removes one outright; and a four-overload
 \texttt{BeginShowSelector} / \texttt{EndShowSelector} pair (with or without an explicit
 \cnaclass{PlayerIndex}, with or without a required free-space/directory-count) surfaces the
 device-selection UI real XNA needed on a physical Xbox~360, even though this implementation
-only ever resolves to the local filesystem. Two \texttt{NOXNA} static methods,
+only ever resolves to the local filesystem. Two \texttt{CNAEXT} static methods,
 \texttt{SetAppNameEXT} / \texttt{GetStorageRootEXT}, are the real root every other call in this
 namespace ultimately resolves against --- a game is expected to call \texttt{SetAppNameEXT}
 once, early, before any other storage call. \cnaclass{StorageContainer} provides the actual
@@ -222,7 +222,7 @@ invocation; C\texttt{++} has no \texttt{event} keyword, so this class folds both
 --- \texttt{operator+=} / \texttt{Add} (returning a removal \texttt{Token}) to subscribe,
 \texttt{Remove} / \texttt{Clear} to unsubscribe, and \texttt{Raise} / \texttt{Invoke} to fire every
 subscriber against a snapshot of the handler list (so a handler that unsubscribes itself
-mid-raise cannot corrupt the in-progress dispatch). A \texttt{NOXNA SetReplayHook} exists
+mid-raise cannot corrupt the in-progress dispatch). A \texttt{CNAEXT SetReplayHook} exists
 specifically to model the handful of real XNA events --- \cnaclass{NetworkSession::GamerJoined}
 chief among them --- that are documented to replay already-happened state to a new subscriber
 immediately upon \texttt{+=}, a quirk \texttt{EventHandler<T>} cannot reproduce automatically on

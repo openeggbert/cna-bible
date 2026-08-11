@@ -1,40 +1,41 @@
 \chapter{The DirectX Time Machine: DirectX 1--3 and free-direct}
 \label{ch:directx-time-machine}
+\label{ch:dx3-freedirect-renderer}
 \label{ch:dx3-freedirect-backend}
 
-\texttt{DX3} is CNA's second 2D-only backend, and its odd one out architecturally: it does
+\texttt{FREEDIRECT} is CNA's second 2D-only renderer, and its odd one out architecturally: it does
 not use SDL3's 2D API at all, instead fronting \texttt{IDirectDraw} / \texttt{IDirectDrawSurface}-shaped
 calls against \texttt{free-direct}, the narrow DirectDraw reimplementation introduced in
 Chapter~\ref{ch:ecosystem-map} and covered as its own project later in this book. This chapter
-covers only what is specific to CNA's own backend layer on top of it; this book's
+covers only what is specific to CNA's own renderer layer on top of it; this book's
 \texttt{free-direct} chapter covers the library itself.
 
 \section{A real architectural problem the design did not anticipate}
 
 \texttt{free-direct}'s own \texttt{IDirectDrawSurface::Lock()} never exposes a writable
 pointer for the \emph{primary} surface --- only for offscreen ones. Rather than treating the
-primary surface as a render target directly, this backend owns an internal, always-lockable
+primary surface as a render target directly, this renderer owns an internal, always-lockable
 ``shadow backbuffer'': every \texttt{Clear()} and every \cnaclass{SpriteBatch} draw targets
 that shadow surface, and \texttt{Present()} is a single identity \texttt{Blt()} copying it
-onto the real primary. This single design decision is what makes the rest of the backend
+onto the real primary. This single design decision is what makes the rest of the renderer
 possible at all.
 
 \section{A genuine capability win over SDL\_RENDERER}
 
 \texttt{TextureAddressMode::Wrap} and \texttt{Mirror} --- the two features
 Chapter~\ref{ch:sdl-renderer} named as formally BLOCKED on \texttt{SDL\_RENDERER} --- are
-fully implemented here, for a specific structural reason: this backend's own CPU compositor
+fully implemented here, for a specific structural reason: this renderer's own CPU compositor
 already samples per-source-pixel for any non-identity draw, so wrap/mirror addressing costs
-nothing extra to add. \texttt{DX3} also implements four genuinely distinct blend formulas
+nothing extra to add. \texttt{FREEDIRECT} also implements four genuinely distinct blend formulas
 (Opaque/AlphaBlend/NonPremultiplied/Additive), each with its own real math, in contrast to
-the \texttt{SOFTWARE} backend's single collapsed baseline formula.
+the \texttt{SOFTWARE} renderer's single collapsed baseline formula.
 
 \subsection{Worked example: address modes beyond SDL\_RENDERER}
 
 Chapter~\ref{ch:sdl-renderer}'s own worked example measured precisely what
 \texttt{SDL\_RENDERER} gets wrong for an oversized \cnaclass{SpriteBatch} source rectangle: a
 $2$-texel-wide texture drawn with a source rectangle twice its own width, so the sampled range
-spans $[0,4)$ against a 2-texel tile. This backend's real test suite runs the identical shape
+spans $[0,4)$ against a 2-texel tile. This renderer's real test suite runs the identical shape
 of case --- a red/green 2-texel texture, a $4$-pixel-wide destination sampled 1:1 against an
 identically oversized source rectangle, \texttt{TextureFilter::Point} to keep each destination
 pixel's sampled texel unambiguous --- and gets a genuinely different, correct answer for each
@@ -62,18 +63,18 @@ repeating-background result Chapter~\ref{ch:sdl-renderer}'s own worked example s
 \texttt{Mirror} reads back \texttt{(255, 0, 0, 255)} --- red, green, green, red: a genuine
 reflection at the tile boundary, not a second repeat of the same tile.
 \texttt{Clamp} reads back \texttt{(255, 0, 0, 0)} --- the last real texel (green) held for
-every sample past the texture's own edge, the one mode both backends agree on. The structural
-reason this backend can do what \texttt{SDL\_RENDERER} cannot is stated plainly in this
+every sample past the texture's own edge, the one mode both renderers agree on. The structural
+reason this renderer can do what \texttt{SDL\_RENDERER} cannot is stated plainly in this
 chapter's own account above: its CPU compositor already samples per-source-pixel for every
 non-identity draw, so addressing the sampled coordinate by whichever
 \cnaclass{TextureAddressMode} was actually requested is simply a different index computation
 into the same per-pixel loop, not a separate rendering path requiring new GPU-level machinery
-the way an SDL-texture-blit-based backend would need.
+the way an SDL-texture-blit-based renderer would need.
 
 \section{Eight real bugs, and one process note}
 
 Beyond the primary-surface architecture problem above, seven further real bugs were found and
-fixed during this backend's own audit: \texttt{Clear()} originally used a color-fill path that
+fixed during this renderer's own audit: \texttt{Clear()} originally used a color-fill path that
 hardcoded written alpha to 255 regardless of what was requested, discarding any other
 requested alpha value --- fixed via direct locked-pixel writes across all four channels; the
 general CPU blend path initially forgot to multiply its source term by source alpha at all,
@@ -92,9 +93,9 @@ documentation commit rather than by rewriting project history.
 
 \cnaclass{RenderTarget2D} support did not need a second architectural idea --- it reuses the
 opening section's shadow-backbuffer trick, once per bound target rather than once globally.
-\emph{The implementation}'s private render-target backend owns its own always-Lockable
-offscreen surface, defined (like \texttt{Dx3TextureBackend}) entirely
-inside \texttt{Dx3GraphicsBackend.cpp} so \texttt{<ddraw.h>} never leaks into a header. Binding
+\emph{The implementation}'s private render-target renderer owns its own always-Lockable
+offscreen surface, defined (like \texttt{FreeDirectTextureRenderer}) entirely
+inside \texttt{FreeDirectRenderer.cpp} so \texttt{<ddraw.h>} never leaks into a header. Binding
 one is a pure redirect: \texttt{Clear()} and \texttt{ReadBackbuffer()} both route through an
 internal \texttt{Impl::ActiveSurface()} indirection that resolves to whichever surface is
 currently bound, while \texttt{Present()} always targets the real shadow backbuffer from
@@ -119,26 +120,26 @@ dev.SetRenderTarget(nullptr);
 \end{lstlisting}
 
 Two further checks round out the same test. \texttt{RenderTargetUsage::DiscardContents}
-auto-clearing to black on rebind needed \emph{zero} DX3-specific code at all --- it
+auto-clearing to black on rebind needed \emph{zero} FREEDIRECT-specific code at all --- it
 falls straight out of shared \texttt{GraphicsDevice.cpp} logic once bind/\texttt{Clear}/read
 were wired correctly, the same "comes for free" shape Chapter~\ref{ch:textures-rendertargets}
-documents for other backends. This is also a CNA/FNA identity difference: CNA repeats that
+documents for other renderers. This is also a CNA/FNA identity difference: CNA repeats that
 clear on an identical currently-bound target, while FNA treats the redundant call as a no-op.
 The persistent DirectDraw surface makes Preserve and Platform retain color in source, but the
 test proves only the Discard-to-black case; presentation usage is ignored.
 \texttt{SetRenderTargets()} with two or more bindings throws, honestly:
 \texttt{IDirectDrawSurface} has exactly one active surface at a time, the identical
 single-active-surface conclusion Chapter~\ref{ch:sdl-renderer} already reached for
-\texttt{SDL\_RENDERER} (Task~709) for an unrelated reason (that backend's SDL2 render target
-API, not DirectDraw's own surface model) --- two structurally different backends landing on
+\texttt{SDL\_RENDERER} (Task~709) for an unrelated reason (that renderer's SDL2 render target
+API, not DirectDraw's own surface model) --- two structurally different renderers landing on
 the same MRT answer for two different underlying reasons.
 
 A last, unrelated finding from the same test is worth stating plainly rather than folding into
 the render-target discussion above: a $5000 \times 5000$ \cnaclass{Texture2D} construction
 throws immediately, rather than silently truncating or wrapping. \texttt{free-direct}'s own
-\texttt{CreateSurface} enforces a fixed $4096 \times 4096$ dimension cap, and this backend
+\texttt{CreateSurface} enforces a fixed $4096 \times 4096$ dimension cap, and this renderer
 propagates that failure as a real, catchable exception instead of masking it --- a case where
-the honest answer for a request the backend genuinely cannot satisfy is simply to say so.
+the honest answer for a request the renderer genuinely cannot satisfy is simply to say so.
 
 \section{Public depth/stencil clear}
 
@@ -147,10 +148,10 @@ channels, and target-redirection tests prove that ``active'' changes between the
 backbuffer and a \cnaclass{RenderTarget2D}. Depth and stencil follow two different layers.
 \cnaclass{GraphicsDevice} sees \texttt{SupportsDepthStencil()==false}, strips both flags, and
 returns silently when no target bit remains --- the same depthless-target rule current FNA
-uses. \texttt{dx3\_no3d\_test.cpp} separately invokes all six backend combination hooks and
+uses. \texttt{dx3\_no3d\_test.cpp} separately invokes all six renderer combination hooks and
 proves their \texttt{ThrowNo3D} errors precisely because those hooks are unreachable through
 the public mask. Treating either result as evidence for the other would conflate shared and
-backend contracts; \S\ref{sec:backend-clear-matrix} keeps them separate.
+renderer contracts; \S\ref{sec:backend-clear-matrix} keeps them separate.
 
 \section{Known, permanent limitations}
 
@@ -165,7 +166,7 @@ that would require a change inside \texttt{free-direct} itself to close, not som
 from CNA's side alone.
 
 The same stored-versus-applied distinction affects two ordinary XNA properties:
-\texttt{Dx3Graphics}\allowbreak\texttt{Backend} overrides neither \texttt{SetViewport()} nor
+\texttt{Dx3Graphics}\allowbreak\texttt{Renderer} overrides neither \texttt{SetViewport()} nor
 \texttt{SetScissorRect()}, and it has no rasterizer-state hook. Both values therefore
 round-trip through \cnaclass{GraphicsDevice} without changing the 2D DirectDraw/SDL output.
 The SDL renderer that \texttt{free-direct} owns privately does not rescue this path: CNA never
@@ -188,13 +189,13 @@ game's newly allocated surfaces use the new size. Closing that three-way mismatc
 unilateral CNA-side approximation.
 
 \texttt{DirectSound} / \texttt{DirectPlay} networking are explicitly out
-of scope for this backend by the project owner's own instruction --- CNA's own audio and
-networking go through the ordinary backend-agnostic paths from Chapter~\ref{ch:audio-system}
+of scope for this renderer by the project owner's own instruction --- CNA's own audio and
+networking go through the ordinary renderer-agnostic paths from Chapter~\ref{ch:audio-system}
 and Chapter~\ref{ch:networking} of this book, not through \texttt{free-direct} at all.
 
 \section{The transform math is sound, but public input takes another route}
 
-The backend implements both \texttt{TransformWindowToLogical()} and its inverse directly from
+The renderer implements both \texttt{TransformWindowToLogical()} and its inverse directly from
 the real \texttt{SDL\_Window} size. For a logical size $(L_w,L_h)$ and physical window size
 $(P_w,P_h)$, they recompute the same centered-letterbox transform that
 \texttt{free-direct} uses:
@@ -214,11 +215,11 @@ choose a quite different actual window size.
 Those two correct methods are nevertheless shadowed during normal public input. Both public
 callers first ask \texttt{SDL\_Get\allowbreak Renderer(window)} for an associated renderer and
 use SDL's own logical-coordinate conversion when one exists. Only a renderer-less window
-proceeds to the backend registry. \texttt{free-direct} creates an SDL renderer on this same
+proceeds to the renderer registry. \texttt{free-direct} creates an SDL renderer on this same
 window during \texttt{SetCooperative\allowbreak Level()}, so SDL's first tier wins even though
-\texttt{Dx3Graphics\allowbreak Backend::GetRenderer\allowbreak Internal()} returns
+\texttt{Dx3Graphics\allowbreak Renderer::GetRenderer\allowbreak Internal()} returns
 \texttt{nullptr}. The renderer is not actually unreachable from CNA: it is merely not
-returned by that backend accessor.
+returned by that renderer accessor.
 
 This route has two time-dependent consequences. Before the first \texttt{Present()},
 \texttt{free-direct} has created the renderer but has not yet called
@@ -237,19 +238,19 @@ is exactly $\min(P_w/64,P_h/64)$. These checks prove both the centering and the 
 silent anisotropic stretch on whichever display the test is actually running, including the
 environment where an attempted \texttt{SDL\_SetWindowSize()} was not honoured by the window
 manager. They do \emph{not} prove the public route above: the test obtains
-\texttt{Dx3GraphicsBackend\&} and invokes both methods directly, bypassing
+\texttt{FreeDirectRenderer\&} and invokes both methods directly, bypassing
 \texttt{Mouse::SetPosition()}, \texttt{SdlInputBridge}, and the SDL-renderer-first branch.
 Chapter~\ref{ch:backend-architecture},
-\S\ref{sec:backend-input-coordinate-matrix}, places that proof boundary in the full backend
+\S\ref{sec:backend-input-coordinate-matrix}, places that proof boundary in the full renderer
 matrix.
 
 \section{Design decision 4 sidesteps two free-direct gaps}
 
-\texttt{Dx3GraphicsBackend.cpp}'s own comments name it plainly: ``design decision 4 --- 32bpp
-\texttt{DDSCAPS\_OFFSCREENPLAIN} only, no palette/8-bit path.'' Every surface this backend ever
+\texttt{FreeDirectRenderer.cpp}'s own comments name it plainly: ``design decision 4 --- 32bpp
+\texttt{DDSCAPS\_OFFSCREENPLAIN} only, no palette/8-bit path.'' Every surface this renderer ever
 creates --- the primary (via \texttt{SetDisplayMode(width, height, 32)}), the shadow backbuffer,
 every render-target surface, every \cnaclass{Texture2D} backing surface --- is hardcoded to
-32 bits per pixel, with no code path anywhere in the backend that could request an 8-bit
+32 bits per pixel, with no code path anywhere in the renderer that could request an 8-bit
 palette surface instead. This single decision is not merely a simplification; read alongside
 \texttt{free-direct}'s own \texttt{docs/directdraw-limitations.md}, it turns out to sidestep
 two real, independently-documented gaps in the library underneath it, neither one by luck:
@@ -260,15 +261,15 @@ two real, independently-documented gaps in the library underneath it, neither on
         \texttt{CreateSurface} always allocates a
         32bpp primary regardless of what bit depth was actually requested. This is a real,
         currently-open gap for a caller that genuinely needs an 8-bit primary --- but this
-        backend's own \texttt{CreateSurfaces()} always passes the literal constant \texttt{32}
+        renderer's own \texttt{CreateSurfaces()} always passes the literal constant \texttt{32}
         as \texttt{dwBPP}, so the value that would expose the gap and the value \texttt{free-direct}
         always produces anyway are identical by construction. There is no request/response
-        mismatch to observe here, ever, because this backend never makes the request the gap
+        mismatch to observe here, ever, because this renderer never makes the request the gap
         would affect.
   \item[The mixed-depth blit silent-no-op.] \texttt{DirectDrawSurfaceImpl}'s \texttt{BlitFrom}
         method has real fast/slow paths only for same-depth 8-on-8 and 32-on-32 blits; a mismatched pair
-        falls through both checks and silently copies nothing. Since every surface this backend
-        creates is 32bpp, every \texttt{Blt} / \texttt{BltFast} call this backend issues is
+        falls through both checks and silently copies nothing. Since every surface this renderer
+        creates is 32bpp, every \texttt{Blt} / \texttt{BltFast} call this renderer issues is
         necessarily a 32-on-32 case --- the mismatched-depth branch is not just rare here, it is
         structurally unreachable, for the identical reason \texttt{free-direct}'s own
         \texttt{docs/directdraw-limitations.md} documents it as unreachable for both of its own
@@ -277,23 +278,23 @@ two real, independently-documented gaps in the library underneath it, neither on
 
 The throughline is worth stating precisely rather than as a vague reassurance: XNA's own
 \cnaclass{SurfaceFormat} enum has no 8-bit indexed-color member at all --- every concrete format
-XNA exposes is a direct or block-compressed RGBA shape. A backend faithfully targeting XNA's own
+XNA exposes is a direct or block-compressed RGBA shape. A renderer faithfully targeting XNA's own
 texture model therefore never has a reason to request anything but a direct-color surface from
-\texttt{free-direct} in the first place; design decision~4 is this backend's own explicit
+\texttt{free-direct} in the first place; design decision~4 is this renderer's own explicit
 acknowledgment of that fact, not a workaround bolted on after discovering the gaps above. The two
 gaps remain real and worth knowing about for anyone embedding \texttt{free-direct} directly
 (outside CNA, targeting original DirectDraw code that does request 8-bit surfaces) --- they are
-simply gaps this specific backend's own architecture can never trigger.
+simply gaps this specific renderer's own architecture can never trigger.
 
 \begin{sourcenote}
-\cnaclass{PresentationParameters} cannot change that decision. The DX3 factory reads the
+\cnaclass{PresentationParameters} cannot change that decision. The FREEDIRECT factory reads the
 window, virtual size, and presentation mode, but discards
 \texttt{BackBuffer\allowbreak Format}, \texttt{DepthStencil\allowbreak Format}, and
 \texttt{IsFull\allowbreak Screen}. Shared device code may still ask SDL to change the window, while
 free-direct remains at \texttt{DDSCL\_NORMAL}; there is no exclusive DirectDraw transition.
 The primary and shadow buffers stay fixed 32-bpp, and no depth attachment exists. Thus the
 public fields can round-trip while the native answer remains unchanged, exactly as the
-cross-backend matrix in \S\ref{sec:backend-presentation-format-matrix} records.
+cross-renderer matrix in \S\ref{sec:backend-presentation-format-matrix} records.
 \end{sourcenote}
 
 \subsection{A worked example: why matching raw factors is not enough to detect a preset}
@@ -316,8 +317,8 @@ detection bug into a real, visible divergence once a game draws over anything al
 screen). Detecting a preset purely from its blend factors, without also checking both
 \cnaclass{BlendFunction} fields, is exactly the kind of bug that passes every test built
 against a freshly-cleared target and only misrenders once real translucent content is drawn
-over something already there --- precisely what this backend's fix (checking
+over something already there --- precisely what this renderer's fix (checking
 \cnaclass{BlendFunction} as well as the raw factors before matching a preset) closes.
 
-Unusually for a backend chapter in this book, this one closes with the project's own summary
-line rather than a caveat: ``no BLOCKED decisions remain open for this backend.''
+Unusually for a renderer chapter in this book, this one closes with the project's own summary
+line rather than a caveat: ``no BLOCKED decisions remain open for this renderer.''

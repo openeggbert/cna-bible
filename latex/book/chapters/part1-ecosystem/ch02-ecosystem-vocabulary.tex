@@ -6,8 +6,8 @@ CNA does not sit alone in the \texttt{openeggbert} GitHub organization. It sits 
 center of a small, deliberately layered set of sibling repositories, most of which expect to
 be checked out as literal sibling directories on disk --- \texttt{../sharp-runtime},
 \texttt{../easy-gl}, \texttt{../cna-samples}, and so on --- because CNake's own build system
-looks for them there. This chapter is the map; later chapters (Part~VI for
-\texttt{sharp-runtime}, Part~VII for \texttt{easy-gl} and \texttt{free-direct}) are the
+looks for them there. This chapter is the map; later chapters (Part~VIII for
+\texttt{sharp-runtime}, Part~IX for \texttt{easy-gl} and \texttt{free-direct}) are the
 territory.
 
 \section{The dependency graph}
@@ -18,8 +18,8 @@ territory.
 \textbf{Repository} & \textbf{Role} & \textbf{Consumed by} \\
 \midrule
 \texttt{sharp-runtime} & C\texttt{++} subset of the .NET BCL & CNA (foundation layer) \\
-\texttt{easy-gl} & Toolkit-independent OpenGL/ES wrapper & CNA's \texttt{EASYGL} backend \\
-\texttt{free-direct} & DirectDraw/DirectSound/DirectPlay subset & CNA's \texttt{DX3} backend \\
+\texttt{easy-gl} & Toolkit-independent OpenGL/ES wrapper & CNA's five EasyGL-backed profiles \\
+\texttt{free-direct} & DirectDraw/DirectSound/DirectPlay subset & CNA's \texttt{FREEDIRECT} renderer \\
 \texttt{xna4-spec} & Machine-readable XNA 4.0 API spec (XML) & Compatibility audits of CNA \\
 \texttt{cna-samples} & Ports of official XNA 4.0 samples & Exercises CNA end-to-end \\
 \texttt{cna-examples} & In-app demo catalog for CNA & Exercises CNA end-to-end \\
@@ -38,7 +38,7 @@ with XNA at all.
 \label{sec:sibling-wiring}
 
 The dependency graph above is not just a narrative claim --- it is exactly what CNA's own
-\texttt{CMakeLists.txt} and \texttt{cmake/BackendSelection.cmake} do at configure time, checked
+\texttt{CMakeLists.txt} and \texttt{cmake/RendererSelection.cmake} do at configure time, checked
 directly rather than assumed. Every sibling dependency follows the identical pattern: an
 \texttt{if(NOT EXISTS \ldots/CMakeLists.txt)} guard that fails configuration outright, with a
 real, copy-pasteable fix in the error message itself, rather than failing confusingly deep in a
@@ -54,8 +54,8 @@ git clone https://github.com/openeggbert/sharp-runtime.git
 \end{lstlisting}
 
 \texttt{sharp-runtime} is unconditionally required (\texttt{add\_subdirectory(../sharp-runtime
-SHARP\_RUNTIME)} runs regardless of backend choice); \texttt{easy-gl} and \texttt{free-direct}
-are each pulled in only when the matching \texttt{-DCNA\_GRAPHICS\_BACKEND} value is selected,
+SHARP\_RUNTIME)} runs regardless of renderer choice); \texttt{easy-gl} and \texttt{free-direct}
+are each pulled in only when a matching \texttt{-DCNA\_GRAPHICS\_RENDERER} value is selected,
 so a plain \texttt{SDL\_RENDERER} or \texttt{VULKAN} build never even checks whether those two
 sibling directories exist.
 
@@ -65,15 +65,15 @@ sibling directories exist.
 \emph{third} sibling repository, \texttt{free-api}, an experimental, small
 WinAPI-compatibility-subset project (targeting roughly the Win32 API surface as it existed
 around 1998) built on SDL3 the same way every other project in this ecosystem is, per
-\texttt{free-api}'s own README. \texttt{BackendSelection.cmake}'s own comment explains why this
+\texttt{free-api}'s own README. \texttt{RendererSelection.cmake}'s own comment explains why this
 does not need a separate SDL configuration flag: \texttt{free-direct} resolves
 \texttt{SDL3::SDL3} / \texttt{SDL3\_image::SDL3\_image} / \texttt{SDL3\_mixer::SDL3\_mixer} from
-CNA's own already-vendored targets, set up before backend selection runs, so the whole
+CNA's own already-vendored targets, set up before renderer selection runs, so the whole
 three-level chain (CNA~$\to$~\texttt{free-direct}~$\to$~\texttt{free-api}) shares one SDL3
 build rather than each level vendoring its own. The same comment names two real, independent
 consumers of \texttt{free-direct} beyond CNA itself --- \texttt{free-eggbert} and
 \texttt{planetblupi} --- confirming this sibling chain is genuinely reused ecosystem
-infrastructure, not machinery built only for CNA's own \texttt{DX3} backend.
+infrastructure, not machinery built only for CNA's own \texttt{FREEDIRECT} renderer.
 \end{sourcenote}
 
 \section{sharp-runtime: the floor CNA stands on}
@@ -103,8 +103,8 @@ question of how strictly CNA insists on that .NET shape versus where it delibera
 
 \section{easy-gl: OpenGL without a windowing opinion}
 
-The \texttt{EASYGL} graphics backend --- CNA's most mature backend by its own account, with
-full pixel-verified 2D and 3D coverage --- is built on \texttt{easy-gl}, a small,
+The EasyGL renderer family --- five public OpenGL/OpenGL ES profiles sharing one implementation
+factory --- is built on \texttt{easy-gl}, a small,
 toolkit-independent C\texttt{++}20 wrapper over OpenGL and OpenGLES. Its defining
 architectural choice is what it refuses to own: no window creation, no GL context creation,
 no event loop. The host application (CNA, in this case) owns the window, creates and
@@ -117,7 +117,7 @@ book draws from, \texttt{easy-gl}'s own README describes its scope as still a de
 compact, evolving vertical slice --- initialization, capability detection, and basic draw flow,
 exercised by its own \texttt{hello-triangle-sdl} example and two dedicated smoke-test suites
 (\texttt{easy-gl-smoke-tests}, \texttt{easy-gl-resource-smoke-tests}) --- with CNA's own
-\texttt{EASYGL} backend having grown well beyond that slice on top of it, per
+EasyGL implementation having grown well beyond that slice on top of it, per
 Chapter~\ref{ch:easygl-backend}. Chapter~\ref{ch:easygl-deep-dive} covers \texttt{easy-gl}'s
 public API surface (\texttt{easygl::Device}, \texttt{easygl::Shader}, \texttt{easygl::Program},
 \texttt{easygl::Buffer}, \texttt{easygl::VertexArray}, \texttt{easygl::Texture},
@@ -158,7 +158,7 @@ specific legacy Windows games (\emph{Speedy Blupi} and \emph{Planet Blupi}) with
 original OS dependencies. Its own README states the non-goals as plainly as the goals: no
 full DirectX~3 compatibility, no hardware-accurate emulation, no Direct3D pipeline, and no
 expansion of APIs the target games do not actually call. This project backs CNA's
-\texttt{DX3} graphics backend (Chapter~\ref{ch:dx3-freedirect-backend}) and is covered as a
+\texttt{FREEDIRECT} graphics renderer (Chapter~\ref{ch:dx3-freedirect-backend}) and is covered as a
 project in its own right, including its real (not stubbed) ENet-backed DirectPlay networking,
 in Chapter~\ref{ch:freedirect-deep-dive} and in the Speedy Blupi/Planet Blupi porting case study
 in Chapter~\ref{ch:blupi-case-study}. \texttt{free-direct}'s own test suite is deliberately split
@@ -207,7 +207,7 @@ navigate Area~$\to$~Category~$\to$~Demo (Input, Audio, Devices, Net, Media, 2D/3
 \emph{does CNA have a coherent, in-app way to show off everything it can do?} As of the
 snapshot this book draws from it is an early skeleton --- the application boots and
 navigates Area~$\to$~Category, but individual demo screens are not yet implemented, and only
-the \texttt{EASYGL} backend is targeted so far.
+the EasyGL-backed renderer family is targeted so far.
 
 \section{Repositories mentioned but out of this book's scope}
 

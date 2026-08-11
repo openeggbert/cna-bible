@@ -6,8 +6,8 @@
 
 CNA is a C\texttt{++}23 reimplementation of the \emph{XNA 4.0} programming model --- the
 game framework Microsoft shipped for the Xbox 360 and Windows from roughly 2006 to 2013 ---
-built on top of SDL3, with the actual rendering delegated to one of a dozen interchangeable
-graphics backends chosen at build time.
+built on top of SDL3, with the actual rendering delegated to one of 46 public renderer identities
+chosen at build time and mapped to 42 implementation factories.
 
 That sentence hides three separate engineering problems, and it is worth pulling them
 apart before going any further, because the rest of this book is organized around exactly
@@ -31,14 +31,14 @@ that separation:
         /\cnaclass{SpriteBatch} / \cnaclass{Effect} surface work identically whether the pixels
         are actually produced by SDL's own 2D renderer, raw OpenGL, Vulkan, BGFX, WebGPU, real
         Direct3D 9/11/12 under Wine, an HTML \texttt{<canvas>} under Emscripten, or a
-        from-scratch DirectDraw reimplementation. That is the job of the backend layer covered
-        in Part~IV of this volume.
+        from-scratch DirectDraw reimplementation. That is the job of the renderer layer covered
+        in Part~IV.
 \end{enumerate}
 
 \begin{sourcenote}
 \textbf{From the project's own README (2026-07-11 snapshot):} ``CNA is a C\texttt{++}
 reimplementation of the XNA 4.0 programming model, built on SDL3 and a pluggable graphics
-backend layer. It is a framework/runtime and abstraction layer---not a game---designed to
+renderer layer. It is a framework/runtime and abstraction layer---not a game---designed to
 preserve XNA-style APIs (\texttt{Microsoft::Xna::Framework}) while using modern C\texttt{++}
 internals.''
 \end{sourcenote}
@@ -90,26 +90,27 @@ recurs as a concrete design decision somewhere later in this book, not just as a
 ``recreate the XNA developer experience in native C\texttt{++}''; ``provide a native
 C\texttt{++} path for teams that like the XNA/MonoGame model but need non-managed
 runtime/toolchain control''; ``mirror core XNA namespaces and API patterns while implementing
-them incrementally''; ``decouple gameplay-facing API from rendering backend implementation
+them incrementally''; ``decouple gameplay-facing API from renderer implementation
 details''; ``enable one high-level API surface across different rendering technologies''; and
 ``keep SDL/OpenGL/Vulkan-level concerns behind framework abstractions.'' The middle four of
-these six are really one idea stated four ways --- the backend-abstraction goal --- and
+these six are really one idea stated four ways --- the renderer-abstraction goal --- and
 Chapter~\ref{ch:backend-architecture} is where that idea becomes a concrete
-\cnaclass{IGraphicsBackend} contract rather than a design principle; the first two are the
+\cnaclass{IGraphicsRenderer} contract rather than a design principle; the first two are the
 ``why native C\texttt{++}, why not just use FNA'' argument already made above.
 
 \section{The scale of verification, in one table}
 
-The individual per-backend chapters in Part~IV each state their own current test count, but
-seeing them side by side is itself informative --- both about where the project's
-verification effort is heaviest, and about how unevenly ``done'' is distributed across
-backends that all present the same public API:
+The individual per-renderer chapters in Part~IV state the evidence available to their executed
+audit cohort. Seeing that pinned evidence side by side is itself informative --- both about
+where the project's verification effort was heaviest, and about how unevenly ``done'' was
+distributed across renderers that all present the same public API. This is an evidence snapshot,
+not the current 46-identity registry; its ASCII row is historical:
 
 \begin{center}
 \small
 \begin{tabularx}{\textwidth}{lXX}
 \toprule
-\textbf{Backend} & \textbf{Backend-specific tests} & \textbf{Verification method} \\
+\textbf{Renderer} & \textbf{Renderer-specific tests} & \textbf{Verification method} \\
 \midrule
 EasyGL & full suite exceeds 4{,}500 & real GPU readback (Mesa/llvmpipe) \\
 Vulkan & 126 of 127 (4{,}371 of 4{,}373 overall) & real GPU readback \\
@@ -118,10 +119,10 @@ D3D9 & 14 CTest binaries, 39-scene oracle & real GPU via Wine + DXVK \\
 D3D11 & 6 CTest binaries, 96+ checks & real GPU via Wine + DXVK \\
 D3D12 & 1 CTest binary, 80/80 checks & real GPU via Wine + vkd3d-proton, off-screen only \\
 SDL\_RENDERER & 67 of 67 integration tests & real GPU readback \\
-ASCII & fully automated, no BLOCKED items & real GPU readback (inherits SDL\_RENDERER) \\
+ASCII (removed) & fully automated, no BLOCKED items & real GPU readback (inherited SDL\_RENDERER) \\
 CANVAS & structural/compile-verified only & no real browser in this project's own dev loop \\
 WebGPU & native CTest, gracefully skips headless & real GPU readback where a display exists \\
-DX3 & no BLOCKED decisions remain open & CPU compositor, no GPU involved at all \\
+FREEDIRECT & no BLOCKED decisions remain open & CPU compositor, no GPU involved at all \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -129,8 +130,8 @@ DX3 & no BLOCKED decisions remain open & CPU compositor, no GPU involved at all 
 Two things worth noticing in that table rather than skimming past it. First, the total test
 count climbs steadily release over release, but it is not one number: EasyGL's own count grew
 large enough, early enough, that it stopped being tracked as a precise fraction the way the
-newer backends still are --- ``exceeds 4{,}500'' is itself evidence of how much of this
-project's total verification effort sits on the single most mature backend. Second, the
+newer renderers still are --- ``exceeds 4{,}500'' is itself evidence of how much of this
+project's total verification effort sits on the single most mature renderer. Second, the
 verification \emph{method} column is not uniform either: a real GPU readback comparison
 (pixel-exact or oracle-based) is a categorically stronger claim than ``compiles and structural
 review only,'' which is exactly why Chapter~\ref{ch:canvas-ascii-backends} is explicit that
@@ -162,7 +163,7 @@ It is worth being precise about the negative space, because CNA's own documentat
         there is no real Xbox Live behind it, by design.
   \item \textbf{Not wire-compatible with Microsoft DirectPlay/DirectDraw/DirectSound.} The
         \texttt{free-direct} sibling project (Chapter~\ref{ch:dx3-freedirect-backend} and
-        Part~VII) that powers the \texttt{DX3} backend is explicit that it targets
+        Part~IX) that powers the \texttt{FREEDIRECT} renderer is explicit that it targets
         FreeDirect-to-FreeDirect compatibility for specific legacy games, never the real
         Microsoft wire protocol.
 \end{itemize}
@@ -180,16 +181,16 @@ methodology. Three mechanisms recur throughout the codebase and throughout this 
         do. Disputed behavior that differential testing cannot settle is checked against real
         XNA 4.0 running in a Windows~7 virtual machine.
   \item[A compile-time purity check.] A dedicated build define, \texttt{CNA\_STRICT\_XNA\_API},
-        turns the otherwise-inert \texttt{NOXNA} marker macro into a real
+        turns the otherwise-inert \texttt{CNAEXT} marker macro into a real
         \texttt{[[deprecated]]} attribute, checked under \texttt{-Werror=deprecated-%
         declarations} by two small standalone CMake targets built specifically for this
         purpose. Because every CNA extension beyond the real XNA 4.0 API must be wrapped in the
-        \texttt{NOXNA} marker macro (Chapter~\ref{ch:design-philosophy} explains the
+        \texttt{CNAEXT} marker macro (Chapter~\ref{ch:design-philosophy} explains the
         convention, and the self-verifying pair of targets that checks it, in full), this gives
         the project a mechanical --- not just documented --- guarantee that the public
         \cnaclass{Microsoft::Xna::Framework} surface has not silently grown project-specific
         extensions.
-  \item[Pixel-level oracle corpora, not just ``it compiles.''] The \texttt{D3D9} backend in
+  \item[Pixel-level oracle corpora, not just ``it compiles.''] The \texttt{D3D9} renderer in
         particular ships an oracle corpus that diffs CNA's own render output against
         \emph{the real XNA 4.0 runtime's own render} of the same scene, at zero tolerance ---
         31 scenes as of an earlier pass through this book, 39 real scene files on disk as of
@@ -235,11 +236,11 @@ on 2025-02-22, and the source snapshot this book draws from carries over 3{,}000
 spanning roughly a year and a half of continuous, incremental work with no gap long enough to
 call a hiatus. What the project uses instead of version numbers is a strictly incrementing
 \textbf{Phase} counter, tracked in \texttt{CHECKLIST.md} and the per-subsystem \texttt{plan\_*.md}
-files: each phase names a bounded unit of work (a backend reaching a specific parity milestone,
+files: each phase names a bounded unit of work (a renderer reaching a specific parity milestone,
 a namespace passing a specific audit), is broken into individually numbered \textbf{Tasks}, and
 is closed only once its own regression suite is re-run clean. Phase~72, for instance, is ``Bgfx:
 full 2D+3D pixel-verified parity'' (Tasks 740--824) --- the work that took the \texttt{BGFX}
-backend from a narrower feature set up to the same pixel-verified breadth as EasyGL and Vulkan.
+renderer from a narrower feature set up to the same pixel-verified breadth as EasyGL and Vulkan.
 Chapter~\ref{ch:project-practice} covers this Task/Phase discipline itself as a working
 methodology, not just a historical curiosity --- what a task actually looks like, how large ones
 get split, and why every task closes with a re-run regression count rather than a checked box
@@ -254,7 +255,7 @@ task, not from an external audit conducted for this book's benefit.
 
 CNA is licensed under the Microsoft Public License (Ms-PL), the same permissive-but-not-MIT
 license FNA itself uses --- a deliberate choice, not a coincidence: portions of CNA are
-directly derived from or based on FNA's own source (most visibly the D3D9 backend's vendored
+directly derived from or based on FNA's own source (most visibly the D3D9 renderer's vendored
 Stock Effects HLSL bytecode, discussed in Part~IV), and matching FNA's license keeps that
 derivation legally uncomplicated. Ms-PL permits commercial use, modification, and
 redistribution, but --- unlike MIT or the 2-clause BSD license --- includes an explicit patent
@@ -262,13 +263,13 @@ grant limited to contributions and a reciprocal ``if you sue over patents, your 
 clause; it is not a copyleft license, so a game built against CNA is not obligated to publish its
 own source.
 
-\section{Reading map for the rest of this volume}
+\section{Reading map for the rest of this book}
 
 Chapter~\ref{ch:ecosystem-map} draws the full dependency graph between CNA and its sibling
 repositories. Chapter~\ref{ch:design-philosophy} is the ``house style'' chapter --- the
-concrete rules (API mirroring, namespace discipline, the \texttt{NOXNA} tag, the
+concrete rules (API mirroring, namespace discipline, the \texttt{CNAEXT} tag, the
 \texttt{getXProperty} / \texttt{setXProperty} convention, the porting checklist) that every
 other chapter's code examples silently assume. Part~II gets you from a clean checkout to a
 running triangle and then through the core framework types. Part~III and Part~IV are the
-graphics machine, first as an API and then as eleven different implementations of that same
-API.
+graphics machine, first as an API and then as 42 implementation factories serving 46 public
+renderer identities.

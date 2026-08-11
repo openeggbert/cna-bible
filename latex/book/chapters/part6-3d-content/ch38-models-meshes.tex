@@ -10,7 +10,7 @@ each \cnaclass{ModelMesh} owns a \cnaclass{ModelMeshPartCollection} and a
 same shape as real XNA. The reader-side contract is deliberately separate (and is covered by
 \S\ref{sec:model-loading} below and Chapter~\ref{ch:content-and-assets}); at runtime, the useful
 distinction is between a normally loaded, internally consistent model and a hand-built one.
-The latter can use several \texttt{NOXNA} construction/mutation hooks, so it must preserve the
+The latter can use several \texttt{CNAEXT} construction/mutation hooks, so it must preserve the
 invariants that a content reader normally supplies. The exact boundary, including the remaining
 intentional C++ safety deviations from FNA, matters more than a blanket claim of zero gaps.
 \cnaclass{Model} exposes \texttt{CopyAbsoluteBoneTransformsTo},
@@ -21,7 +21,7 @@ caller's array length the way FNA does --- strictly safer against an oversized d
 array, never a compatibility problem for correctly-sized callers.
 
 \cnaclass{ModelBone} carries \texttt{Name}, \texttt{Index}, a get/set \texttt{Transform},
-its \texttt{Parent}, and a \texttt{Children} collection built via a \texttt{NOXNA}
+its \texttt{Parent}, and a \texttt{Children} collection built via a \texttt{CNAEXT}
 \texttt{AddChild}. CNA also exposes setters for a \cnaclass{ModelMesh}'s
 \texttt{BoundingSphere} and \texttt{ParentBone}; FNA reserves both setters for its internal
 reader. They are useful for CNA hand construction and the XNB reader, but turn reader-populated
@@ -117,7 +117,7 @@ dereferences a null effect, so the CNA skip is another deliberate no-undefined-b
 deviation. It does \emph{not} validate the remaining draw fields: a positive-count part still
 passes its raw vertex buffer, index buffer, offsets, vertex count, start index, and primitive
 count to \cnaclass{GraphicsDevice}. A missing buffer or invalid range consequently fails at the
-graphics-device/backend boundary rather than becoming a harmless skipped part. This is why a
+graphics-device/renderer boundary rather than becoming a harmless skipped part. This is why a
 model's successful construction is not proof that it is drawable.
 
 \subsection{Keep parts and effects connected through the part setter}
@@ -141,7 +141,7 @@ focused part/effect unit tests cover exactly this retain-on-shared/release-on-la
 and the no-duplicate case.
 
 \cnaclass{ModelEffectCollection::Add}/\texttt{Remove} and
-\texttt{ModelMesh::getEffectsPropertyMutable()} exist only as \texttt{NOXNA} escape hatches.
+\texttt{ModelMesh::getEffectsPropertyMutable()} exist only as \texttt{CNAEXT} escape hatches.
 Unlike FNA's internal-only collection mutation, CNA exposes them to make its content reader
 possible. They neither deduplicate \texttt{Add} nor repair a collection that a caller has
 manually made inconsistent with its parts: a stale extra effect is configured but never applied
@@ -159,7 +159,7 @@ undefined behaviour rather than merely a managed-runtime ordering hazard. Render
 graphics thread or otherwise serialize the entire draw/mutation sequence.
 
 The focused CPU tests cover transform multiplication, destination-size checks, constructor
-parent wiring, and part-to-effect collection bookkeeping. Backend tests go further: the EasyGL
+parent wiring, and part-to-effect collection bookkeeping. Renderer tests go further: the EasyGL
 root/hierarchy model tests read back pixels, Bgfx has equivalent two-mesh/hierarchy tests, and
 the SDL\_Renderer test proves that a fully populated positive-primitive model reaches the shared
 3D draw failure boundary. No located test deliberately covers zero-bone rendering, invalid
@@ -285,7 +285,7 @@ The public three/five-argument \cnaclass{Model} constructors merely store the ca
 bone and mesh addresses. Likewise, meshes store raw part and graphics-device addresses; parts
 store raw buffer, index-buffer, effect, and Tag addresses; and bones store raw parent/child
 addresses. They allocate none of those objects and do not install an ownership bundle. The
-constructors are \texttt{NOXNA} extensions precisely because FNA creates these graph objects
+constructors are \texttt{CNAEXT} extensions precisely because FNA creates these graph objects
 through internal readers rather than asking game code to manage them.
 
 Consequently a hand-built model is drawable only while its complete graph outlives every model
@@ -293,7 +293,7 @@ copy that uses it; its \cnaclass{GraphicsDevice} must survive for the same draw 
 Stack-allocated construction is fine for a local, synchronous test, but returning the model
 after its backing bones, meshes, parts, buffers, effects, or Tag objects have died leaves
 dangling pointers. An advanced CNA owner can deliberately attach one aggregate lifetime object
-with the \texttt{NOXNA}
+with the \texttt{CNAEXT}
 \texttt{setOwnedResources(shared\_ptr<void>)} hook, mirroring the three readers; otherwise the
 application must retain its own aggregate explicitly. The hook retains only what its supplied
 shared object owns---it does not make a raw graphics-device pointer, an externally assigned Tag,
@@ -310,7 +310,7 @@ disposal rules; this section supplies the model-specific raw-pointer consequence
 \section{Skinning: two independent systems, not one}
 
 CNA ships two separate, unrelated systems for animated meshes, and conflating them is an
-easy mistake to make. \cnaclass{AnimationPlayer} (\texttt{NOXNA}, mirroring Microsoft's own
+easy mistake to make. \cnaclass{AnimationPlayer} (\texttt{CNAEXT}, mirroring Microsoft's own
 unshipped XNA ``Skinned Model Sample'' reference code rather than anything in the framework
 assembly itself) drives a bone-track timeline: \texttt{StartClip(clip)},
 \texttt{Update(TimeSpan, relativeToCurrentTime, loop=true)}, and
@@ -321,7 +321,7 @@ inverse bind pose, animation clips) is stashed on a loaded \cnaclass{Model}'s ow
 \texttt{Tag} --- the same convention the original Microsoft sample used, since real XNA's
 \cnaclass{Model} has no dedicated skinning-data property of its own to hold it in.
 
-\cnaclass{MorphTargetEXT} (also \texttt{NOXNA}) is a completely independent, glTF-style
+\cnaclass{MorphTargetEXT} (also \texttt{CNAEXT}) is a completely independent, glTF-style
 morph-target blending system: CPU-side re-blend plus a full vertex-buffer re-upload on every
 call to \texttt{SetMorphWeightsEXT}, a deliberate simplicity-over-throughput tradeoff.
 Because glTF's ``weights'' animation channel targets a mesh instance node rather than a bone
@@ -463,7 +463,7 @@ Model(GraphicsDevice* graphicsDevice,
       std::vector<ModelBone*> bones,
       std::vector<ModelMesh*> meshes,
       std::vector<ModelBone*> meshParentBones,
-      std::size_t rootBoneIndex = 0);   // NOXNA -- FNA's ModelReader assigns this
+      std::size_t rootBoneIndex = 0);   // CNAEXT -- FNA's ModelReader assigns this
                                          // externally; this is the public equivalent
                                          // for a hand-built Model.
 \end{lstlisting}
@@ -525,7 +525,7 @@ enumerators, but they do \emph{not} have one identical API.
 
 \cnaclass{ModelBoneCollection} has checked integer lookup, name lookup,
 \texttt{TryGetValue}, \texttt{Contains}, and iterators.
-Its storage is populated by \texttt{Model} or a bone's \texttt{NOXNA AddChild};
+Its storage is populated by \texttt{Model} or a bone's \texttt{CNAEXT AddChild};
 name lookup returns the first matching name, so names are useful handles, not enforced unique
 identifiers.
 
@@ -545,7 +545,7 @@ Do not use an empty name as a portable not-supplied sentinel.
 \cnaclass{ModelEffectCollection} likewise has integer access, \texttt{Count},
 \texttt{Contains}, and iterators, but no name lookup or \texttt{TryGetValue}. Its
 integer operator also uses raw \texttt{vector[]} and has the same caller-side bounds
-requirement. Its mutable operations are the \texttt{NOXNA} escape hatches described in
+requirement. Its mutable operations are the \texttt{CNAEXT} escape hatches described in
 \S\ref{sec:model-draw-contract}, not a fourth normal collection-builder API.
 
 All name searches are linear and return the first matching pointer; neither loader nor

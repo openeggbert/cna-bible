@@ -70,8 +70,8 @@ current, not stale.
 |---|---|
 | **A — source audit** | **Complete. 10 of 10 areas delivered and on disk in `audit/`.** |
 | **B — new Table of Contents** | **Complete.** The 12-Part / 79-chapter structure, appendices and old-to-new disposition map are settled in §4. |
-| **C — structural migration** | **In progress.** The 12-Part / 79-chapter / 8-appendix file, label and `main.tex` migration is complete and PDF-verified clean at 645 pages. Remaining: the context-sensitive terminology and source-path sweep. |
-| **D — chapter writing** | Not started. No chapter prose has been rewritten yet. |
+| **C — structural migration** | **Complete.** The 12-Part / 79-chapter / 8-appendix migration, context-sensitive terminology pass, current selector/identifier migration, and module-owned source-path sweep are complete and PDF-verified clean at 645 pages. |
+| **D — chapter writing** | Not started. The renderer draw-path matrix in §3.2 is the final research prerequisite for Part IV. |
 | **E — appendices** | Not started. |
 | **F — whole-book consistency** | Not started. |
 | **G — final verification** | Not started. |
@@ -324,6 +324,7 @@ log grep replaces.
 | 2026-08-11 | Baseline at session start | 575 pages, latexmk reports all targets up to date |
 | 2026-08-11 | After migrating 112 chapter references to `\ref{}` | **575 pages**, build clean; makeindex 2,367 entries / 0 rejected / 0 warnings; no undefined references, no duplicate labels, no doubled-backslash refs, no hard-coded chapter numbers; `git diff --check` clean; Appendix E pages 559–560 rendered and visually verified |
 | 2026-08-11 | Phase C structural migration | **645 pages**, build clean; makeindex 2,367 / 0 / 0; 12 Parts, 79 chapter inputs/files, 8 appendix inputs/files; all old labels preserved, no missing/duplicate labels or inputs, exact Ch.01–79 order; all 645 pages reviewed as 26 contact sheets, affected title pages inspected at full size, one real Ch.18 title overflow and fifteen poor mid-word title breaks fixed and re-rendered clean |
+| 2026-08-11 | Phase C terminology/path completion | **645 pages**, build clean; makeindex 2,365 / 0 / 0; current renderer/CNAEXT identifiers and selectors; graphics “backend” removed from live prose while service backends remain; CNA citations migrated to `modules/<owner>/…` and existence-checked against the pin; all 645 pages re-rendered and reviewed as 26 contact sheets, with registry, Storage, preface, and long-path pages inspected full-size |
 
 ---
 
@@ -385,3 +386,23 @@ mid-session at the owner's direction, so the build and visual passes are availab
   sheets, inspected every sheet, opened suspicious pages at 100–120 dpi, fixed one real Ch.18
   title overflow plus fifteen ugly mid-word chapter-title breaks, rebuilt, and re-rendered the
   affected pages clean.
+
+### 2026-08-11 — Phase C terminology and path migration complete
+
+- Migrated the compiled manuscript to the pinned renderer vocabulary and identifiers:
+  `IGraphicsRenderer`, `GraphicsRendererType`, `CNA_GRAPHICS_RENDERER`, `CNA_RENDERER_*`, and
+  `CNAEXT`. Kept “backend” only for the still-live input, devices, media, network, and platform
+  concepts; preserved old graphics spellings only where they are explicitly historical.
+- Replaced removed selectors with the current public identities, distinguished `FREEDIRECT`
+  from the genuine `DIRECTX3`, documented the five EasyGL profiles, and made the current
+  **46 identities / 42 implementation families** registry the leading Appendix B table.
+- Migrated CNA-owned test, example, header, and source citations into their physical
+  `modules/<owner>/…` trees and existence-checked every explicit module file against the pinned
+  CNA checkout. Corrected the Storage test boundary uncovered by that sweep: five
+  `StorageDevice` cases exist, while `StorageContainer` remains untested.
+- Extended `tools/verify-book.sh` to reject removed identifiers, selector assignments, and
+  legacy renderer macros.
+- Ran the consolidated build and complete PDF workflow again: 645 pages; makeindex 2,365
+  accepted / 0 rejected / 0 warnings; all automated checks green; all 645 pages rendered into
+  26 contact sheets and inspected, with registry, Storage, preface, and long-path pages read at
+  full size. Phase C is closed; §3.2's draw-path divergence matrix is next.

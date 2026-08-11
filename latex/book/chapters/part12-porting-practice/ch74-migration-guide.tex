@@ -1,7 +1,7 @@
 \chapter{Migrating an XNA or FNA Game to CNA}
 \label{ch:migration-guide}
 
-This chapter is the practical payoff of both volumes: a checklist for judging, before you
+This chapter is the practical payoff of the preceding parts: a checklist for judging, before you
 start, how much of an existing XNA or FNA game's own code and content will simply work on
 CNA, and which specific gaps this book has already named in detail are the ones likely to
 cost you real time.
@@ -87,15 +87,15 @@ has returned to most often:
 \section{Step three: check vertex layouts against the five recognized strides}
 
 If the game does any custom 3D rendering, Chapter~\ref{ch:textures-rendertargets}'s vertex
-layout finding is worth checking directly: every hardware backend selects its GPU
+layout finding is worth checking directly: every hardware renderer selects its GPU
 vertex-attribute layout by raw byte stride, not by the \cnaclass{VertexDeclaration} you
 actually wrote, and only five specific strides (16, 20, 24, 32, and 52 bytes, corresponding to
 the standard \cnaclass{VertexPositionColor} / \texttt{Texture} / \texttt{ColorTexture} /
 \texttt{NormalTexture} structs and one skinned layout) are guaranteed to render correctly
-everywhere. A custom vertex format outside that set will degrade differently on each backend
---- Chapter~\ref{ch:textures-rendertargets} gives the specific per-backend fallback behavior
+everywhere. A custom vertex format outside that set will degrade differently on each renderer
+--- Chapter~\ref{ch:textures-rendertargets} gives the specific per-renderer fallback behavior
 --- so this is worth checking before porting any custom mesh format, not after seeing
-incorrect rendering on one specific backend.
+incorrect rendering on one specific renderer.
 
 \begin{lstlisting}
 // Worked example: computing a custom vertex format's stride by hand
@@ -109,9 +109,9 @@ struct MyCustomVertex
 };
 // sizeof(MyCustomVertex) == 48 bytes -- NOT one of the five recognized
 // strides (16/20/24/32/52), so this format is not guaranteed to render
-// identically across every backend. Decide up front: drop the Tangent
+// identically across every renderer. Decide up front: drop the Tangent
 // field to reach the 32-byte NormalTexture stride, or accept and test
-// the per-backend fallback behavior Chapter 17 documents for an
+// the per-renderer fallback behavior Chapter 17 documents for an
 // unrecognized stride, rather than discovering the mismatch as a visual
 // bug later.
 static_assert(sizeof(MyCustomVertex) == 48);
@@ -152,18 +152,19 @@ the framework itself ever refuses one --- if the original game's own design assu
 requested cap was load-bearing, that enforcement needs to move into the game's own code
 explicitly, not stay implicit in the constructor call.
 
-\section{Step five: pick and verify your graphics backend}
+\section{Step five: pick and verify your graphics renderer}
 
-Part~IV gave a full per-backend account; for a porting decision specifically,
-three questions matter most. Is the game 2D-only? \texttt{SDL\_RENDERER} or \texttt{EASYGL}
+Part~IV gave a full per-renderer account; for a porting decision specifically,
+three questions matter most. Is the game 2D-only? \texttt{SDL\_RENDERER} or \texttt{OPENGLES3}
 are both mature, exhaustively pixel-verified choices (Chapters~\ref{ch:sdl-renderer}
 and~\ref{ch:easygl-backend}). Does it need real 3D with stock effects only?
-\texttt{EASYGL} or \texttt{VULKAN} are the most broadly verified choices, with BGFX close
+\texttt{OPENGLES3} or \texttt{VULKAN} are the most broadly verified choices, with BGFX close
 behind (Chapters~\ref{ch:easygl-backend}--\ref{ch:bgfx-backend}). Does correctness against
 real, historical XNA rendering matter more than portability --- for instance, a game whose
 original visual reference is what a screenshot-comparison test suite checks against?
-\texttt{D3D9}'s oracle-verified pixel authenticity (Chapter~\ref{ch:direct3d-backends}) is
-the only backend built specifically for that bar, at the cost of being Windows-only
+the \texttt{DIRECTX9} renderer's oracle-verified Direct3D~9 pixel authenticity
+(Chapter~\ref{ch:direct3d-backends}) is the only renderer built specifically for that bar,
+at the cost of being Windows-only
 (cross-compiled and Wine-verified, per Chapter~\ref{ch:windows-wine}).
 
 \section{Step six: use xna4-spec, not memory, to check what you ported}
@@ -177,7 +178,7 @@ for the real spec.
 
 \section{Step seven: troubleshooting the build and the first run}
 
-The six steps above assume the port compiles and the graphics backend actually starts.
+The six steps above assume the port compiles and the graphics renderer actually starts.
 \texttt{docs/migration-guide.md} in the \texttt{cna} repository (Task 486, the source this
 whole chapter draws its structure from) closes with two practical troubleshooting tables ---
 real configure-time and runtime failures a porter is likely to hit, each checked directly
@@ -203,15 +204,15 @@ value over a general sense of the project's maturity.
   \texttt{third\_party/SDL} / \texttt{SDL\_image} / \texttt{SDL\_mixer} are empty. Run
   \texttt{git submodule update --init --recursive}, or configure with
   \texttt{-DCNA\_USE\_SYSTEM\_SDL=ON} to use system SDL3 packages instead. \\[4pt]
-\texttt{Could not find a package configuration file for Vulkan} (\texttt{VULKAN} backend) &
+\texttt{Could not find a package configuration file for Vulkan} (\texttt{VULKAN} renderer) &
   No Vulkan SDK/loader installed. Install your distribution's \texttt{vulkan-sdk}/%
   \texttt{libvulkan-dev} package, or the LunarG SDK, before configuring. \\[4pt]
-CMake \texttt{FetchContent} hangs or fails cloning \texttt{bgfx.cmake} (\texttt{BGFX} backend)
+CMake \texttt{FetchContent} hangs or fails cloning \texttt{bgfx.cmake} (\texttt{BGFX} renderer)
   & \texttt{BGFX} fetches \texttt{bgfx.cmake} from GitHub at configure time --- needs network
   access, and the first fetch can be slow. Retry, or pre-seed a local clone and point
   \texttt{FETCHCONTENT\_SOURCE\_DIR\_BGFX\_CMAKE} at it. \\[4pt]
 \cnaclass{VideoPlayer}-related link errors & Missing FFmpeg dev packages --- hits every
-  backend, not just video code. Install \texttt{libavcodec-dev libavformat-dev
+  renderer, not just video code. Install \texttt{libavcodec-dev libavformat-dev
   libavutil-dev libswresample-dev}. \\
 \bottomrule
 \end{longtable}
@@ -226,7 +227,7 @@ CMake \texttt{FetchContent} hangs or fails cloning \texttt{bgfx.cmake} (\texttt{
 \midrule
 \endhead
 Any 3D call throws \texttt{std::runtime\_error} & You are on \texttt{SDL\_RENDERER} --- not a
-  bug, it is 2D-only by design (Chapter~\ref{ch:sdl-renderer}). Switch to \texttt{EASYGL},
+  bug, it is 2D-only by design (Chapter~\ref{ch:sdl-renderer}). Switch to \texttt{OPENGLES3},
   \texttt{VULKAN}, or \texttt{BGFX} for 3D. \\[4pt]
 \texttt{bgfx::init failed}, or a native-window-handle error on \texttt{BGFX} & No usable
   native window handle for \texttt{bgfx}'s chosen renderer under the current SDL video
@@ -238,7 +239,7 @@ Any 3D call throws \texttt{std::runtime\_error} & You are on \texttt{SDL\_RENDER
   \texttt{OPENGL}, \texttt{OPENGLES}, \texttt{VULKAN}, \texttt{METAL}, \texttt{DIRECT3D11},
   \texttt{DIRECT3D12}, or \texttt{NOOP} (case-insensitive; an unsupported value throws
   immediately with this exact list). \\[4pt]
-Blank/black window, or an OpenGL-based backend fails to create a context in CI/headless
+Blank/black window, or an OpenGL-based renderer fails to create a context in CI/headless
   environments & No real X server or GPU driver --- common under \texttt{Xvfb} with only a
   software (\texttt{llvmpipe}) GL driver (Chapters~\ref{ch:sdl-renderer}
   and~\ref{ch:easygl-backend} both now include a real, confirmed-working example of exactly
@@ -253,8 +254,8 @@ A pixel-comparison example or test fails right after an intentional rendering ch
   committing it (Chapter~\ref{ch:verification-methodology} covers this golden-image mechanism
   in full). \\[4pt]
 Flaky test failures that do not reproduce in isolation & \textbf{Never run multiple
-  backends' full \texttt{ctest} suites concurrently} --- confirmed to cause transient
-  GPU/driver-contention false failures. Run backend test suites sequentially, and re-run any
+  renderers' full \texttt{ctest} suites concurrently} --- confirmed to cause transient
+  GPU/driver-contention false failures. Run renderer test suites sequentially, and re-run any
   single anomalous test in isolation (\texttt{ctest -R <TestName>}) before treating it as a
   real regression, not a race. \\
 \bottomrule
@@ -262,7 +263,7 @@ Flaky test failures that do not reproduce in isolation & \textbf{Never run multi
 \end{center}
 
 Before filing anything as a new CNA bug during a port, check three sources in this order:
-\texttt{docs/xna-4-api-coverage.md}'s per-backend support table and its ``Known deviations
+\texttt{docs/xna-4-api-coverage.md}'s per-renderer support table and its ``Known deviations
 from XNA/FNA'' list, then \texttt{NEXT.md}'s own actively-maintained current bug section ---
 most currently-open gaps already have a task number and a documented root cause. If a symptom
 genuinely is not covered by any of the three, it is more likely a real, new finding worth its

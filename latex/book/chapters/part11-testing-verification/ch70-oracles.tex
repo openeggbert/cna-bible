@@ -2,19 +2,19 @@
 \label{ch:oracles}
 \label{ch:testing-philosophy}
 
-Almost every specific number and bug this book has cited across both volumes came from one
+Almost every specific number and bug cited throughout this book came from one
 of a small number of testing mechanisms. This chapter gathers them into one place, because
-seen individually they are backend-specific facts, but seen together they are a coherent
+seen individually they are renderer-specific facts, but seen together they are a coherent
 testing philosophy worth naming explicitly.
 
 \section{The base layer: GoogleTest, at real scale}
 
 CNA's own unit and integration suite (\texttt{CnaTests}) runs to roughly 4{,}370 tests at the
 scale referenced throughout this book, plus a separate GPU pixel-test suite of roughly 490
-tests across the four backends mature enough to support it. \texttt{sharp-runtime}, the
+tests across the four renderers mature enough to support it. \texttt{sharp-runtime}, the
 foundation layer covered in Chapter~\ref{ch:sharp-runtime-overview}, runs a suite of its own
 numbering in the thousands. None of this is exotic --- GoogleTest, run through CTest --- but
-the scale matters for what it makes possible: a change that regresses one backend's behavior
+the scale matters for what it makes possible: a change that regresses one renderer's behavior
 without touching another's has somewhere to actually surface.
 
 \section{Pixel tests: the level where most of this book's bugs were actually found}
@@ -36,9 +36,9 @@ crash-only test, and only fails once something reads the pixels it was supposed 
 The \texttt{transformMatrix} finding above is worth seeing in the actual test's own shape, not
 just its conclusion, because the shape itself is the reusable lesson: draw something whose
 final screen position depends entirely on the value under test, then read back specific pixels
-and assert on their real color. \texttt{examples/sdlrenderer\_transform\_matrix\_test.cpp}
+and assert on their real color. \texttt{modules/renderers/sdl-renderer/examples/\allowbreak{}sdlrenderer\_transform\_matrix\_test.cpp}
 does exactly this for \cnaclass{SpriteBatch::Begin()}'s \texttt{transformMatrix} parameter on
-the \texttt{SDL\_RENDERER} backend:
+the \texttt{SDL\_RENDERER} renderer:
 
 \begin{lstlisting}
 // Translate every sprite by (+100, +50).
@@ -92,9 +92,9 @@ ordinary pixel tests had caught: the sort-mode Z-clipping bug and the
 \cnaclass{GraphicsProfile}-never-reaches-the-device bug, both covered in
 Chapter~\ref{ch:direct3d-backends}.
 
-\section{Compile-time purity: NOXNA as a build gate}
+\section{Compile-time purity: CNAEXT as a build gate}
 
-Not every verification mechanism in this project runs at test time. The \texttt{NOXNA} build
+Not every verification mechanism in this project runs at test time. The \texttt{CNAEXT} build
 option (Chapter~\ref{ch:design-philosophy}) turns every untagged non-XNA declaration inside
 the XNA namespace tree into a \texttt{[[deprecated]]} warning under \texttt{-Werror} ---
 catching a specific class of drift (a project-specific extension silently leaking into the
@@ -136,9 +136,9 @@ passes once and never revisits.
 Chapter~\ref{ch:building-cna} already gave this fact once, and it is worth
 repeating here in its proper context: automated CI for this project is Linux-only and
 partial, running only the Input and Devices/Sensors suites at the time of writing --- not the
-full unit suite, and not the GPU pixel-test suite across any backend. Every Graphics-layer
+full unit suite, and not the GPU pixel-test suite across any renderer. Every Graphics-layer
 claim in this entire book rests on suites run locally and by hand, not on a green CI badge.
-There is no Windows, macOS, or Android CI at all; the Windows-targeting backends in
+There is no Windows, macOS, or Android CI at all; the Windows-targeting renderers in
 Chapter~\ref{ch:direct3d-backends} are verified through the Wine-based dev loop covered in
 this Part's cross-platform chapters, and Android is verified against a real emulator by hand,
 not automatically on every commit. This is not a criticism the project hides --- it is stated
@@ -148,7 +148,7 @@ rather than treating the two as interchangeable.
 
 \section{The golden-image workflow: regenerate, review, commit}
 
-\texttt{CompareGoldenImage()} (\texttt{examples/common/PixelTestGame.hpp}), the shared helper
+\texttt{CompareGoldenImage()} (\texttt{modules/graphics/examples/common/\allowbreak{}PixelTestGame.hpp}), the shared helper
 behind every golden-image test this book has cited, is worth reading for its own workflow
 philosophy, not just its comparison logic. Its own header comment states the intended process
 directly, and it is a real, three-step discipline rather than an implementation detail:
@@ -172,7 +172,7 @@ ambiguity rather than automating past it in either direction.
 
 The same helper's own comment on \texttt{tolerance} is worth citing directly too, because it
 is a concrete, numbered finding rather than a general caveat: ``Exact pixel-perfect reproduction
-across this project's 4 backends/drivers is already known unreliable (Task 462's own 98-file
+across this project's 4 renderers/drivers is already known unreliable (Task 462's own 98-file
 tolerance survey) --- pass a non-zero tolerance for any golden image that isn't a single flat,
 unblended colour.'' This is the same underlying fact Chapter~\ref{ch:verification-methodology}'s
 own D3D9 oracle corpus treats as a hard boundary in the opposite direction: the oracle's
@@ -214,11 +214,11 @@ present --- the \texttt{GTEST\_SKIP()} branches on \texttt{getIsSupportedPropert
 platform's own real capability query, not on a hardcoded CI-only flag.
 
 Input CI (\texttt{.github/workflows/input-ci.yml}) shows the same "state real coverage
-honestly" instinct from a different angle: its own matrix runs the backend-agnostic input
-suite headless across four graphics backends (\texttt{EASYGL}, \texttt{SDL\_RENDERER},
+honestly" instinct from a different angle: its own matrix runs the renderer-agnostic input
+suite headless across four graphics renderers (\texttt{EasyGL}, \texttt{SDL\_RENDERER},
 \texttt{VULKAN}, \texttt{BGFX}), plus a dedicated AddressSanitizer+UndefinedBehaviorSanitizer
-configuration on \texttt{EASYGL} specifically --- a concrete instance of this chapter's own
-earlier claim that sanitizer coverage in this project is targeted, not blanket: one backend
+configuration on \texttt{EasyGL} specifically --- a concrete instance of this chapter's own
+earlier claim that sanitizer coverage in this project is targeted, not blanket: one renderer
 carries the sanitizer burden for the whole input subsystem, chosen rather than applied
 everywhere, exactly the deliberate-not-universal posture this chapter's own sanitizer section
 already established for \texttt{free-direct} and \cnans{Microsoft::Devices::Sensors}.
@@ -230,8 +230,8 @@ Every mechanism in this chapter answers the same underlying question from a diff
 test answers it for logic in isolation. A pixel test answers it for what actually reaches the
 screen. Differential testing against FNA answers it against a real, if imperfect, reference.
 The D3D9 oracle answers it against the most authoritative reference available at all. The
-\texttt{NOXNA} build gate answers a narrower, structural version of the question before any
+\texttt{CNAEXT} build gate answers a narrower, structural version of the question before any
 of the others even run. None of these mechanisms alone would have caught every bug this book
-has named across both volumes --- it is the combination, applied unevenly and honestly
+has named --- it is the combination, applied unevenly and honestly
 according to what each subsystem actually needed, that this chapter's title refers to as a
 philosophy rather than a single technique.

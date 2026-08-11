@@ -158,7 +158,7 @@ An earlier shorthand in this chapter needs a correction: \texttt{RegisterTypeRea
 \cnaclass{ContentTypeReaderManager}. A custom binary reader instead registers a canonical
 reader-name factory in that global registry. CNA has no reflection fallback, whereas FNA first
 tries its factory map and can otherwise reflect the named managed type, so this registration is
-public and \texttt{NOXNA}-tagged in CNA rather than FNA's internal AOT fallback.
+public and \texttt{CNAEXT}-tagged in CNA rather than FNA's internal AOT fallback.
 
 The registry starts empty on purpose. \texttt{ContentManager}'s constructor does \emph{not}
 populate it, and neither does \cnaclass{Game}; otherwise a test that clears the global state could
@@ -313,7 +313,7 @@ proves those three advertised limits on this branch.
 \label{sec:content-type-reader-contract}
 
 CNA keeps the familiar template name \texttt{ContentTypeReader<T>} for a game author's typed
-base class. Its separate, \texttt{NOXNA} \cnaclass{ContentTypeReaderBase} exists because C\texttt{++}
+base class. Its separate, \texttt{CNAEXT} \cnaclass{ContentTypeReaderBase} exists because C\texttt{++}
 cannot give both the non-template and template forms the same unqualified name as C\# can. A
 concrete reader implements the protected typed \texttt{Read(ContentReader\&, optional<T>)}; the
 base translates that call to public \texttt{ReadUntyped(ContentReader\&, any)}. The stored target
@@ -733,7 +733,7 @@ a one-level texture and run no per-level reads, so this reader accepts an uninit
 payload instead of rejecting an invalid count. A positive count above the physical chain has no
 ceiling. The reader shifts \texttt{width >> level} and \texttt{height >> level}, while
 \cnaclass{Texture2D::SetData()} checks only that the level is nonnegative; its CPU mip store grows
-for arbitrary higher levels and the backend is asked to update them. Large levels also make the
+for arbitrary higher levels and the renderer is asked to update them. Large levels also make the
 shift itself undefined. An unmerged audit change adds an upper mip ceiling, but current
 \texttt{develop} does not have it. The base-level decoded-size check is therefore not a bound on
 the number, topology, or total storage of declared mip payloads.
@@ -767,7 +767,7 @@ Texture2D/XNB format or adversarial-GPU validation.
 The separately registered \texttt{Microsoft.Xna.Framework.Content.Texture3DReader} is unusual in
 the C\texttt{++} family because its target is \texttt{std::shared\_ptr<Texture3D>}, not a
 bare resource value. That makes it copyable enough for \texttt{std::any}, while the resource still
-owns a non-copyable backend handle. It inherits exact serialized version zero. CNA and current
+owns a non-copyable renderer handle. It inherits exact serialized version zero. CNA and current
 FNA consume the same literal payload: Int32 \texttt{surfaceFormat}, \texttt{width},
 \texttt{height}, \texttt{depth}, and \texttt{levelCount}, followed by one Int32 \texttt{byteCount}
 and payload for each level. Unlike Texture2DReader, there is no pre-version-5 format remapping;
@@ -814,8 +814,8 @@ perform no data read. An excessive positive count is not rejected. After the gen
 the reader continues with 1-by-1-by-1 payloads and calls \texttt{SetData()} for arbitrary level
 numbers. Texture3D checks only a negative level and relative box ordering; it neither checks that
 the level exists nor that the box fits the actual stored mip dimensions before forwarding to its
-backend. Thus the base decoded-size cap neither validates a serialized mip topology nor protects
-all backend update paths.
+renderer. Thus the base decoded-size cap neither validates a serialized mip topology nor protects
+all renderer update paths.
 
 A \cnaclass{GraphicsDevice} is required only when the reader must create a texture. A non-null
 manager without one throws the manager's own diagnostic; a manually built ContentReader with no
@@ -823,10 +823,10 @@ manager reaches the reader's error. But a direct caller may supply a non-null
 \texttt{shared\_ptr<Texture3D>}; normal dispatch never does. That pointer is copied and the same
 referenced resource is mutated in place, without a format, device, dimensions, or mip-chain match
 against the file; it also bypasses the reader's new-texture device lookup. This is close to FNA's
-reference-instance behavior, but notably unlike CNA Texture2D's transported value. Backend
-support is not checked at either point: the default 3D backend factory can return null, after
-which Texture3D's upload and readback paths simply skip backend work. Loading an XNB can therefore
-return a nominal Texture3D whose supplied voxels were not represented by a real backend resource
+reference-instance behavior, but notably unlike CNA Texture2D's transported value. Renderer
+support is not checked at either point: the default 3D renderer factory can return null, after
+which Texture3D's upload and readback paths simply skip renderer work. Loading an XNB can therefore
+return a nominal Texture3D whose supplied voxels were not represented by a real renderer resource
 on a 2D-only implementation.
 
 Evidence for the ordinary wire is narrow. The joint 3D/cube unit file proves registration,
@@ -834,11 +834,11 @@ rejects one unsupported \texttt{Bgr565} word, and directly feeds a locally writt
 Color body to \texttt{ReadUntyped()}, then reads four exact voxels back. There is no external
 Texture3D XNB anywhere in the fixture tree, no header/table/ContentManager XNB test, and no
 direct DXT, multi-slice, mip, truncation, dimensions, byte-count, version, device, existing-pointer,
-or backend-capability case. The whole-container fuzzer has real Model, Texture2D, and SoundEffect
+or renderer-capability case. The whole-container fuzzer has real Model, Texture2D, and SoundEffect
 seeds only. The separate CNJ test does exercise a self-contained 2-by-2-by-2 volume, but it is a
 different loader and cannot establish XNB compatibility. Treat the current reader as a faithful
 ordinary field-order implementation with a repaired slice algorithm, not as externally-fixtured
-or universally backend-safe volume-texture support.
+or universally renderer-safe volume-texture support.
 
 \subsection{TextureCubeReader loads a real DXT1 cube but still trusts raw Color byte counts}
 \label{sec:xnb-texturecube-reader-contract}
@@ -890,8 +890,8 @@ Zero or negative levels create a one-level cube and read no face payload; too ma
 continue with 1-by-1 data and are never rejected. TextureCube validates a nonnegative level, face,
 rectangle, and element count, but not that the level is allocated. Its mip helper shifts the base
 size by the supplied level, so sufficiently large hostile levels make that shift undefined before
-the backend update. The reader also has no generic cube-capability gate: a backend using the
-default null cube factory produces an object whose upload/readback methods simply skip backend
+the renderer update. The reader also has no generic cube-capability gate: a renderer using the
+default null cube factory produces an object whose upload/readback methods simply skip renderer
 work. A successful parser return is not proof that an actual cube resource exists.
 
 Existing-instance behavior is particularly unlike FNA's reference object. Normal ContentReader
@@ -978,7 +978,7 @@ kerning values, decoded atlas pixels, or rendering. A second real MonoGame
 \texttt{FontCalibri14.xnb} exercises the same reader after a 44,032-byte multi-block LZX decode;
 the test establishes only a nonempty map and positive \texttt{MeasureString("Hello")} width.
 The focused reader tests cover registration and the false existing-instance property, while the
-many backend SpriteFont pixel tests hand-build tiny fonts rather than validating XNB tables. No
+many renderer SpriteFont pixel tests hand-build tiny fonts rather than validating XNB tables. No
 located test covers a true XNB default character, list/count mismatch, duplicate or malformed
 character map, invalid rectangles/floats, truncation, nonzero reader version, direct-existing
 failure, cache/unload, another producer/platform, or a SpriteFont seed in the container fuzzer.
@@ -1065,7 +1065,7 @@ screen, not a semantic graph test.  There is no compressed or non-MonoGame Model
 fixture with two parts sharing a resource, no 255-bone/UInt32-reference case, and no targeted
 test for Tags, existing models, null or invalid shared references, empty/null roots, contradictory
 or cyclic hierarchy, out-of-range draw scalars, non-multiple index data, ownership after unload,
-or a model draw on a real backend.  Successful loading of the cube therefore establishes the
+or a model draw on a real renderer.  Successful loading of the cube therefore establishes the
 standard pipeline path, not a promise that arbitrary Model XNB metadata is safe to draw.
 
 \subsection{Stock-effect readers reproduce their material fields, but external textures and four of five formats lack real-asset evidence}
@@ -1240,7 +1240,7 @@ return reader.Read(base, content);           // reader reports the eventual miss
 \end{lstlisting}
 
 The first successful generic result then enters its strong type-plus-normalized-name cache;
-\cnaclass{Texture2D} records its weak backend entry; and move-only \cnaclass{SoundEffect} and
+\cnaclass{Texture2D} records its weak renderer entry; and move-only \cnaclass{SoundEffect} and
 \cnaclass{TextureCube} perform the sequence on every call. Those cache rules were covered above,
 but they matter here because a later call for a cached name does not re-evaluate newly created,
 removed, or repaired candidates.
@@ -1329,7 +1329,7 @@ or MinGW builds.
 result: a same-named CNJ beats glTF/GLB, while the runtime-glTF test proves a missing CNJ falls
 through to \texttt{basic.gltf}.
 \item[\cnaclass{SpriteFont}, \cnaclass{Effect}, \cnaclass{AnimationClipEXT}, and
-\cnaclass{Curve}] self-contained \texttt{.cnj} only. The NOXNA
+\cnaclass{Curve}] self-contained \texttt{.cnj} only. The CNAEXT
 \cnaclass{SkinnedModelEXT} reader instead declares \texttt{.skinnedmodel.json}.
 \end{description}
 
@@ -1425,7 +1425,7 @@ compiled sibling is absent, not after probing a sidecar or every native extensio
 The class every asset ultimately passes through, read directly from
 \texttt{ContentManager.hpp}, has three constructors: \texttt{explicit
 ContentManager(IServiceProvider*)}; a second form additionally taking
-\texttt{const std::string\& rootDirectory}; and a \texttt{NOXNA}-tagged no-argument
+\texttt{const std::string\& rootDirectory}; and a \texttt{CNAEXT}-tagged no-argument
 \texttt{ContentManager()} that defaults \texttt{RootDirectory} to \texttt{"Content"} --- plus
 the small set of methods a game actually calls day to day:
 
@@ -1446,7 +1446,7 @@ the name may be extensionless or an existing literal file. On a cache miss it fi
 name-plus-\texttt{.xnb}, then the literal, then name-plus-\texttt{.cnj}, and only then its
 type-specific native-extension list; the preceding section gives the terminal-candidate rule.
 Two
-\texttt{NOXNA} extension points exist for cases the built-in readers don't cover:
+\texttt{CNAEXT} extension points exist for cases the built-in readers don't cover:
 \texttt{RegisterTypeReader<T>} (taking a
 \texttt{std::unique\_ptr<LooseFileContentTypeReader<T>>}) for a whole new
 loose-file type, and \texttt{RegisterCnjLoader<T>(name, CnjLoaderFn<T>)} for a new named
@@ -1531,7 +1531,7 @@ manifest refresh and manifest inspection, or a root/device/disposal change and a
 unsynchronized read/write of ordinary C\texttt{++} state. That is a data race and undefined
 behavior, not merely a chance of decoding an asset twice. Even a cache hit should not be promoted
 to a supported parallel-load API: it still observes the unsynchronized manager state and may
-reconstruct or use a graphics backend whose own thread-affinity contract is separate.
+reconstruct or use a graphics renderer whose own thread-affinity contract is separate.
 
 Current FNA does not supply a contrary per-manager guarantee. Its public \texttt{Load<T>} reads
 and writes an ordinary \texttt{Dictionary<string, object>} without a manager-level lock; the
@@ -1662,7 +1662,7 @@ No CNA test constructs this class, calls the throwing method through a test-only
 or proves that inherited loose loads bypass it. Treat embedded-resource support as
 \texttt{needs\_human}, not as an opportunistic reader-registration task: a real C\texttt{++}
 implementation must choose an embedded-resource abstraction and ownership model, decide whether
-to add the FNA-compatible resource-manager constructor or a deliberately NOXNA equivalent, wire
+to add the FNA-compatible resource-manager constructor or a deliberately CNAEXT equivalent, wire
 the base loader through a stream abstraction without regressing live filesystem behavior, and add
 binary/missing/non-binary/lifetime tests. Until that public architectural decision is made, use an
 ordinary \cnaclass{ContentManager} for CNA's supported loose, CNJ, and XNB paths rather than
@@ -1686,7 +1686,7 @@ The default title base is initialized once, on the first getter: CNA asks SDL3 f
 base path and falls back to the then-current working directory only when SDL supplies no path. SDL3
 documents that returned base-path pointer as a cached, const pointer; copying it into the CNA
 string does \emph{not} create an SDL allocation which this code must free. The chosen string then
-remains fixed even if the working directory changes. CNA additionally exposes a NOXNA public
+remains fixed even if the working directory changes. CNA additionally exposes a CNAEXT public
 setter which accepts any string without existence, absoluteness, or canonicalization checks. Both
 accessor spellings return a const reference to that one mutable static string, so a later setter
 can invalidate a held reference; neither initialization nor setting has synchronization. Configure
@@ -1758,12 +1758,12 @@ using during the transition.
 Three specializations are deliberately different from that generic strong cache:
 
 \begin{description}
-  \item[\cnaclass{Texture2D}.] Its table contains only weak references to the GPU backend and
+  \item[\cnaclass{Texture2D}.] Its table contains only weak references to the GPU renderer and
     optional CPU pixel shadow. Keeping a returned \texttt{Texture2D} value alive keeps that
-    backend alive; dropping all such values lets it free even if the content manager itself is
+    renderer alive; dropping all such values lets it free even if the content manager itself is
     still alive. \texttt{Unload()} removes the weak lookup entry as well. The focused real-XNB
     test intentionally retains its first texture through \texttt{Unload()}, then proves the
-    next load builds a \emph{different} backend; it does not assert that the retained first
+    next load builds a \emph{different} renderer; it does not assert that the retained first
     texture became invalid, because it did not.
   \item[\cnaclass{SoundEffect} and \cnaclass{TextureCube}.] Both types are move-only, so neither
     can enter the generic \texttt{std::any} cache. Every \texttt{Load} decodes a fresh,
@@ -1774,7 +1774,7 @@ Three specializations are deliberately different from that generic strong cache:
 
 The cache tests establish two concrete, bounded facts: overwriting a generic XNB on disk is
 invisible to a second load until \texttt{Unload()} clears its cache, while a retained
-\texttt{Texture2D} gets a newly constructed backend on the post-unload load. They do not test a
+\texttt{Texture2D} gets a newly constructed renderer on the post-unload load. They do not test a
 complete cross-type shutdown protocol, and no located test exercises content-manager destruction
 or a load attempted after disposal.
 
@@ -1787,7 +1787,7 @@ post-disposal contract described in Chapter~\ref{ch:game-loop} must call \texttt
 rather than rely solely on scope exit. The manifest is intentionally independent again:
 \texttt{GetContentManifest()} returns its old point-in-time scan after an unload until
 \texttt{RefreshContentManifest()} is requested; neither method checks the disposed flag in the
-current source. Treat those \texttt{NOXNA} methods as diagnostics, not as a cache-lifetime API.
+current source. Treat those \texttt{CNAEXT} methods as diagnostics, not as a cache-lifetime API.
 
 \subsection{\texttt{Game::Content} replacement copies a manager; it does not replace one}
 
@@ -1837,7 +1837,7 @@ the source manager's pointer and cache state instead of preserving the target ga
 
 \begin{sourcenote}
 \textbf{A worked example: asking the content root what files it saw.} Rather than walking a
-content tree independently, tooling can use CNA's real, \texttt{NOXNA}-tagged inventory:
+content tree independently, tooling can use CNA's real, \texttt{CNAEXT}-tagged inventory:
 \texttt{ContentManager::GetContentManifest()} scans the content root lazily on its first call
 (or a caller can invoke the public \texttt{RefreshContentManifest()}) and returns one
 \cnaclass{ContentManifestEntry} per logical asset name, reading directly from
@@ -2236,7 +2236,7 @@ compiled \texttt{.fx} effect (permanently out of scope for the reason
 Chapter~\ref{ch:shader-fx-gap} already gave), \texttt{.cnj} or a direct native-format
 conversion remains the path.
 
-\section{Where this leaves the rest of Part~III}
+\section{Where this leaves the rest of Part~V}
 
 Every class in the chapters ahead --- \cnaclass{Texture2D}, \cnaclass{Model}, the stock
 effects --- is describable purely in terms of its runtime API, independent of which of this

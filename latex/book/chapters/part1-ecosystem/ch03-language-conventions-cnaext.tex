@@ -48,12 +48,14 @@ absolute:
 
 Original XNA types are never moved into the \texttt{CNA} namespace, and the reverse is
 equally firm: anything that is not part of the real XNA~4.0 API must not silently live inside
-\cnans{Microsoft::Xna::Framework} unmarked. That is what the \texttt{NOXNA} marker exists for.
+\cnans{Microsoft::Xna::Framework} unmarked. That is what the \texttt{CNAEXT} marker exists for.
 
-\section{The \texttt{NOXNA} tag: a compiler-enforced honesty check}
+\section{The \texttt{CNAEXT} tag: a compiler-enforced honesty check}
+\label{sec:cnaext}
 \label{sec:noxna}
 
-\texttt{NOXNA} is an empty marker macro, defined in \texttt{include/CNA/CNAHelper.hpp}, whose
+\texttt{CNAEXT} is an empty marker macro, defined in
+\texttt{modules/core/include/CNA/CNAHelper.hpp}, whose
 only job is to visibly tag a declaration inside the XNA namespace tree as \emph{not} part of
 the original XNA~4.0 API --- a rumble-and-gyro extension on \cnaclass{GamePad}, a
 \texttt{GetTypeName()} override, a raw joystick API, a haptics subsystem. Two concrete
@@ -64,18 +66,18 @@ examples from the real codebase:
 [[nodiscard]] bool Equals(const Color& other) const;
 
 // A CNA-only addition living in the same class, explicitly marked:
-NOXNA [[nodiscard]] const std::string& GetTypeName() const override;
+CNAEXT [[nodiscard]] const std::string& GetTypeName() const override;
 \end{lstlisting}
 
 What makes this more than a documentation convention is a compiler-enforced check described in
 Chapter~\ref{ch:what-is-cna}, precisely: \texttt{CNAHelper.hpp}'s own definition of
-\texttt{NOXNA} is conditional on a second, distinct macro, \texttt{CNA\_STRICT\_XNA\_API} --- in
-a normal build \texttt{NOXNA} expands to nothing at all (it is documentation only); only when
+\texttt{CNAEXT} is conditional on a second, distinct macro, \texttt{CNA\_STRICT\_XNA\_API} --- in
+a normal build \texttt{CNAEXT} expands to nothing at all (it is documentation only); only when
 \texttt{CNA\_STRICT\_XNA\_API} is defined does it expand to
-\texttt{[[deprecated("NOXNA: not part of the XNA 4.0 API surface")]]}. That define is never set
+\texttt{[[deprecated("CNAEXT: not part of the XNA 4.0 API surface")]]}. That define is never set
 for the normal \texttt{CNA} library target --- it is scoped to exactly two small standalone
 CMake targets in \texttt{cmake/Harnesses.cmake}, each compiled with
-\texttt{-Werror=deprecated-declarations} on top of it, so a stray \texttt{NOXNA}-tagged call
+\texttt{-Werror=deprecated-declarations} on top of it, so a stray \texttt{CNAEXT}-tagged call
 anywhere those targets' translation units can see turns into a hard build failure rather than a
 warning that could be scrolled past.
 
@@ -86,14 +88,14 @@ real leak; it is equally consistent with a check that always passes. CNA's own
 \texttt{tools/\allowbreak{}devices/\allowbreak{}Strict\allowbreak{}Xna\allowbreak{}Api\allowbreak{}Surface\allowbreak{}Check.cpp} (compiled as the
 \texttt{cna\allowbreak{}\_strict\allowbreak{}\_xna\allowbreak{}\_api\allowbreak{}\_check} target,
 run as the \texttt{StrictXnaApiSurfaceCheck\allowbreak{}\_Compile\allowbreak{}\_Run} CTest) is
-that positive direction, and its own header comment names every \texttt{NOXNA}-tagged
+that positive direction, and its own header comment names every \texttt{CNAEXT}-tagged
 \cnaclass{Accelerometer} / \cnaclass{Sensors} member it deliberately avoids calling. The negative
 direction --- proving a real leak genuinely fails --- is a second, separate file,
 \texttt{tools/\allowbreak{}devices/\allowbreak{}Strict\allowbreak{}Xna\allowbreak{}Api\allowbreak{}Surface\allowbreak{}Leak\allowbreak{}Check.cpp}, whose entire body is one deliberate
 violation:
 \begin{lstlisting}
 Microsoft::Devices::Sensors::Accelerometer accelerometer;
-accelerometer.InjectSyntheticSensorUpdate(1.0f, 0.0f, 0.0f); // NOXNA -- must fail to compile here.
+accelerometer.InjectSyntheticSensorUpdate(1.0f, 0.0f, 0.0f); // CNAEXT -- must fail to compile here.
 \end{lstlisting}
 This compiles into an \texttt{EXCLUDE\_FROM\_ALL} target
 (\texttt{cna\allowbreak{}\_strict\allowbreak{}\_xna\allowbreak{}\_api\allowbreak{}\_leak\allowbreak{}\_check}),
@@ -101,7 +103,7 @@ so it never participates in an ordinary build. It is invoked by exactly one CTes
 \texttt{Strict\allowbreak{}Xna\allowbreak{}Api\allowbreak{}Surface\allowbreak{}Leak\allowbreak{}Check\allowbreak{}\_Must\allowbreak{}Fail\allowbreak{}To\allowbreak{}Compile}, whose
 \texttt{WILL\_FAIL TRUE} property inverts the usual pass/fail meaning --- the test
 \emph{passes} only if the build command it wraps \emph{fails}. If a future change to the
-\texttt{NOXNA} macro or to \texttt{CNA\_STRICT\_XNA\_API}'s wiring ever let this
+\texttt{CNAEXT} macro or to \texttt{CNA\_STRICT\_XNA\_API}'s wiring ever let this
 deliberately-broken file compile, this specific test would flip from passing to failing ---
 catching a regression in the safety net itself, not merely in the API surface the net is meant
 to protect.
@@ -226,19 +228,20 @@ entirely. The house style calls out a concrete anti-example: a C\# \texttt{inter
 DebugDisplayString} helper should not become a public C\texttt{++} API method just because it
 was easy to leave public.
 
-\section{File structure mirrors namespace, always}
+\section{Physical modules own the namespace-shaped include surface}
 
-Declarations live in \texttt{.hpp} under \texttt{include/}; implementation lives in
-\texttt{.cpp} under \texttt{src/}; and the directory path mirrors the namespace path exactly:
+Each physical module owns its declarations under \texttt{modules/<owner>/include/} and its
+implementation under \texttt{modules/<owner>/src/}. The public include subtree mirrors the
+namespace, while implementation paths may use a shorter subsystem directory:
 
 \begin{lstlisting}
-include/Microsoft/Xna/Framework/Graphics/Texture2D.hpp
-src/Microsoft/Xna/Framework/Graphics/Texture2D.cpp
+modules/graphics/include/Microsoft/Xna/Framework/Graphics/Texture2D.hpp
+modules/graphics/src/Xna/Texture2D.cpp
 \end{lstlisting}
 
 Non-template implementations do not live in headers. The same mirroring rule is why this
 book can describe ``the Graphics namespace'' and ``the 106 headers under
-\texttt{include/\allowbreak{}Microsoft/\allowbreak{}Xna/\allowbreak{}Framework/\allowbreak{}Graphics/}''
+\texttt{modules/graphics/include/\allowbreak{}Microsoft/\allowbreak{}Xna/\allowbreak{}Framework/\allowbreak{}Graphics/}''
 as the same thing throughout Part~III.
 
 \section{No backward-compatibility shims}
@@ -307,12 +310,12 @@ the house rules single out its non-negotiable minimum:
 \begin{itemize}
   \item An SPDX \texttt{MS-PL} license identifier at the top of both the \texttt{.hpp} and
         the \texttt{.cpp}.
-  \item \texttt{\#include "CNA/CNAHelper.hpp"} in the header, whenever \texttt{NOXNA} is used
+  \item \texttt{\#include "CNA/CNAHelper.hpp"} in the header, whenever \texttt{CNAEXT} is used
         anywhere in that file.
   \item Every method body checked line-by-line against the FNA equivalent, with every
         intentional deviation documented in a source comment (not silently absorbed).
   \item Every concrete class inheriting \texttt{System::Object} overrides
-        \texttt{GetTypeName()}, tagged \texttt{NOXNA}, returning the fully-qualified .NET
+        \texttt{GetTypeName()}, tagged \texttt{CNAEXT}, returning the fully-qualified .NET
         name (e.g.\ \texttt{"Microsoft.Xna.Framework.Game"}).
   \item A unit test for every public method, operator, and constant --- with out-ref
         overloads tested separately from their value-returning counterparts, and static

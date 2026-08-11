@@ -159,7 +159,7 @@ callback. This book's Web/Emscripten chapter covers this in full.
 \subsection{Two global debug keys hidden in the ordinary event pump}
 
 \texttt{PollEvents()} sends every SDL event through the input bridge first, then reserves two
-non-repeated key-downs: F9 calls the backend's
+non-repeated key-downs: F9 calls the renderer's
 \texttt{DebugSimulateContextLoss()}, and F10 calls \texttt{DebugRestoreContext()}. The input
 state still sees both keys because that bridge ran first; a game binding F9/F10 therefore
 gets its own key state \emph{and} this framework action. FNA's own \cnaclass{Game} installs no
@@ -175,7 +175,7 @@ evidence matrix is \S\ref{sec:backend-recovery-debug-matrix}.
 
 \subsection{Two small, explicitly-marked CNA extensions}
 
-Two \texttt{NOXNA}-tagged additions live directly on \cnaclass{Game}: a public
+Two \texttt{CNAEXT}-tagged additions live directly on \cnaclass{Game}: a public
 \texttt{RunApplication} flag (documented as ``internal loop flag matching the FNA/XNA
 \texttt{Game} implementation shape''), and a pair of compatibility helpers,
 \texttt{getTargetFPSProperty()} and \texttt{getTargetMsFrameTimeProperty()}, plus a static
@@ -411,7 +411,7 @@ events (typed \texttt{EventHandler<GameComponentCollectionEventArgs>}) around th
 collection operations (\texttt{Add}, \texttt{Insert}, \texttt{Remove}, \texttt{RemoveAt},
 \texttt{Clear}, \texttt{IndexOf}, \texttt{operator[]}). Because C\# 's
 \texttt{IEnumerable<IGameComponent>} has no direct C\texttt{++} equivalent, the collection
-adds an explicitly \texttt{NOXNA}-tagged set of \texttt{size\_type} / \texttt{iterator} /
+adds an explicitly \texttt{CNAEXT}-tagged set of \texttt{size\_type} / \texttt{iterator} /
 \texttt{const\_iterator} aliases and \texttt{begin()} / \texttt{end()} overloads --- a small,
 representative example of how CNA extends an XNA collection type just enough to be usable
 with range-based \texttt{for} and the standard library, without touching its XNA-facing
@@ -482,7 +482,7 @@ events), plus a small set of explicitly-named \texttt{EXT}-suffixed CNA extensio
 surface itself,'' but needed so e.g.\ \texttt{CNA::Devices::DisplayInfo} can query SDL3
 content-scale/safe-area state), \texttt{IsBorderlessEXTProperty}, and
 \texttt{MinimizeEXT()} / \texttt{RestoreEXT()} (``CNA extension --- XNA has no minimize/restore
-API of its own''). The \texttt{EXT} suffix convention here is a sibling of \texttt{NOXNA}: both
+API of its own''). The \texttt{EXT} suffix convention here is a sibling of \texttt{CNAEXT}: both
 mark non-XNA additions, but \texttt{EXT} specifically marks methods bolted onto an otherwise
 XNA-shaped class, kept visually distinct from the XNA members around them.
 
@@ -490,7 +490,7 @@ XNA-shaped class, kept visually distinct from the XNA members around them.
 windowed game it views the device-created SDL window; in a headless configuration it can be null.
 Never destroy it from game code or retain it across explicit graphics-device disposal: the wrapper
 does not own it and is not notified when a separately owned device tears it down. The complete
-backend availability, attached-window, input-routing, and teardown contract is in
+renderer availability, attached-window, input-routing, and teardown contract is in
 Chapter~\ref{ch:backend-architecture}, \S\ref{sec:backend-native-handle-boundary}.
 
 \section{GraphicsDeviceManager's role in the loop}
@@ -513,7 +513,7 @@ manager/device distinction, and the one-operation nature of \texttt{PreparingDev
 are documented in Chapter~\ref{ch:graphicsdevice}.
 
 One CNA-specific extension lives directly alongside this class rather than inside it: a
-\texttt{NOXNA enum class PresentationMode} with five values ---
+\texttt{CNAEXT enum class PresentationMode} with five values ---
 \texttt{Letterbox}, \texttt{Overscan}, \texttt{Stretch}, \texttt{NativeBackBuffer},
 \texttt{FixedHeight\allowbreak Dynamic\allowbreak Width} --- expressing the game's requested policy for its virtual
 back buffer and actual display when the two don't match in aspect ratio, exposed through
@@ -523,7 +523,7 @@ Real XNA never had to solve this problem in the same way, since the Xbox 360 and
 desktop of that era rarely presented CNA's variety of target displays (a browser canvas, an
 Android device in either orientation, an arbitrary desktop window); this is a genuinely new
 subsystem, clearly marked as such rather than folded silently into the XNA-facing API. The enum
-is a manager-side request, not a portable promise that every backend has a matching scale,
+is a manager-side request, not a portable promise that every renderer has a matching scale,
 letterbox, or crop pass; Chapter~\ref{ch:backend-architecture} gives the current product matrix.
 
 A game that wants a fixed, letterboxed virtual resolution --- one of the more common real
@@ -541,10 +541,10 @@ MyGame::MyGame()
 }
 \end{lstlisting}
 
-On a backend that implements Letterbox, a player resizing the window to a wider or taller aspect
+On a renderer that implements Letterbox, a player resizing the window to a wider or taller aspect
 ratio than 1280:720 sees black bars rather than a stretched or cropped game, while draw calls
 remain in the 1280$\times$720 logical coordinate space. The manager delivers this request before
-resetting virtual resolution; the GraphicsDevice path and the backend-specific execution matrix
+resetting virtual resolution; the GraphicsDevice path and the renderer-specific execution matrix
 are documented in Chapters~\ref{ch:graphicsdevice} and~\ref{ch:backend-architecture}.
 
 \subsection{Vertical retrace is a presentation preference, not the fixed timestep}
@@ -553,7 +553,7 @@ are documented in Chapters~\ref{ch:graphicsdevice} and~\ref{ch:backend-architect
 the manager translates that Boolean into
 \texttt{PresentationParameters.PresentationInterval}: true means \texttt{One}, false means
 \texttt{Immediate}. \texttt{ApplyChanges()} then resets CNA's already-existing device and
-forwards the integer 1 or~0 to the backend. This is independent of
+forwards the integer 1 or~0 to the renderer. This is independent of
 \cnaclass{Game}\texttt{::IsFixedTimeStep}. The fixed timestep controls how many
 \texttt{Update()} calls the accumulator schedules; VSync can separately block
 \texttt{Present()} at the display boundary. Turning one off does not turn the other off.
@@ -561,14 +561,14 @@ forwards the integer 1 or~0 to the backend. This is independent of
 XNA's third public choice, \texttt{PresentInterval::Two}, cannot be expressed through this
 Boolean property. A port that genuinely needs half-refresh presentation must set the
 interval on explicit \cnaclass{PresentationParameters}, for example in a
-\texttt{PreparingDeviceSettings} handler, and must still check the backend result described
+\texttt{PreparingDeviceSettings} handler, and must still check the renderer result described
 in \S\ref{sec:backend-swap-interval-matrix}. That matrix matters: SDL Renderer and EasyGL
 submit the numeric~2 but cannot guarantee driver acceptance; D3D9 has a literal native
 interval~2 but it is fullscreen- and capability-dependent. Several other products reduce
 every positive value to ordinary VSync.
 
 \begin{sourcenote}
-The Vulkan backend consumes its present-mode choice only when its swapchain is first
+The Vulkan renderer consumes its present-mode choice only when its swapchain is first
 constructed and inherits the runtime \texttt{SetSwapInterval()} no-op. CNA constructs a
 \cnaclass{Game}'s device before the derived game can configure its manager, so the ordinary
 request to disable the manager's vertical-retrace property, followed by
@@ -587,13 +587,13 @@ does size and interval.
 
 They do not have one uniform meaning after \texttt{ApplyChanges()}. CNA first stores all
 three values. It then asks SDL to change fullscreen state and window size, and finally calls
-the backend's \texttt{UpdatePresentationFormatEXT()} hook with the requested color format,
+the renderer's \texttt{UpdatePresentationFormatEXT()} hook with the requested color format,
 depth/stencil format, and fullscreen Boolean. Only D3D9 overrides that hook. The other
 thirteen products may therefore report a successful preference round trip while keeping
 fixed, driver-selected, or nonexistent native attachments.
 
 Fullscreen is a separate layer from those attachments. An SDL-backed product can change its
-real window before its empty backend hook is reached. A failed SDL fullscreen request,
+real window before its empty renderer hook is reached. A failed SDL fullscreen request,
 however, is cleared and treated as non-fatal. Thus a true public fullscreen property is
 requested state, not proof that the window manager or browser accepted the transition.
 D3D11 and D3D12 add another distinction: SDL may enlarge their window, but CNA never asks

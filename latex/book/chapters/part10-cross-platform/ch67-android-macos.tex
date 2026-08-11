@@ -33,7 +33,7 @@ cmake --build cmake-build-android --target CNA -j"$(nproc)"
 # a host Linux `nm` produces empty/wrong output against these ARM64
 # object files, so the NDK's own llvm-nm is required, not a substitute.
 "$HOME/Android/Sdk/ndk/30.0.14904198/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm" -C \
-    cmake-build-android/CMakeFiles/CNA.dir/src/Microsoft/Devices/Sensors/Accelerometer.cpp.o \
+    cmake-build-android/modules/devices/CMakeFiles/cna_devices.dir/src/Sensors/Accelerometer.cpp.o \
     | grep -i landscape
 \end{lstlisting}
 
@@ -54,7 +54,7 @@ but in two specific files inside the sibling \texttt{sharp-runtime} project
 strict-warnings build catching an unused private field on one platform/compiler
 configuration that a desktop build does not, and a use of
 \texttt{std::chrono::clock\_cast} that the NDK's bundled C\texttt{++} standard library does
-not yet implement. Because the build never reaches CNA's own \texttt{SdlGraphicsBackend.cpp}
+not yet implement. Because the build never reaches CNA's own \texttt{SdlRenderer.cpp}
 at all under this regression, that file's own Android buildability is honestly recorded as
 currently \emph{unverified}, not confirmed working --- a direct, current example of exactly
 the kind of documentation staleness Chapter~\ref{ch:easygl-backend} already flagged for
@@ -208,8 +208,8 @@ sensor set magnetic-field 30:5:40
 
 Two honest limits on this result are worth stating directly. First, this is evidence for the
 devices/sensors demo specifically --- \texttt{SDL\_RENDERER} (Android's own default graphics
-backend, since Android's own CMake system name is \texttt{"Android"}, not \texttt{"Linux"},
-so it never falls into \texttt{EASYGL}'s Linux-default branch) has never actually been run on
+renderer, since Android's own CMake system name is \texttt{"Android"}, not \texttt{"Linux"},
+so it never falls into \texttt{EasyGL}'s Linux-default branch) has never actually been run on
 this or any emulator or device, and its buildability is separately unverified for the reason
 already given above. Second, the emulator's own virtual sensor set has no rotation-vector
 sensor, so the Android-specific \cnaclass{Compass} / \cnaclass{Motion} backends

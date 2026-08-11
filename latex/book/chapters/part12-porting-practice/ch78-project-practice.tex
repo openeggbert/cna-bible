@@ -35,7 +35,7 @@ this is meant to be read as a durable, cumulative record of what has actually be
 not a snapshot of current work.
 
 \textbf{\texttt{CHECKLIST.md}} is the per-file porting checklist already introduced in
-Chapter~\ref{ch:design-philosophy} --- SPDX headers, the \texttt{NOXNA} include requirement,
+Chapter~\ref{ch:design-philosophy} --- SPDX headers, the \texttt{CNAEXT} include requirement,
 line-by-line verification against FNA, mandatory \texttt{GetTypeName()} overrides, and full
 test coverage including out-ref overloads tested separately from their value-returning
 counterparts. It also maintains the project's own table of \emph{accepted} C\texttt{++}
@@ -52,9 +52,9 @@ history.
 Beyond these three root-level files, CNA maintains a separate \texttt{plan\_<subsystem>.md}
 file for each major feature area under active or completed development --- at the time of
 writing, twenty of them, covering areas as different in scale as \texttt{plan\_ascii.md} (the
-ASCII backend, Chapter~\ref{ch:canvas-ascii-backends}) and \texttt{plan\_cnj.md}
+ASCII renderer, Chapter~\ref{ch:canvas-ascii-backends}) and \texttt{plan\_cnj.md}
 (the glTF import pipeline). Each is organized into numbered phases and tasks --- the same
-\texttt{Task~123} citation style this book has used throughout both volumes whenever
+\texttt{Task~123} citation style this book uses whenever
 attributing a specific bug or fix to its source. This is the mechanism that makes a claim
 like ``Task~868, fixed 2026-07-09'' (Chapter~\ref{ch:vulkan-backend}) a genuinely checkable
 one rather than an unsourced assertion: the task number names an exact entry in an exact
@@ -64,7 +64,7 @@ plan file, not a vague reference to ``recent work.''
 
 The ``Task~123'' citation style is easiest to trust once you have actually seen one such row in
 its native habitat rather than only in this book's own paraphrase of it. \texttt{plan\_ascii.md}
-(the ASCII/glyph-grid backend's own plan file) records its fortieth task, \texttt{ASCII-40}, like
+(the ASCII/glyph-grid renderer's own plan file) records its fortieth task, \texttt{ASCII-40}, like
 this, condensed only for length:
 
 \begin{quote}
@@ -95,13 +95,13 @@ what stands behind one of them.
 
 One further, real convention surfaces specifically in the larger \texttt{plan\_<subsystem>.md}
 files, and is worth naming since it is not obvious from the three-tier structure alone: when a
-single numbered task is discovered mid-flight to actually span multiple independent backends ---
+single numbered task is discovered mid-flight to actually span multiple independent renderers ---
 each needing its own separate fix, at its own separate time --- this project splits it into one
-new numbered sub-task per backend, rather than either forcing one task to cover all of them or
+new numbered sub-task per renderer, rather than either forcing one task to cover all of them or
 silently expanding its own scope. \texttt{plan\_graphics.md} records this exact pattern twice,
 citing each other explicitly: Task~868 splits into Task~923 (and its own sibling sub-tasks), and
 Task~878 splits into Task~899, each split documented as following ``this project's established
-precedent for large multi-backend fixes.'' The original, pre-split task row is not deleted once
+precedent for large multi-renderer fixes.'' The original, pre-split task row is not deleted once
 this happens --- it is kept in place and rewritten into what this project's own plan files call
 a \emph{tracking pointer}: a short note stating that the row itself is no longer attempted as one
 unit, with a direct reference to whichever new sub-task numbers now carry the real work. This
@@ -143,7 +143,7 @@ between them: a claim that looked settled --- a bug list item marked fixed, a st
 as \texttt{CLOSED}, an audit round that had already run --- turned out to be stale once checked
 against the current, live source rather than trusted at face value. Four genuinely separate
 instances surfaced in the course of this book's own research alone: two oracle-methodology
-bugs the \texttt{EasyGL} backend's own bug list still described as ``logged \dots{} not fixed''
+bugs the \texttt{EasyGL} renderer's own bug list still described as ``logged \dots{} not fixed''
 had in fact both been closed since (Chapter~\ref{ch:easygl-backend}); a
 \texttt{sharp-runtime} concurrency fix already marked \texttt{CLOSED} turned out to hide a
 second, deeper race that only a later, dedicated ThreadSanitizer run against real concurrent

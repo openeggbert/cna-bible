@@ -5,11 +5,11 @@
 chapter covers its own 887-line header in full: every constructor, every property, every
 overload of every method it exposes, the resource base class (\cnaclass{GraphicsResource})
 every texture, buffer, and state object inherits, and the disposal ordering discipline that
-keeps a multi-backend rendering pipeline from ever calling into an already-destroyed graphics
+keeps a multi-renderer rendering pipeline from ever calling into an already-destroyed graphics
 context. Three worked examples run throughout the chapter --- a minimal clear-and-present loop,
 a render-target round trip, and a raw, no-\cnaclass{SpriteBatch} two-triangle scene drawn
 directly through \texttt{DrawPrimitives} --- and the last of those was actually built and run
-against CNA's \texttt{SOFTWARE} backend for this book, producing the real, unedited screenshot
+against CNA's \texttt{SOFTWARE} renderer for this book, producing the real, unedited screenshot
 in Figure~\ref{fig:ch09-drawprimitives}.
 
 \section{Construction: one real constructor, one CNA addition}
@@ -30,7 +30,7 @@ is non-copyable and non-movable, and offers exactly two constructors:
   same object through \texttt{Reset()} during \texttt{Game::DoInitialize()}. Ordinary game code
   still essentially never calls this constructor directly.
 \item[\texttt{GraphicsDevice()}]
-  \texttt{NOXNA} --- a convenience constructor which delegates to the real constructor with the
+  \texttt{CNAEXT} --- a convenience constructor which delegates to the real constructor with the
   default adapter, \texttt{Reach}, and default \cnaclass{PresentationParameters}. It is
   headless only in a compile-time \texttt{HEADLESS} or \texttt{SOFTWARE} build. In every other
   build the default \texttt{HeadlessEXT} value is \texttt{false}, so it initializes SDL video
@@ -40,30 +40,30 @@ is non-copyable and non-movable, and offers exactly two constructors:
 \end{description}
 
 Six events match FNA's surface exactly: \texttt{Disposing}, \texttt{DeviceLost} (never actually
-raised on desktop --- Chapter~\ref{ch:direct3d-backends} explains the one backend,
+raised on desktop --- Chapter~\ref{ch:direct3d-backends} explains the one renderer,
 \texttt{D3D9}, where device loss is even a meaningful concept), \texttt{DeviceReset},
 \texttt{DeviceResetting}, \texttt{ResourceCreated}, \texttt{ResourceDestroyed} (both covered in
 depth in \S\ref{sec:resource-lifetime} below).
 
-\section{Private implementation: window, backend, and virtual-resolution lifecycle}
+\section{Private implementation: window, renderer, and virtual-resolution lifecycle}
 \label{sec:private-lifecycle}
 
 The public surface above is a thin shell over eight private methods this chapter's original
 scope never traced. They are not callable from game code, but reading them directly (rather
 than guessing from their names) explains real, observable behavior the public API alone
-doesn't --- most notably how Chapter~\ref{ch:game-loop}'s own \texttt{NOXNA
+doesn't --- most notably how Chapter~\ref{ch:game-loop}'s own \texttt{CNAEXT
 PresentationMode} enum (\texttt{Letterbox} / \texttt{Overscan} / \texttt{Stretch}/%
 \texttt{NativeBackBuffer} / \texttt{FixedHeightDynamicWidth}) actually reaches the graphics
-backend.
+renderer.
 
 \begin{description}
 \item[\texttt{createOrAttachWindow()}] under the \texttt{HEADLESS} / \texttt{SOFTWARE}
-  compile-time backend selection, never creates a real window at all --- \texttt{window\_}
+  compile-time renderer selection, never creates a real window at all --- \texttt{window\_}
   stays \texttt{nullptr} unconditionally, which is exactly why this chapter's own screenshot
   tooling (\S\ref{sec:worked-drawprimitives}) needs no display server at all. Otherwise, three
   paths are tried in order: a runtime \texttt{PresentationParameters::HeadlessEXT} opt-in
-  (honest about its own limits --- only a backend that can genuinely run without a swap chain,
-  D3D12 at the time of writing, supports this; a backend that can't, like EasyGL, whose GL
+  (honest about its own limits --- only a renderer that can genuinely run without a swap chain,
+  D3D12 at the time of writing, supports this; a renderer that can't, like EasyGL, whose GL
   context is bound to a window, throws from its own constructor instead of silently
   papering over the request); an explicit externally-supplied window handle via
   \texttt{PresentationParameters::DeviceWindowHandle} (borrowed, never validated or destroyed
@@ -73,18 +73,18 @@ backend.
   \texttt{Input::Mouse} so text input and mouse capture target the right window. The attached
   branch bypasses that publication; its precise lifetime/input duties are documented in
   Chapter~\ref{ch:backend-architecture}, \S\ref{sec:backend-native-handle-boundary}.
-\item[\texttt{createBackend()}] builds a \texttt{GraphicsBackendCreateArgs} struct from the
+\item[\texttt{createRenderer()}] builds a \texttt{GraphicsRendererCreateArgs} struct from the
   current \cnaclass{PresentationParameters} and wires a \texttt{deviceEventCallback} that
   drives the real \texttt{Lost} / \texttt{Resetting} / \texttt{Reset} events and
   \texttt{deviceStatus\_} transitions named back in \S\ref{sec:property-surface} --- the same
   callback \texttt{D3D9} alone actually invokes.
-\item[\texttt{destroyNativeResources()}] tears the backend down first (via
+\item[\texttt{destroyNativeResources()}] tears the renderer down first (via
   \texttt{unique\_ptr::reset()}), then destroys the SDL window only if this device created it
   (\texttt{ownsWindow\_}) --- clearing \texttt{TextInputEXT} / \texttt{Mouse}'s own window-handle
   fields first if they still point at the window about to be destroyed, so neither subsystem is
   left holding a dangling handle.
 \item[\texttt{UpdateViewportFromWindow()}] resyncs \texttt{Viewport} after a window resize:
-  it asks the backend for its own reported viewport size first, falling back to
+  it asks the renderer for its own reported viewport size first, falling back to
   \texttt{SDL\_GetWindowSize} only if that yields nothing, and --- a subtlety worth stating
   precisely --- compares the result against \emph{its own last-recorded} width/height, not
   against \texttt{Viewport}'s current dimensions. The distinction matters: a game may have set
@@ -94,14 +94,14 @@ backend.
   \texttt{Present()} even though no real resize occurred.
 \item[\texttt{SetVirtualResolution(width, height)}] is a private helper which stores valid
   logical dimensions, writes them into \texttt{PresentationParameters}, forwards them to the
-  backend, and resynchronises the viewport. No current caller of this helper was located:
+  renderer, and resynchronises the viewport. No current caller of this helper was located:
   construction and \texttt{Reset()} instead assign their virtual fields directly and call the
-  backend hook themselves. It is therefore not, by itself, the public mechanism behind
+  renderer hook themselves. It is therefore not, by itself, the public mechanism behind
   Chapter~\ref{ch:game-loop}'s manager setting.
-\item[\texttt{SetPresentationMode(mode)}] simply forwards the mode value to the backend. The
+\item[\texttt{SetPresentationMode(mode)}] simply forwards the mode value to the renderer. The
   manager calls it immediately before Reset so mode-dependent virtual-size computation (notably
   SDL\_RENDERER fixed-height mode) sees the requested policy first. The actual result is a
-  backend property rather than a universal GraphicsDevice guarantee; the fourteen-product
+  renderer property rather than a universal GraphicsDevice guarantee; the inherited fourteen-product audit
   matrix is in Chapter~\ref{ch:backend-architecture}.
 \item[\texttt{applyPresentationParametersToWindow()}] applies the real SDL-level consequences
   of a presentation-parameter change --- \texttt{SDL\_SetWindowFullscreen} and
@@ -110,9 +110,9 @@ backend.
   switching at all, so a failed \texttt{SDL\_SetWindowFullscreen} just clears the SDL error and
   continues, since the requested state is already stored in \texttt{PresentationParameters}
   regardless of whether the window server could honor it.
-\item[\texttt{applySamplerStatesToBackend()}] pushes all sixteen
+\item[\texttt{applySamplerStatesToRenderer()}] pushes all sixteen
   (\cnaclass{SamplerStateCollection::MaxSamplers}) sampler slots' filter/address-mode/max
-  anisotropy settings to the backend --- called before every draw-call family in this chapter,
+  anisotropy settings to the renderer --- called before every draw-call family in this chapter,
   which is why \S\ref{sec:property-surface}'s \texttt{SamplerStates} property never needs an
   explicit ``apply'' call of its own from game code.
 \end{description}
@@ -138,11 +138,11 @@ their device is alive; the D3D12 smoke test proves windowless construction. None
 post-disposal reference count or mixes a headless device with a live windowed one.
 
 There is a second, independent exception-safety hole. Once video initialization succeeds, later
-\texttt{SDL\_CreateWindow}, \texttt{SDL\_SetWindowSize}, backend construction, or initial
+\texttt{SDL\_CreateWindow}, \texttt{SDL\_SetWindowSize}, renderer construction, or initial
 state application may throw. C\texttt{++} then destroys already-constructed member objects, but
 does not call \cnaclass{GraphicsDevice}'s destructor: its raw owned \texttt{window\_}, the
 published \texttt{TextInputEXT}/\texttt{Mouse} handles, and its SDL video reference have no
-rollback guard. A backend held by \texttt{unique\_ptr} is cleaned up, but the window and video
+rollback guard. A renderer held by \texttt{unique\_ptr} is cleaned up, but the window and video
 lease are not. The common pixel-test preflight detects a completely unavailable display before
 construction; it does not inject any failure after a successful init/window creation. Treat
 direct construction failure as process-contaminating until this ownership is made RAII or a
@@ -160,7 +160,7 @@ govern rather than listed flat.
 \S\ref{sec:adapter-displaymode} covers the enum), \texttt{Adapter} (get-only reference to the
 \cnaclass{GraphicsAdapter} this device was created against), \texttt{GraphicsProfile} (get-only
 --- real XNA fixes this at construction; see \texttt{SetGraphicsProfileEXT} in
-\S\ref{sec:noxna-helpers} for CNA's one narrow, internal exception to that), and
+\S\ref{sec:cnaext-helpers} for CNA's one narrow, internal exception to that), and
 \texttt{PresentationParameters} (both a mutable and a const-reference overload, so a caller can
 either read the current settings or mutate them in place before a \texttt{Reset()}).
 
@@ -197,18 +197,18 @@ through a state object.
 \label{sec:graphicsdevice-viewport-scissor}
 
 The two setters have the same shared shape and no shared validation. CNA first copies the
-complete public value, then immediately invokes the matching backend viewport or scissor
-hook. A backend that inherits those virtuals' empty defaults therefore still
-round-trips the property perfectly while changing no pixels. Conversely, a backend that throws
+complete public value, then immediately invokes the matching renderer viewport or scissor
+hook. A renderer that inherits those virtuals' empty defaults therefore still
+round-trips the property perfectly while changing no pixels. Conversely, a renderer that throws
 after receiving the call can leave requested state stored even though native state was not
 updated. \texttt{Viewport::Project()} and \texttt{Unproject()} remain useful pure mathematics in
 either case; they operate on the \cnaclass{Viewport} value itself, not on queried GPU state.
 
 \texttt{ScissorRectangle} is only the rectangle. Whether it clips is a separate
 \cnaclass{RasterizerState::\allowbreak{}ScissorTestEnable} value forwarded through
-\texttt{ApplyRasterizerState}. A conforming backend must retain both pieces independently:
+\texttt{ApplyRasterizerState}. A conforming renderer must retain both pieces independently:
 setting a non-empty rectangle while the Boolean is false must not clip, and enabling the
-Boolean must use the last rectangle. Several backends do that, but the complete audit in
+Boolean must use the last rectangle. Several renderers do that, but the complete audit in
 \S\ref{sec:backend-viewport-scissor-matrix} finds both silent no-ops and one inverse failure:
 \texttt{SDL\_RENDERER} (and ASCII through delegation) applies an SDL clip immediately from the
 rectangle while ignoring the Boolean, so a non-empty rectangle clips even when the public
@@ -217,11 +217,11 @@ rasterizer state says it is disabled.
 Three lifecycle rules are easy to conflate:
 
 \begin{itemize}
-  \item Construction obtains a full-size viewport and pushes it to the backend. CNA does
+  \item Construction obtains a full-size viewport and pushes it to the renderer. CNA does
         \emph{not} initialize \texttt{ScissorRectangle} to the same bounds; its public value
         remains the default zero rectangle. FNA initializes and forwards both.
   \item \texttt{Present()} calls \texttt{UpdateViewportFromWindow()}, but that helper compares
-        the current size against its own last backend-derived dimensions. A custom sub-region
+        the current size against its own last renderer-derived dimensions. A custom sub-region
         survives ordinary frames and is reset only after a genuine size change. Scissor is not
         touched by this path.
   \item Every actual 2D, cube, or MRT target switch resets both properties through one shared
@@ -244,16 +244,16 @@ rather than infer them from \texttt{PresentationParameters}.
 \texttt{setIndicesProperty(const IndexBuffer*)} setter) is XNA's original property-style
 binding for the currently-bound index buffer. \S\ref{sec:vertex-index-binding} below covers why
 this property and the newer \texttt{SetIndexBuffer} / \texttt{GetIndexBuffer} / \texttt{Indices()}
-method trio (all NOXNA additions) end up meaning the same thing through three different
+method trio (all CNAEXT additions) end up meaning the same thing through three different
 call spellings.
 
 \begin{sourcenote}
 \textbf{A recurring internal detail, worth flagging here because it recurs throughout
 Part~IV:} \texttt{deviceStatus\_} (backing \texttt{GraphicsDeviceStatus}) is only ever driven
-away from \texttt{Normal} by the \texttt{D3D9} backend's real device-lifecycle callback
-(Chapter~\ref{ch:direct3d-backends}) --- every other backend never touches it, so
+away from \texttt{Normal} by the \texttt{D3D9} renderer's real device-lifecycle callback
+(Chapter~\ref{ch:direct3d-backends}) --- every other renderer never touches it, so
 \texttt{GraphicsDeviceStatus} stays \texttt{Normal} for the whole life of the process on any
-other backend.
+other renderer.
 \end{sourcenote}
 
 \section{Clear, Present, Reset}
@@ -273,12 +273,12 @@ Four overloads, only two of which are real XNA:
   stencil. The options are a bitwise-OR of \texttt{Target}, \texttt{DepthBuffer}, and
   \texttt{Stencil} (\S\ref{sec:clearoptions} below); depth is the clear value in
   \texttt{[0,1]}, and stencil is the stencil-buffer clear value.
-\item[\texttt{Clear(r,g,b,a)}] \texttt{NOXNA} (though under-tagged in the header itself --- see
-  the audit note below) --- bypasses the full shared overload and invokes the backend's plain
+\item[\texttt{Clear(r,g,b,a)}] \texttt{CNAEXT} (though under-tagged in the header itself --- see
+  the audit note below) --- bypasses the full shared overload and invokes the renderer's plain
   colour hook directly. It is therefore \emph{not} equivalent to
   \texttt{Clear(Color(r,g,b,a))}: EasyGL's hook also clears depth, Vulkan/BGFX fold it into a
   broader pass/view clear, while most other products clear colour alone.
-\item[\texttt{Clear(Color,depth)}] \texttt{NOXNA} --- clears color and depth together without
+\item[\texttt{Clear(Color,depth)}] \texttt{CNAEXT} --- clears color and depth together without
   needing to spell out the target and depth-buffer option flags at every call site. This is
   the overload the worked example in \S\ref{sec:worked-drawprimitives} below actually uses.
 \end{description}
@@ -293,7 +293,7 @@ rather than a \texttt{Color}) is the one XNA overload genuinely missing.
 override window handle) is absent. \texttt{Reset()} comes in four overloads:
 \texttt{Reset()} (re-applies the current \cnaclass{PresentationParameters} unchanged),
 \texttt{Reset(const PresentationParameters\&)}, \texttt{Reset(const PresentationParameters\&,
-GraphicsAdapter\&)}, and a fourth \texttt{NOXNA} pointer-adapter overload,
+GraphicsAdapter\&)}, and a fourth \texttt{CNAEXT} pointer-adapter overload,
 \texttt{Reset(const PresentationParameters\&, GraphicsAdapter*)}, that accepts \texttt{nullptr}
 to mean ``keep the current adapter'' without requiring a caller to look one up just to pass it
 back unchanged.
@@ -305,18 +305,18 @@ The four overloads all end in the pointer-adapter form, whose order is part of t
 contract. CNA first raises \texttt{DeviceResetting}; only then does it copy the supplied
 presentation-parameter value, replace \texttt{Adapter} when the pointer is non-null,
 update TouchPanel's logical dimensions, try the SDL window's fullscreen/size changes, and forward
-virtual resolution, multisampling, swap interval, and presentation-format fields to the backend.
+virtual resolution, multisampling, swap interval, and presentation-format fields to the renderer.
 It calls \texttt{UpdateViewportFromWindow()} and raises \texttt{DeviceReset} last. Thus a
 \texttt{DeviceResetting} handler in CNA observes the \emph{old} parameters and adapter, whereas
-its \texttt{DeviceReset} handler observes the new, possibly backend-clamped MSAA count.
+its \texttt{DeviceReset} handler observes the new, possibly renderer-clamped MSAA count.
 
 That is a real FNA difference, not merely an event-name interpretation. FNA stores its
 \texttt{PresentationParameters} and adapter, clamps MSAA, and only then raises
 \texttt{DeviceResetting}; after the event it performs one native \texttt{FNA3D\_ResetBackbuffer}
 call and unconditionally assigns full-backbuffer \texttt{Viewport} and
 \texttt{ScissorRectangle} before \texttt{DeviceReset}. The current reference implementation is
-available at \url{https://raw.githubusercontent.com/FNA-XNA/FNA/master/src/Graphics/GraphicsDevice.cs}.
-CNA has no equivalent universal backend-reset call. Its successful final event means that its
+available in FNA's \texttt{src/Graphics/GraphicsDevice.cs}.
+CNA has no equivalent universal renderer-reset call. Its successful final event means that its
 shared routing completed; it does not establish that a driver accepted every requested native
 format, timing, or fullscreen change (the product-specific limits are the subject of the two
 source notes below).
@@ -363,7 +363,7 @@ yet are not copied back into the manager's preferred fields; unless the handler 
 same edit on every invocation, a later manager preference change rebuilds a candidate from those
 old fields. There is also no post-handler validation: a handler
 that replaces the otherwise non-null adapter pointer with \texttt{nullptr} reaches the later
-dereference in \texttt{applyToExistingBackend()}. Use this event to refine valid settings, not
+dereference in \texttt{applyToExistingRenderer()}. Use this event to refine valid settings, not
 to manufacture an absent adapter.
 
 All these event invocations propagate listener exceptions. A throw before the final manager
@@ -453,24 +453,24 @@ concrete gaps against FNA's public surface are the \texttt{Present} 3-arg overlo
 \texttt{Clear(ClearOptions, Vector4, ...)} overload, and \texttt{GetRenderTargetsNoAllocEXT}.
 Several convenience overloads and aliases (the two extra \texttt{Clear} forms above, plus
 \texttt{SetIndexBuffer} / \texttt{GetIndexBuffer} / \texttt{GetVertexBuffer} aliases) exist without
-their expected \texttt{NOXNA} tag --- a real, specific instance of
-Chapter~\ref{ch:design-philosophy}'s \texttt{NOXNA}-discipline being imperfectly applied, worth
-knowing about if you are relying on the \texttt{NOXNA} build check to catch every non-XNA
+their expected \texttt{CNAEXT} tag --- a real, specific instance of
+Chapter~\ref{ch:design-philosophy}'s \texttt{CNAEXT}-discipline being imperfectly applied, worth
+knowing about if you are relying on the \texttt{CNAEXT} build check to catch every non-XNA
 member mechanically.
 \end{sourcenote}
 
 \begin{sourcenote}
 \textbf{\texttt{PresentationParameters} is requested state, not proof of active presentation
 timing.} Both \texttt{Reset(pp)} and the separate presentation-parameter setter store the
-caller's interval. Immediate maps to~0, One to~1, and Two to~2. Each path calls the backend's
+caller's interval. Immediate maps to~0, One to~1, and Two to~2. Each path calls the renderer's
 swap-interval hook, but that virtual is allowed to do nothing. Vulkan inherits the no-op
 after construction; four non-presenting or
-browser/legacy products also ignore it, while several active GPU backends collapse
+browser/legacy products also ignore it, while several active GPU renderers collapse
 \texttt{Two} to ordinary VSync. D3D9 is the only Direct3D exact mapping, but interval~2 is
 invalid in windowed D3D9 and CNA does not preflight that restriction. SDL Renderer and
 EasyGL submit the numeric~2 without being able to guarantee that the driver accepts it. A
 successful property round trip therefore establishes only what CNA retained, not what the
-driver or compositor accepted. The complete fourteen-product matrix and actual test boundary
+driver or compositor accepted. The inherited fourteen-product matrix and actual test boundary
 are in \S\ref{sec:backend-swap-interval-matrix}.
 \end{sourcenote}
 
@@ -510,7 +510,7 @@ original scope and covered here for the first time:
 \item[\texttt{void SetRenderTargets(const std::vector<RenderTargetBinding>\& renderTargets)}]
   binds multiple render targets simultaneously (multiple render target / MRT rendering) ---
   each \cnaclass{RenderTargetBinding} pairs a render target with which face to use if it's a
-  cube map. The public shape admits a cube binding, but CNA's conversion to backend bindings
+  cube map. The public shape admits a cube binding, but CNA's conversion to renderer bindings
   currently recognizes only \cnaclass{RenderTarget2D}; the cube form is therefore not a
   working route despite compiling.
 \item[\texttt{std::vector<RenderTargetBinding> GetRenderTargets() const}] returns the currently
@@ -534,9 +534,9 @@ bound, resets viewport/scissor, and optionally performs the discard clear.
 
 CNA instead implements the three overloads separately and has no redundant-binding test.
 Calling \texttt{SetRenderTarget(\&rt)} twice therefore is \emph{not} a harmless state
-confirmation: both calls reach the backend and reset viewport/scissor, and a
+confirmation: both calls reach the renderer and reset viewport/scissor, and a
 \cnaclass{RenderTargetUsage::DiscardContents} 2D target receives the implicit black clear
-again. Depending on the backend, the second call can also finalize and rebind the same native
+again. Depending on the renderer, the second call can also finalize and rebind the same native
 resource. Repeating \texttt{SetRenderTarget(nullptr)} likewise resets the two public
 rectangles. Code that wants to preserve either attachment content or a custom rectangle should
 avoid redundant target calls rather than relying on FNA's no-op behavior.
@@ -547,13 +547,13 @@ discard request, which includes all three flags and then lets the active
 \cnaclass{DepthFormat} mask unavailable planes. ``Discard'' also does not promise that a later
 read sees black: black is CNA's present implementation choice (and FNA's release-build
 performance choice), not the API's preserved-content guarantee. Chapter~\ref{ch:backend-architecture},
-\S\ref{sec:backend-rendertarget-usage-matrix}, shows which deferred backends clear more than
+\S\ref{sec:backend-rendertarget-usage-matrix}, shows which deferred renderers clear more than
 the shared request and which immediate ones leave stencil untouched.
 
 The cube overload has the inverse problem: it never performs a usage-dependent implicit clear
 at all. The plural overload appears to repair the missing bookkeeping because it copies the
 caller's \cnaclass{RenderTargetBinding} vector into \texttt{currentRenderTargets\_}, but then
-converts each entry with \texttt{dynamic\_cast<RenderTarget2D*>}; a cube becomes a null backend
+converts each entry with \texttt{dynamic\_cast<RenderTarget2D*>}; a cube becomes a null renderer
 entry. The selected product may consequently bind its backbuffer, bind no color attachment,
 throw, or dereference null while the shared device still claims a target is bound. Use the
 dedicated singular cube overload only, and treat \texttt{GetRenderTargets()} as unreliable
@@ -563,8 +563,8 @@ during that bind, until the shared route is unified.
 \label{sec:worked-rendertarget}
 
 The program below exercises every method in this section for real on the \texttt{SOFTWARE}
-backend: it draws an orange/gold triangle into an offscreen 128$\times$128
-\cnaclass{RenderTarget2D}, uses that backend's current-framebuffer interpretation of
+renderer: it draws an orange/gold triangle into an offscreen 128$\times$128
+\cnaclass{RenderTarget2D}, uses that renderer's current-framebuffer interpretation of
 \texttt{GetBackBufferData} (\S\ref{sec:backbuffer-readback} below) to confirm the render
 target's own pixels \emph{while it is still bound}, restores the back buffer with
 \texttt{SetRender\allowbreak Target(nullptr)}, confirms via
@@ -572,8 +572,8 @@ target's own pixels \emph{while it is still bound}, restores the back buffer wit
 buffer really is active again, draws a second, unrelated scene into the back buffer, and
 finally tries to draw the offscreen render target's own contents back into the main scene as a
 small inset --- the classic render-to-texture pattern behind minimaps, portals, and
-post-processing effects alike. The readback line is a backend-specific diagnostic, not a
-portable XNA/FNA idiom: six CNA products read the active render target here, five would read
+post-processing effects alike. The readback line is a renderer-specific diagnostic, not a
+portable XNA/FNA idiom: in the inherited audit cohort, six CNA products read the active render target here, five would read
 the actual back buffer instead, one synthesizes only its last clear, and two throw. The
 complete matrix is in \S\ref{sec:backend-readback-matrix}.
 
@@ -613,12 +613,12 @@ instead.
 
 \begin{sourcenote}
 \textbf{A real bug, found live while writing this worked example, not copied from an existing
-issue tracker.} \texttt{SoftwareGraphicsBackend.cpp}'s \texttt{SoftwareSpriteBatchBackend::Draw}
-(the \texttt{SOFTWARE} backend's implementation of every \cnaclass{SpriteBatch} draw call)
-recognizes its texture argument via \texttt{dynamic\_cast<const SoftwareTextureBackend*>(\&texture)}.
-A \cnaclass{RenderTarget2D}'s backend object, however, is a \texttt{SoftwareRenderTargetBackend}
---- a sibling class that separately implements \texttt{IRenderTargetBackend} (itself derived
-from \texttt{ITextureBackend}), not a subclass of \texttt{SoftwareTextureBackend} itself. The
+issue tracker.} \texttt{SoftwareRenderer.cpp}'s \texttt{SoftwareSpriteBatchRenderer::Draw}
+(the \texttt{SOFTWARE} renderer's implementation of every \cnaclass{SpriteBatch} draw call)
+recognizes its texture argument via \texttt{dynamic\_cast<const SoftwareTextureRenderer*>(\&texture)}.
+A \cnaclass{RenderTarget2D}'s renderer object, however, is a \texttt{SoftwareRenderTargetRenderer}
+--- a sibling class that separately implements \texttt{IRenderTargetRenderer} (itself derived
+from \texttt{ITextureRenderer}), not a subclass of \texttt{SoftwareTextureRenderer} itself. The
 \texttt{dynamic\_cast} therefore fails silently, \texttt{texture0} ends up null, and the
 rasterizer's own texture-sampling code (which re-derives the same \texttt{dynamic\_cast} a
 second time, at the point it actually needs pixel data) treats a null texture as ``draw
@@ -628,9 +628,9 @@ untextured'' --- exactly the blank white quad in the figure. Tellingly, the raw
 \emph{do} guard against exactly this case --- they throw a \texttt{std::runtime\_error} when
 \texttt{TextureEnabled} is set but \texttt{texture0} is null --- so this is a real, specific
 inconsistency between two code paths that should both refuse silently-wrong output the same
-way, not a documented, intentional limitation. It affects only the \texttt{SOFTWARE} backend
+way, not a documented, intentional limitation. It affects only the \texttt{SOFTWARE} renderer
 specifically (the one this book's own screenshot tooling uses); this book takes no position on
-whether the same gap exists on any of the twelve backends Part~IV covers, since verifying that
+whether the same gap exists in other current renderer families, since verifying that
 would require testing each one directly, which is outside this chapter's scope.
 \end{sourcenote}
 
@@ -666,24 +666,24 @@ dev.SetRenderTarget(nullptr);
 \end{lstlisting}
 
 Whether this code actually writes to \emph{both} targets in one draw call, however, depends
-entirely on which backend compiled it --- and this is worth stating precisely rather than
+entirely on which renderer compiled it --- and this is worth stating precisely rather than
 assuming uniform behavior, per \S\ref{sec:worked-rendertarget}'s own reminder that this
-chapter's screenshot tooling exposed a real backend-specific gap once already this chapter.
-\cnaclass{IGraphicsBackend}'s own base implementation of \texttt{SetRenderTargets} is
+chapter's screenshot tooling exposed a real renderer-specific gap once already this chapter.
+\cnaclass{IGraphicsRenderer}'s own base implementation of \texttt{SetRenderTargets} is
 documented directly in its header comment: ``Default: binds the first target via
-\texttt{SetRenderTarget2D}; backends with MRT support should override'' --- in other words,
-a backend that never overrides it silently binds only \texttt{rts[0]} and drops every
-additional target with no error or warning at all. Reading each backend's own
+\texttt{SetRenderTarget2D}; renderers with MRT support should override'' --- in other words,
+a renderer that never overrides it silently binds only \texttt{rts[0]} and drops every
+additional target with no error or warning at all. Reading each renderer's own
 \texttt{.cpp} directly rather than assuming: \textbf{EasyGL} genuinely overrides it, with a
 real multi-attachment framebuffer path handling \texttt{count > 1} distinctly from the
-single-target case (Chapter~\ref{ch:easygl-backend} covers this backend's own feature depth
-further); the \textbf{SOFTWARE} backend this chapter's own screenshots use does
+single-target case (Chapter~\ref{ch:easygl-backend} covers this renderer's own feature depth
+further); the \textbf{SOFTWARE} renderer this chapter's own screenshots use does
 \emph{not} override it at all, and therefore silently falls back to the single-target default
---- a real, verified, currently-uncorrected limitation of this one backend, not a general CNA
+--- a real, verified, currently-uncorrected limitation of this one renderer, not a general CNA
 constraint. This is precisely why the MRT code sample above is left unscreenshotted in this
 chapter: running it against \texttt{SOFTWARE} would render only into \texttt{albedoTarget} and
 silently produce nothing in \texttt{normalTarget}, which would misleadingly look like a
-successful MRT demonstration to a reader who couldn't see the backend-specific caveat --- the
+successful MRT demonstration to a reader who couldn't see the renderer-specific caveat --- the
 source-level finding here is the honest way to convey this, not a screenshot that would need a
 paragraph of caption disclaiming what it doesn't actually show.
 
@@ -772,12 +772,12 @@ device.DrawInstancedPrimitives(
 \end{lstlisting}
 
 This compiles like XNA's multi-stream idiom, but CNA forwards a narrower contract.
-CNA scans the stored binding vector and passes the backend only the \emph{first} non-null
+CNA scans the stored binding vector and passes the renderer only the \emph{first} non-null
 buffer whose instance frequency is greater than zero. \path{GpuDrawParams} contains that one
-backend pointer; it has no field for the actual frequency, either binding's offset, or any
+renderer pointer; it has no field for the actual frequency, either binding's offset, or any
 additional stream. Frequencies 1,
 2, and 100 are consequently indistinguishable, every consumed stream starts at offset zero,
-and a third stream is never visible to the draw backend. FNA instead passes its complete
+and a third stream is never visible to the draw renderer. FNA instead passes its complete
 native binding array, including every offset and frequency, before issuing the instanced draw.
 
 The effect contract is narrower too. EasyGL can bind both caller declarations to a custom
@@ -790,7 +790,7 @@ deliberately uses a custom effect.
 
 There is no \cnaclass{GraphicsCapability} value for hardware instancing. FNA asks its native
 driver and throws \texttt{NoSuitableGraphicsDeviceException} when support is absent; CNA
-cannot be queried equivalently. Seven GPU backends implement a real instanced callback,
+cannot be queried equivalently. Seven GPU renderers implement a real instanced callback,
 SDL GPU and Software inherit the shared \texttt{std::runtime\_error} default, and a missing
 positive-frequency binding produces different results even among the seven implementations
 (one ordinary draw, repeated identical geometry, or no draw). The complete outcome and
@@ -866,14 +866,14 @@ World/View/Projection concept at all), draws with a silent identity transform on
 not an error, and not a crash, simply geometry rendered exactly as authored in clip space with
 no further transformation applied.
 
-\subsection{NOXNA draw-adjacent helper}
+\subsection{CNAEXT draw-adjacent helper}
 
-\texttt{NOXNA static int PrimitiveVerts(PrimitiveType primitiveType, int primitiveCount)}
+\texttt{CNAEXT static int PrimitiveVerts(PrimitiveType primitiveType, int primitiveCount)}
 mirrors FNA's internal (never publicly exposed) \texttt{PrimitiveVerts()} helper, converting a
 primitive count to the vertex count it requires (three per triangle for
 \texttt{TriangleList}, two more per additional triangle for \texttt{TriangleStrip}, and so on).
 Exposed publicly here so calling code and tests can validate a vertex array's size before
-issuing a draw call, rather than only discovering a too-small array via a backend-level
+issuing a draw call, rather than only discovering a too-small array via a renderer-level
 out-of-bounds read. Throws \texttt{System::InvalidOperationException} if \texttt{primitiveType}
 is unrecognized.
 
@@ -893,15 +893,15 @@ it's \texttt{nullptr}. All three are the same narrowing-to-\texttt{Color} patter
 \cnaclass{Color}.
 
 \textbf{The method name is not a uniform CNA contract.} The shared wrapper forwards the
-rectangle directly to \texttt{IGraphicsBackend::ReadBackbuffer}; the backend decides which
-image those coordinates address. Six products read the \emph{currently bound render target}
+rectangle directly to \texttt{IGraphicsRenderer::ReadBackbuffer}; the renderer decides which
+image those coordinates address. In the inherited audit cohort, six products read the \emph{currently bound render target}
 when one exists, five always read the real window backbuffer/swapchain, \texttt{HEADLESS}
 synthesizes the last global clear color, and \texttt{SDL\_GPU}/\texttt{D3D12} inherit the
 interface's throwing default. FNA, by contrast, always calls its actual
 \texttt{FNA3D\_ReadBackbuffer} path regardless of the current render-target binding. Therefore
 the earlier worked example's bound-target probe is useful on \texttt{SOFTWARE}, but it is not
 portable evidence that a generic CNA render target was rendered correctly. There is no single
-universal pixel-verification route across all fourteen products: use a backend's real
+universal pixel-verification route across the full fourteen-product audit cohort: use a renderer's real
 \cnaclass{RenderTarget2D::GetData} support where documented, or first draw the target back to
 the window and probe the actual backbuffer on a product that supports it. The full target,
 coordinate-space, and evidence matrix is in
@@ -919,8 +919,8 @@ writes exactly \(w\times h\) colors starting at \texttt{startIndex}. A safe call
 non-negative coordinates/dimensions and offset, checked multiplication/addition, target
 bounds, and the complete allocation capacity before entering this API.
 
-Every real, unedited screenshot this chapter embeds is produced on its named, tested backend
-through a \texttt{NOXNA} helper used by the book's own tooling:
+Every real, unedited screenshot this chapter embeds is produced on its named, tested renderer
+through a \texttt{CNAEXT} helper used by the book's own tooling:
 \texttt{Save\allowbreak{}Back\allowbreak{}Buffer\allowbreak{}Screenshot\allowbreak{}EXT()}
 (\texttt{tools/cna-screenshot-infra/} here, not part of CNA) reads the whole image through
 \texttt{GetBackBufferData(Color*, int)} and encodes the returned colors as PNG. That known
@@ -928,19 +928,20 @@ configuration is materially narrower than assuming the pattern works everywhere.
 debug probe has the same preconditions:
 
 \begin{lstlisting}
-// Only after checking this backend reads the intended image and that
+// Only after checking this renderer reads the intended image and that
 // (x,y) lies in the coordinate space reported for that image:
 Color pixel(0, 0, 0, 0);
 const Rectangle probeRegion(x, y, 1, 1);
 dev.GetBackBufferData(&probeRegion, &pixel, 0, 1);
-// pixel now holds that backend's observable image at (x, y).
+// pixel now holds that renderer's observable image at (x, y).
 \end{lstlisting}
 
-\section{NOXNA helper and diagnostic methods}
+\section{CNAEXT helper and diagnostic methods}
+\label{sec:cnaext-helpers}
 \label{sec:noxna-helpers}
 
-A cluster of methods exist purely to support tooling, testing, and backend-internal plumbing
---- none are part of real XNA, and every one is tagged \texttt{NOXNA} in the header:
+A cluster of methods exist purely to support tooling, testing, and renderer-internal plumbing
+--- none are part of real XNA, and every one is tagged \texttt{CNAEXT} in the header:
 
 \begin{description}
 \item[\texttt{void OnResourceCreated(System::Object* resource)}] fires the
@@ -968,7 +969,7 @@ A cluster of methods exist purely to support tooling, testing, and backend-inter
   profile-switch (real XNA has none either).
 \item[\texttt{void SetContextRecoveryEnabled(bool enabled)}] changes a policy for subsequent
   resource creation and uploads. Call it immediately after device construction but before
-  loading content --- the device and backend necessarily already exist. On every product,
+  loading content --- the device and renderer necessarily already exist. On every product,
   disabling it lets a completed \cnaclass{Texture2D} upload discard its CPU pixel shadow;
   EasyGL additionally stops registering later GL resources for recreation. This saves memory
   but makes ordinary \texttt{GetData()} and partial level-0 updates fail after that shadow is
@@ -976,27 +977,27 @@ A cluster of methods exist purely to support tooling, testing, and backend-inter
 \item[Debug marker] \texttt{SetStringMarkerEXT()} requests a named GPU marker. On Vulkan with
   the debug-utils extension available, this becomes a real native debug-label command visible
   in RenderDoc/NVIDIA Nsight. D3D9 throws an explicit not-implemented error; the other twelve
-  products inherit the empty hook.
-\item[\texttt{IGraphicsBackend\& GetBackend() const}] returns a reference to the active backend
-  interface --- the seam Part~IV's whole backend-by-backend treatment sits behind.
-\item[\texttt{constexpr CNA::GraphicsBackendType GetGraphicsBackendType() const}] reports which
-  backend was compiled into this build, as an enum value matching the
-  \texttt{CNA\_GRAPHICS\_BACKEND} CMake option (e.g. \texttt{EASYGL}, \texttt{D3D9},
+  products in that audit cohort inherit the empty hook.
+\item[\texttt{IGraphicsRenderer\& GetRenderer() const}] returns a reference to the active renderer
+  interface --- the seam Part~IV's whole renderer-by-renderer treatment sits behind.
+\item[\texttt{constexpr CNA::GraphicsRendererType GetGraphicsRendererType() const}] reports which
+  renderer was compiled into this build, as an enum value matching the
+  \texttt{CNA\_GRAPHICS\_RENDERER} CMake option (e.g. \texttt{OPENGLES3}, \texttt{DIRECTX9},
   \texttt{SOFTWARE}). Genuinely \texttt{constexpr} --- it reads a compile-time constant, not
   \texttt{this}, so it can be evaluated without a live device at all.
-\item[\texttt{constexpr std::string\_view GetGraphicsBackendName() const}] the same information
-  as a human-readable string (e.g. \texttt{"EASYGL"}) rather than an enum value; equally
+\item[\texttt{constexpr std::string\_view GetGraphicsRendererName() const}] the same information
+  as a human-readable string (e.g. \texttt{"OPENGLES3"}) rather than an enum value; equally
   \texttt{constexpr} for the identical reason.
 \item[\texttt{bool SupportsCapability(CNA::GraphicsCapability capability) const}] the
-  recommended way to check whether the active backend (and, for device-dependent entries, the
+  recommended way to check whether the active renderer (and, for device-dependent entries, the
   current runtime driver) supports a given capability --- e.g. 3D rendering on the 2D-only
-  \texttt{SDL\_RENDERER} / \texttt{DX3} / \texttt{CANVAS} backends --- \emph{before} relying on it,
+  \texttt{SDL\_RENDERER} / \texttt{FREEDIRECT} / \texttt{CANVAS} renderers --- \emph{before} relying on it,
   rather than calling the feature and handling whatever exception results. The worked example
-  below shows the current \texttt{ASCII} exception to that intended contract.
+  below treats the capability result as a first gate rather than a universal proof.
 \item[\texttt{void SetCurrentEffect(Effect* effect)}] called automatically by
   \texttt{Effect::Apply()}; not meant to be called directly by ordinary game code, but included
   here because it's the exact mechanism Chapter~\ref{ch:stock-effects}'s stock-effect chapter
-  and \S\ref{sec:worked-drawprimitives}'s own worked example both depend on --- the backend
+  and \S\ref{sec:worked-drawprimitives}'s own worked example both depend on --- the renderer
   reaches the active effect's shader parameters via virtual dispatch through
   \texttt{FillGpuDrawParams()}, not through a hardcoded effect type check.
 \item[\texttt{void SetPresentationParameters(const PresentationParameters\& pp)}] stores new
@@ -1005,39 +1006,39 @@ A cluster of methods exist purely to support tooling, testing, and backend-inter
   \texttt{PresentationParameters} property after applying preferred settings, ahead of whatever
   later call actually resets the device.
 \item[Legacy multisample rebuild] \leavevmode\par
-  The test-only \texttt{RecreateBackendForMultiSampleCount(int)} hook tears down and rebuilds
-  the active backend (same window) with a new requested multisample count.
+  The test-only \texttt{RecreateRendererForMultiSampleCount(int)} hook tears down and rebuilds
+  the active renderer (same window) with a new requested multisample count.
   Its header still describes a missing manager/reset path, but that rationale is stale:
   ordinary \texttt{ApplyChanges()} now reaches the normal reset and multisample-application
   path. This older escape hatch remains in three focused Vulkan tests; it is still safe only
-  before GPU resources exist, because it destroys and replaces the complete backend rather than
+  before GPU resources exist, because it destroys and replaces the complete renderer rather than
   performing the normal resource-preserving reconfiguration. This is a precondition in prose,
   not an enforced check: it neither examines the resource vector nor raises \texttt{DeviceResetting}
   or \texttt{DeviceReset}. A texture, buffer, or target created before the call retains a
-  backend object tied to the destroyed backend.
+  renderer object tied to the destroyed renderer.
 
-  The implementation destroys \texttt{backend\_}, creates its replacement, then reruns the
+  The implementation destroys \texttt{renderer\_}, creates its replacement, then reruns the
   viewport update. It does not reapply the stored blend/depth/rasterizer,
   sampler, vertex/index, effect, blend-factor, stencil, or custom viewport/scissor state to the
   replacement. The final viewport helper commonly returns early at the same window dimensions,
-  because its remembered dimensions belong to the old backend. It also stores the requested count
-  before construction but never writes the new backend's actual clamped count back, unlike the
+  because its remembered dimensions belong to the old renderer. It also stores the requested count
+  before construction but never writes the new renderer's actual clamped count back, unlike the
   ordinary \texttt{Reset()} path.
 
-  Replacement failure is worse than an unsupported sample count: the old backend has already
+  Replacement failure is worse than an unsupported sample count: the old renderer has already
   been destroyed, the device retains the new requested presentation value, and
-  \texttt{GetBackend()} / \texttt{SupportsCapability()} throw because \texttt{backend\_} is null.
-  A normal \texttt{Reset()} still raises both events but skips all backend work in that state; only
-  another successful call to this NOXNA hook can restore a backend. The three legacy callers invoke it
+  \texttt{GetRenderer()} / \texttt{SupportsCapability()} throw because \texttt{renderer\_} is null.
+  A normal \texttt{Reset()} still raises both events but skips all renderer work in that state; only
+  another successful call to this CNAEXT hook can restore a renderer. The three legacy callers invoke it
   during \texttt{Initialize()} before their first \cnaclass{SpriteBatch}, texture, or target and
   then prove Vulkan rendering; no located test covers resources/state/events, clamping, or a
   failed replacement. Prefer the normal manager/reset route for runtime MSAA changes.
 \end{description}
 
 \begin{sourcenote}
-\textbf{Recovery is not one backend Boolean.} The framework flag changes
-\cnaclass{Texture2D}'s CPU-shadow lifetime on every product even when the backend virtual is
-empty. EasyGL is the sole backend that also changes a real recovery registry. D3D9 is the
+\textbf{Recovery is not one renderer Boolean.} The framework flag changes
+\cnaclass{Texture2D}'s CPU-shadow lifetime on every product even when the renderer virtual is
+empty. EasyGL is the sole renderer that also changes a real recovery registry. D3D9 is the
 awkward third case: the framework flag changes first, then its override throws
 \texttt{runtime\_error}, leaving the shared texture policy changed despite the failed call.
 The F9/F10 loss channel and marker behavior are separately classified in
@@ -1048,56 +1049,49 @@ The F9/F10 loss channel and marker behavior are separately classified in
 // Worked example: defensively check a capability before relying on it,
 // rather than calling it and handling whatever exception results --
 // exactly the pattern SupportsCapability's own doc comment recommends.
-// SDL_Renderer, DX3, and Canvas genuinely return false here. ASCII is also
-// 2D-only, but currently inherits the base class's default-true answer.
+// A false result is definitive. A true result is a first gate: the renderer
+// contract and any device-dependent limits still apply.
 const bool reports3D =
     dev.SupportsCapability(CNA::GraphicsCapability::ThreeD);
-const bool knownAsciiFalsePositive =
-    dev.GetGraphicsBackendType() == CNA::GraphicsBackendType::Ascii;
 
-if (reports3D && !knownAsciiFalsePositive)
+if (reports3D)
 {
-    // Safe for every currently shipped backend after the known exception above.
+    // Continue with the renderer-specific capability/evidence checks from Part IV.
 }
 else
 {
-    std::printf("3D unsupported on backend: %.*s\n",
-                static_cast<int>(dev.GetGraphicsBackendName().size()),
-                dev.GetGraphicsBackendName().data());
+    std::printf("3D unsupported on renderer: %.*s\n",
+                static_cast<int>(dev.GetGraphicsRendererName().size()),
+                dev.GetGraphicsRendererName().data());
     // fall back to a 2D-only rendering path instead
 }
 \end{lstlisting}
 
 \begin{sourcenote}
-\textbf{A second, closely related finding, discovered by directly reading every backend's own
+\textbf{A second, closely related finding, discovered by directly reading every renderer's own
 \texttt{SupportsCapability} override rather than assuming the capability system is uniformly
-reliable.} \texttt{IGraphicsBackend::SupportsCapability}'s own default implementation --- used
-by any backend that doesn't override a specific capability --- returns \texttt{true}
+reliable.} \texttt{IGraphicsRenderer::SupportsCapability}'s own default implementation --- used
+by any renderer that doesn't override a specific capability --- returns \texttt{true}
 unconditionally. That default creates more than one confirmed false positive.
 \texttt{CNA::GraphicsCapability::MultipleRenderTargets} exists in the enum
 specifically to let a caller check MRT support ahead of time, exactly as
-\S\ref{sec:worked-mrt} above recommends, but it is never actually referenced by any backend's
+\S\ref{sec:worked-mrt} above recommends, but it is never actually referenced by any renderer's
 \texttt{SupportsCapability} override anywhere in the codebase --- meaning
 \texttt{SupportsCapability(MultipleRenderTargets)} currently returns \texttt{true}
-\emph{universally}, including on the \texttt{SOFTWARE} backend, where
+\emph{universally}, including on the \texttt{SOFTWARE} renderer, where
 \S\ref{sec:worked-mrt} already demonstrated \texttt{SetRenderTargets} silently drops every
 target past the first. The capability query that exists specifically to protect a caller from
 this exact gap does not currently protect against it --- a real, precise, second-order finding
 about the capability system's own incompleteness, not a criticism of the MRT gap itself (which
-the header's own doc comment already names honestly as backend-dependent).
+the header's own doc comment already names honestly as renderer-dependent).
 
-The same direct audit finds two further shapes. \texttt{ASCII} is 2D-only and its reachable 3D
-operations forward to SDL renderer's throwing implementation, yet it has no capability
-override and therefore reports \texttt{ThreeD=true}; that is why the worked example above
-checks the backend type as well. \texttt{CustomEffects} likewise reports \texttt{true} on
-\texttt{BGFX}, \texttt{WEBGPU}, \texttt{ASCII}, and \texttt{SOFTWARE}, despite respectively
-producing an always-invalid compiled object, returning a null factory whose
-\cnaclass{SpriteBatch} path rejects the effect, exposing the same null/throw combination
-through the ASCII decorator, and accepting source without ever executing it. See
-Chapter~\ref{ch:shader-fx-gap} for that full backend matrix. \texttt{OcclusionQuery} adds a
-parallel confirmed set: WebGPU, SDL GPU, and Software inherit a null
-\texttt{CreateOcclusionQuery()} factory, while ASCII forwards to SDL renderer's throwing one,
-yet all four inherit the same \texttt{true} capability answer.
+The current direct audit finds the same design risk in live renderers:
+\texttt{CustomEffects} reports \texttt{true} on \texttt{BGFX} and \texttt{WEBGPU} despite two
+different non-support shapes --- an always-invalid compiled object and a null factory whose
+\cnaclass{SpriteBatch} path rejects the effect. See Chapter~\ref{ch:shader-fx-gap} for the
+effect-delivery boundary. The broader rule is that a capability's \texttt{true} result must be
+checked against the selected renderer's evidence row; the base contract is intentionally
+opt-out and therefore cannot make a forgotten override truthful.
 \end{sourcenote}
 
 \section{Resource tracking and disposal ordering}
@@ -1105,11 +1099,11 @@ yet all four inherit the same \texttt{true} capability answer.
 
 \cnaclass{GraphicsDevice} maintains a private, non-owning
 \texttt{std::vector<GraphicsResource*> resources\_}, mutated only through
-\texttt{AddResourceReference} / \texttt{RemoveResourceReference} (\S\ref{sec:noxna-helpers} above)
+\texttt{AddResourceReference} / \texttt{RemoveResourceReference} (\S\ref{sec:cnaext-helpers} above)
 --- both existing purely so the device can guarantee a specific disposal order.
 \texttt{ResourceCreated} fires immediately after registration, from the
 \emph{base-class constructor}; a handler receives the resource pointer before the derived
-\texttt{Texture2D}, buffer, or effect constructor has created its backend handle. Conversely,
+\texttt{Texture2D}, buffer, or effect constructor has created its renderer handle. Conversely,
 \texttt{ResourceDestroyed} fires after a derived \texttt{Dispose(bool)} has released that handle,
 but before the base class removes the pointer or sets \texttt{IsDisposed}. It carries only a
 \texttt{Name} / \texttt{Tag} snapshot, not the resource pointer. Removal is swap-and-pop (O(1),
@@ -1118,7 +1112,7 @@ order.
 
 For ordinary, unbound resources, the disposal sequence is the key invariant: calling
 the device's \texttt{Dispose()} copies and clears \texttt{resources\_}, disposes every tracked
-resource \emph{first}, and only then tears down the native backend context (SDL/Vulkan/GL). That
+resource \emph{first}, and only then tears down the native renderer context (SDL/Vulkan/GL). That
 ordering is what prevents a normal resource destructor from calling an already-destroyed context.
 It is not, however, an exception-safe universal guarantee; the next subsection records the
 two current public-state paths that break it.
@@ -1141,7 +1135,7 @@ atomic fact.
 The event names should not be read as a safe resource-inspection protocol. The created event runs
 while only the \cnaclass{GraphicsResource} base is constructed; the destroyed event runs after
 the usual derived classes have reset their native \texttt{unique\_ptr}. A handler can reliably
-record creation or the final \texttt{Name}/\texttt{Tag}, but must not infer a usable backend from
+record creation or the final \texttt{Name}/\texttt{Tag}, but must not infer a usable renderer from
 either event. The registered EasyGL event test proves counts, double-dispose suppression, and
 \texttt{Name}/\texttt{Tag}; its callback only counts or copies arguments, so it does not test
 calling back into a half-built or half-disposed resource.
@@ -1157,7 +1151,7 @@ that route, because they dispose each object before its scope ends.
 Two untested paths are more serious. First, \cnaclass{RenderTarget2D}'s disposal guard throws if
 the target is still bound. If that target is encountered during
 \texttt{GraphicsDevice::Dispose()}, the device has already moved and cleared its tracking vector;
-the exception prevents backend teardown, and a later retry no longer has that resource in the
+the exception prevents renderer teardown, and a later retry no longer has that resource in the
 list. The bound-resource test proves that the direct throw is deliberate, while the device-order
 test creates only buffers and an ordinary texture; no located test combines a bound target with
 device disposal. Code which explicitly owns a device must unbind its targets before disposal.
@@ -1170,17 +1164,17 @@ idempotent completed device. Current FNA sets \texttt{IsDisposed} before it noti
 a re-entrant device-\texttt{Disposing} handler, so this is source-established rather than a
 runtime-verified compatibility result.
 
-\subsection{Per-backend disposal caveats}
+\subsection{Per-renderer disposal caveats}
 
 The ordering guarantee above is a CNA-wide invariant, but what actually happens to a native GPU
-handle on disposal is backend-specific, and \texttt{docs/graphics-resource-lifetime.md} is
+handle on disposal is renderer-specific, and \texttt{docs/graphics-resource-lifetime.md} is
 candid about the sharp edges: on \textbf{EasyGL}, disposing a bound \cnaclass{RenderTarget2D}
 without first unbinding it can leave a dangling framebuffer attachment, and there is currently
 no GL context-loss recovery; on \textbf{Vulkan}, destroying a render target still referenced by
 an in-flight frame is undefined behavior --- there is no \texttt{vkDeviceWaitIdle} guard at
 that call site; on \textbf{Bgfx}, \texttt{bgfx::destroy()} only \emph{queues} destruction for
 the next \texttt{bgfx::frame()}, so \texttt{bgfx::shutdown()} must never run before every
-resource backend has actually been destroyed. None of these are exercised by ordinary game code
+resource renderer has actually been destroyed. None of these are exercised by ordinary game code
 following the \texttt{Begin} / \texttt{Draw} / \texttt{End} pattern from earlier chapters, but they
 matter if your own code manages render-target lifetime manually across frame boundaries.
 
@@ -1201,11 +1195,11 @@ A subtlety worth internalizing: GPU handles are freed by \texttt{Dispose(bool)} 
 explicit and C\texttt{++}-destructor routes. The latter passes \texttt{false}, so it skips the
 resource's own \texttt{Disposing} event but still emits \texttt{ResourceDestroyed} to an attached
 device and unregisters itself. Explicit disposal is still the only practical rule: it releases
-the backend at a known point, before the derived object's members begin destruction.
+the renderer at a known point, before the derived object's members begin destruction.
 
 Move semantics transfer \texttt{unique\_ptr}-owned GPU state correctly but do \emph{not} update
 the device's tracking-list pointer entry. After move construction, the list retains the
-moved-from address (whose backend is null), not the destination that owns the GPU handle. If the
+moved-from address (whose renderer is null), not the destination that owns the GPU handle. If the
 device is disposed before both objects leave scope, it disposes that empty source and then tears
 the context down while the destination remains live. The EasyGL move test only proves that both
 objects can leave scope while their device is still alive; it neither checks tracking/events nor
@@ -1226,7 +1220,7 @@ computed \texttt{AspectRatio}; \cnaclass{DisplayModeCollection} supports both in
 and a \cnaclass{SurfaceFormat}-filtered \texttt{operator[]}. \cnaclass{GraphicsDeviceStatus} is
 the three-value enum (\texttt{Normal}, \texttt{Lost}, \texttt{NotReset}) already introduced
 above; \cnaclass{GraphicsProfile} is the familiar XNA \texttt{Reach} / \texttt{HiDef} pair, whose
-\emph{only} backend that actually consults a real device capability structure for it is
+\emph{only} renderer that actually consults a real device capability structure for it is
 \texttt{D3D9} (Chapter~\ref{ch:direct3d-backends}) --- everywhere else the profile is present in
 the API but decorative. \cnaclass{DeviceLostException}, \cnaclass{DeviceNotResetException}, and
 \cnaclass{NoSuitableGraphicsDeviceException} are all thin \texttt{std::runtime\_error}
@@ -1278,8 +1272,8 @@ GraphicsDevice dev(*adapters[chosenIndex], GraphicsProfile::HiDef, presentationP
 \texttt{QueryBackBufferFormat(\ldots)} all exist to answer, in principle, ``will the real
 hardware behind this adapter actually accept what I'm about to request, or will it need to
 substitute something else?'' --- but reading their bodies directly (rather than trusting the
-method names) shows this question is only genuinely answered on one backend. Each method's
-source is split by an \texttt{\#ifdef CNA\_BACKEND\_D3D9}, and the source comments on the
+method names) shows this question is only genuinely answered on one renderer. Each method's
+source is split by an \texttt{\#ifdef CNA\_RENDERER\_DIRECTX9}, and the source comments on the
 non-D3D9 side name the reason explicitly rather than leaving it to guesswork:
 
 \begin{description}
@@ -1287,16 +1281,16 @@ non-D3D9 side name the reason explicitly rather than leaving it to guesswork:
   \texttt{true} unconditionally (every real D3D9 HAL device already exceeds Reach's
   \texttt{vs\_2\_0} / \texttt{ps\_2\_0} floor, so there is nothing worth querying), and
   \texttt{HiDef} is checked against a real queried \texttt{D3DCAPS9} structure. On every other
-  backend, the method's own source comment (labelled \texttt{D9-101} in the codebase's internal
+  renderer, the method's own source comment (labelled \texttt{D9-101} in the codebase's internal
   task numbering) states plainly that ``an implementation here would be a hardcoded table
   pretending to be a capability query'' --- and that the project's own \texttt{plan\_dx9.md}
   explicitly refuses to do that --- so it simply returns \texttt{true} for every profile,
-  unconditionally, on the other nine backends.
+  unconditionally, on the other nine renderers.
 \item[\texttt{QueryRenderTargetFormat} / \texttt{QueryBackBufferFormat}] on D3D9, both check a
   requested \cnaclass{SurfaceFormat} against a real profile whitelist \emph{and} a real
   \texttt{IDirect3D9::CheckDeviceFormat} / \texttt{CheckDeviceType} hardware query, falling back
   to \texttt{SurfaceFormat::Color} if either check fails --- and separately clamp the requested
-  multisample count to what the selected format actually supports. On every other backend,
+  multisample count to what the selected format actually supports. On every other renderer,
   \texttt{QueryRenderTargetFormat} falls back to a much simpler
   \texttt{isSupportedRenderTargetFormat(format)} check with the multisample count always
   reported as \texttt{0}, while \texttt{QueryBackBufferFormat} does not even attempt that much:
@@ -1305,13 +1299,13 @@ non-D3D9 side name the reason explicitly rather than leaving it to guesswork:
 \end{description}
 
 The practical consequence: code that calls these methods to decide whether a fallback path is
-needed will get a genuinely hardware-informed answer only when built against the D3D9 backend
-(Chapter~\ref{ch:direct3d-backends}); on every other backend the answer is either a hardcoded
+needed will get a genuinely hardware-informed answer only when built against the D3D9 renderer
+(Chapter~\ref{ch:direct3d-backends}); on every other renderer the answer is either a hardcoded
 \texttt{true} or a simplified format check, both honestly documented as such in the source
 rather than silently passed off as a real capability query. This is the same category of
 finding as \S\ref{sec:worked-mrt}'s own \texttt{MultipleRenderTargets} capability gap above ---
-an API surface that reads as a genuine hardware query but is only actually backed by one out of
-twelve backends --- worth knowing before writing portable code that branches on either method's
+an API surface that reads as a genuine hardware query but was actually hardware-backed only by
+the D3D9 implementation path in this audit --- worth knowing before writing portable code that branches on either method's
 return value.
 
 \section{ClearOptions: public dispatch is complete; attachment masking is not}
@@ -1321,25 +1315,25 @@ return value.
 \texttt{Stencil=4}) with the full bitwise operator set hand-implemented, the same pattern seen
 on \cnaclass{DisplayOrientation} in Chapter~\ref{ch:game-loop}. \texttt{ClearOptions::Stencil}
 was, for a real stretch of this project's history, a confirmed no-op on EasyGL and Vulkan (Task~%
-871) --- \texttt{GraphicsDevice::Clear()} never even checked the flag, and neither backend's own
+871) --- \texttt{GraphicsDevice::Clear()} never even checked the flag, and neither renderer's own
 stencil-clear path was reachable through the public API at all. It is fixed now, on every
-backend that can represent the operation: \texttt{Clear()} was extended with four new
-per-backend dispatch methods (\texttt{ClearStencil}, \texttt{ClearDepthAndStencil},
+renderer that can represent the operation: \texttt{Clear()} was extended with four new
+per-renderer dispatch methods (\texttt{ClearStencil}, \texttt{ClearDepthAndStencil},
 \texttt{ClearColorAndStencil}, \texttt{ClearColorDepthAndStencil}), and the fix surfaced a real,
-independent bug on Vulkan specifically while closing it --- every one of this backend's
+independent bug on Vulkan specifically while closing it --- every one of this renderer's
 render-pass-creation sites had \texttt{stencilLoadOp} hardcoded to
 \texttt{VK\_ATTACHMENT\_LOAD\_OP\_DONT\_CARE}, discarding whatever stencil clear value a caller
 requested regardless of what \texttt{Clear()} itself now dispatched.
 
 A methodology finding came out of testing this fix, worth knowing on its own: an initial
 same-frame test (stamp a stencil value, clear it, compare, all within one \texttt{Draw()} call)
-failed on Vulkan and BGFX even with the fix correctly applied, because both backends defer an
+failed on Vulkan and BGFX even with the fix correctly applied, because both renderers defer an
 entire frame's draws into one command buffer/view whose own clear always applies once, before
 that frame's draws, regardless of the order \texttt{Clear()} / \texttt{DrawXxx()} were actually
 called in game code --- an artifact of this project's per-frame-batched rendering architecture,
 not a discriminating test. Splitting the stamp and the clear-plus-compare across real frames
-proves the requested value eventually reaches all three hardware backends, but it does
-\emph{not} prove same-frame call ordering or per-flag selectivity. The fourteen-product matrix
+proves the requested value eventually reaches all three hardware renderers, but it does
+\emph{not} prove same-frame call ordering or per-flag selectivity. The inherited fourteen-product matrix
 in \S\ref{sec:backend-clear-matrix} records that stricter boundary.
 
 \subsection{FNA settles the depthless-target policy; CNA's format mask is too coarse}
@@ -1347,17 +1341,17 @@ in \S\ref{sec:backend-clear-matrix} records that stricter boundary.
 The full overload first validates \texttt{depth} only when \texttt{DepthBuffer} was requested;
 this happens \emph{before} target-capability masking. Thus an invalid depth still throws on a
 depthless target, while the same unused value on a target-only clear is ignored. CNA then asks
-the first bound \cnaclass{RenderTarget2D}'s backend whether requested depth storage is real, or
-uses the backend's \texttt{SupportsDepthStencil()} query for the backbuffer. If the answer is
+the first bound \cnaclass{RenderTarget2D}'s renderer whether requested depth storage is real, or
+uses the renderer's \texttt{SupportsDepthStencil()} query for the backbuffer. If the answer is
 false it executes \texttt{options \&= ClearOptions::Target}; the remaining seven non-empty flag
-combinations dispatch to seven separate backend methods.
+combinations dispatch to seven separate renderer methods.
 
 Task~1113 left the empty result as an alleged policy question because two SDL\_Renderer tests
 expected an exception. Current FNA source resolves it directly. FNA discovers the active
 \cnaclass{DepthFormat}; for \texttt{None} it masks options to \texttt{Target}, and for any
 format other than \texttt{Depth24Stencil8} it removes \texttt{Stencil} alone. A
 depth/stencil-only request on a depthless target therefore becomes empty and returns silently.
-The two SDL tests are stale, not evidence for a different XNA rule; DX3's test already avoids
+The two SDL tests are stale, not evidence for a different XNA rule; FREEDIRECT's test already avoids
 the public mask and calls its throwing internal hooks directly for exactly this reason.
 
 CNA matches the \texttt{None}-means-no-op rule but loses the format's second dimension. Its
@@ -1370,9 +1364,9 @@ format. A \texttt{Depth16} DSV has no such hidden stencil plane at all.
 
 Cube binding exposes the other routing defect. The singular cube setter clears the device's
 current-render-target list instead of retaining the active cube, so \texttt{Clear()} falls
-back to the backend-wide backbuffer answer and cannot inspect the cube's own
+back to the renderer-wide backbuffer answer and cannot inspect the cube's own
 \texttt{DepthFormat}. The plural path likewise recognizes only \cnaclass{RenderTarget2D}.
-Depth/stencil bits can therefore be kept or removed according to unrelated backbuffer/backend
+Depth/stencil bits can therefore be kept or removed according to unrelated backbuffer/renderer
 state rather than the active cube face. D3D9 compounds this by gating its native depth and
 stencil clear flags with the presentation depth/stencil-format ordinal even while a custom
 target is bound. These are concrete
@@ -1383,28 +1377,25 @@ sharpens it: \texttt{CNA::GraphicsCapability::DepthStencilBuffer} exists in the 
 comment describing exactly ``a real depth/stencil buffer on the currently active render
 target'' --- precisely the fact \texttt{Clear()}'s own internal masking check above already
 computes for itself, through a completely separate mechanism
-(\texttt{IGraphicsBackend::SupportsDepthStencil()} / \cnaclass{RenderTarget2D}'s own backend,
+(\texttt{IGraphicsRenderer::SupportsDepthStencil()} / \cnaclass{RenderTarget2D}'s own renderer,
 neither of which the public \texttt{GraphicsCapability} enum value ever consults). Reading every
-3D-capable backend's own \texttt{SupportsCapability} override directly confirms none of EasyGL,
+3D-capable renderer's own \texttt{SupportsCapability} override directly confirms none of EasyGL,
 Vulkan, or Bgfx has a \texttt{case} for \texttt{DepthStencilBuffer} at all --- every one falls
 through to the shared default, which returns \texttt{true} unconditionally, regardless of
 whether the currently active target actually has a real depth/stencil buffer or not. This is the
 same exact shape as \texttt{MultipleRenderTargets}' own gap above --- another capability, in the
 same eight-entry enum, declared for a caller to check ahead of time and never actually wired on
-any backend that would need to answer anything other than an unconditional \texttt{true} ---
+any renderer that would need to answer anything other than an unconditional \texttt{true} ---
 making \texttt{MultipleRenderTargets} and \texttt{DepthStencilBuffer} two confirmed-unreliable
-entries so far. \texttt{ThreeD} has real false-return overrides on SDL renderer, DX3, and
-Canvas, but the ASCII false positive above means it is not universally reliable either.
-\texttt{CustomEffects} is now independently confirmed unreliable for the four backend-specific
-shapes above, and \texttt{OcclusionQuery} has the four null/throw false positives just
-identified. \texttt{WireFrame}, by contrast, has a real, dedicated \texttt{case} on both
+entries so far. \texttt{ThreeD} has real renderer-specific overrides, while the opt-out default
+means that omission is still not proof. \texttt{CustomEffects} is independently confirmed
+unreliable for the two live renderer-specific shapes above. \texttt{WireFrame}, by contrast, has a real, dedicated \texttt{case} on both
 EasyGL and Vulkan --- a hardcoded \texttt{false} on EasyGL, since GLES3 has no wireframe fill
 mode at all, and a genuine runtime driver-feature check on Vulkan. The remaining entries
 complete the same pattern rather than escaping it.
 
-\texttt{MultiSampleAntiAliasing} is definitely false-positive on ASCII and Software. ASCII
-forwards the request to SDL renderer, whose explicit implementation always returns zero;
-Software allocates one ordinary CPU framebuffer and merely stores/reports a render target's
+\texttt{MultiSampleAntiAliasing} is definitely false-positive on Software, which allocates one
+ordinary CPU framebuffer and merely stores/reports a render target's
 requested count. Vulkan, WebGPU, SDL GPU, and D3D9 all perform real device/format support
 queries when a count is applied or a render target is created, and each can clamp the result
 back to one sample (reported as zero), but none consults that result from
@@ -1416,8 +1407,7 @@ device-dependent implementation whose capability answer performs the same live
 true because both reject devices below feature level~11.0, whose required RGBA8 format support
 includes multisample rendering.
 
-\texttt{Anisotropic}\allowbreak\texttt{Filtering} has three definite false positives. ASCII
-never forwards \texttt{ApplySampler}\allowbreak\texttt{State} to its inner renderer; SDL GPU stores
+\texttt{Anisotropic}\allowbreak\texttt{Filtering} has definite false positives. SDL GPU stores
 \texttt{maxAnisotropy} but omits it from every queued command and sampler-cache key, and
 Software discards every sampler parameter after validating the slot. D3D9 does issue real
 anisotropic sampler states, but its capability answer never checks
@@ -1425,7 +1415,7 @@ anisotropic sampler states, but its capability answer never checks
 \texttt{true} is not a current-device result. EasyGL and Vulkan query their live extension or
 device-feature bit; WebGPU creates a real anisotropic sampler; BGFX provides a real on/off flag
 but still ignores the requested maximum; D3D11 and D3D12's accepted feature-level floor
-guarantees the mapped anisotropic filter. The internal Headless backend inherits true for both
+guarantees the mapped anisotropic filter. The internal Headless renderer inherits true for both
 entries too, but only records the calls: it is a logic-test contract, never evidence that a
 pixel-rendering implementation supports either feature. Chapter~\ref{ch:backend-architecture}
 tabulates these results and the caller-side implication.
@@ -1495,10 +1485,11 @@ public:
 \end{lstlisting}
 
 Figure~\ref{fig:ch09-drawprimitives} is the actual, unedited output of this program, built and
-run against CNA's \texttt{SOFTWARE} backend (a CPU triangle rasterizer with real
+run against CNA's \texttt{SOFTWARE} renderer (a CPU triangle rasterizer with real
 perspective-correct interpolation and per-pixel depth testing --- this book's own coverage of
-CNA's backend catalog does not yet name it, since it is used here purely as a headless
-verification tool, not as one of the twelve backends Part~IV profiles). Running headlessly, with
+CNA's renderer catalog now exposes it as the public \texttt{SOFTWARE} diagnostic identity
+(Chapter~\ref{ch:diagnostic-renderers}); here it is used specifically as a headless verification
+tool. Running with
 no display and no GPU at all, it wrote a real 256$\times$256 PNG directly from the back buffer.
 Two things are worth checking in the image against the code above: the background triangle is
 correctly occluded exactly where the foreground triangle overlaps it (the depth test is real,
@@ -1511,7 +1502,7 @@ barycentric color interpolation, not three flat-shaded sub-triangles).
 \centering
 \includegraphics[width=0.5\textwidth]{images/ch09-drawprimitives-software.png}
 \caption{Real, unedited output of the worked example above, rendered headlessly through CNA's
-\texttt{SOFTWARE} backend (no display, no GPU). Depth testing and per-vertex color
+\texttt{SOFTWARE} renderer (no display, no GPU). Depth testing and per-vertex color
 interpolation are both genuinely exercised, not simulated for the screenshot.}
 \label{fig:ch09-drawprimitives}
 \end{figure}

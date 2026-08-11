@@ -46,7 +46,7 @@ an infallible stand-in for the real spec cost eight rounds of review before the 
 Beyond the library back-references already covered, \cnaclass{Song} exposes
 \texttt{Duration} (settable, since \cnaclass{MediaPlayer} rewrites it once the real decoded
 duration is known --- see below), \texttt{PlayCount} (also settable, and reset by
-\cnaclass{MediaPlayer}\texttt{::Stop()}), and \texttt{Handle}, a NOXNA extension exposing the
+\cnaclass{MediaPlayer}\texttt{::Stop()}), and \texttt{Handle}, a CNAEXT extension exposing the
 backend file path or handle a worked example needing direct file access can read without
 going through \cnaclass{MediaLibrary}. \texttt{Equals} compares by handle, and
 \texttt{GetHashCode} is deliberately \emph{content}-based --- a hash of the resolved file
@@ -87,7 +87,7 @@ lazily creates a real ``Saved Pictures'' node the first time it is needed.
 
 The host's Music and Pictures roots themselves are resolved through SDL's own
 \texttt{SDL\_GetUserFolder()}, giving each platform its real, conventional folder rather than a
-hardcoded path guess --- with a NOXNA static override hook specifically so the test suite does
+hardcoded path guess --- with a CNAEXT static override hook specifically so the test suite does
 not depend on whatever music a given CI machine's real user account happens to have. Tag
 reading is a genuine, from-scratch, dependency-free parser, not a third-party library
 wrapper: real Ogg Vorbis-comment parsing, real ID3v2.3/2.4 text-frame parsing (\texttt{TIT2}/%
@@ -257,7 +257,7 @@ Microsoft::Xna::Framework::FrameworkDispatcher::Update();  // events actually fi
 \section{Video and VideoPlayer}
 
 \cnaclass{Video} / \texttt{VideoPlayer} are real, backed by genuine FFmpeg decoding, CNA's own
-graphics-backend frame rendering, and SDL3 audio streaming, on Linux and macOS.
+graphics-renderer frame rendering, and SDL3 audio streaming, on Linux and macOS.
 \texttt{VideoPlayer::Play()} deliberately throws \texttt{InvalidOperationException} if a
 video's own declared width, height, or frame-rate metadata does not match what the decoded
 file itself actually reports --- a real, checked consistency guard rather than a silent

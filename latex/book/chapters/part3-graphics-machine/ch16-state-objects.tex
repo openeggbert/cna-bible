@@ -5,7 +5,7 @@ CNA's four state-object classes all inherit \cnaclass{GraphicsResource}. Their s
 ready-made presets exist before a \cnaclass{GraphicsDevice}; that is why the base accepts a null
 device (Chapter~\ref{ch:graphicsdevice}). An architectural choice worth stating up front is that
 CNA stores the three device-wide state objects \emph{by value}. A device assignment copies the
-supplied state into its own CPU field, then calls the corresponding backend application method.
+supplied state into its own CPU field, then calls the corresponding renderer application method.
 Thus mutating the original local value later cannot change the stored device value. CNA also
 declares the static presets \texttt{const}, whereas
 FNA's \texttt{static readonly} fields protect only the C\# reference --- their public state
@@ -52,25 +52,25 @@ device.setBlendStateProperty(submitted); // the required submission step
 The practical rule is therefore more conservative than the old ``mutate through the getter''
 advice: construct or copy, change, and assign a fresh value every time the effective blend,
 depth-stencil, or rasterizer state changes. A C++ getter mutation can make later introspection
-misleading by showing a value the backend was never asked to use.
+misleading by showing a value the renderer was never asked to use.
 
 \section{The value surface is broader than the binding bridge}
 \label{sec:state-object-binding-boundary}
 
-Every public property round-trips in the small C\texttt{++} value objects, but the common backend
-interface is narrower. This is a structural limitation above any individual backend mapping:
+Every public property round-trips in the small C\texttt{++} value objects, but the common renderer
+interface is narrower. This is a structural limitation above any individual renderer mapping:
 the three whole-state setters make one immediate call with the fields present in that interface;
 there is no later generic reconciliation of omitted fields. The current routes are:
 
 \begin{itemize}
   \item \cnaclass{BlendState} forwards its six source/destination/function values. Its
     \texttt{BlendFactor} is then sent through the separate device property. Each color-write
-    mask and \texttt{MultiSampleMask} is absent from the backend call. The device's own
+    mask and \texttt{MultiSampleMask} is absent from the renderer call. The device's own
     \texttt{MultiSampleMask} is only a C\texttt{++} integer shadow; unlike FNA's native setter,
-    it makes no backend call.
+    it makes no renderer call.
   \item \cnaclass{DepthStencilState} forwards all of its depth/stencil fields on whole-state
     assignment. Its \texttt{ReferenceStencil} is also sent through the distinct device setter,
-    whose backend default is a no-op; Chapter~\ref{ch:state-objects}'s EasyGL caveat therefore
+    whose renderer default is a no-op; Chapter~\ref{ch:state-objects}'s EasyGL caveat therefore
     still applies to a standalone reference change.
   \item \cnaclass{RasterizerState} forwards cull mode, fill mode, scissor enable, and both bias
     values, but not \texttt{MultiSampleAntiAlias}. The property is a retained CPU value rather
@@ -79,14 +79,14 @@ there is no later generic reconciliation of omitted fields. The current routes a
     only filter, AddressU, AddressV, and maximum anisotropy. AddressW, MaxMipLevel, and
     MipMapLevelOfDetailBias are never read by that bridge. The public vertex texture and vertex
     sampler collections are retained (and cleared when a texture is disposed), but no draw path
-    forwards either collection to the backend at all.
+    forwards either collection to the renderer at all.
 \end{itemize}
 
 The sampler loop is intentionally different from the three whole-state setters: changing a
 pixel sampler collection entry is seen at the next draw because every slot is reapplied then.
 That does not rescue its omitted fields or the vertex collections. Current CPU tests exercise
-defaults, names, round trips, and bounds, while backend examples exercise selected supported
-pixel-sampler and state fields. No located test asks whether a getter mutation reaches a backend,
+defaults, names, round trips, and bounds, while renderer examples exercise selected supported
+pixel-sampler and state fields. No located test asks whether a getter mutation reaches a renderer,
 or distinguishes ColorWriteChannels, either multisample property, AddressW, MaxMipLevel, LOD
 bias, or a vertex sampler/texture from its default behavior.
 
@@ -105,13 +105,13 @@ set already seen on \cnaclass{DisplayOrientation} (Chapter~\ref{ch:game-loop}) a
 \cnaclass{ClearOptions} (Chapter~\ref{ch:graphicsdevice}).
 
 For the six source/destination/function values that the common bridge actually carries, the
-current cross-backend status in \texttt{docs/graphics-backend-feature-matrix.md} is fully
-correct on EasyGL, BGFX, SDL\_Renderer, and all three Direct3D backends. Vulkan is the one
-backend with a real, historically serious bug in that forwarded subset --- for a long time its
+current cross-renderer status in \texttt{docs/graphics-renderer-feature-matrix.md} is fully
+correct on EasyGL, BGFX, SDL\_Renderer, and all three Direct3D renderers. Vulkan is the one
+renderer with a real, historically serious bug in that forwarded subset --- for a long time its
 blend implementation was, in the project's own words, ``almost entirely fake'': one hardcoded
 blend equation applied regardless of what was actually requested, confirmed failing across five
 separate pixel tests before the fix replaced it with a genuine per-\cnaclass{Blend}/%
-\cnaclass{BlendFunction} mapping across all nine of the backend's pipeline-creation sites. That
+\cnaclass{BlendFunction} mapping across all nine of the renderer's pipeline-creation sites. That
 evidence does not make the unforwarded color-write masks or multisample mask work.
 
 \section{DepthStencilState}
@@ -143,17 +143,17 @@ actual stencil buffer (\texttt{SDL\_GL\_STENCIL\_SIZE}) at all --- meaning every
 that appeared to pass was passing against a buffer with zero stencil bits actually allocated,
 a ``correct code, no resource to act on'' bug rather than a logic error. One gap named in an
 earlier pass of this chapter as open on both EasyGL and BGFX is now only open on one of them:
-\texttt{IGraphicsBackend::SetReferenceStencil} does exist in the shared backend interface, with
-a no-op default any backend may override --- reading each backend's own header directly finds
+\texttt{IGraphicsRenderer::SetReferenceStencil} does exist in the shared renderer interface, with
+a no-op default any renderer may override --- reading each renderer's own header directly finds
 BGFX now has a real override (Task~764, mirroring Vulkan's own existing mechanism, Task~870/%
 319: every other stencil parameter is cached so a later standalone reference-value change can
-rebuild the backend's own front/back stencil state without a full state-object
+rebuild the renderer's own front/back stencil state without a full state-object
 re-application), while EasyGL still has none, falling through to the interface's own no-op ---
 independently overriding \texttt{ReferenceStencil} without reassigning the whole
 \cnaclass{DepthStencilState} is confirmed broken on EasyGL specifically, not BGFX anymore. A
 second gap named in the same earlier pass of this chapter as still open on all three hardware
-backends is also closed now: a stencil-only \texttt{Clear} call once never even checked its
-own flag on any backend (Task~871), but a real fix now dispatches it
+renderers is also closed now: a stencil-only \texttt{Clear} call once never even checked its
+own flag on any renderer (Task~871), but a real fix now dispatches it
 correctly on EasyGL, Vulkan, and BGFX alike, surfacing and closing a genuine, independent
 Vulkan-specific bug along the way (every render-pass-creation site had its own stencil
 load-operation hardcoded to discard, regardless of what \texttt{Clear()} itself requested) ---
@@ -192,13 +192,13 @@ reflectedScene.Draw(); // a full scene draw, using a reflected view matrix
 \end{lstlisting}
 
 One of this chapter's own already-stated facts directly constrains whether this exact
-technique is safe to ship across all three hardware backends. \texttt{ReferenceStencil} above
+technique is safe to ship across all three hardware renderers. \texttt{ReferenceStencil} above
 is set once, as part of constructing each \cnaclass{DepthStencilState} --- this worked example
 does not rely on changing it independently afterward, which sidesteps the still-open gap
 flagged above (no real \texttt{SetReferenceStencil} override exists on EasyGL specifically,
 BGFX's own fix now notwithstanding; a technique needing a per-draw-call reference value without
 rebuilding the whole state object would hit that remaining gap directly on EasyGL). Task~871
-made the requested stencil \emph{value} real on all three hardware backends, but did not make a
+made the requested stencil \emph{value} real on all three hardware renderers, but did not make a
 stencil-only clear selective everywhere. EasyGL issues only the stencil bit; Vulkan/BGFX clear
 all pass/view attachments at pass start and can therefore disturb colour/depth too
 (\S\ref{sec:backend-clear-matrix}). Portable code should keep relying on what this technique's
@@ -219,20 +219,20 @@ Three presets (\texttt{CullClockwise}, \texttt{CullCounterClockwise} --- the XNA
 
 \texttt{ScissorTestEnable} is deliberately only an enable switch. Its rectangle lives
 separately in \texttt{GraphicsDevice.ScissorRectangle}; changing either property immediately
-routes only that half of the state to the backend. The distinction is observable: EasyGL,
+routes only that half of the state to the renderer. The distinction is observable: EasyGL,
 Vulkan, BGFX, WebGPU, SDL GPU, D3D9, and D3D11 retain an independent Boolean and rectangle.
 The SDL renderer and ASCII instead apply the rectangle as an always-active clip and ignore the
-Boolean. D3D12, Software, Canvas, and DX3 never turn the pair into a custom raster clip at all;
+Boolean. D3D12, Software, Canvas, and FREEDIRECT never turn the pair into a custom raster clip at all;
 Headless only validates and traces it. The full scope and evidence matrix is
 \S\ref{sec:backend-viewport-scissor-matrix}. Also note the shared
 \cnaclass{SpriteBatch} routing gap from Chapter~\ref{ch:spritebatch}: passing this state to
-\texttt{SpriteBatch::Begin()} currently discards it before any backend sees it.
+\texttt{SpriteBatch::Begin()} currently discards it before any renderer sees it.
 
 All three cull modes verify correctly on both EasyGL and Vulkan via a genuine
 opposite-winding-order pixel test, and a small architectural detail worth noting: Vulkan
 flips clip-space Y and \emph{compensates} by setting \texttt{VK\_FRONT\_FACE\_CLOCKWISE}
 instead of the API's default counter-clockwise convention --- confirmed, by the same test, to
-cull the same input winding identically to EasyGL despite the two backends taking different
+cull the same input winding identically to EasyGL despite the two renderers taking different
 routes to get there. \texttt{FillMode::WireFrame} is verified on both EasyGL (via a
 \texttt{GL\_LINES} re-expansion, since OpenGL ES has no \texttt{glPolygonMode} to fall back
 on directly) and Vulkan (\texttt{VK\_POLYGON\_MODE\_LINE}). \texttt{DepthBias} and
@@ -284,7 +284,7 @@ else
 
 Remember this chapter's own scope caveat before trusting a wireframe-toggle test on BGFX
 specifically: \texttt{FillMode} there has no GPU-readback pixel verification at all (BGFX has no
-readback API in this project), so \texttt{FillMode::WireFrame} on that one backend is
+readback API in this project), so \texttt{FillMode::WireFrame} on that one renderer is
 smoke-tested, not pixel-proven, unlike the same toggle on EasyGL or Vulkan.
 
 \section{SamplerState}
@@ -299,7 +299,7 @@ nine values spanning point/linear/anisotropic and their per-mip-stage combinatio
 The central, now-fixed finding here was not about the address-mode or filter mapping tables
 themselves --- both were correct in isolation for as long as they were tested --- but about
 whether the supported \emph{pixel} \texttt{GraphicsDevice.SamplerStates} route was actually
-applied before a 3D draw. It was not, for three separate, backend-specific reasons. EasyGL's
+applied before a 3D draw. It was not, for three separate, renderer-specific reasons. EasyGL's
 eighteen user-primitive overloads omitted the internal sampler-application step; only the
 ordinary buffer-bound \texttt{DrawPrimitives} and \texttt{DrawIndexedPrimitives} calls made it.
 On Vulkan, the dual-texture descriptor-set path hardcoded a default sampler into its slots
@@ -320,9 +320,9 @@ mip-aware filter unconditionally to the common non-mipmapped case would render a
 above~0 was a \emph{total, silent no-op} on both Vulkan and BGFX --- the same historical
 failure shape their \cnaclass{Texture3D} / \cnaclass{TextureCube} readback paths once had
 (Chapter~\ref{ch:textures-rendertargets} now records the corrected live matrix). Mip-level
-\texttt{SetData} is now a real GPU upload on all three hardware backends, but that upload fix
+\texttt{SetData} is now a real GPU upload on all three hardware renderers, but that upload fix
 must not be mistaken for full \cnaclass{SamplerState} mip control: the common binding bridge has
-no AddressW, MaxMipLevel, or LOD-bias argument. Backend caches consequently use their own
+no AddressW, MaxMipLevel, or LOD-bias argument. Renderer caches consequently use their own
 defaults for those missing values (for example, the Direct3D sampler caches set AddressW from
 AddressV, LOD bias to zero, and allow the full mip range). No game-set value of those three
 properties can reach them through this API today.
@@ -332,7 +332,7 @@ regardless of the requested anisotropy level until a fix wired real
 OpenGL anisotropic-filtering-extension support, clamped to the driver's own capability;
 BGFX remains partially fixed --- it enables the anisotropic sampling flag but
 never communicates the actual requested level, an on/off switch rather than a graduated one,
-still open. The newer backends widen that matrix: WebGPU and D3D11/D3D12 create real
+still open. The newer renderers widen that matrix: WebGPU and D3D11/D3D12 create real
 anisotropic samplers (the Direct3D pair accept only feature level~11.0 or newer, whose maximum
 anisotropy is 16); D3D9 maps the filter and maximum but neither capability-checks nor clamps
 against \texttt{D3DCAPS9::MaxAnisotropy}; SDL GPU stores the requested maximum but never puts it

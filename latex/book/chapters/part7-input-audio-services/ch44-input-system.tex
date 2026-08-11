@@ -31,7 +31,7 @@ assumption.
 Three tags recur through this namespace's own headers and documentation, and are worth
 knowing before reading further: \textbf{STRICT} (must match FNA's real surface exactly),
 \textbf{EXT} (an FNA-compatible extension, using the \texttt{...EXT} suffix convention from
-this book's game-loop chapter), and \textbf{NOXNA} (a CNA-only addition with no FNA counterpart
+this book's game-loop chapter), and \textbf{CNAEXT} (a CNA-only addition with no FNA counterpart
 at all). A dedicated compile-time test suite (\texttt{PublicApiInputSignatureFreezeTests.cpp})
 pins the exact strict-XNA member set this namespace promises never to silently change.
 
@@ -116,14 +116,14 @@ if (keyboard.IsKeyDown(forwardKey))
 \cnaclass{Mouse} is static-only: \texttt{GetState()} and \texttt{SetPosition(x, y)}, the
 latter attempting to convert logical coordinates to real window coordinates before calling
 SDL's warp function. The shared routing first asks an associated SDL renderer, then a
-registered graphics backend, then falls back to pass-through. Those tiers make the result
-backend- and presentation-dependent rather than a universal guarantee; the audit below and
+registered graphics renderer, then falls back to pass-through. Those tiers make the result
+renderer- and presentation-dependent rather than a universal guarantee; the audit below and
 Chapter~\ref{ch:backend-architecture}'s matrix state the exact boundary.
 \cnaclass{MouseState} carries the expected X/Y, five buttons, and a cumulative,
-120-units-per-notch \texttt{ScrollWheelValue}; a \texttt{NOXNA} horizontal-scroll addition is
+120-units-per-notch \texttt{ScrollWheelValue}; a \texttt{CNAEXT} horizontal-scroll addition is
 deliberately excluded from \texttt{Equals} / \texttt{GetHashCode} / \texttt{ToString} specifically
 so those stay byte-identical to FNA's own output despite the extra field existing. A wholly
-\texttt{NOXNA} class, \cnaclass{MouseCursor}, wraps \texttt{SDL\_Cursor*} with eleven lazily
+\texttt{CNAEXT} class, \cnaclass{MouseCursor}, wraps \texttt{SDL\_Cursor*} with eleven lazily
 created, process-lifetime stock system cursors --- a case where CNA's design is deliberately
 \emph{more} defensive than the MonoGame implementation it is closest to: MonoGame's own
 \texttt{PlatformDispose()} frees a shared stock cursor handle unconditionally, which can
@@ -135,7 +135,7 @@ safe no-op for the shared stock instances specifically to avoid that failure mod
 \cnaclass{MouseState} is a plain data carrier --- \texttt{X} / \texttt{Y}, five
 \cnaclass{ButtonState} properties (\texttt{LeftButton} / \texttt{RightButton} /
 \texttt{MiddleButton} / \texttt{XButton1} / \texttt{XButton2}), the cumulative
-\texttt{ScrollWheelValue} already named above, and (\texttt{NOXNA}) a parallel
+\texttt{ScrollWheelValue} already named above, and (\texttt{CNAEXT}) a parallel
 \texttt{HorizontalScrollWheelValueEXT} for horizontal scroll, deliberately excluded from
 \texttt{Equals} / \texttt{GetHashCode} / \texttt{ToString} as already noted. \cnaclass{Mouse}
 itself, beyond \texttt{GetState()} and \texttt{SetPosition}, exposes a real, working relative
@@ -169,7 +169,7 @@ methods:
   \emph{desktop} (not window-relative) coordinates --- the form a multi-window or
   multi-monitor application needs, where an ordinary \texttt{GetState()} position is
   meaningless across window boundaries.
-\item[\texttt{ClickedEXT}] a \texttt{NOXNA System::MulticastAction<int>} event (Chapter~\ref{ch:sharp-runtime-namespaces}
+\item[\texttt{ClickedEXT}] a \texttt{CNAEXT System::MulticastAction<int>} event (Chapter~\ref{ch:sharp-runtime-namespaces}
   covers this \texttt{sharp-runtime} type in full) firing once per real click with the button
   index, for code that wants a discrete click event rather than polling button state every
   frame.
@@ -189,7 +189,7 @@ const float pitch = mouse.Y * mouseSensitivity;
 cameraRotation = Quaternion::CreateFromYawPitchRoll(yaw, pitch, 0.0f) * cameraRotation;
 \end{lstlisting}
 
-\subsection{Logical coordinates are a backend contract}
+\subsection{Logical coordinates are a renderer contract}
 \label{sec:input-logical-coordinate-routing}
 
 The write direction is only half the story. Incoming
@@ -206,10 +206,10 @@ event at $(100,100)$, and observes logical $(50,50)$ through
 letterbox offset. The latter tests cannot inspect the OS cursor under Wayland, however:
 \texttt{SetPosition()} writes the requested logical point into \texttt{InputManager}
 \emph{before} attempting conversion and warp, so immediately reading that point back proves
-the cache assignment even if the physical cursor landed elsewhere. The ASCII integration
+the cache assignment even if the physical cursor landed elsewhere. The former ASCII renderer's integration
 test uses this same weak immediate set/get shape.
 
-Other backends are not interchangeable:
+Other renderers in the inherited audit cohort are not interchangeable:
 
 \begin{itemize}
 \item EasyGL and Canvas register an offset-free height scale. It matches their default
@@ -223,18 +223,18 @@ Other backends are not interchangeable:
   virtual canvas across the physical swapchain, so absolute input becomes misaligned after a
   non-1:1 resize. Keeping its window-coordinate size equal to the requested virtual size is
   the only portable caller-side guard today.
-\item BGFX and D3D9/11/12 also pass through, but those backends currently ignore logical
+\item BGFX and D3D9/11/12 also pass through, but those renderers in the inherited audit cohort ignore logical
   presentation and draw in physical coordinates; input matches that limitation rather than
   the requested mode.
-\item DX3's correct direct helper methods are shadowed by the SDL renderer created inside
+\item FREEDIRECT's correct direct helper methods are shadowed by the SDL renderer created inside
   \repolink{free-direct}. Public mapping is pass-through until the first
   \texttt{Present()} installs its hardcoded letterbox, then follows SDL's mapping. Its
   four-property test invokes the helpers directly and does not exercise this public route.
 \end{itemize}
 
-The complete fourteen-product matrix and its test evidence are in
+The complete inherited fourteen-product matrix and its test evidence are in
 Chapter~\ref{ch:backend-architecture},
-\S\ref{sec:backend-input-coordinate-matrix}. FNA has no corresponding backend split:
+\S\ref{sec:backend-input-coordinate-matrix}. FNA has no corresponding renderer split:
 \texttt{Mouse.GetState()} multiplies window X/Y by the independent backbuffer/window ratios,
 and \texttt{SetPosition()} applies their inverses. CNA needs more machinery because its
 presentation modes include offsets and dynamic logical dimensions, but callers should not
@@ -367,12 +367,12 @@ snapshot of every currently-tracked touch, read directly from its header:
 \texttt{Count} / \texttt{IsConnected} (whether a touch device exists at all, distinct from
 whether any finger is currently down), the by-index \texttt{operator[]}, and the same general
 ordered-container surface Chapter~\ref{ch:math-core-types}'s own \cnaclass{CurveKeyCollection} coverage already
-described --- \texttt{Contains} / \texttt{IndexOf}, a \texttt{NOXNA} \texttt{empty()}, and
-\texttt{NOXNA} iterator support for range-based \texttt{for}. Each \cnaclass{TouchLocation} inside it carries
+described --- \texttt{Contains} / \texttt{IndexOf}, a \texttt{CNAEXT} \texttt{empty()}, and
+\texttt{CNAEXT} iterator support for range-based \texttt{for}. Each \cnaclass{TouchLocation} inside it carries
 an \texttt{Id} (stable across frames for the same physical finger, the correct key for
 tracking one finger's motion over time), a \texttt{State} (\cnaclass{TouchLocationState}:
 \texttt{Pressed}, \texttt{Moved}, \texttt{Released}, or \texttt{Invalid} for a stale/expired
-entry), a \texttt{Position}, and (\texttt{NOXNA}) a \texttt{PressureEXT} reading on hardware
+entry), a \texttt{Position}, and (\texttt{CNAEXT}) a \texttt{PressureEXT} reading on hardware
 that reports one. \cnaclass{GestureSample} (returned by \texttt{TouchPanel::ReadGesture()})
 carries a \texttt{GestureType}, a \texttt{Timestamp}, and up to two positions/deltas
 (\texttt{Position} / \texttt{Position2}, \texttt{Delta} / \texttt{Delta2}) --- the second pair used
@@ -447,7 +447,7 @@ that property (non-negative, strictly increasing across two gestures separated b
 test clock) rather than any specific numeric value that would depend on which of the two
 engines' conventions it followed.
 
-\section{TextInputEXT and CNA-only NOXNA extensions}
+\section{TextInputEXT and CNA-only CNAEXT extensions}
 
 \texttt{TextInputEXT} is not itself a CNA invention --- FNA ships this same extension beyond
 the strict XNA~4.0 surface, and CNA ports it directly: \texttt{TextInput} / \texttt{TextEditing}
@@ -457,7 +457,7 @@ analog at all: IME composition-candidate lists (an SDL3-only capability), and an
 on-screen-keyboard/IME type hint.
 
 Beyond input in the strict XNA sense, the \texttt{CNA::Input} namespace hosts several wholly
-\texttt{NOXNA} subsystems already named in passing in this book's overview chapter:
+\texttt{CNAEXT} subsystems already named in passing in this book's overview chapter:
 \cnaclass{Clipboard} (system clipboard text); \cnaclass{Joysticks} (the raw, unmapped SDL
 joystick API --- axes, buttons, hats, trackballs --- deliberately independent of
 \cnaclass{GamePad}'s own mapped view of the same physical device); \cnaclass{Sensors} (host
@@ -469,7 +469,7 @@ since most ordinary gamepads only support simple rumble, not full force feedback
 \subsection{Full method reference: TextInputEXT}
 
 Reading \texttt{TextInputEXT.hpp} directly shows a small, deliberately event-driven surface,
-not a polled one: \texttt{TextInput} (a \texttt{NOXNA System::MulticastAction<charcs>} ---
+not a polled one: \texttt{TextInput} (a \texttt{CNAEXT System::MulticastAction<charcs>} ---
 Chapter~\ref{ch:sharp-runtime-namespaces} covers this \texttt{sharp-runtime} event type in full) fires once per composed
 character, already IME-resolved --- the correct event for accumulating actual typed text ---
 while \texttt{TextEditing} fires for \emph{in-progress}, not-yet-committed IME composition text
@@ -482,7 +482,7 @@ is currently open; \texttt{SetInputRectangle(rectangle)} tells the platform IME 
 to position any composition popup it draws, in window-relative logical coordinates.
 \texttt{IsScreenKeyboardShown()} reports whether a platform on-screen keyboard is currently
 visible (relevant primarily on Android/iOS/Steam Deck-style touch-first platforms).
-\texttt{StartTextInputWithTypeEXT(type)} is a \texttt{NOXNA} addition with no FNA analog at
+\texttt{StartTextInputWithTypeEXT(type)} is a \texttt{CNAEXT} addition with no FNA analog at
 all --- a hint (\texttt{TextInputTypeEXT}: e.g.\ plain text, numeric, email) that lets a mobile
 platform's on-screen keyboard present the right key layout for the field being edited, rather
 than always the general-purpose one.
@@ -507,10 +507,10 @@ void ChatBox::Close()
 }
 \end{lstlisting}
 
-\subsection{Worked examples: the NOXNA-only device subsystems}
+\subsection{Worked examples: the CNAEXT-only device subsystems}
 
 The five subsystems named above share a common shape worth noting once: each is a small,
-static, purely \texttt{NOXNA} class with no FNA or real-XNA precedent at all, since none of
+static, purely \texttt{CNAEXT} class with no FNA or real-XNA precedent at all, since none of
 them has any equivalent in the original Xbox~360-era API surface. \cnaclass{Clipboard}'s
 entire surface is three methods --- \texttt{GetTextEXT()}, \texttt{SetTextEXT(text)}, and
 \texttt{HasTextEXT()} --- a direct wrap of SDL's own clipboard text API. \cnaclass{Joysticks}
@@ -660,5 +660,5 @@ to confirm order-independence. The fifteen formally blocked audit tasks are excl
 real-hardware-only checks (physical keyboard/mouse/gamepad/touchscreen/IME verification, and
 high-DPI display behavior) that cannot be automated at all, not gaps awaiting more
 engineering effort. One acknowledged, low-priority documentation gap remains: the
-\cnaclass{Joysticks} / \cnaclass{Sensors} / \cnaclass{Power} \texttt{NOXNA} extensions have solid
+\cnaclass{Joysticks} / \cnaclass{Sensors} / \cnaclass{Power} \texttt{CNAEXT} extensions have solid
 fake-backend unit coverage but no demo-UI or manual-hardware verification pass yet.

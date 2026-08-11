@@ -12,7 +12,7 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
 | cna-bible branch | `next`; local commits are ahead of `origin/next` (push requires explicit external-publication approval) |
 | CNA pinned SHA | `7a64362efef4119bf880459ef1704fb2c52199e2` (`develop` == `origin/develop`, 2026-08-11) |
 | Book builds | **yes** — 645 pages, all automated and visual checks green |
-| Phase | **A and B complete. Phase C structure is complete and verified; terminology/path sweep remains.** No chapter prose has been substantively rewritten. |
+| Phase | **A, B, and C complete and verified.** The renderer draw-path divergence matrix is the final research prerequisite before Part IV prose. |
 
 ## What is done
 
@@ -40,43 +40,43 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
    PNG pass a log grep cannot replace.
 6. **All 112 hard-coded chapter references migrated to `\ref{}`** (two styles: `Chapter~N`,
    `Ch.N`). This had to happen before any restructuring could safely begin.
-7. **Part IV (the renderers) is settled** — see `PLAN.md` §4: eight clusters partitioning all 46
-   renderer identities exactly (10+4+7+9+6+4+3+3 = 46, checked). No further research needed for
-   Part IV; it is ready to draft once Phase C creates the chapter files.
+7. **Part IV's taxonomy is settled** — see `PLAN.md` §4: eight clusters partition all 46
+   renderer identities exactly (10+4+7+9+6+4+3+3 = 46, checked). The one remaining research
+   prerequisite is the effect-aware draw-path divergence matrix in `PLAN.md` §3.2.
 8. **Phase B is complete.** `PLAN.md` §4 settles a 12-Part / 79-chapter / 8-appendix TOC, gives
    every chapter a depth band and evidence remit, and maps every old Ch.01–49 to its new home.
    Content, 3D/glTF and Testing/Verification now have dedicated Parts; Math and Devices split;
    sharp-runtime expands to six chapters; the free-direct library material merges into one
    chapter distinct from CNA's `FREEDIRECT` renderer treatment.
-9. **Phase C's structural half is complete and verified.** The filesystem and `main.tex` now
+9. **Phase C is complete and verified.** The filesystem and `main.tex` now
    contain exactly 12 Parts, Ch.01–79 and Appendices A–H. Every old label survived; every new
    chapter has a semantic label; all old prose remains compiled. Split/new chapters are honest
    structural placeholders. The three old Vulkan/WebGPU/SDL GPU chapters are preserved together
    under the new native-modern chapter until Part IV is rewritten.
+10. **The edition-wide terminology and path migration is complete.** The live manuscript uses
+    current renderer/CNAEXT identifiers and selectors, distinguishes `FREEDIRECT` from
+    `DIRECTX3`, leads with the authoritative **46 identities / 42 implementation families**
+    registry, keeps “backend” only for real service/platform backends, and cites CNA files under
+    their `modules/<owner>/…` paths. Every explicit module file citation was existence-checked
+    against the pin. The sweep also corrected Storage's current boundary: five `StorageDevice`
+    tests exist; `StorageContainer` remains untested.
 
 ## Do this next
 
-**1. Finish Phase C with the edition-wide terminology and path sweep.** Use implementation context, not a
-blind word replacement: `backend` remains correct for input/devices/net platform backends but is
-wrong for graphics renderers. Mechanically safe identifier/path replacements include
-`IGraphicsBackend` → `IGraphicsRenderer`, `GraphicsBackendType` → `GraphicsRendererType`,
-`CNA_GRAPHICS_BACKEND` → `CNA_GRAPHICS_RENDERER`, `NOXNA` → `CNAEXT`, and stale root
-`src/…`/`include/…` paths → `modules/<owner>/…`; verify each against the pinned source.
-
-**2. Before writing Part IV specifically: complete the per-renderer draw-path divergence
+**1. Complete the per-renderer draw-path divergence
 matrix** (`PLAN.md` §3.2). This is the one deliberately-identified research gap. It matters
 because the effect-aware draw defaults **silently degrade rather than fail** — a renderer that
 never implemented `DrawPrimitivesEx` renders an untextured, unlit picture with no error, and
 nothing currently records which renderers those are.
 
-**3. Then Phase D:** write chapters in batches, per the project's batched-verification
+**2. Then Phase D:** write chapters in batches, per the project's batched-verification
 methodology (`CLAUDE.md`) — write across ~8–10 chapters, then one consolidated `make book` +
 visual pass, not one verification per chapter.
 
 ## Do not do these
 
-- **Do not mix structural migration with substantive rewriting.** Complete and verify the file,
-  label, `main.tex`, terminology and source-path migration first; Phase D owns prose changes.
+- **Do not reopen Phase C casually.** Structural, label, terminology, selector, and path migration
+  is complete; Phase D owns substantive prose changes.
 - **Do not modify CNA or any sibling repository.** Defects found are recorded in `cnabugs.md` and
   `AUDIT.md` §5.1 for upstream reporting, never patched from here.
 - **Do not trust the old `PLAN-ARCHIVE`/`NEXT-ARCHIVE` per-chapter page targets or their
@@ -89,24 +89,22 @@ visual pass, not one verification per chapter.
 
 ## Verification status
 
-Everything through the Phase C structural checkpoint is verified:
+Everything through the completed Phase C checkpoint is verified:
 
 - `make -C latex book` succeeds; **645 pages**.
-- makeindex: 2,367 entries accepted, 0 rejected, 0 warnings.
+- makeindex: 2,365 entries accepted, 0 rejected, 0 warnings.
 - No undefined references, no undefined control sequences, no duplicate labels, no doubled-
   backslash `\ref`, no hard-coded chapter numbers.
 - `git diff --check` clean.
 - Structural inventory: 12 Parts, 79 sequential chapter inputs/files, 8 appendix inputs/files;
   zero missing inputs, lost old labels, duplicate labels or hard-coded chapter numbers.
-- Visual pass: all 645 pages rendered into 26 contact sheets and inspected; affected title pages
-  opened at full size. One Ch.18 overflow and fifteen poor mid-word title breaks were fixed and
-  the changed pages re-rendered clean. WebGPU/SDL GPU legacy-fragment joins were inspected at
-  physical pages 252 and 259.
+- Terminology/path pass: no obsolete CNA identifier, option, live selector assignment, or legacy
+  renderer macro remains; all explicit `modules/...` file citations exist at the pin.
+- Final visual pass: all 645 pages were freshly rendered into 26 contact sheets and inspected;
+  registry, Storage, preface, and long-path pages were read at full size.
 
-**No chapter prose has been substantively rewritten, so no writing batch is pending PDF
-verification.** Phase C's structure is already fully verified. After the terminology/path sweep,
-run one further consolidated build and targeted visual pass before Phase D starts; after that,
-follow the normal ~8–10 chapter batch rule.
+**No Phase D writing batch is pending PDF verification.** Phase C is fully verified. Complete
+the draw-path matrix, then follow the normal ~8–10 chapter batch rule.
 
 ## Environment notes
 
@@ -118,14 +116,8 @@ follow the normal ~8–10 chapter batch rule.
 
 ## The short version, if you read nothing else
 
-The book describes eleven rendering backends; CNA has forty-six renderers under a different name
-for the concept ("backend" now means something else — input/devices/net platform services). Its
-ASCII chapter documents a renderer that was deleted; its DX3 chapter documents a renderer that
-was renamed while a *different* renderer took the old name; its shader chapter's premise is now
-about a quarter true; every `cmake` command in it fails to configure; and it has no idea that
-glTF, CNJ, or the `modules/` physical-module system exist. Ten parallel research passes have
-fully re-audited the source against the pinned SHA and every finding is written up in `audit/`
-with `path:line` citations. Phase B turned those findings into a settled 12-Part, 79-chapter
-structure; Phase C has put that structure on disk and verified all 645 pages. The remaining
-pre-writing work is the context-sensitive terminology/path sweep and the renderer draw-path
-matrix. Prose rewriting begins only after those steps build and render cleanly.
+Ten source-audit reports are complete against pinned CNA `7a64362e`. Phase B settled a 12-Part,
+79-chapter, 8-appendix edition; Phase C put it on disk, migrated renderer/CNAEXT terminology,
+selectors and module-owned paths, and verified all 645 pages mechanically and visually. The
+only remaining pre-writing research is the 42-family draw-path divergence matrix. After that,
+Phase D begins in verified 8–10 chapter batches.

@@ -3,7 +3,7 @@
 
 XNA shipped five built-in shader effects, and CNA ports all five. This chapter covers the
 shared \cnaclass{Effect} base and its supporting types first, then each stock effect, and
-then the specific, cross-backend bug pattern their verification kept turning up --- which is
+then the specific, cross-renderer bug pattern their verification kept turning up --- which is
 worth understanding as a pattern, not just five separate bug lists.
 
 \section{Effect: the base, and why its bytecode constructor always throws}
@@ -16,12 +16,12 @@ real compiled \texttt{.fx} bytecode blob, the way a real XNA content-pipeline ou
 \textbf{always throws \texttt{NotImplementedException}}. CNA has no equivalent of
 MojoShader's bytecode parser, and Chapter~\ref{ch:shader-fx-gap} covers why that gap is
 architectural rather than an oversight. \texttt{Clone()} is pure virtual and, as a
-\texttt{NOXNA} deviation from FNA's garbage-collected reference semantics, returns an owning
+\texttt{CNAEXT} deviation from FNA's garbage-collected reference semantics, returns an owning
 raw pointer rather than a managed reference --- there is no GC in C\texttt{++} to hand a
-shared reference back to. \texttt{Apply()} itself is \texttt{NOXNA} --- real FNA has no
+shared reference back to. \texttt{Apply()} itself is \texttt{CNAEXT} --- real FNA has no
 public \texttt{Effect.Apply()}, only \texttt{EffectPass.Apply()} --- and the protected virtual
 \texttt{FillGpuDrawParams(GpuDrawParams\&)} is the single mechanism every stock effect below
-uses to hand its own parameters down to whichever backend is active; the base implementation
+uses to hand its own parameters down to whichever renderer is active; the base implementation
 is a no-op, and every stock effect overrides it.
 
 \cnaclass{EffectParameter} carries a name, semantic, row/column counts, class/type enums, and a
@@ -42,7 +42,7 @@ exception rather than the null-reference crash the equivalent null case produces
 The XNA-looking \texttt{Parameters} property needs a careful reading in current CNA. FNA parses
 compiled bytecode into its real parameters, techniques, passes, annotations, arrays, and
 structures; those parameter values are what the compiled effect later applies. CNA's matching
-constructor always throws, so there is no parser or general parameter-to-backend binding behind
+constructor always throws, so there is no parser or general parameter-to-renderer binding behind
 the public collection. A bare \cnaclass{Effect} starts with one manually created
 \texttt{Default} technique containing one \texttt{P0} pass and with \emph{zero} parameters.
 
@@ -75,14 +75,14 @@ for (EffectPass& pass : stockEffect.getCurrentTechniqueProperty()->getPassesProp
 \end{lstlisting}
 
 Writing a manually found \cnaclass{EffectParameter} therefore does not form a portable
-alternative to a stock effect's named property and does not create an arbitrary backend uniform.
+alternative to a stock effect's named property and does not create an arbitrary renderer uniform.
 The device dispatches \texttt{FillGpuDrawParams()} directly, not the collection. A few
 properties deliberately use a shadow as their own storage --- fog color is the important example
 in the four effects that cache it --- but that is an implementation detail that a later property
 assignment or \texttt{OnApply()} calculation can overwrite. Use the public
 \texttt{setDiffuseColorProperty}, \texttt{setTextureProperty}, matrix, lighting, fog, and
 skinning APIs for stock material state; use the explicit \texttt{ShaderEffect::SetUniform*}
-surface, with Chapter~\ref{ch:shader-fx-gap}'s backend limits, for a genuinely custom uniform.
+surface, with Chapter~\ref{ch:shader-fx-gap}'s renderer limits, for a genuinely custom uniform.
 
 \subsection{What an individual parameter actually retains}
 
@@ -116,11 +116,11 @@ where FNA constructs passes internally. Keep application code on the current tec
 passes and do not use null/unrelated techniques or ownerless manually assembled passes as a
 configuration API.
 
-\section{GpuDrawParams: the one struct every backend reads}
+\section{GpuDrawParams: the one struct every renderer reads}
 
 Every stock effect's \texttt{FillGpuDrawParams} override populates the same struct, defined
-once in the backend contract layer (Chapter~\ref{ch:backend-architecture}) and forwarded from
-\texttt{Effect::FillGpuDrawParams()} to whichever backend is currently active. It carries two
+once in the renderer contract layer (Chapter~\ref{ch:backend-architecture}) and forwarded from
+\texttt{Effect::FillGpuDrawParams()} to whichever renderer is currently active. It carries two
 ordinary texture slots plus a dedicated environment-map cube slot, diffuse/ambient/emissive/%
 specular colors, three directional lights (each with direction, diffuse, and specular),
 the world matrix, alpha-test parameters, Fresnel/environment-map parameters, a 72-bone
@@ -130,10 +130,10 @@ skinning palette with a weights-per-vertex count, fog parameters, a set of mode 
 a pointer for a custom \texttt{ShaderEffect}-compiled program, and six PBR-specific
 metallic-roughness fields. Two flags are worth flagging directly: \texttt{preferPerPixelLighting}
 and \texttt{specularEnabled}. Both were, for a real stretch of this project's own history,
-documented in the struct itself as ``ignored by every backend except D3D9'' --- but that is no
+documented in the struct itself as ``ignored by every renderer except D3D9'' --- but that is no
 longer the current state of the source, and the story of closing that gap is a worked example
 in its own right, covered in full after \cnaclass{SkinnedEffect} below, since it is the single
-richest cross-backend fix this chapter has to show.
+richest cross-renderer fix this chapter has to show.
 
 \section{BasicEffect}
 
@@ -145,18 +145,18 @@ richest cross-backend fix this chapter has to show.
 \texttt{DirectionalLight0/1/2}, and \texttt{EnableDefaultLighting()}. Its 22-property audit
 found and fixed several early default-value bugs (\texttt{VertexColorEnabled},
 \texttt{DirectionalLight0.Enabled}, and \texttt{DirectionalLight.Direction}'s default value
-were all initially wrong), then a sequence of real, per-backend rendering bugs: the
+were all initially wrong), then a sequence of real, per-renderer rendering bugs: the
 no-texture \texttt{VertexColorEnabled} toggle was ignored by all three of EasyGL, Vulkan, and
-BGFX (three separate bugs, one per backend); the textured-plus-vertex-color-plus-diffuse case
+BGFX (three separate bugs, one per renderer); the textured-plus-vertex-color-plus-diffuse case
 dropped \texttt{DiffuseColor} entirely on EasyGL and BGFX (Vulkan was already correct); and a
-shared bug across all three backends never checked \texttt{DirectionalLight0.Enabled} at all,
+shared bug across all three renderers never checked \texttt{DirectionalLight0.Enabled} at all,
 so a disabled light kept lighting the surface regardless. BGFX carried one additional,
 much wider bug: its vertex-layout builder never declared \texttt{Normal} / \texttt{TexCoord0}
 attributes for any stride except the skinned 52-byte layout --- silently breaking lit-normal
 \emph{and} UV interpolation for every other stride, invisible until then because every prior
 test happened to use a UV-insensitive $1\times1$ texture. \texttt{EmissiveColor} was dropped
-entirely in the no-lighting path on all three backends; ambient/emissive/specular forwarding
-and real specular highlights were all fixed afterward, leaving all three backends
+entirely in the no-lighting path on all three renderers; ambient/emissive/specular forwarding
+and real specular highlights were all fixed afterward, leaving all three renderers
 byte-identical for the full feature composition as of the most recent audit.
 
 \subsection{A worked example: a lit, textured cube}
@@ -190,8 +190,8 @@ for (EffectPass& pass : effect.getCurrentTechniqueProperty()->getPassesProperty(
 confirms it unconditionally overwrites \texttt{DirectionalLight0}'s diffuse color, direction,
 specular color, and enabled flag (and likewise for lights 1 and 2) every time it runs; setting
 \texttt{DirectionalLight0}'s diffuse color first and calling \texttt{EnableDefaultLighting()}
-second would silently overwrite the custom color right back to the default. This is exactly the kind of ordering trap the per-backend bug list below
-does \emph{not} cover, because it is a real API-usage hazard rather than a backend bug ---
+second would silently overwrite the custom color right back to the default. This is exactly the kind of ordering trap the per-renderer bug list below
+does \emph{not} cover, because it is a real API-usage hazard rather than a renderer bug ---
 \texttt{EnableDefaultLighting()}'s own real behavior, faithfully ported, not a CNA-specific
 quirk.
 
@@ -203,17 +203,17 @@ quirk.
 alpha test; \texttt{VertexColorEnabled}, \texttt{DiffuseColor} / \texttt{Alpha}, and
 \texttt{Texture} round out the surface. Its audit found zero property-default bugs (the
 first test coverage for this effect written from scratch), and a full 8-value
-\cnaclass{CompareFunction} sweep passed 24 of 24 cases on all three backends. One real,
+\cnaclass{CompareFunction} sweep passed 24 of 24 cases on all three renderers. One real,
 still-open gap: \texttt{VertexColorEnabled} has no effect at all on Vulkan or BGFX, because
 both route every alpha-test draw through one generic pipeline/shader that only declares
 position and texture-coordinate inputs, no color attribute --- described in the project's
-own tracking as ``a genuinely large, six-shader-file, two-backend change,'' not attempted.
+own tracking as ``a genuinely large, six-shader-file, two-renderer change,'' not attempted.
 EasyGL, by contrast, handles it correctly. Fog forwarding was a real, fixed bug on EasyGL
 specifically for this effect --- and, in the course of fixing it, revealed a much larger
 finding: fog was a \emph{total} no-op on both Vulkan and BGFX for every 3D effect, because no
-shader file on either backend mentioned fog at all. That project-wide gap was closed in one
+shader file on either renderer mentioned fog at all. That project-wide gap was closed in one
 pass, adding real fog uniforms, varyings, and blend formula to every 3D shader on both
-backends at once --- the same ``one shared fix closes it everywhere'' pattern already seen
+renderers at once --- the same ``one shared fix closes it everywhere'' pattern already seen
 for \cnaclass{SpriteBatch}'s flip bug in Chapter~\ref{ch:spritebatch}. A separate, unrelated
 BGFX-only bug --- seven texture-binding call sites with no fallback-to-white-texture
 else-branch --- was found and fixed at the same time, affecting every effect that binds a
@@ -247,17 +247,17 @@ This effect's real, still-open gap from the audit above bites exactly this kind 
 also carries per-vertex color (a common way to fade fence-post tint by ambient occlusion baked
 into the mesh): setting \texttt{setVertexColorEnabledProperty(true)} here has zero visible
 effect on Vulkan or BGFX specifically --- not a subtle blend-formula difference, but a complete
-no-op, because neither backend's alpha-test shader declares a color vertex attribute at all. A
-game targeting all three hardware backends should not rely on \cnaclass{AlphaTestEffect}'s
+no-op, because neither renderer's alpha-test shader declares a color vertex attribute at all. A
+game targeting all three hardware renderers should not rely on \cnaclass{AlphaTestEffect}'s
 vertex color for anything visually load-bearing until that gap closes.
 
 \section{DualTextureEffect}
 
 Two independent texture slots (\texttt{Texture}, \texttt{Texture2}), plus
 \texttt{VertexColorEnabled}, \texttt{DiffuseColor} / \texttt{Alpha}, and fog --- no lighting.
-The audit's headline finding is a real formula bug present on all three backends at once:
+The audit's headline finding is a real formula bug present on all three renderers at once:
 FNA's real shader doubles the first texture's RGB value (\texttt{color.rgb *= 2}) before
-multiplying it against the overlay texture, and none of CNA's three backend shaders
+multiplying it against the overlay texture, and none of CNA's three renderer shaders
 implemented that factor at all --- invisible to every prior test, because a test built from
 0-or-1-saturated color values cannot distinguish ``multiplied by one'' from ``multiplied by
 two and then saturated.'' \texttt{Texture2}'s null-texture fallback had its own,
@@ -267,7 +267,7 @@ dedicated shader with no fog infrastructure at all, unlike \cnaclass{AlphaTestEf
 shared shader path; Vulkan and BGFX were already covered by the project-wide fog fix.
 \texttt{VertexColorEnabled} shares \cnaclass{AlphaTestEffect}'s open gap exactly: a total
 no-op on both Vulkan and BGFX, for the identical reason (no color vertex attribute declared
-in either backend's dual-texture shader).
+in either renderer's dual-texture shader).
 
 \subsection{A worked example: a lightmapped floor}
 
@@ -296,10 +296,10 @@ doubles \texttt{Texture}'s RGB value before multiplying it against \texttt{Textu
 unlit'' value most lightmap bakers emit) reproduces the base texture's own color exactly, rather
 than darkening it to half brightness. A lightmap authored against real XNA/FNA's doubling
 behavior will render visibly too dark on any CNA build predating the fix that added this factor
-to all three backend shaders at once. \texttt{VertexColorEnabled} carries the identical
+to all three renderer shaders at once. \texttt{VertexColorEnabled} carries the identical
 Vulkan/BGFX no-op gap \cnaclass{AlphaTestEffect} has, for the same underlying reason (no color
-vertex attribute in either backend's dual-texture shader) --- a lightmapped floor mesh that also
-tries to carry per-vertex tint runs into the same wall on those two backends.
+vertex attribute in either renderer's dual-texture shader) --- a lightmapped floor mesh that also
+tries to carry per-vertex tint runs into the same wall on those two renderers.
 
 \section{EnvironmentMapEffect}
 
@@ -320,19 +320,19 @@ cube-map blend was additive where FNA's real formula is a \texttt{lerp}; the spe
 was added as a flat, unscaled constant rather than being scaled by the cube map's own alpha
 channel (and the base blend's own color term had the identical missing-alpha-scale bug); and
 --- the most striking finding --- \textbf{no Fresnel edge-weighting existed at all}, on any
-backend, before this audit. Real XNA's Fresnel term (\texttt{pow(max(1 - |dot(eye, normal)|,
+renderer, before this audit. Real XNA's Fresnel term (\texttt{pow(max(1 - |dot(eye, normal)|,
 0), FresnelFactor) * Amount}) makes environment-map reflectivity depend on viewing angle;
 CNA was applying a flat amount regardless of angle. The fix computes the term per pixel
 rather than FNA's per-vertex --- a deliberate, strictly more accurate CNA deviation, not a
 compatibility risk, since a per-pixel Fresnel term can only be closer to the true continuous
 function than a per-vertex-interpolated approximation. A separate, genuinely interesting bug
-affected the world-space normal transform on two of three backends: correct behavior under
+affected the world-space normal transform on two of three renderers: correct behavior under
 non-uniform scale requires transforming normals by the transpose of the inverse of the
 world matrix's upper $3\times3$, not the raw matrix itself; EasyGL used the raw $3\times3$,
 and BGFX transformed normals with a plain matrix multiply --- both wrong the same way; Vulkan
 was already correct. Both were fixed via the standard cofactor/determinant shortcut for the
 transpose-inverse. All findings compose correctly in a capstone test producing byte-identical
-output across all three backends.
+output across all three renderers.
 
 \subsection{A worked example: a chrome car body}
 
@@ -367,13 +367,13 @@ than via FNA's real \texttt{lerp}, meaning values approaching 1.0 could blow out
 over-bright rather than smoothly approaching a pure reflection. And on a non-uniformly-scaled
 car body mesh specifically (common for a squashed/stretched proportions pass), the pre-fix
 world-space normal transform on EasyGL and BGFX would have visibly warped the reflection's
-apparent shape, because both backends transformed normals with the raw world matrix instead of
+apparent shape, because both renderers transformed normals with the raw world matrix instead of
 its transpose-inverse.
 
 \subsection{A stale tracked task, and a worked three-light example}
 
 \texttt{plan\_graphics.md}'s own Task~890 --- ``Forward \texttt{DirectionalLight1}/%
-\texttt{DirectionalLight2} on \cnaclass{EnvironmentMapEffect} (all 3 backends)'' --- is still
+\texttt{DirectionalLight2} on \cnaclass{EnvironmentMapEffect} (all 3 renderers)'' --- is still
 marked open, unchecked, in the plan document at the time of this writing, opened by an earlier
 audit that deliberately scoped it out as ``the same architectural shape'' as the identical gap
 \cnaclass{BasicEffect} once had. Reading
@@ -382,8 +382,8 @@ in fact already landed, in full: \texttt{FillGpuDrawParams()} populates real
 \texttt{light1Dir} / \texttt{light1Diffuse} / \texttt{light2Dir} / \texttt{light2Diffuse} fields
 from \texttt{DirectionalLight1} / \texttt{DirectionalLight2} directly (gated on each light's own
 \texttt{Enabled} property, matching \texttt{DirectionalLight0}'s existing pattern from the
-\texttt{preferPerPixelLighting} fix above), and every backend's own \texttt{.cpp} references
-those fields at the shader-uniform call site --- \texttt{EasyGLGraphicsBackend.cpp}'s own code
+\texttt{preferPerPixelLighting} fix above), and every renderer's own \texttt{.cpp} references
+those fields at the shader-uniform call site --- \texttt{EasyGLRenderer.cpp}'s own code
 comment names the task directly: ``\texttt{Task 890}: \cnaclass{EnvironmentMapEffect}'s own
 \texttt{DirectionalLight1} / \texttt{2} forwarding (same generic path light0 already uses).''
 Real FNA's own \texttt{shaderIndex += 8} one-light shader-variant optimization is present too,
@@ -432,16 +432,16 @@ scene code.
 that needed an out-of-line definition fix at one point for correct linkage), and exposes
 \texttt{SetBoneTransforms} / \texttt{GetBoneTransforms(count)}, a \texttt{WeightsPerVertex}
 property restricted to 1, 2, or 4 (throwing otherwise), \texttt{SpecularColor}/%
-\texttt{SpecularPower}, full lighting and fog, and one \texttt{NOXNA} addition real XNA's
+\texttt{SpecularPower}, full lighting and fog, and one \texttt{CNAEXT} addition real XNA's
 \cnaclass{SkinnedEffect} does not have at all: \texttt{VertexColorEnabled}, added
 specifically to support glTF-imported meshes carrying a \texttt{COLOR\_0} vertex attribute.
 The core skinning math itself --- identity, single-bone, and two-bone weighted blending ---
-was pixel-verified correct on all three backends with zero bugs found; the same
+was pixel-verified correct on all three renderers with zero bugs found; the same
 \texttt{Clone()}-drops-a-field bug pattern from \cnaclass{EnvironmentMapEffect} recurred here
 too, this time silently resetting \texttt{SpecularColor} / \texttt{SpecularPower} to zero on
 every clone. Three further gaps were opened and closed together: \texttt{DirectionalLight1}/%
 \texttt{DirectionalLight2} were unforwarded; \texttt{SpecularColor} / \texttt{SpecularPower}
-had no GPU implementation on any backend at all (fixed with a real Blinn-Phong half-vector
+had no GPU implementation on any renderer at all (fixed with a real Blinn-Phong half-vector
 specular term); and \texttt{WeightsPerVertex} was a complete GPU no-op --- the skinning
 shader always summed all four bone weights regardless of what the property said, now fixed
 with real GPU-side gating for the 2-and-4-weight cases.
@@ -483,29 +483,29 @@ fix --- worth flagging explicitly to anyone porting a project that predates it.
 
 This gap was found the way several of this book's own best findings have been: not by a
 dedicated audit of \texttt{GpuDrawParams} itself, but as a side effect of building
-Chapter~\ref{ch:direct3d-backends}'s pixel-authentic \texttt{D3D9} backend. \texttt{D3D9}'s own
+Chapter~\ref{ch:direct3d-backends}'s pixel-authentic \texttt{D3D9} renderer. \texttt{D3D9}'s own
 plan document, auditing CNA's divergences from real XNA~4.0, found that \cnaclass{BasicEffect}/%
 \cnaclass{SkinnedEffect} both declare and store a real \texttt{PreferPerPixelLighting} property
 (default \texttt{false}, matching XNA), but \texttt{FillGpuDrawParams()} never forwarded it to
-any backend at all --- and every backend's only lit shader computed lighting in the fragment
+any renderer at all --- and every renderer's only lit shader computed lighting in the fragment
 stage unconditionally. The consequence, stated plainly: \textbf{CNA rendered per-pixel lighting
-always, on all nine backends, the exact opposite of XNA's own default} (per-vertex, Gouraud-%
+always, on all nine renderers, the exact opposite of XNA's own default} (per-vertex, Gouraud-%
 interpolated lighting), and no per-vertex-lit shader existed anywhere in the codebase to fall
 back to. A second, narrower gap of the identical shape sat alongside it:
 \cnaclass{EnvironmentMapEffect}'s \texttt{specularEnabled} was tracked internally but never
 forwarded either.
 
-A change touching a shared struct every backend reads, and requiring a genuinely new shader
+A change touching a shared struct every renderer reads, and requiring a genuinely new shader
 variant on most of them, is exactly the kind of decision \texttt{D3D9}'s own plan explicitly
 reserved for the project owner rather than improvising --- the same boundary discipline
 Chapter~\ref{ch:project-practice} covers as a general project convention. Presented with three
 options (a small, additive-only struct change that would unblock \texttt{D3D9} alone; the full
-fix across every backend; or leaving the divergence as a permanent, documented limitation), the
-project owner chose the full fix, sequenced one backend at a time rather than attempted all at
+fix across every renderer; or leaving the divergence as a permanent, documented limitation), the
+project owner chose the full fix, sequenced one renderer at a time rather than attempted all at
 once. \texttt{D3D9} itself needed no new shader at all --- Microsoft's own vendored \texttt{.fx}
 sources already contain both the per-vertex and per-pixel-lit shader families for every affected
-effect, so this backend's own work was purely dispatch: stop hardcoding the flags to
-\texttt{false}. Seven of the other eight backends needed a genuinely new per-vertex-lit shader
+effect, so this renderer's own work was purely dispatch: stop hardcoding the flags to
+\texttt{false}. Seven of the other eight renderers needed a genuinely new per-vertex-lit shader
 variant apiece, each ported from FNA's own \texttt{Lighting.fxh} formula moved from the fragment
 stage into the vertex stage with Gouraud interpolation across the triangle --- the same
 Blinn-Phong math throughout, relocated, not reinvented. \texttt{SdlRenderer} was correctly
@@ -522,8 +522,8 @@ the first real test run of the new dispatch produced a genuine validation-layer 
 hypothetical one --- the two new per-vertex-lit pipeline cache maps were never added to the
 existing teardown path, a real \texttt{VkPipeline} leak caught by
 \texttt{vkDestroyDevice()}'s own diagnostic the moment it was exercised. On the experimental
-\texttt{WebGPU} backend, the new test's measured center pixel values (187/203) did not match the
-other backends' own linear values (127/152) at all until the swapchain's own known
+\texttt{WebGPU} renderer, the new test's measured center pixel values (187/203) did not match the
+other renderers' own linear values (127/152) at all until the swapchain's own known
 sRGB-preferred format was accounted for --- confirmed, not assumed, by hand-computing the sRGB
 encoding of $127/255$ and $152/255$ and finding an exact match, proving a display characteristic
 rather than a math error. And on \texttt{D3D12}, fixing the dispatch broke a \emph{pre-existing}
@@ -532,8 +532,8 @@ under a fresh per-fragment evaluation --- fixed by explicitly pinning that one t
 \texttt{PreferPerPixelLighting} to \texttt{true}, preserving its actual intent, rather than
 updating its expected value the way every other affected specular test correctly was.
 
-That last distinction matters on its own: once a backend's dispatch honors the real default,
-every existing lit-scene pixel test on that backend was expected, up front, to very likely start
+That last distinction matters on its own: once a renderer's dispatch honors the real default,
+every existing lit-scene pixel test on that renderer was expected, up front, to very likely start
 producing different --- and correct --- pixels: flatter, more faceted on low-poly geometry, a
 softer specular highlight lost to Gouraud interpolation between vertices rather than evaluated
 freshly at every fragment. Those baselines needed regenerating forward to the new, real values,
@@ -542,21 +542,21 @@ exception, since its whole purpose was proving a per-pixel coincidence that the 
 correctly no longer produces by default. \cnaclass{AlphaTestEffect} / \cnaclass{DualTextureEffect}
 have no lighting concept at all and were correctly untouched by any of this.
 
-One backend was deliberately, honestly left out rather than silently deferred:
+One renderer was deliberately, honestly left out rather than silently deferred:
 \texttt{Software}'s own rasterizer has no lighting engine of any kind, per-vertex or per-pixel
 --- a documented, pre-existing ``no lighting engine in v1'' design decision, confirmed by reading
 the rasterizer's own doc comments before any implementation work was attempted, not assumed by
 analogy to the other eight. Doing this for real on \texttt{Software} would mean building a CPU
 lighting engine from scratch, a materially larger and differently-shaped task than relocating an
-existing GPU shader stage the way every other backend's own fix was --- the project owner chose
+existing GPU shader stage the way every other renderer's own fix was --- the project owner chose
 to log this as a real, open, un-implemented gap rather than force it into this phase's own scope.
 As of this writing, then: \texttt{preferPerPixelLighting} is genuinely real on seven of CNA's
-nine rendering backends (\texttt{D3D9}, \texttt{EasyGL}, \texttt{Vulkan}, \texttt{BGFX},
+nine renderers (\texttt{D3D9}, \texttt{EasyGL}, \texttt{Vulkan}, \texttt{BGFX},
 \texttt{D3D11}, \texttt{D3D12}, and \texttt{WebGPU} for \cnaclass{BasicEffect} specifically ---
 \cnaclass{SkinnedEffect} / \cnaclass{EnvironmentMapEffect} are not implemented on \texttt{WebGPU}
 at all yet, making the flag moot there rather than unfixed), correctly inapplicable to two
 (\texttt{SdlRenderer}, \texttt{Headless}), and a real, named, tracked gap on the one remaining
-backend (\texttt{Software}) --- not the blanket ``ignored by every backend except D3D9'' this
+renderer (\texttt{Software}) --- not the blanket ``ignored by every renderer except D3D9'' this
 book's own earlier pass once accurately reported, and a concrete demonstration of the ``flag
 accepted by the public API but never wired to any actual GPU state'' bug shape the next section
 names as one of this chapter's three recurring patterns.
@@ -567,11 +567,11 @@ Read together, these five audits tell one consistent story rather than five unre
 Almost every serious bug found falls into one of three shapes: a formula genuinely missing a
 term FNA's real shader includes (the doubled-RGB dual-texture blend, the missing Fresnel
 term, the missing specular implementation); a flag accepted by the public API but never
-wired to any actual GPU state on one or more backends (\texttt{VertexColorEnabled} on
+wired to any actual GPU state on one or more renderers (\texttt{VertexColorEnabled} on
 Vulkan/BGFX in two different effects, \texttt{WeightsPerVertex}); or a bug shared identically
-across all three hardware backends because the shared, backend-agnostic C\texttt{++} code
-that dispatches to per-backend shaders had the bug in the dispatch layer itself, not in any
-one backend's shader (the \texttt{DirectionalLight0.Enabled} check, the project-wide fog
+across all three hardware renderers because the shared, renderer-agnostic C\texttt{++} code
+that dispatches to per-renderer shaders had the bug in the dispatch layer itself, not in any
+one renderer's shader (the \texttt{DirectionalLight0.Enabled} check, the project-wide fog
 gap, the \texttt{Clone()}-drops-\texttt{FogColor} bug). None of these five effects' core
 per-vertex/per-pixel math was ever found to be simply wrong from first principles --- every
 real bug was a specific, nameable omission, which is exactly the kind of claim

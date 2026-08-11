@@ -1,85 +1,75 @@
 \chapter{Renderer Registry, Capabilities, and Evidence}
 \label{ch:feature-matrix}
 
-This appendix consolidates the per-backend findings from Part~IV into one reference
-table. It is a summary, not a replacement --- each row's full story, including the specific
-task numbers and bug histories behind it, lives in the chapter cited in the rightmost column.
+This appendix begins with the canonical public registry at the pinned source snapshot, then
+retains a narrower capability grid from an earlier executed audit. The two cardinalities are
+deliberately different: CNA exposes 46 public identities, while the five EasyGL profiles share
+one factory, yielding 42 concrete implementation factories. An identity absent from the older
+grid is simply unaudited by that grid; absence is not an unsupported-feature claim.
 
 \begin{small}
-\begin{longtable}{lp{7.6cm}l}
+\begin{longtable}{>{\raggedright\arraybackslash}p{3.3cm}>{\raggedright\arraybackslash}p{8.1cm}@{\hspace{0.6cm}}r}
 \toprule
-\textbf{Backend} & \textbf{Summary status} & \textbf{See} \\
+\textbf{Family / chapter} & \textbf{Canonical public selectors} & \textbf{Count} \\
 \midrule
 \endfirsthead
 \toprule
-\textbf{Backend} & \textbf{Summary status} & \textbf{See} \\
+\textbf{Family / chapter} & \textbf{Canonical public selectors} & \textbf{Count} \\
 \midrule
 \endhead
-SDL\_RENDERER & 2D-only by design. 15 real bugs found and fixed; exactly 2 items formally
-  BLOCKED (Wrap/Mirror addressing, Texture3D/TextureCube construction); a real, verified
-  capability win over DX3 for every mode except those two. & Ch.~\ref{ch:sdl-renderer} \\
-EASYGL & Broadest 3D feature coverage of any backend. Own bug list explicitly stale (last
-  fully audited weeks before this book); 1 item BLOCKED (non-Color SurfaceFormat). D3D9-oracle
-  cross-check: 10/31 scenes pixel-perfect; both of the 2 real bugs the cross-check found
-  (negative-\texttt{FogEnd} solid-black, Fresnel Gouraud-interpolation) are since confirmed
-  fixed by reading the current shader source directly (Task~1111/1112). & Ch.~\ref{ch:easygl-backend} \\
-VULKAN & Second-most mature. BlendState/stencil both had ``accepts params, discards them''
-  bugs, now fixed. Occlusion queries went from never-wired to fully real. 1 open item
-  (DepthBias extreme-magnitude sub-case); both formerly-open render-target black cases are
-  now regression-proven closed (Task~875/876), although Task~876's exact fixing commit was not
-  bisected. & Ch.~\ref{ch:vulkan-backend} \\
-BGFX & 37 of 38 originally-found gaps fixed in one session; the 38th (DepthBias, a genuine
-  gap in the underlying bgfx library) fixed too. 2 remaining failures are environment
-  ceilings, not code bugs; \cnaclass{RenderTargetCube} sampling's former wrong-handle-type
-  cast (Task~873/874) and Vulkan's formerly-black equivalent are both fixed. &
-  Ch.~\ref{ch:bgfx-backend} \\
-WEBGPU & Experimental, activated 2026-07-12. Native 2D baseline plus growing 3D (PBR, skinning,
-  render targets, instancing, mip generation). Excluded from this matrix's own cross-backend
-  comparison by its own documentation's choice --- feature surface not yet broad enough. & Ch.~\ref{ch:webgpu-backend} \\
-D3D9 & Targets pixel-for-pixel authenticity against real XNA~4.0, not just parity. Oracle
-  corpus grown to 39 scenes as of this book's own most recent direct recount (36 as of an
-  earlier pass), 0 known divergence at zero tolerance throughout. Windows-only,
-  Wine+DXVK-verified; a real
-  D3D9 swap-chain back-buffer format restriction (not a DXVK quirk) was found and fixed
-  closing out this corpus. & Ch.~\ref{ch:direct3d-backends} \\
-D3D11 & First native Direct3D backend. Real state objects, all 10 stock shader variants, a
-  runtime-compiled, fixed-layout SpriteBatch custom-ShaderEffect path. Device-lost recovery
-  detection-only (never triggered in this dev loop). & Ch.~\ref{ch:direct3d-backends} \\
-D3D12 & Built on D3D11's own bytecode/mapping tables, including the same fixed-layout
-  SpriteBatch custom-effect ABI. Routine CTest suite is off-screen only; real swap-chain
-  presentation proven separately via a manual, Proton-managed diagnostic. &
-  Ch.~\ref{ch:direct3d-backends} \\
-CANVAS & Emscripten-only. No real browser/DOM exists in this dev environment at all --- every
-  claim here means ``code-reviewed and structurally tested,'' not pixel-verified. 5 real bugs
-  found via specification-level review alone. & Ch.~\ref{ch:canvas-ascii-backends} \\
-ASCII & A thin decorator around SDL\_RENDERER's own implementation, not a real terminal
-  backend. The only backend with no BLOCKED items and no environment-gated claims at all. & Ch.~\ref{ch:canvas-ascii-backends} \\
-DX3 & Fronts the sibling \texttt{free-direct} project. Real Wrap/Mirror support (a capability
-  win over SDL\_RENDERER, verified directly against the identical 2-texel test case used on
-  that backend). No BLOCKED decisions remain open. & Ch.~\ref{ch:dx3-freedirect-backend} \\
+OpenGL fixed function & \texttt{OPENGLES1}, \texttt{OPENGL1} & 2 \\
+OpenGL programmable and portable & \texttt{OPENGLES2}, \texttt{OPENGLES3},
+  \texttt{OPENGL33}, \texttt{WEBGL1}, \texttt{WEBGL2}, \texttt{OPENGL2},
+  \texttt{OPENGL4}, \texttt{PORTABLEGL} & 8 \\
+Native modern GPU APIs & \texttt{VULKAN}, \texttt{WEBGPU}, \texttt{SDL\_GPU},
+  \texttt{METAL} & 4 \\
+Abstraction layers I & \texttt{BGFX}, \texttt{MAGNUM}, \texttt{LLGL},\newline
+  \texttt{DILIGENT} & 4 \\
+Abstraction layers II & \texttt{SOKOL}, \texttt{WICKED}, \texttt{FNA3D} & 3 \\
+DirectX 1--3 and free-direct & \texttt{DIRECTX1}, \texttt{DIRECTX2},
+  \texttt{DIRECTX3}, \texttt{FREEDIRECT} & 4 \\
+Retro ladder & \texttt{DIRECTX5}, \texttt{DIRECTX6}, \texttt{DIRECTX7},
+  \texttt{DIRECTX8}, \texttt{GLIDE} & 5 \\
+Modern Direct3D & \texttt{DIRECTX9}, \texttt{DIRECTX10}, \texttt{DIRECTX11},
+  \texttt{DIRECTX12} & 4 \\
+Windows 2D & \texttt{DIRECT2D}, \texttt{GDI} & 2 \\
+2D and vector rasterizers & \texttt{SDL\_RENDERER}, \texttt{SKIA},
+  \texttt{BLEND2D}, \texttt{OPENVG} & 4 \\
+Web and DOM & \texttt{CANVAS}, \texttt{HTML\_DOM},\newline \texttt{SVG\_DOM} & 3 \\
+Non-GPU and diagnostic & \texttt{HEADLESS}, \texttt{SOFTWARE}, \texttt{STUB} & 3 \\
+\midrule
+\textbf{Total} & \textbf{46 public identities / 42 implementation factories} & \textbf{46} \\
 \bottomrule
 \end{longtable}
 \end{small}
 
+\texttt{ASCII} is not a current identity; its reusable logic moved to
+\cnaclass{CNA::Graphics::AsciiPostProcessEffect}. \texttt{EASYGL}, \texttt{DX3},
+\texttt{D3D9}, \texttt{D3D11}, and \texttt{D3D12} are not accepted selectors. The defaults
+are \texttt{OPENGLES3} on Linux, \texttt{WEBGL2} under Emscripten, and
+\texttt{SDL\_RENDERER} elsewhere. Chapter~\ref{ch:renderer-selection-identity} explains the
+identity/factory distinction; \texttt{docs/renderer-registry.md} is the primary source.
+
 \section{A capability grid, condensed from the project's own master matrix}
 
-The per-backend prose above tells each backend's own story; this section adds the
-complementary view --- one capability against all seven of the backends
-\texttt{docs/graphics-backend-\allowbreak{}feature-matrix.md} covers in its own row-by-row comparison
-(\texttt{SDL\_RENDERER}, \texttt{EASYGL}, \texttt{VULKAN}, \texttt{BGFX}, \texttt{D3D9},
-\texttt{D3D11}, \texttt{D3D12} --- \texttt{WEBGPU} and \texttt{SDL\_GPU} are both intentionally
+The registry above tells the current identity story; this section preserves the
+complementary, narrower view from the earlier seven-renderer executed audit recorded in
+\texttt{docs/graphics-renderer-\allowbreak{}feature-matrix.md}:
+(\texttt{SDL\_RENDERER}, the EasyGL implementation, \texttt{VULKAN}, \texttt{BGFX}, and
+the Direct3D~9/11/12 implementations). The historical D9/D11/D12 column labels below name
+native APIs, not accepted current selectors. \texttt{WEBGPU} and \texttt{SDL\_GPU} were
 excluded from that source document's own comparison, the former by its own documented choice
 pending a broader feature surface, the latter because it postdates the document; see
 Chapter~\ref{ch:webgpu-backend} and Chapter~\ref{ch:sdlgpu-backend} for their own coverage
-instead). Status symbols match the source document's own legend, spelled out as plain text
+instead. Status symbols match the source document's own legend, spelled out as plain text
 rather than a symbol font this project's preamble doesn't load: \textbf{OK} correct and
 verified, \texttt{X} known gap not fixed, \texttt{BLK} formally BLOCKED (needs a
 project-owner architecture decision), \texttt{P} the compact table form of the source's
 \texttt{PARTIAL} (implemented but not independently pixel-verified or only partially covered),
-\texttt{N/A} not applicable to this backend's own scope, \texttt{---} not attempted. Every cell
+\texttt{N/A} not applicable to this renderer's own scope, \texttt{---} not attempted. Every cell
 below is a condensed transcription of a real row
-in the source document --- read that document directly (or the backend's own chapter, cited in
-the per-backend table above) for the full evidence and task numbers behind each symbol; this
+in the source document --- read that document directly (or the renderer's own chapter, cited in
+the per-renderer table above) for the full evidence and task numbers behind each symbol; this
 grid answers ``does it work'' at a glance, not ``how do we know.''
 
 \begin{center}
@@ -122,8 +112,8 @@ Per-slot \texttt{SamplerState} (16 slots) & OK & OK & OK & OK &
 
 \begin{footnotesize}
 \noindent\textsuperscript{a}\textbf{This cell deliberately corrects the source document.}
-\path{docs/graphics-backend-feature-matrix.md} still marks BGFX \textbf{OK}, but the live
-backend's \texttt{CompileProgram()} always fails and \cnaclass{ShaderEffect} exposes no
+\path{docs/graphics-renderer-feature-matrix.md} still marks BGFX \textbf{OK}, but the live
+renderer's \texttt{CompileProgram()} always fails and \cnaclass{ShaderEffect} exposes no
 binary-loading route. Chapter~\ref{ch:shader-fx-gap} records the complete source audit.
 
 \noindent\textsuperscript{b}\texttt{SDL\_RENDERER} rejects a non-null custom effect by design --- a
@@ -132,8 +122,8 @@ binary-loading route. Chapter~\ref{ch:shader-fx-gap} records the complete source
 decision is involved. See Chapter~\ref{ch:sdl-renderer}.
 
 \noindent\textsuperscript{c}\textbf{This grid deliberately corrects the source document.}
-\path{docs/graphics-backend-feature-matrix.md} still marks this row \texttt{X} ``ignored, all
-3 (Task~871, open)'' for \texttt{EASYGL} / \texttt{VULKAN} / \texttt{BGFX} --- stale as of this
+\path{docs/graphics-renderer-feature-matrix.md} still marks this row \texttt{X} ``ignored, all
+3 (Task~871, open)'' for \texttt{EasyGL} / \texttt{VULKAN} / \texttt{BGFX} --- stale as of this
 book's own independent re-verification. Public stencil dispatch now exists. EasyGL has
 selective D24S8 pixel proof. Vulkan/BGFX have cross-frame value proof but unconditionally clear
 all view/pass attachments, hence \texttt{P}, not \textbf{OK}. SDL\_Renderer has no stencil
@@ -164,7 +154,7 @@ This grid omits the source document's own Texture2D/Texture3D/TextureCube,
 Model/OcclusionQuery, and remaining-genuine-limitations tables entirely --- not because they are
 less real, but because condensing all six original tables into one appendix would defeat the
 ``quick reference, not replacement'' purpose this appendix states for itself; the two grids
-above were chosen as the ones a reader deciding which backend to target for a specific game
+above were chosen as the ones a reader deciding which renderer to target for a specific game
 mechanic (2D-only? relies on device state objects for a real gameplay effect like an outline
 shader via a custom \texttt{DepthStencilState}?) is most likely to need first. The full six-table
 original remains the primary source for everything else, subject to the explicitly documented
@@ -173,13 +163,13 @@ stale cells this appendix has independently re-audited.
 \section{Reading this table safely}
 
 Two cautions from this book apply to every row above. First, ``verified'' means something
-different for different backends --- Chapter~\ref{ch:direct3d-backends}'s own D3D9 column is
+different for different renderers --- Chapter~\ref{ch:direct3d-backends}'s own D3D9 column is
 explicitly the strictest bar in the project (pixel-for-pixel against a real running XNA~4.0
 runtime), while a BGFX or CANVAS row's own verification is scoped more narrowly, and each
-backend chapter says so directly rather than leaving the reader to assume equivalence.
+renderer chapter says so directly rather than leaving the reader to assume equivalence.
 Second, this table is a snapshot. This book's own source material carried dated corrections in
-both directions --- the D3D9 backend's own documentation and the project's cross-backend
+both directions --- the Direct3D~9 renderer's own documentation and the project's cross-renderer
 feature matrix genuinely disagreed about the render-target-as-texture fix's timing at one
 point, and the feature matrix's own account was the more current one. Treat this appendix the
 same way: a starting map, not a final word, to be checked against the project's own current
-\path{docs/graphics-backend-feature-matrix.md} before relying on any single row.
+\path{docs/graphics-renderer-feature-matrix.md} before relying on any single row.

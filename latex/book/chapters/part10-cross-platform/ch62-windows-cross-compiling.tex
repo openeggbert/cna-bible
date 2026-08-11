@@ -2,7 +2,7 @@
 \label{ch:windows-cross-compiling}
 \label{ch:windows-wine}
 
-This book's Direct3D chapter described what the D3D9/D3D11/D3D12 backends prove; this chapter
+This book's Direct3D chapter described what the D3D9/D3D11/D3D12 renderers prove; this chapter
 describes the actual machinery that makes proving it possible without ever touching a
 Windows machine --- a genuinely elaborate, carefully engineered dev loop that deserves its
 own explanation.
@@ -16,14 +16,14 @@ the 64-bit one is not found), and isolates the cross-root so CMake's own
 \texttt{find\_package} calls never accidentally pick up a host Linux library. The invocation
 is exactly what Chapter~\ref{ch:building-cna} already showed:
 \texttt{-DCMAKE\_TOOLCHAIN\_FILE=cmake/toolchains/mingw-w64.cmake}, alongside whichever
-backend option is being targeted.
+renderer option is being targeted.
 
 \begin{lstlisting}[style=cnashell]
 # Worked example: the exact invocation this toolchain file's own header
 # comment documents, run from the cna repo root.
 cmake -B build-windows \
       -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/mingw-w64.cmake \
-      -DCNA_GRAPHICS_BACKEND=SDL_RENDERER
+      -DCNA_GRAPHICS_RENDERER=SDL_RENDERER
 cmake --build build-windows
 \end{lstlisting}
 
@@ -113,7 +113,7 @@ through two independent paths: a real, Wine-hosted XNA~4.0 program (compiled by 
 in-prefix \texttt{csc.exe}, run against the XNA-redistributable prefix, itself running
 through DXVK rather than WineD3D --- a deliberate methodological choice, so that a pixel diff
 never silently measures a driver difference instead of a real CNA difference) and CNA's own
-cross-compiled D3D9 backend, run through the same DXVK-verified gate as everything else in
+cross-compiled D3D9 renderer, run through the same DXVK-verified gate as everything else in
 this chapter. A dedicated, mutation-tested comparison script does the actual pixel diff, at
 a caller-specified tolerance --- confirmed, via a deliberately corrupted test image, to
 correctly report exactly the number of differing pixels a known mutation introduces, not just
@@ -123,7 +123,7 @@ a pass/fail verdict.
 
 Real Direct3D~9 hardware/driver behavior, not a CNA logic bug, is exactly what this whole
 elaborate dev loop exists to surface reliably --- and one concrete finding from closing out the
-D3D9 backend's own verification work is worth naming as proof it does. DXVK's D3D9
+D3D9 renderer's own verification work is worth naming as proof it does. DXVK's D3D9
 implementation, correctly matching real D3D9's own restriction, refused to create a swap chain
 using \texttt{D3DFMT\_A8B8G8R8} --- \cnaclass{SurfaceFormat::Color}'s own natural D3D9
 equivalent, and a format D3D9 accepts perfectly well for an ordinary \emph{texture}. The error
@@ -144,7 +144,7 @@ The fix substitutes the back buffer's own display-compatible sibling format,
 creation --- every other \cnaclass{SurfaceFormat::Color}-backed resource, an ordinary
 \cnaclass{Texture2D} in particular, keeps requesting \texttt{A8B8G8R8} directly, since that
 restriction genuinely does not apply there. The substitution stays correct end to end because
-the backend's own back-buffer readback path already handles both byte orders, not because the
+the renderer's own back-buffer readback path already handles both byte orders, not because the
 two formats happen to be interchangeable in general. This is precisely the class of finding
 this chapter's own D3D9 oracle and DXVK-gated dev loop are built to catch: a real, confirmed
 Direct3D~9 API restriction, discovered only because the verification pipeline runs against a
@@ -161,7 +161,7 @@ vector round-trips, viewport projection math) to JSON; a companion C\texttt{++} 
 the identical dump from CNA's own real implementation, entirely without constructing a
 \cnaclass{GraphicsDevice} at all; and a small, dependency-free comparison script asserts every
 FNA-side value has a matching CNA-side value, deliberately one-directional so that a
-CNA-only, \texttt{NOXNA}-tagged extension is never flagged as a mismatch. This lighter-weight
+CNA-only, \texttt{CNAEXT}-tagged extension is never flagged as a mismatch. This lighter-weight
 tool exists specifically because it needs no live rendering device --- extending it to cover
 anything that does (a stock effect's actual rendered output, for instance) was evaluated and
 explicitly deferred as a substantially larger undertaking, left for the D3D9 oracle to cover
@@ -193,7 +193,7 @@ POW2 or NPOT-conditional restriction --- a plausible but not authentic-period va
 D3D12, by contrast, query capability structures a real, modern game targeting those APIs
 natively would also query, with no XNA-era translation step in between. \texttt{CheckMultisampleQualityLevels()}
 is the concrete instance already covered above (\S\ref{sec:d3d9-oracle} discusses the sibling
-D3D9 case): \texttt{D3D11RenderTargetBackend} never assumes a requested MSAA sample count is
+D3D9 case): \texttt{D3D11RenderTargetRenderer} never assumes a requested MSAA sample count is
 honored, calls this real device API, and \texttt{ClampMultiSampleCount()} would fall back to
 0 (no MSAA) if the device ever reported zero quality levels for the requested count --- on
 this real RADV device it does not fall back, because the hardware genuinely grants a real,
@@ -218,7 +218,7 @@ has cited.
 
 Every measurement this elaborate dev loop produces --- the D3D9 oracle's 0-of-31 divergence
 count, the D3D11/D3D12 smoke suites, the \texttt{GraphicsProfile.Reach} / \texttt{HiDef} logic
-Chapter~\ref{ch:graphicsdevice} already covers as the one CNA backend where that distinction is
+Chapter~\ref{ch:graphicsdevice} already covers as the one CNA renderer where that distinction is
 genuinely real --- inherits the same single, explicitly-named qualifier, stated plainly and
 project-wide rather than buried in one task's own footnote: under Wine plus DXVK,
 \texttt{D3DCAPS9} is \emph{synthesized by DXVK itself}, not reported by an authentic,
@@ -246,7 +246,7 @@ one. This task is formally marked \texttt{needs\_human} in the project's own tra
 unfinished engineering, but a verification step that requires physical hardware and a human
 hand no amount of further Wine/DXVK tooling can substitute for, the identical gap
 Chapter~\ref{ch:verification-methodology}'s own cross-platform account already names plainly:
-real Windows hardware verification remains open on all three Direct3D backends. Every specific,
+real Windows hardware verification remains open on all three Direct3D renderers. Every specific,
 checkable claim this book has made about D3D9 pixel authenticity should be read with this
 qualifier attached --- ``indistinguishable from real XNA~4.0 running through the same DXVK
 path, on this machine,'' a real and rigorously earned result, but not yet ``authentically

@@ -136,6 +136,27 @@ else
     pass "no doubled-backslash \\ref"
 fi
 
+# These source identifiers and build options were removed by CNA's renderer/CNAEXT
+# naming migration. Unlike ordinary prose uses of "backend", none is contextually valid in
+# the current manuscript. Historical discussion should spell out the old name without using
+# it as a live identifier, or live in the audit/plan evidence outside the compiled book.
+obsolete_re='IGraphicsBackend|ITextureBackend|ITexture3DBackend|ISpriteBatchBackend|IEffectBackend|ITextureCubeBackend|IRenderTargetBackend|IRenderTargetCubeBackend|IIndexBufferBackend|IVertexBufferBackend|IOcclusionQueryBackend|GraphicsBackendType|GetGraphicsBackendType|GetGraphicsBackendName|GraphicsBackendCreateArgs|CreateGraphicsBackend|D3D11RenderTargetBackend|CNA_GRAPHICS_BACKEND|CNA\\_GRAPHICS\\_BACKEND|CNA_BACKEND_|CNA\\_BACKEND\\_|CNA_RENDERER_(D3D9|D3D11|D3D12|DX3|EASYGL|ASCII)|CNA\\_RENDERER\\_(D3D9|D3D11|D3D12|DX3|EASYGL|ASCII)|NOXNA|BackendSelection\.cmake|BackendLibraries\.cmake|customEffectBackend|GraphicsRendererType::Ascii'
+if grep -rEn "$obsolete_re" "$chapters" "$front" > /tmp/cna-bible-obsolete-identifiers.txt 2>/dev/null; then
+    n=$(wc -l < /tmp/cna-bible-obsolete-identifiers.txt)
+    fail "obsolete CNA identifiers/options in compiled manuscript: $n"
+    head -10 /tmp/cna-bible-obsolete-identifiers.txt | sed 's/^/        /'
+else
+    pass "no obsolete CNA identifiers/options in compiled manuscript"
+fi
+
+if grep -rEn 'CNA(_|\\_)GRAPHICS(_|\\_)RENDERER=(EASYGL|DX3|D3D9|D3D11|D3D12|ASCII)' "$chapters" "$front" > /tmp/cna-bible-obsolete-selectors.txt 2>/dev/null; then
+    n=$(wc -l < /tmp/cna-bible-obsolete-selectors.txt)
+    fail "removed renderer selector in a live CMake assignment: $n"
+    head -10 /tmp/cna-bible-obsolete-selectors.txt | sed 's/^/        /'
+else
+    pass "no removed renderer selectors in live CMake assignments"
+fi
+
 for term in NOXNA "both volumes" "this volume" "Volume I" "Volume II"; do
     n=$(grep -rio "$term" "$chapters" "$front" 2>/dev/null | wc -l)
     [ "$n" -gt 0 ] && info "term '$term': $n occurrence(s) -- inspect each, some may be legitimately historical"

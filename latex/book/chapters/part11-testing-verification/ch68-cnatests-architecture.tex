@@ -4,9 +4,9 @@
 
 Chapter~\ref{ch:testing-philosophy} in this Part covers the individual verification
 \emph{mechanisms} this ecosystem relies on --- pixel tests, differential testing, the D3D9
-oracle, sanitizers, the \texttt{NOXNA} build gate. This short closing chapter of Part~VIII takes
-a different cut through the same material: comparing how much of that machinery actually
-reaches each of the four platforms the previous three chapters covered, side by side, because
+oracle, sanitizers, and the \texttt{CNAEXT} build gate. This opening chapter of Part~XI takes
+a platform-oriented cut through that material: comparing how much of the machinery actually
+reaches each of the principal target environments side by side, because
 the honest answer varies more than a single ``cross-platform and verified'' claim would
 suggest.
 
@@ -19,7 +19,7 @@ suggest.
 \textbf{Platform} & \textbf{What is actually verified, as of this book's source material} \\
 \midrule
 Linux (native) & The deepest verification of any platform: the full roughly~4{,}370-test unit
-  suite, the roughly~490-test GPU pixel suite across four backends, real differential testing
+  suite, the roughly~490-test GPU pixel suite across four renderers, real differential testing
   against a genuine FNA install (Chapter~\ref{ch:windows-wine}), and the sanitizer trio where
   applied (Chapter~\ref{ch:testing-philosophy}). This is the ground every other platform's own
   claims are ultimately measured against. \\
@@ -27,14 +27,14 @@ Windows (via Wine) & Real GPU-accelerated rendering through DXVK/vkd3d-proton, g
   self-verifying marker check so a silent WineD3D fallback cannot corrupt a result
   (Chapter~\ref{ch:windows-wine}); includes the single strictest test in the whole project,
   the D3D9 oracle against a genuinely running XNA~4.0 install. Real Windows hardware
-  verification remains open on all three Direct3D backends. \\
-Web (Emscripten) & Split sharply by backend. \texttt{CANVAS}: a real build exists, links, and
+  verification remains open on all three Direct3D renderers. \\
+Web (Emscripten) & Split sharply by renderer. \texttt{CANVAS}: a real build exists, links, and
   runs its test suite under Node --- but no test in this environment can touch a real
   \cnaclass{GraphicsDevice} at all, since Node provides no WebGL/Canvas context, leaving a
   13-item manual browser checklist entirely unchecked (Chapter~\ref{ch:web-emscripten}).
-  \texttt{EASYGL}/WebGL2, the platform's actual default backend, has never been built under
-  Emscripten at all in this project's history. \\
-Android (NDK) & Split sharply by demo, not just by backend. The devices/sensors demo: real,
+  \texttt{WEBGL2}, using the shared EasyGL implementation and the platform's actual default,
+  had never been built under Emscripten as of the cited measurement. \\
+Android (NDK) & Split sharply by demo, not just by renderer. The devices/sensors demo: real,
   live-verified on an x86\_64 emulator, down to synthetic sensor injection producing a real
   on-screen response. Graphics (\texttt{SDL\_RENDERER}, Android's own default): never run on
   any device or emulator, and, per a documented regression in an unrelated sibling project,
@@ -101,13 +101,13 @@ vertex=0.6,-0.6,0,0,0,255,255
 \end{lstlisting}
 
 \repolink{tools/xna-oracle/CnaOracleRender.cpp} is the one piece of code that turns a scene file
-into a pixel buffer, and it is deliberately backend-agnostic: it calls only the public
+into a pixel buffer, and it is deliberately renderer-agnostic: it calls only the public
 \cnaclass{Game} / \cnaclass{GraphicsDeviceManager} / \cnaclass{GraphicsDevice} / \cnaclass{SpriteBatch}
 surface this book documents everywhere else, with no \verb|#ifdef| branch for any specific
-backend. The same source file is compiled twice --- once through real XNA~4.0 under Wine
+renderer. The same source file is compiled twice --- once through real XNA~4.0 under Wine
 (producing the checked-in reference PNG under \repolink{tools/xna-oracle/reference/}, captured
 once by hand and never regenerated except when a scene's own content changes) and once through
-whichever CNA backend is under test. \repolink{scripts/xna-diff.py} then compares the two PNGs
+whichever CNA renderer is under test. \repolink{scripts/xna-diff.py} then compares the two PNGs
 one pixel at a time, taking the \emph{maximum} absolute per-channel delta at each pixel (not an
 average, and not a whole-image error metric) and counting how many pixels exceed
 \texttt{{-}{-}tolerance}. The default tolerance is \texttt{0}: an exact match, every channel, every
@@ -124,10 +124,10 @@ green ``is exactly how an authenticity project quietly becomes a parity project.
 \section{A measurement that deliberately is not a gate}
 
 Not every comparison this project runs is meant to become a permanent CTest, and the corpus's
-own cross-backend EasyGL measurement is a useful, honestly-documented example of the opposite
+own cross-renderer EasyGL measurement is a useful, honestly-documented example of the opposite
 choice. \repolink{scripts/run-oracle-corpus-diff-easygl.sh} runs the identical scene corpus and
 the identical tolerance-0 \repolink{xna-diff.py} comparison through
-\repolink{tools/xna-oracle/CnaOracleRender.cpp} recompiled natively against the EasyGL backend
+\repolink{tools/xna-oracle/CnaOracleRender.cpp} recompiled natively against the EasyGL renderer
 instead of D3D9-over-Wine --- reusing, unmodified, both the renderer and the reference images the
 D3D9 gate already depends on. As of the measurement recorded in
 \repolink{docs/d3d9-divergence-report.md} (against the 31-scene corpus checked in at the time; the
@@ -160,7 +160,7 @@ Pattern A layered on top at the silhouette. Pattern C, 2 scenes, is the measurem
 \repolink{fog\_gradient\_quad} rendered as solid black across the entire primitive where real XNA
 produces a smooth white-to-black gradient, and \repolink{envmap\_fresnel\_quad} rendered nearly
 flat where real XNA produces a smooth per-vertex Fresnel gradient --- both genuine, large,
-whole-primitive EasyGL bugs, confirmed as EasyGL-backend-local because the same two scenes render
+whole-primitive EasyGL bugs, confirmed as EasyGL-renderer-local because the same two scenes render
 correctly (0 differing pixels) through the D3D9 side of the identical corpus. Both are now fixed
 in current source, as Chapter~\ref{ch:easygl-backend} documents in full. None of the 21 were
 investigated further under this specific task, by design --- its own scope was ``record the
@@ -169,7 +169,7 @@ corresponding \repolink{plan\_graphics.md} item next, which is exactly how Patte
 were later closed.
 
 The methodological lesson generalizes beyond this one measurement: a pixel-diff tool with a fixed
-numeric tolerance answers ``do these two images match,'' not ``is this backend correct,'' and the
+numeric tolerance answers ``do these two images match,'' not ``is this renderer correct,'' and the
 gap between those two questions is exactly the shared execution stack (or its absence) between
 whatever two things are being compared. The D3D9 oracle can afford tolerance~0 as a blocking gate
 because both sides share DXVK; EasyGL cannot, so the same tool is reused for insight without being

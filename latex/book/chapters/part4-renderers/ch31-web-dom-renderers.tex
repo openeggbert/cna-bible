@@ -2,7 +2,7 @@
 \label{ch:web-dom-renderers}
 \label{ch:canvas-ascii-backends}
 
-These two backends share a family resemblance --- both are 2D-only, in the same spirit as
+These two renderers share a family resemblance --- both are 2D-only, in the same spirit as
 \texttt{SDL\_RENDERER} --- but arrive there by opposite routes: \texttt{CANVAS} replaces
 SDL's own rendering entirely with a browser API, while \texttt{ASCII} is, quite literally, a
 thin decorator wrapped around \texttt{SDL\_RENDERER}'s own real implementation.
@@ -13,12 +13,12 @@ thin decorator wrapped around \texttt{SDL\_RENDERER}'s own real implementation.
 (\texttt{drawImage} / \texttt{putImageData} / \texttt{fillRect}) instead of SDL3's own 2D blit
 API. The single fact that qualifies every other claim in this section: this project's own
 development environment has \emph{no real browser and no real DOM}. The \texttt{node}
-runtime that executes this backend's compiled test suite provides no
+runtime that executes this renderer's compiled test suite provides no
 \texttt{CanvasRenderingContext2D} at all, and \texttt{SDL\_Init(SDL\_INIT\_VIDEO)} itself
 throws under Emscripten running in \texttt{node} --- confirmed directly, not assumed. Every
-checkmark in this backend's own documentation therefore means ``implemented, code-reviewed,
+checkmark in this renderer's own documentation therefore means ``implemented, code-reviewed,
 and passing structural (non-pixel) test coverage,'' not ``pixel-verified in a real browser''
---- a narrower claim than every backend in the previous chapters, and stated as such rather
+--- a narrower claim than every renderer in the previous chapters, and stated as such rather
 than blurred.
 
 \subsection{Five real bugs found in an external review, before any real browser existed to test in}
@@ -34,7 +34,7 @@ code in a browser:
         Porter-Duff \texttt{copy} operator's own definition. Fixed by clipping to the exact
         drawn rectangle before compositing.
   \item \texttt{AlphaBlend} and \texttt{NonPremultiplied} were treated as identical, on the
-        original reasoning that this backend's own textures are never genuinely
+        original reasoning that this renderer's own textures are never genuinely
         premultiplied --- an assumption that does not hold project-wide, since
         \texttt{SDL\_RENDERER}'s own test suite deliberately constructs premultiplied test
         data. Fixed with a real per-pixel un-premultiply pass applied only to the
@@ -71,8 +71,8 @@ above.
 \subsection{A worked example: the un-premultiply pass, in real numbers}
 
 The \texttt{AlphaBlend} / \texttt{NonPremultiplied} fix above (bug~2) is worth the same
-hand-computed treatment the ASCII backend's own quantizer gets below, since the actual
-per-pixel formula --- read directly from \texttt{CanvasSpriteBatchBackend.cpp}'s own
+hand-computed treatment the ASCII renderer's own quantizer gets below, since the actual
+per-pixel formula --- read directly from \texttt{CanvasSpriteBatchRenderer.cpp}'s own
 Canvas-2D-side pixel loop --- is small enough to verify by hand. A half-transparent, dark-red
 premultiplied source pixel, $\text{RGBA} = (64, 32, 16, 128)$ (alpha $\approx 50\%$), is the
 kind of value \texttt{SDL\_RENDERER}'s own test suite deliberately constructs, per the bug's
@@ -101,60 +101,71 @@ before clamping.
 
 \subsection{What real browser verification would still require}
 
-The backend's own documentation includes a full thirteen-item manual browser verification
+The renderer's own documentation includes a full thirteen-item manual browser verification
 checklist --- explicitly left entirely unchecked, described as ``the closest honest
 equivalent to SDL\_RENDERER's own pixel-verified completeness table,'' pending a human
 running it in a real browser (for instance via Emscripten's \texttt{emrun}).
 
-\section{ASCII: composition, not reimplementation}
+\section{The former ASCII renderer: historical architecture}
 
-\texttt{ASCII} is not a real terminal or TTY backend --- it renders inside an ordinary SDL
+\begin{sourcenote}
+\textbf{Edition update.} The renderer described in this section has been removed as a public
+identity. Its reusable quantizer and glyph-grid presentation logic now live in the
+renderer-neutral \cnaclass{CNA::Graphics::AsciiPostProcessEffect} under
+\texttt{modules/graphics-ext}; Appendix~\ref{ch:cnaext-catalog} covers the current surface. The
+remaining discussion records the predecessor's design and evidence, not a selector available
+in the current 46-identity / 42-family registry.
+\end{sourcenote}
+
+\texttt{ASCII} is not a real terminal or TTY renderer --- it renders inside an ordinary SDL
 window, exactly like \texttt{SDL\_RENDERER}, and is architecturally, in the project's own
-words, ``a thin decorator around SDL\_RENDERER's own \texttt{SdlGraphicsBackend}.'' A game
+words, ``a thin decorator around SDL\_RENDERER's own \texttt{SdlRenderer}.'' A game
 draws normally into a private offscreen target; \texttt{Present()} reads that frame back,
 quantizes it into a grid of glyph-plus-color cells, and draws the resulting grid onto the
-real window using the internal \cnaclass{ISpriteBatchBackend} / \cnaclass{ITextureBackend}
+real window using the internal \cnaclass{ISpriteBatchRenderer} / \cnaclass{ITextureRenderer}
 pair directly --- deliberately \emph{not} going through the public \cnaclass{SpriteFont} API,
-consistent with the project's own rule that backend internals stay below, and hidden from,
+consistent with the project's own rule that renderer internals stay below, and hidden from,
 the public XNA-facing API surface.
 
 \subsection{A genuinely distinctive claim: no blocked decisions, no environment gate}
 
-This backend's own completeness documentation makes a claim none of the others in this
+This renderer's own completeness documentation makes a claim none of the others in this
 chapter or the previous ones can: ``no BLOCKED section and no \texttt{needs\_human} gate
 anywhere --- every row below is automated and pixel-verified in this dev environment\ldots
 including real-window \texttt{Present()} output.'' Because it inherits \texttt{SDL\_RENDERER}'s
 own implementation wholesale for everything a game actually draws --- \cnaclass{SpriteBatch},
 \cnaclass{Texture2D}, \cnaclass{SpriteFont}, \cnaclass{BlendState}, \cnaclass{SamplerState},
-render targets --- it also inherits that backend's entire, exhaustively-verified completeness
+render targets --- it also inherits that renderer's entire, exhaustively-verified completeness
 table transparently, without needing to repeat it. The one partial exception:
 \texttt{SetRenderTarget(nullptr)} is intercepted and redirected to the private game-target
 buffer rather than the literal window backbuffer, ``so the game can never accidentally draw
 straight onto the real window.''
 
-\subsection{A separate backend, not a toggle --- and why that was a genuinely close call}
+\subsection{A separate renderer, not a toggle --- and why that was a genuinely close call}
 
 \texttt{plan\_ascii.md}'s own design-decisions section records an alternative that was seriously
 considered and explicitly not dismissed out of hand: implementing this entire feature as a
-runtime toggle or \texttt{NOXNA} extension directly on \texttt{SDL\_RENDERER}, instead of a
-separate, selectable \texttt{CNA\_GRAPHICS\_BACKEND} value. The architectural case for the
+runtime toggle or \texttt{CNAEXT} extension directly on \texttt{SDL\_RENDERER}, instead of a
+separate, selectable \texttt{CNA\_GRAPHICS\_RENDERER} value. The architectural case for the
 toggle is real, not a straw man --- \texttt{ASCII} \emph{is}, structurally, ``\texttt{SDL\_RENDERER}
 plus a present-time filter,'' per the same document's own framing: every draw call a game issues
-forwards to a live \texttt{SdlGraphicsBackend} instance unmodified, and the only genuinely new
-code this backend contributes at all is a replacement \texttt{Present()}. A single boolean flag
-on the existing backend could, in principle, have delivered the identical behavior with strictly
-less code --- no new CMake option, no new entry in \texttt{BackendSelection.cmake}'s
-\texttt{STRINGS} list, no fourteenth value for a reader of Chapter~\ref{ch:backend-architecture}
+forwards to a live \texttt{SdlRenderer} instance unmodified, and the only genuinely new
+code this renderer contributes at all is a replacement \texttt{Present()}. A single boolean flag
+on the existing renderer could, in principle, have delivered the identical behavior with strictly
+less code --- no new CMake option, no new entry in \texttt{RendererSelection.cmake}'s
+\texttt{STRINGS} list, no additional value in the then-current catalog for a reader of
+Chapter~\ref{ch:backend-architecture}
 to learn.
 
 The plan's own recorded reasoning for choosing the heavier option anyway is worth stating
 precisely, since it is a judgment call about discoverability rather than a technical constraint:
-``discoverability and consistency with how this project already exposes backend choice.'' A
-\texttt{CNA\_GRAPHICS\_BACKEND=ASCII} build is a single, obvious CMake flag any reader of this
+``discoverability and consistency with how this project already exposes renderer choice.'' A
+build with \texttt{CNA\_GRAPHICS\_RENDERER} set to the former \texttt{ASCII} value was a single,
+obvious CMake flag any reader of this
 book's own Chapter~\ref{ch:building-cna} already knows to look for; a correct-but-buried
 \texttt{SDL\_RENDERER}-plus-an-environment-variable combination is not discoverable the same
-way, and would have made this backend read as an undocumented mode of another backend rather
-than a first-class, named part of the project's own twelve-backend catalog. The plan document
+way, and would have made this renderer read as an undocumented mode of another renderer rather
+than a first-class, named part of the project's own former renderer catalog. The plan document
 does not present this as a closed question, either --- it explicitly flags the toggle as ``a
 real, low-cost alternative worth revisiting if a toggle turns out to be more convenient in
 practice,'' rather than retroactively justifying the decision actually shipped as though it were
@@ -223,13 +234,13 @@ through the genuine \texttt{Present()} path, unaffected by either.
 
 \subsection{Input, unmodified}
 
-Input on this backend required zero new code at all --- verified twice, independently: once
-through the existing backend-agnostic mouse test suite, and once through a new, dedicated
-input test written specifically for this backend, passing in full.
+Input on this renderer required zero new code at all --- verified twice, independently: once
+through the existing renderer-agnostic mouse test suite, and once through a new, dedicated
+input test written specifically for this renderer, passing in full.
 
 \subsection{Two stored rectangles, only one delegated}
 
-Neither backend overrides \texttt{SetViewport()}, so a custom public viewport never remaps its
+Neither renderer overrides \texttt{SetViewport()}, so a custom public viewport never remaps its
 2D output. CANVAS also inherits the empty scissor and rasterizer hooks: both public values are
 stored-only. ASCII is asymmetrical because it delegates \texttt{SetScissorRect()} to the inner
 SDL renderer but does not delegate \texttt{ApplyRasterizerState()}. The rectangle therefore
@@ -240,7 +251,7 @@ composition faithfully inheriting SDL\_Renderer's own state bug, not a separate 
 
 \subsection{Persistent 2D targets, but no presentation-usage policy}
 
-Both products ignore the backend preserve Boolean yet keep browser-canvas or SDL target
+Both products ignore the renderer preserve Boolean yet keep browser-canvas or SDL target
 storage persistent. Shared binding therefore makes exact Discard overwrite an explicit 2D
 target with black, while Preserve and Platform leave its color alone. ASCII's empty/null bind
 is special: it redirects to its private game target, but never consults the presentation
@@ -249,43 +260,43 @@ CANVAS has only source evidence because the native non-Emscripten implementation
 and no real browser was available. Neither product supports cube targets or MRT. See
 \S\ref{sec:backend-rendertarget-usage-matrix}.
 
-\section{Both backends are 2D-only by explicit design, not by omission}
+\section{Both renderers are 2D-only by explicit design, not by omission}
 
-Every backend documented in the previous three chapters implements the full backend interface,
-\cnaclass{IGraphicsBackend}, 3D pipeline included, even where a given hardware
+Every renderer documented in the previous three chapters implements the full renderer interface,
+\cnaclass{IGraphicsRenderer}, 3D pipeline included, even where a given hardware
 target turns out to have real gaps in that support (Chapter~\ref{ch:backend-architecture}
 covers several). \texttt{CANVAS} and \texttt{ASCII} are architecturally different: neither one
 \emph{attempts} 3D at all, and this is enforced in code, not merely asserted in prose.
 
-Clear calls illustrate why ``the backend throws for 3D'' does not automatically describe the
+Clear calls illustrate why ``the renderer throws for 3D'' does not automatically describe the
 public API. Both products report no depth/stencil support, so
 \cnaclass{GraphicsDevice}\texttt{.Clear} masks those bits before dispatch: depth/stencil-only is
 a silent FNA-faithful no-op and a target-containing request performs the ordinary colour clear.
 Canvas then overwrites the active browser context; ASCII delegates to its SDL-rendered
-off-screen target. The direct combination hooks below still throw when tests call the backend
+off-screen target. The direct combination hooks below still throw when tests call the renderer
 itself, but public code cannot reach those throws through the masked path
 (\S\ref{sec:backend-clear-matrix}).
 
 \subsection{ASCII: a dedicated test proves every 3D entry point throws}
 
 \texttt{AsciiGraphicsBackend} forwards every 3D-pipeline method it does override directly to
-the wrapped \texttt{SdlGraphicsBackend}'s own existing \texttt{ThrowNo3D()} calls, rather than
-re-declaring the same throw logic a second time --- a design decision the backend's own plan
+the wrapped \texttt{SdlRenderer}'s own existing \texttt{ThrowNo3D()} calls, rather than
+re-declaring the same throw logic a second time --- a design decision the renderer's own plan
 document (\path{plan_ascii.md}, Phase~G7) records explicitly as ``same net behavior, less
 code.'' The dedicated \path{ascii_throwno3d_test.cpp} exists purely to prove this forwarding
-is complete and correct, by calling each reachable 3D entry point on a real, live backend
+is complete and correct, by calling each reachable 3D entry point on a real, live renderer
 instance and checking that it actually throws:
 
 \begin{lstlisting}
-auto& backend = static_cast<AsciiGraphicsBackend&>(dev.GetBackend());
+auto& renderer = static_cast<AsciiGraphicsBackend&>(dev.GetRenderer());
 
-check(Throws([&] { backend.ClearColorAndDepth(0, 0, 0, 1, 1.0f); }), "ClearColorAndDepth throws");
-check(Throws([&] { backend.SetDepthTestEnabled(true); }),            "SetDepthTestEnabled throws");
-check(Throws([&] { backend.CreateVertexBuffer(3); }),                "CreateVertexBuffer throws");
-check(Throws([&] { backend.CreateOcclusionQuery(); }),                "CreateOcclusionQuery throws");
+check(Throws([&] { renderer.ClearColorAndDepth(0, 0, 0, 1, 1.0f); }), "ClearColorAndDepth throws");
+check(Throws([&] { renderer.SetDepthTestEnabled(true); }),            "SetDepthTestEnabled throws");
+check(Throws([&] { renderer.CreateVertexBuffer(3); }),                "CreateVertexBuffer throws");
+check(Throws([&] { renderer.CreateOcclusionQuery(); }),                "CreateOcclusionQuery throws");
 
-check(!backend.SupportsDepthStencil(), "SupportsDepthStencil() is false");
-check(backend.CreateTexture3D(4, 4, 4, false, 0) == nullptr, "CreateTexture3D returns nullptr");
+check(!renderer.SupportsDepthStencil(), "SupportsDepthStencil() is false");
+check(renderer.CreateTexture3D(4, 4, 4, false, 0) == nullptr, "CreateTexture3D returns nullptr");
 \end{lstlisting}
 
 Seventeen checks in total cover three distinct failure shapes rather than one uniform rule.
@@ -308,7 +319,7 @@ return \texttt{nullptr}:
   \item \texttt{CreateTexture3D};
   \item \texttt{CreateTextureCube};
   \item \texttt{CreateRenderTargetCube};
-  \item \texttt{CreateEffectBackend}.
+  \item \texttt{CreateEffectRenderer}.
 \end{itemize}
 
 None has an ASCII-specific override. All four fall through to the shared base-class defaults,
@@ -316,7 +327,7 @@ which already return \texttt{nullptr}, so adding local overrides would only dupl
 behavior the base class already provides for free.
 
 There is one important exception to that otherwise honest query behavior:
-\texttt{AsciiGraphics}\allowbreak\texttt{Backend} also never overrides the public
+\texttt{AsciiGraphics}\allowbreak\texttt{Renderer} also never overrides the public
 \texttt{SupportsCapability(GraphicsCapability)} method, whose shared default returns
 \texttt{true}. It therefore reports \texttt{true} for five unsupported entries.
 \texttt{ThreeD}, \texttt{CustomEffects}, and \texttt{OcclusionQuery} are three.
@@ -342,38 +353,38 @@ The test deliberately does \emph{not} exercise three further methods:
 \end{itemize}
 
 Its own comments explain why honestly rather than silently skipping them: each needs a real
-vertex-buffer backend reference, but \texttt{CreateVertexBuffer} and
+vertex-buffer renderer reference, but \texttt{CreateVertexBuffer} and
 \texttt{CreateIndexBuffer16} already throw (Checks~J/K above), so no real vertex or index
-buffer can ever exist on this backend to construct that argument with. They are structurally
+buffer can ever exist on this renderer to construct that argument with. They are structurally
 unreachable via any real call path a game could take, not merely untested by omission ---
 confirmed correct by code review instead, since all three forward to the same wrapped inner
-backend with the identical one-line pattern as every other method in the file.
+renderer with the identical one-line pattern as every other method in the file.
 
 \subsection{CANVAS: the identical contract, without a dedicated test}
 
-\texttt{CanvasGraphicsBackend} follows the exact same shape, documented directly in its own
+\texttt{CanvasRenderer} follows the exact same shape, documented directly in its own
 header rather than in a standalone test file: the ``inherently-3D-only pure virtuals'' ---
 \texttt{ClearColorAnd\allowbreak{}Depth} and its five siblings, the vertex/index buffer factories,
 \texttt{DrawColoredPrimitives} --- throw via \texttt{ThrowNo3D()}, while the remaining
 3D-only surface (\texttt{Draw*Ex} / \texttt{DrawInstanced\allowbreak{}PrimitivesEx},
 \texttt{CreateIndex\allowbreak{}Buffer32}) is left on
-\cnaclass{IGraphicsBackend}'s own shared defaults, as are the five factories for
+\cnaclass{IGraphicsRenderer}'s own shared defaults, as are the five factories for
 \texttt{Texture3D}, \texttt{TextureCube}, \texttt{RenderTargetCube},
-\texttt{OcclusionQuery}, and \texttt{EffectBackend}. The header comment names its own
+\texttt{OcclusionQuery}, and \texttt{EffectRenderer}. The header comment names its own
 precedent directly: this is ``confirmed against \texttt{SDL\_RENDERER}'s own precedent of
 not overriding these either (Phase~C7)'' --- the same reasoning \texttt{SDL\_RENDERER} itself
 established first, that \texttt{ASCII} then reused by wrapping \texttt{SDL\_RENDERER}
 verbatim, and that \texttt{CANVAS} arrived at independently for its own, unrelated
-implementation. Three separate backends, two of them with no code relationship to each other
+implementation. Three separate renderers, two of them with no code relationship to each other
 at all, converge on one shared answer for exactly the same reason: reimplementing a throw the
 base class already provides for free would be new code with no new behavior.
 
 Unlike \texttt{ASCII}, no dedicated \texttt{canvas\_throwno3d\_test.cpp} exists to exercise
 this behavior end-to-end against a live instance --- the claim rests on the header's own
 design-rationale comment plus code review, not on an executed test, a narrower verification
-claim consistent with the rest of this backend's own ``structural, not pixel-verified''
+claim consistent with the rest of this renderer's own ``structural, not pixel-verified''
 ceiling described earlier in this chapter. A future session adding one would only need to
 port \texttt{ascii\_throwno3d\_test.cpp}'s own pattern across, substituting
-\texttt{CanvasGraphicsBackend} for \texttt{AsciiGraphicsBackend} --- the two backends' checks
+\texttt{CanvasRenderer} for \texttt{AsciiGraphicsBackend} --- the two renderers' checks
 would be close to identical, since both ultimately assert the same
-\cnaclass{IGraphicsBackend}-level contract.
+\cnaclass{IGraphicsRenderer}-level contract.

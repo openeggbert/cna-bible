@@ -7,7 +7,8 @@
 CNA targets C\texttt{++}23 and CMake 3.20+. On Linux, the minimum toolchain is GCC~12+ or
 Clang~15+; two sibling directories must be available to CMake alongside the CNA checkout
 itself: \texttt{../sharp-runtime} (always required) and \texttt{../easy-gl} (only required
-if you build the \texttt{EASYGL} backend). SDL3, SDL3\_image, and SDL3\_mixer are built from
+for the shared EasyGL implementation selected by \texttt{OPENGLES2}, \texttt{OPENGLES3},
+\texttt{OPENGL33}, \texttt{WEBGL1}, or \texttt{WEBGL2}). SDL3, SDL3\_image, and SDL3\_mixer are built from
 vendored Git submodules by default, so no system SDL packages are required on a first build.
 
 On Windows, any of MSVC~2022 (v17.8+), clang-cl, or MinGW-w64 (native or cross-compiled from
@@ -31,60 +32,61 @@ cloning with Git and running the command above, or configuring with
 \texttt{-DCNA\_USE\_SYSTEM\_SDL=ON} to use system-installed SDL3 packages instead of the
 vendored submodules.
 
-\section{The default build: Linux, EasyGL backend}
+\section{The default build: Linux, the OpenGL ES 3 renderer}
 
 \begin{lstlisting}[style=cnashell]
 git submodule update --init --recursive
-cmake -S . -B build -DCNA_GRAPHICS_BACKEND=EASYGL
+cmake -S . -B build -DCNA_GRAPHICS_RENDERER=OPENGLES3
 cmake --build build --target CNA CnaTests
 ctest --test-dir build --output-on-failure
 \end{lstlisting}
 
-\texttt{EASYGL} is the most mature backend by the project's own account (Chapter~\ref{ch:easygl-backend}),
-so it is the natural default for a first build. Swapping to \texttt{SDL\_RENDERER} is a
+\texttt{OPENGLES3} is CNA's Linux default and is implemented by the mature shared EasyGL
+family (Chapter~\ref{ch:easygl-backend}), so it is the natural first build. Swapping to
+\texttt{SDL\_RENDERER} is a
 one-flag change:
 
 \begin{lstlisting}[style=cnashell]
-cmake -S . -B build-sdlrenderer -DCNA_GRAPHICS_BACKEND=SDL_RENDERER
+cmake -S . -B build-sdlrenderer -DCNA_GRAPHICS_RENDERER=SDL_RENDERER
 cmake --build build-sdlrenderer --target CNA CnaTests
 \end{lstlisting}
 
-This one-flag swap is the whole point of the backend abstraction covered in
+This one-flag swap is the point of the renderer abstraction covered in
 Chapter~\ref{ch:backend-architecture} --- the same \texttt{CNA} / \texttt{CnaTests} build
-targets exist regardless of which of the fourteen backends in
-Table~\ref{tab:backend-option-list} you select.
+targets exist regardless of which identity in Table~\ref{tab:backend-option-list} you select.
 
 \begin{table}[h]
 \centering
-\begin{tabular}{ll}
+\begin{tabularx}{\textwidth}{lX}
 \toprule
-\textbf{\texttt{CNA\_GRAPHICS\_BACKEND} value} & \textbf{Platform constraint} \\
+\textbf{\texttt{CNA\_GRAPHICS\_RENDERER} value} & \textbf{Platform constraint} \\
 \midrule
-\texttt{SDL\_RENDERER} & Cross-platform \\
-\texttt{EASYGL}        & Cross-platform (default focus) \\
-\texttt{BGFX}          & Cross-platform \\
-\texttt{VULKAN}        & Cross-platform (Vulkan-capable GPU/driver) \\
-\texttt{WEBGPU}        & Cross-platform, experimental \\
-\texttt{HEADLESS}      & Cross-platform, no window/present \\
-\texttt{SOFTWARE}      & Cross-platform, CPU rasterizer \\
-\texttt{D3D11}         & Windows-only \\
-\texttt{D3D12}         & Windows-only \\
-\texttt{CANVAS}        & Emscripten-only \\
-\texttt{ASCII}         & Cross-platform, SDL-windowed glyph-grid decorator \\
-\texttt{DX3}           & Cross-platform (via \texttt{../free-direct}) \\
-\texttt{SDL\_GPU}      & Cross-platform (Vulkan driver on Linux; Chapter~\ref{ch:sdlgpu-backend}) \\
+GL families & \texttt{OPENGLES1}, \texttt{OPENGLES2}, \texttt{OPENGLES3},
+  \texttt{OPENGL1}, \texttt{OPENGL2}, \texttt{OPENGL33}, \texttt{OPENGL4},
+  \texttt{WEBGL1}, \texttt{WEBGL2}, \texttt{PORTABLEGL} \\
+Native and abstraction APIs & \texttt{BGFX}, \texttt{VULKAN}, \texttt{WEBGPU},
+  \texttt{MAGNUM}, \texttt{WICKED}, \texttt{SOKOL}, \texttt{DILIGENT},
+  \texttt{LLGL}, \texttt{METAL}, \texttt{FNA3D}, \texttt{SDL\_GPU} \\
+DirectX and Windows families & \texttt{DIRECTX1}, \texttt{DIRECTX2},
+  \texttt{DIRECTX3}, \texttt{DIRECTX5}, \texttt{DIRECTX6}, \texttt{DIRECTX7},
+  \texttt{DIRECTX8}, \texttt{DIRECTX9}, \texttt{DIRECTX10}, \texttt{DIRECTX11},
+  \texttt{DIRECTX12}, \texttt{DIRECT2D}, \texttt{GDI}, \texttt{GLIDE},
+  \texttt{FREEDIRECT} \\
+2D, web, CPU, and diagnostic & \texttt{SDL\_RENDERER}, \texttt{CANVAS},
+  \texttt{HTML\_DOM}, \texttt{SVG\_DOM}, \texttt{SKIA}, \texttt{BLEND2D},
+  \texttt{OPENVG}, \texttt{HEADLESS}, \texttt{SOFTWARE}, \texttt{STUB} \\
 \bottomrule
-\end{tabular}
-\caption{Every value accepted by \texttt{-DCNA\_GRAPHICS\_BACKEND}. \texttt{D3D9} is also
-Windows-only via cross-compilation; see Chapter~\ref{ch:direct3d-backends} for its own build
-invocation, which additionally requires \texttt{-DCNA\_BUILD\_TESTS=ON}.}
+\end{tabularx}
+\caption{All 46 public renderer identities, grouped into 42 implementation families. Windows,
+browser, macOS, dependency, and architecture gates are enforced during configuration; the exact
+per-identity matrix belongs to Chapter~\ref{ch:renderer-selection-identity}.}
 \label{tab:backend-option-list}
 \end{table}
 
 \section{The full CMake option reference}
 \label{sec:cmake-option-reference}
 
-\texttt{-DCNA\_GRAPHICS\_BACKEND} is the option most build invocations in this book set
+\texttt{-DCNA\_GRAPHICS\_RENDERER} is the option most build invocations in this book set
 explicitly, but CNA's top-level \texttt{CMakeLists.txt} declares several more, every one of
 them read directly from that file rather than assumed from memory:
 
@@ -98,8 +100,8 @@ them read directly from that file rather than assumed from memory:
   is already set. \\
 \texttt{CNA\_BUILD\_TESTS} & \texttt{ON} & Builds the \texttt{CnaTests} GoogleTest target and
   registers CTest entries. \\
-\texttt{CNA\_NOXNA} & \texttt{OFF} & Enables an opt-in, project-specific extended render
-  pipeline (see below) --- unrelated to the \texttt{NOXNA} marker macro from
+\texttt{CNA\_CNAEXT} & \texttt{OFF} & Enables an opt-in, project-specific extended render
+  pipeline (see below) --- unrelated to the \texttt{CNAEXT} marker macro from
   Chapter~\ref{ch:design-philosophy}. \\
 \texttt{CNA\_DEVICES} & \texttt{OFF} & Enables CNA-specific device/sensor extensions beyond
   XNA 4.0 (battery, camera, clipboard, and similar). \\
@@ -117,41 +119,42 @@ them read directly from that file rather than assumed from memory:
 \end{tabularx}
 \end{center}
 
-Every one of these is independent of \texttt{-DCNA\_GRAPHICS\_BACKEND}
+Every one of these is independent of \texttt{-DCNA\_GRAPHICS\_RENDERER}
 (Table~\ref{tab:backend-option-list}).
 
 \begin{sourcenote}
-\textbf{Two same-shaped names, two unrelated things.} \texttt{CNA\_NOXNA} (a CMake
-\texttt{option()}, off by default) and \texttt{NOXNA} (the marker macro from
-\S\ref{sec:noxna}) share a name fragment purely by coincidence of naming convention, not by
+\textbf{Two same-shaped names, two unrelated things.} \texttt{CNA\_CNAEXT} (a CMake
+\texttt{option()}, off by default) and \texttt{CNAEXT} (the marker macro from
+\S\ref{sec:cnaext}) share a name fragment purely by coincidence of naming convention, not by
 design --- confusing the two is an easy real mistake to make when skimming the source. The
 marker macro tags an individual declaration as ``not part of stock XNA 4.0'' and is present in
-every build regardless of any flag. \texttt{CNA\_NOXNA} the CMake option instead gates an
+every build regardless of any flag. \texttt{CNA\_CNAEXT} the CMake option instead gates an
 entirely separate, genuinely optional feature: a settings-bag-only ``extended render
 pipeline'' (\cnaclass{RenderPipelineSettings}, under \cnans{CNA::Graphics}, guarded behind
-\texttt{\#ifdef CNA\_NOXNA} in its own header) covering HDR exposure/gamma, tonemapping mode,
+\texttt{\#ifdef CNA\_CNAEXT} in its own header) covering HDR exposure/gamma, tonemapping mode,
 shadow quality, and PBR material settings. Its own header comment is explicit about scope:
-it ``does not perform any rendering itself'' --- it is configuration a backend can read and
-act on, with backend support for each individual feature not yet implemented across the board
+it ``does not perform any rendering itself'' --- it is configuration a renderer can read and
+act on, with renderer support for each individual feature not yet implemented across the board
 as of the snapshot this book draws from. Building with plain \texttt{cmake -S . -B build}
 (the option's own \texttt{OFF} default) never compiles this pipeline in at all.
 \end{sourcenote}
 
 \section{Windows, natively and cross-compiled}
 
-On real Windows, \texttt{SDL\_RENDERER} is selected automatically when no backend is
+On real Windows, \texttt{SDL\_RENDERER} is selected automatically when no renderer is
 specified, and SDL is built from the vendored submodule with no pre-built binaries or
 \texttt{CMAKE\_PREFIX\_PATH} configuration needed:
 
 \begin{lstlisting}[style=cnashell]
 git submodule update --init --recursive
-cmake -S . -B build-win -DCNA_GRAPHICS_BACKEND=SDL_RENDERER
+cmake -S . -B build-win -DCNA_GRAPHICS_RENDERER=SDL_RENDERER
 cmake --build build-win --target CNA CnaTests
 \end{lstlisting}
 
 The same target can be reached without a Windows machine, by cross-compiling from Linux with
 MinGW-w64 --- the toolchain every Windows-targeting CTest binary in this book's Part~IV
-chapters (D3D9/D3D11/D3D12, and the plain \texttt{SDL\_RENDERER} Windows target) is actually
+chapters (\texttt{DIRECTX9}/\texttt{DIRECTX11}/\texttt{DIRECTX12}, and the plain
+\texttt{SDL\_RENDERER} Windows target) is actually
 verified through:
 
 \begin{lstlisting}[style=cnashell]
@@ -160,14 +163,14 @@ sudo apt install mingw-w64
 git submodule update --init --recursive
 cmake -S . -B build-windows \
       -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/mingw-w64.cmake \
-      -DCNA_GRAPHICS_BACKEND=SDL_RENDERER
+      -DCNA_GRAPHICS_RENDERER=SDL_RENDERER
 cmake --build build-windows --target CNA CnaTests
 \end{lstlisting}
 
 Chapter~\ref{ch:direct3d-backends} and this book's cross-platform verification chapter
 cover what happens after the cross-compiled \texttt{.exe} exists: running it under Wine, with
-DXVK (D3D9/D3D11) or vkd3d-proton (D3D12) translating the Direct3D calls to Vulkan on a real
-GPU, which is how this project verifies Windows-only backends without ever touching a
+DXVK (Direct3D~9/11) or vkd3d-proton (Direct3D~12) translating the Direct3D calls to Vulkan on a real
+GPU, which is how this project verifies Windows-only renderers without ever touching a
 Windows machine.
 
 \section{Building for Android and the Web}
@@ -207,21 +210,21 @@ on-device verification.
 
 \subsection{Web (Emscripten)}
 
-The \texttt{CANVAS} backend (Chapter~\ref{ch:canvas-ascii-backends}) is Emscripten-only, hard-gated
-at configure time the same way the Direct3D backends are hard-gated to Windows. Building it
+The \texttt{CANVAS} renderer (Chapter~\ref{ch:canvas-ascii-backends}) is Emscripten-only, hard-gated
+at configure time the same way the Direct3D renderers are hard-gated to Windows. Building it
 follows the standard Emscripten CMake pattern --- \texttt{emcmake} wraps the configure step,
 \texttt{emmake} (or a plain \texttt{cmake~--build}, once configured) wraps the build --- applied
-to the same \texttt{-DCNA\_GRAPHICS\_BACKEND} flag every other backend uses:
+to the same \texttt{-DCNA\_GRAPHICS\_RENDERER} flag every other renderer uses:
 
 \begin{lstlisting}[style=cnashell]
-emcmake cmake -S . -B build-web -DCNA_GRAPHICS_BACKEND=CANVAS
+emcmake cmake -S . -B build-web -DCNA_GRAPHICS_RENDERER=CANVAS
 cmake --build build-web
 node build-web/CnaTests.js
 \end{lstlisting}
 
 This is a real, verified path, not a hopeful sketch: the project's own tracking records a
 genuine \texttt{emcmake} / \texttt{emcc}~6.0.2 configure-and-build succeeding, with the resulting
-\texttt{CnaTests.js} linking cleanly and a backend-agnostic GTest suite (35 of 35
+\texttt{CnaTests.js} linking cleanly and a renderer-agnostic GTest suite (35 of 35
 \cnaclass{Rectangle}-family tests) genuinely passing under \texttt{node}. Getting there
 surfaced a real, pre-existing bug outside CNA's own tree entirely: \texttt{sharp-runtime}'s
 \texttt{FileSystemWatcher.hpp} declared three \texttt{inotify}-specific fields
@@ -240,7 +243,7 @@ Rather than the vendored submodules, system SDL3/SDL3\_image/SDL3\_mixer package
 used instead:
 
 \begin{lstlisting}[style=cnashell]
-cmake -S . -B build -DCNA_USE_SYSTEM_SDL=ON -DCNA_GRAPHICS_BACKEND=SDL_RENDERER
+cmake -S . -B build -DCNA_USE_SYSTEM_SDL=ON -DCNA_GRAPHICS_RENDERER=SDL_RENDERER
 \end{lstlisting}
 
 This calls \texttt{find\_package(SDL3 REQUIRED)},
@@ -279,8 +282,8 @@ cmake --build build --target hello-triangle-sdl
 \end{lstlisting}
 
 \texttt{ctest} runs the GoogleTest-based \texttt{CnaTests} suite (thousands of unit tests,
-plus, on backends where a display is available, GPU pixel tests); \texttt{hello-triangle-sdl}
-is the minimal environment/rendering-path smoke test mentioned throughout the backend chapters
+plus, on renderers where a display is available, GPU pixel tests); \texttt{hello-triangle-sdl}
+is the minimal environment/rendering-path smoke test mentioned throughout the renderer chapters
 in Part~IV.
 
 \begin{sourcenote}
@@ -288,7 +291,7 @@ in Part~IV.
 partial: at the time this book's source material was gathered, CI ran only the
 \texttt{Input} and \texttt{Devices} / \texttt{Sensors} GoogleTest suites --- not the full
 roughly 4\,370-test unit suite, and not the roughly 490-test GPU pixel-test suite across the
-four established graphics backends. Everything this book states about Graphics-layer
+four established graphics renderers. Everything this book states about Graphics-layer
 correctness is verified by running the suites locally and by hand, not by an automated
 Graphics CI gate, and there is no Windows, macOS, or Android CI at all --- those platforms
 are verified manually. Treat a green CI badge, if you see one, as covering a narrower slice

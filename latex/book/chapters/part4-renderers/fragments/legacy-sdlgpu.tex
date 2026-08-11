@@ -1,30 +1,30 @@
 \section{Legacy SDL GPU Chapter Material}
 \label{ch:sdlgpu-backend}
 
-\texttt{SDL\_GPU} is CNA's newest graphics backend, and the one this book itself was slowest
+\texttt{SDL\_GPU} is a CNA graphics renderer, and one this book itself was slow to
 to give a proper account of --- Chapter~\ref{ch:roadmap} names that delay honestly as a gap in
 this book, not in CNA's own code. This chapter closes it: a real, Linux/Vulkan-driver-verified
-backend implementing the full \cnaclass{IGraphicsBackend} contract
+renderer implementing the full \cnaclass{IGraphicsRenderer} contract
 (Chapter~\ref{ch:backend-architecture}), built on top of SDL3's own \texttt{SDL\_gpu} API
 rather than a native vendor API of its own.
 
-\section{Why this backend costs nothing new}
+\section{Why this renderer costs nothing new}
 
 \texttt{SDL\_gpu} dispatches internally to Vulkan, D3D12, or Metal depending on platform and
-driver availability, and CNA's own \texttt{plan\_sdlgpu.md} states plainly why this backend was
-worth adding on top of the hardware-backed backends the project already had: SDL3 is
+driver availability, and CNA's own \texttt{plan\_sdlgpu.md} states plainly why this renderer was
+worth adding on top of the hardware-backed renderers the project already had: SDL3 is
 already a vendored dependency of this project (\texttt{third\_party/SDL}), and
 \texttt{SDL\_gpu.c} is already compiled into every prebuilt SDL3 package this repository
 produces --- unlike Vulkan (the Vulkan SDK/loader) or WebGPU (\texttt{wgpu-native}, a separate
-library), standing this backend up required zero new third-party dependency, only new CNA-side
-code against an API already sitting in the build. The main class follows the established backend
-naming convention: \texttt{CNA::\allowbreak{}Internal::\allowbreak{}Backends::\allowbreak{}SdlGpuGraphicsBackend}
-\index{CNA::Internal::Backends::SdlGpuGraphicsBackend}. Its source lives under
-\texttt{src/\allowbreak{}CNA/\allowbreak{}Internal/\allowbreak{}Backends/\allowbreak{}SdlGpu/}. Build the target
-\texttt{cna\_\allowbreak{}backend\_\allowbreak{}graphics\_\allowbreak{}sdl\_\allowbreak{}gpu}. Select this backend with
-\texttt{-DCNA\_\allowbreak{}GRAPHICS\_\allowbreak{}BACKEND=SDL\_\allowbreak{}GPU}.
+library), standing this renderer up required zero new third-party dependency, only new CNA-side
+code against an API already sitting in the build. The main class is
+\texttt{CNA::\allowbreak{}Internal::\allowbreak{}Renderers::\allowbreak{}SdlGpu::\allowbreak{}SdlGpuRenderer}
+\index{CNA::Internal::Renderers::SdlGpu::SdlGpuRenderer}. Its source lives under
+\texttt{modules/renderers/sdl-gpu/src/}. Build the target
+\texttt{cna\_\allowbreak{}renderer\_\allowbreak{}sdl\_\allowbreak{}gpu}. Select this renderer with
+\texttt{-DCNA\_\allowbreak{}GRAPHICS\_\allowbreak{}RENDERER=SDL\_\allowbreak{}GPU}.
 The project's own naming table is explicit that this class name is deliberately distinct from
-the pre-existing \cnaclass{SdlGraphicsBackend} in \texttt{SdlRenderer/} --- the older
+the pre-existing \cnaclass{SdlRenderer} in \texttt{SdlRenderer/} --- the older
 \texttt{SDL\_Renderer} 2D API and the newer \texttt{SDL\_gpu} API are unrelated, and this project
 was careful not to let the similar SDL naming collide.
 
@@ -38,39 +38,39 @@ constraint worth knowing before assuming any existing shader is reusable as-is: 
 samplers, storage textures, storage buffers, and uniform buffers must be declared in a fixed,
 HLSL-style binding order (\texttt{t[n]} / \texttt{s[n]} in one address space, \texttt{u[n]} in
 another, \texttt{b[n]} in a third) --- a different convention from the raw
-\texttt{layout(set=, binding=)} numbering the existing \cnaclass{VulkanGraphicsBackend}'s own
+\texttt{layout(set=, binding=)} numbering the existing \cnaclass{VulkanRenderer}'s own
 GLSL shaders use. This means Vulkan's compiled SPIR-V is a useful \emph{algorithmic} reference
-for this backend's own shader authoring (the same lighting math, alpha-test logic, and
+for this renderer's own shader authoring (the same lighting math, alpha-test logic, and
 dual-texture blend) but not directly reusable output --- every shader's binding layout had to
 be re-authored specifically for \texttt{SDL\_gpu}'s own convention, confirmed directly against
-the real \texttt{.glsl} sources under this backend's own
-\texttt{src/\allowbreak{}CNA/\allowbreak{}Internal/\allowbreak{}Backends/\allowbreak{}SdlGpu/\allowbreak{}shaders/}
+the real \texttt{.glsl} sources under this renderer's own
+\texttt{modules/renderers/sdl-gpu/src/shaders/}
 directory (23 files today, one pair per stock effect --- \texttt{colored3d},
 \texttt{alpha\_test3d}, \texttt{dual\_texture3d}, \texttt{env\_map3d}, \texttt{lit\_textured3d},
 \texttt{pbr3d} / \texttt{pbr\_skinned3d}, \texttt{skinned3d} / \texttt{skinned\_colored3d}, and more).
 
 \subsection{A worked example: the Y-flip bug a real screenshot caught}
 
-This backend's own first real milestone --- a textured, tinted, rotated, multi-flip sprite
+This renderer's own first real milestone --- a textured, tinted, rotated, multi-flip sprite
 scene surviving a resize --- is a concrete instance of a theme this book returns to
 repeatedly (Chapter~\ref{ch:testing-philosophy}): a ``did it throw'' test alone cannot catch a
 wrong-but-plausible image. \texttt{SDL\_gpu}'s Vulkan driver flips clip-space Y internally, for
-cross-backend NDC consistency reasons of its own --- the vertex shader's first, naively-ported
-NDC computation (\texttt{gl\_Position = vec4(ndc, 0, 1)}, the same shape every other backend's
+cross-renderer NDC consistency reasons of its own --- the vertex shader's first, naively-ported
+NDC computation (\texttt{gl\_Position = vec4(ndc, 0, 1)}, the same shape every other renderer's
 own sprite vertex shader already uses) compiled cleanly, ran without error, and rendered every
 single sprite upside down, a texture's top row appearing at the bottom of the screen. Only a
 real captured screenshot caught it; the fix negates Y explicitly
 (\texttt{vec4(ndc.x, -ndc.y, 0, 1)}), confirmed against an isolated single-sprite diagnostic
-tool kept permanently in the tree (\texttt{examples/sdlgpu\_diag\_single\_sprite.cpp}, the same
+tool kept permanently in the tree (\texttt{modules/renderers/sdl-gpu/examples/\allowbreak{}sdlgpu\_diag\_single\_sprite.cpp}, the same
 ``keep the diagnostic, don't throw it away once the bug is fixed'' precedent
 Chapter~\ref{ch:direct3d-backends} already covers for \texttt{cna\_diag\_d3d12\_swapchain}).
 
 \section{SkinnedEffect's storage-buffer workaround: a real, undocumented push-uniform cap}
 
-Wiring \cnaclass{SkinnedEffect} through this backend surfaced a genuine hardware/driver
+Wiring \cnaclass{SkinnedEffect} through this renderer surfaced a genuine hardware/driver
 constraint rather than a CNA design choice: \texttt{SDL\_PushGPUVertexUniformData}, the
 mechanism every other stock effect above uses to deliver its per-draw uniforms, has a real,
-undocumented cap of roughly 4096 bytes per slot on this backend's own Vulkan driver --- found by
+undocumented cap of roughly 4096 bytes per slot on this renderer's own Vulkan driver --- found by
 a real empirical binary-search spike, not read out of any SDL3 header or release note, since
 the limit is not documented anywhere in \texttt{SDL\_gpu.h} itself. A 72-bone skin palette
 (\(72 \times 64\) bytes \(= 4608\) bytes) exceeds that cap outright, so
@@ -79,19 +79,19 @@ the limit is not documented anywhere in \texttt{SDL\_gpu.h} itself. A 72-bone sk
 effect's smaller per-draw payloads (world/view/projection, \texttt{DiffuseColor}, alpha-test
 parameters, light parameters) stay on the ordinary uniform-push path, since none of them come
 close to the cap. This is exactly the kind of real, hardware-shaped constraint this book asks
-every backend chapter to name precisely rather than paper over with ``uniforms are uploaded
+every renderer chapter to name precisely rather than paper over with ``uniforms are uploaded
 per draw'' as if the mechanism were uniform across every payload size.
 
 \section{Custom ShaderEffect: a real runtime compile, built without the dev package installed}
 
-Custom \cnaclass{ShaderEffect} support (Chapter~\ref{ch:shader-fx-gap}) is real on this backend
+Custom \cnaclass{ShaderEffect} support (Chapter~\ref{ch:shader-fx-gap}) is real on this renderer
 too, and its own implementation is worth knowing about for a reason beyond the feature itself.
-Since \texttt{SDL\_gpu} accepts only precompiled bytecode, \cnaclass{SdlGpuEffectBackend} bridges
+Since \texttt{SDL\_gpu} accepts only precompiled bytecode, \cnaclass{SdlGpuEffectRenderer} bridges
 \cnaclass{ShaderEffect}'s public GLSL-source contract to that requirement with a genuine runtime
-\texttt{libshaderc} GLSL-to-SPIR-V compile, linked directly into the backend binary rather than
-merely invoked at build time. Reading \texttt{SdlGpuGraphicsBackend.cpp} directly shows a small,
+\texttt{libshaderc} GLSL-to-SPIR-V compile, linked directly into the renderer binary rather than
+merely invoked at build time. Reading \texttt{SdlGpuRenderer.cpp} directly shows a small,
 telling detail: this dev environment has no \texttt{libshaderc-dev} package installed, so there
-is no real \texttt{shaderc.h} to include --- the backend's own source hand-declares the exact
+is no real \texttt{shaderc.h} to include --- the renderer's own source hand-declares the exact
 handful of \texttt{shaderc\_*} C entry points it needs. These include
 \texttt{shaderc\_\allowbreak{}compiler\_\allowbreak{}initialize},
 \texttt{shaderc\_\allowbreak{}compile\_\allowbreak{}into\_\allowbreak{}spv}, and
@@ -102,16 +102,16 @@ This is a real, working engineering accommodation to a genuinely constrained dev
 not a shortcut around the feature itself --- the compiled shader still goes through the real
 linked \texttt{libshaderc.so}, only the header describing its C ABI is hand-authored instead of
 vendored. Building this custom-shader path also surfaced a genuine finding one layer over: the
-existing \cnaclass{VulkanGraphicsBackend}'s own \cnaclass{ShaderEffect} support does not
+existing \cnaclass{VulkanRenderer}'s own \cnaclass{ShaderEffect} support does not
 actually runtime-compile GLSL text at all, despite \cnaclass{ShaderEffect}'s own documented
-contract implying every backend does --- a real, previously-unflagged discrepancy between one
-backend's implementation and the class's own stated cross-backend promise, left for
+contract implying every renderer does --- a real, previously-unflagged discrepancy between one
+renderer's implementation and the class's own stated cross-renderer promise, left for
 Chapter~\ref{ch:vulkan-backend} to account for on its own terms rather than resolved here.
 
 \subsection{The \texttt{.cnj} fixture exposes the remaining shader-compatibility boundary}
 
 The runtime compiler does not make every GLSL text accepted elsewhere in CNA portable to this
-backend. The real \texttt{CnjEffectTest.LoadsRealCnjFixture} content test writes an ordinary
+renderer. The real \texttt{CnjEffectTest.LoadsRealCnjFixture} content test writes an ordinary
 \texttt{.cnj} effect manifest plus a GLSL ES~3.00 vertex/fragment pair: \texttt{\#version 300 es},
 unqualified stage outputs/inputs, and loose \texttt{uniform mat4 projection} /
 \texttt{uniform sampler2D texture1} declarations. Under \texttt{SDL\_GPU}, that fixture fails
@@ -120,7 +120,7 @@ runtime compiler and by the resource counts CNA supplies to \texttt{SDL\_CreateG
 
 The passing \texttt{SdlGpu\_ShaderEffect} regression makes the required contrast concrete. Its
 two sources use desktop \texttt{\#version 450}, explicit \texttt{layout(location=...)} qualifiers
-for every vertex attribute and stage I/O, and the exact fixed binding spaces this backend
+for every vertex attribute and stage I/O, and the exact fixed binding spaces this renderer
 declares: the fragment sampler is \texttt{layout(set=2, binding=0)}, while the per-draw values
 live in a named uniform block at \texttt{set=1} for the vertex stage and \texttt{set=3} for the
 fragment stage. It compiles both stages at runtime, draws a white texture into a
@@ -130,12 +130,12 @@ are proven by pixels, not merely by \texttt{IsEffectValid()}.
 
 This is deliberately an open compatibility gap, not evidence that \cnaclass{ShaderEffect} is a
 no-op on SDL\_GPU. Closing it needs a separately designed decision: either migrate the shared
-\texttt{.cnj} fixture/source convention to the stricter portable dialect, or teach this backend
+\texttt{.cnj} fixture/source convention to the stricter portable dialect, or teach this renderer
 to translate its existing loose GLSL into the blocks, locations, and bindings SDL\_gpu requires.
-Neither is a safe one-line relaxation; the first changes content expectations across backends,
+Neither is a safe one-line relaxation; the first changes content expectations across renderers,
 and the second is a real shader-translation layer. The chapter therefore records the narrower,
 honest current contract: custom effects work when authored for SDL\_GPU's binding dialect, while
-the generic \texttt{.cnj} fixture is not yet cross-backend portable to it.
+the generic \texttt{.cnj} fixture is not yet cross-renderer portable to it.
 
 \section{Pipeline state is snapshotted at draw time, except where it is deliberately not}
 
@@ -160,7 +160,7 @@ queries SDL for the swapchain texture's actual format and builds the matching pi
 Independently, construction chooses D24S8 or D32S8 by a real device-support query and later allocates that
 combined attachment whenever a backbuffer frame needs it. A public
 \texttt{DepthFormat::None} does not suppress it; absence means the device supported neither
-combined format. Fullscreen remains an SDL-window operation outside this backend hook, and
+combined format. Fullscreen remains an SDL-window operation outside this renderer hook, and
 swapchain acquisition follows the resulting window without selecting formats from the public
 enums.
 \end{sourcenote}
@@ -178,7 +178,7 @@ and cube-face passes, and the half-target render-state test pixel-proves the cli
 even though the adjacent scissor is real. More importantly, \cnaclass{RasterizerState}'s
 \texttt{DepthBias} and \texttt{SlopeScaleDepthBias} are captured but currently have no effect.
 SDL\_gpu lacks a Vulkan-style dynamic depth-bias call, so honoring them would require carrying
-the float values in the pipeline-cache key and baking them into each pipeline. The backend does
+the float values in the pipeline-cache key and baking them into each pipeline. The renderer does
 not silently pretend otherwise: culling, fill mode, stencil, blend, and scissor have targeted
 pixel proofs, whereas depth bias remains an open state-mapping gap.
 
@@ -189,13 +189,13 @@ No created \texttt{SDL\_GPUSampler} therefore receives an anisotropy setting. Po
 mipmap mode, Wrap/Clamp/Mirror, and the two independent dual-texture slots are
 all pixel-tested; anisotropy is stored but unimplemented, rather than another supported sampler
 dimension. This also makes the public capability answer actively misleading:
-\texttt{SdlGpuGraphicsBackend} has no \texttt{SupportsCapability()} override, so
+\texttt{SdlGpuRenderer} has no \texttt{SupportsCapability()} override, so
 \texttt{AnisotropicFiltering} inherits \texttt{true}.
 
 \section{Deferred rendering still preserves the game's draw order}
 
 Deferring all SDL\_gpu work until \texttt{Present()} once introduced a correctness bug hidden by
-the backend's family-specific command vectors: it rendered every 3D family first and every sprite
+the renderer's family-specific command vectors: it rendered every 3D family first and every sprite
 last, regardless of the order the game issued them. A background sprite, 3D model, and HUD sprite
 therefore became background/model/HUD only by accident; even the opposite sprite--then--3D order
 was replayed as 3D--sprite. This is visible whenever later opaque or blended content should cover
@@ -215,7 +215,7 @@ with depth disabled. Sprite then 3D must read back green; 3D then sprite must re
 The former fixed-family implementation produced red in both cases because sprites always ran
 last, so the pair is a discriminating regression rather than a no-crash smoke check.
 
-\section{Present timing belongs to the device manager, not a test-only backend poke}
+\section{Present timing belongs to the device manager, not a test-only renderer poke}
 
 The SDL\_GPU tests establish a small but important rule about CNA's initialization lifecycle.
 \cnaclass{GraphicsDeviceManager} defaults \texttt{SynchronizeWithVerticalRetrace} to true,
@@ -233,16 +233,16 @@ gdm_->setPreferredBackBufferHeightProperty(64);
 gdm_->setSynchronizeWithVerticalRetraceProperty(false);
 \end{lstlisting}
 
-This order matters. Earlier tests called \texttt{SdlGpuGraphicsBackend::SetSwapInterval(0)}
+This order matters. Earlier tests called \texttt{SdlGpuRenderer::SetSwapInterval(0)}
 directly as a local workaround. During initialization, though, the device manager converts its
 still-true public property to \texttt{PresentInterval::One}; \cnaclass{GraphicsDevice::Reset}
-then forwards that presentation interval to every backend. The correct global forwarding was
+then forwards that presentation interval to every renderer. The correct global forwarding was
 itself a real repair: before it landed, the reset path did not call
-\texttt{IGraphicsBackend::SetSwapInterval()} at all. Once repaired, it rightly overwrote the
+\texttt{IGraphicsRenderer::SetSwapInterval()} at all. Once repaired, it rightly overwrote the
 private pre-initialization poke, revealing the test timeout instead of preserving an accidental
 ordering dependency.
 
-For this backend, interval zero asks SDL\_gpu for \texttt{SDL\_GPU\_PRESENTMODE\_IMMEDIATE},
+For this renderer, interval zero asks SDL\_gpu for \texttt{SDL\_GPU\_PRESENTMODE\_IMMEDIATE},
 falling back to \texttt{MAILBOX} if Immediate is unavailable; any positive interval selects
 VSync. SDL\_gpu has no half-rate present mode, so XNA's \texttt{PresentInterval::Two} has the
 same VSync outcome as \texttt{One}. That makes the example's explicit false a test-environment
@@ -252,12 +252,12 @@ it.
 
 \section{Validation mode turned two tolerated violations into real fixes}
 
-This backend now passes SDL\_gpu's \texttt{debug\_mode} flag from CNA's ordinary build mode:
+This renderer now passes SDL\_gpu's \texttt{debug\_mode} flag from CNA's ordinary build mode:
 debug builds request validation and release builds do not. That deliberately modest toggle paid
 for itself immediately. With validation previously hardcoded off, two API-contract violations
 had appeared to work; with it on, each could hang the Vulkan driver rather than merely print a
 warning. The lesson is more useful than a generic ``enable validation'' recommendation: a
-backend's release-mode pixels can look plausible while resource descriptions are still invalid.
+renderer's release-mode pixels can look plausible while resource descriptions are still invalid.
 
 First, the MSAA implementation for \cnaclass{RenderTargetCube} used a six-layer 2D-array
 texture. SDL\_gpu forbids multisampling on an array texture. CNA now uses one single-layer,
@@ -278,12 +278,12 @@ correctness.
 
 \cnaclass{RenderTarget2D} and \cnaclass{RenderTargetCube} support (with real multisampling and
 mip regeneration) surfaced a genuine lifetime hazard while its own test was still being written,
-not after: this backend defers its actual render pass to \texttt{Present()} time, so a render
+not after: this renderer defers its actual render pass to \texttt{Present()} time, so a render
 target destroyed \emph{before} that deferred pass executes was a real use-after-free the moment
 anything still referenced its underlying GPU state. The fix,
 \cnaclass{SdlGpuRenderTarget2DState} / \cnaclass{SdlGpuRenderTargetCubeState}, is a pair of
 \texttt{shared\_ptr}-owned structs holding the actual GPU state independently of the
-\cnaclass{SdlGpuRenderTargetBackend} / \cnaclass{SdlGpuRenderTargetCubeBackend} wrapper's own
+\cnaclass{SdlGpuRenderTargetRenderer} / \cnaclass{SdlGpuRenderTargetCubeRenderer} wrapper's own
 C\texttt{++} object lifetime --- a short-lived, local render target destroyed mid-\texttt{Draw()}
 now keeps its pending content alive long enough to render correctly and remain safely sampleable
 elsewhere the same frame. The bug was confirmed via a real segfault in
@@ -292,7 +292,7 @@ elsewhere the same frame. The bug was confirmed via a real segfault in
 \subsection{A regression that makes destruction precede submission}
 
 The permanent regression test is deliberately stricter than ``a short-lived target does not
-crash.'' In \texttt{examples/sdlgpu\_rendertarget\_lifetime\_test.cpp}, one \(8\times8\)
+crash.'' In \texttt{modules/renderers/sdl-gpu/examples/\allowbreak{}sdlgpu\_rendertarget\_lifetime\_test.cpp}, one \(8\times8\)
 \cnaclass{RenderTarget2D} is created as a local variable inside a single \texttt{Draw()} call,
 cleared red, then sampled by a queued \cnaclass{SpriteBatch} draw into a still-live
 \(16\times16\) destination target that was first cleared blue. The local variable reaches the
@@ -325,7 +325,7 @@ deferred-release queue is drained after each submission rather than merely retai
 texture until shutdown. The implementation has two necessary lifetime stages: queued targets
 and draw targets retain a \texttt{shared\_ptr} to their internal state until frame rendering has
 finished, then that state's destructor places its raw color, depth, and MSAA handles in
-\texttt{pendingTextureReleases\_}. After a successful command-buffer submission, the backend
+\texttt{pendingTextureReleases\_}. After a successful command-buffer submission, the renderer
 releases each queued handle through \texttt{SDL\_ReleaseGPUTexture()}. SDL may still fence the
 physical memory internally; CNA's narrower rule is that a recording cannot release a handle
 which an unsubmitted command still names.
@@ -372,7 +372,7 @@ decision. Stencil is a gap: the shared implicit discard request never includes i
 D24S8 target loads old stencil. MRT applies the first target's shared clear to each color
 sibling, matching the first-target policy in shape.
 
-Cube usage never reaches this backend and shared cube binding queues no implicit clear.
+Cube usage never reaches this renderer and shared cube binding queues no implicit clear.
 Every cube enum therefore behaves preserve-like unless the caller explicitly clears that
 face. That is the opposite of Vulkan/WebGPU's always-discard cube passes and is not covered by
 the otherwise-strong SDL GPU cube suite. No usage discriminator, Platform case, or
@@ -380,14 +380,14 @@ backbuffer-usage test exists; see \S\ref{sec:backend-rendertarget-usage-matrix}.
 
 \subsection{A worked example: \cnaclass{Texture3D}'s own \texttt{cycle=true} orphaned-write bug}
 
-\cnaclass{Texture3D} support on this backend --- sub-volume upload/readback plus mipmap generation
+\cnaclass{Texture3D} support on this renderer --- sub-volume upload/readback plus mipmap generation
 --- surfaced a real data-corruption bug of exactly the kind this book keeps returning to: code that compiles cleanly, throws
 nothing, and produces a wrong answer silently. The relevant upload operation is
 \texttt{SDL\_UploadToGPUTexture}. Its \texttt{cycle} parameter offers a real performance
 trade-off SDL3's own documentation states plainly: \texttt{cycle=true} swaps the texture to a
 fresh, separate underlying GPU resource on each call, avoiding a stall if the GPU is still
 reading the previous resource's content. That is correct and desirable for \cnaclass{Texture2D}'s
-single-full-texture-replace \texttt{SetData()} path. CNA's SDL\_GPU texture backend calls that
+single-full-texture-replace \texttt{SetData()} path. CNA's SDL\_GPU texture renderer calls that
 path \texttt{UpdatePixels}; it deliberately retains \texttt{cycle=true}. The first
 \cnaclass{Texture3D} implementation copied that choice without accounting for a 3D texture's
 multiple writes.
@@ -398,7 +398,7 @@ partial write (say, a sub-volume at $z=0$) silently orphaned itself onto an aban
 resource the moment a second, later write (a sub-volume at $z=1$) followed it, reading back as
 zero/uninitialized rather than the real content actually uploaded.
 
-The real regression test that caught this (\texttt{examples/sdlgpu\_texture3d\_test.cpp})
+The real regression test that caught this (\texttt{modules/renderers/sdl-gpu/examples/\allowbreak{}sdlgpu\_texture3d\_test.cpp})
 is deliberately shaped to make the bug unmissable rather than merely possible to catch:
 
 \begin{lstlisting}
@@ -422,11 +422,11 @@ than reusing one color for the whole volume --- a uniform-color test cannot tell
 land on more of that same color, the identical discriminating-test principle
 Section~\ref{sec:sdlgpu-what-remains-open}'s own generated-mipmap gap needs applied to close it.
 The fix, confirmed against the real
-\texttt{SdlGpuTexture3DBackend::\allowbreak{}SetData} implementation
+\texttt{SdlGpuTexture3DRenderer::\allowbreak{}SetData} implementation
 directly, is a one-word change: pass \texttt{cycle=false} for every \cnaclass{Texture3D}
 upload, leaving \cnaclass{Texture2D}'s own \texttt{cycle=true} single-replace path untouched
 and correct as-is. The identical fix (and the identical reasoning, cited by name in that
-backend class's own source comment) was applied proactively to
+renderer class's own source comment) was applied proactively to
 \cnaclass{TextureCube}'s per-face uploads too, since a cube map is built up through six
 separate per-face \texttt{SetData()} calls that must all land on the same underlying resource --- caught
 and fixed before shipping rather than found by reproducing the same bug a second time.
@@ -458,7 +458,7 @@ Nine limits are worth stating precisely rather than glossing over. First, occlus
 \emph{permanent} limitation of the underlying API, not a task gap: the vendored
 \texttt{SDL\_gpu.h} has no query-pool or occlusion-query type anywhere in it (only
 \texttt{SDL\_GPUFence} for CPU/GPU synchronization), so \texttt{CreateOcclusionQuery()}
-correctly returns \texttt{nullptr} on this backend, the identical posture \texttt{HEADLESS} and
+correctly returns \texttt{nullptr} on this renderer, the identical posture \texttt{HEADLESS} and
 \texttt{SOFTWARE} already take for their own, unrelated reasons --- worth re-opening only if a
 future SDL3 release adds real query support, not before. Second, swapchain readback is a
 documented permanent restriction: SDL\_gpu documents its acquired swapchain texture as write-only, so it
@@ -468,11 +468,11 @@ could repair. CNA's only viable design for \texttt{GetBackBufferData} is to rend
 into a self-owned, swapchain-sized proxy texture, blit that proxy to the real swapchain only for
 presentation, and read the proxy back. That is deliberately not implemented: it imposes one
 extra texture and blit on every frame even for games that never request readback. Consequently
-this backend has no \texttt{ReadBackbuffer()} override at all:
+this renderer has no \texttt{ReadBackbuffer()} override at all:
 \texttt{GraphicsDevice::GetBackBuffer\allowbreak Data()} reaches
-\cnaclass{IGraphicsBackend}'s default \texttt{runtime\_error}; working
+\cnaclass{IGraphicsRenderer}'s default \texttt{runtime\_error}; working
 \cnaclass{RenderTarget2D::GetData()} tests are a separate resource-readback path and do not
-make the public backbuffer method available. The complete fourteen-product distinction is
+make the public backbuffer method available. The complete inherited fourteen-product distinction is
 tabulated in \S\ref{sec:backend-readback-matrix}. Third, a real
 \emph{possible} gap that is explicitly, honestly unresolved rather than
 either claimed fixed or claimed broken: \texttt{plan\_sdlgpu.md} records real Vulkan validation
@@ -491,8 +491,8 @@ resting on a test that structurally cannot catch this specific failure mode; a g
 needs a non-uniform per-level test (a distinct solid color per mip level, mirroring the
 sub-volume worked example's own per-Z-slice colors) before this can honestly be called
 resolved either way. Fourth, the generic \texttt{.cnj} custom-effect fixture remains a
-cross-backend portability gap: its loose GLSL ES 3.00 declarations are not accepted by this
-backend's explicit-location, uniform-block binding contract, even though the dedicated
+cross-renderer portability gap: its loose GLSL ES 3.00 declarations are not accepted by this
+renderer's explicit-location, uniform-block binding contract, even though the dedicated
 \texttt{\#version 450} effect regression is pixel-verified. That choice is deliberately left
 open pending either a shared content-dialect migration or a real shader-translation layer.
 Fifth, \cnaclass{RasterizerState}'s depth-bias values remain captured-but-unapplied because
@@ -503,12 +503,12 @@ an active MRT secondary target is still represented by a raw pointer for deferre
 \texttt{Clear\allowbreak{}*()} propagation; destroying that wrapper before the MRT binding changes can leave
 the pointer dangling, despite the separately fixed queued-draw state lifetime. Eighth, an
 ordinary mipmapped \cnaclass{Texture2D} reports the full public \texttt{LevelCount}, but this
-backend allocates its native \texttt{SDL\_GPUTexture} with exactly one level and inherits
-\texttt{ITextureBackend::UpdatePixelsLevel()}'s empty body. A higher-level
+renderer allocates its native \texttt{SDL\_GPUTexture} with exactly one level and inherits
+\texttt{ITextureRenderer::UpdatePixelsLevel()}'s empty body. A higher-level
 \texttt{SetData()} therefore updates only the shared CPU shadow; a following
 \texttt{GetData()} appears to succeed even though no sampled GPU mip exists
 (Chapter~\ref{ch:backend-architecture}, \S\ref{sec:texture2d-update-matrix}).
-Ninth, hardware instancing is absent at a different layer: this otherwise 3D-capable backend
+Ninth, hardware instancing is absent at a different layer: this otherwise 3D-capable renderer
 does not override \texttt{DrawInstancedPrimitivesEx()}, so every valid public
 \texttt{DrawInstancedPrimitives()} call reaches the common
 \texttt{std::runtime\_error} default. SDL\_gpu itself exposes per-instance vertex input; the
@@ -523,9 +523,9 @@ remain code paths only, not validation claims, until run on real (or Wine/DXVK-c
 
 \section{Clear state is per target, but still per pass}
 
-Unlike Vulkan/BGFX, this backend carries independent pending colour, depth, and stencil flags
+Unlike Vulkan/BGFX, this renderer carries independent pending colour, depth, and stencil flags
 for the swapchain, each 2D target/MRT attachment, and each cube face. The matching
-\texttt{SDL\_GPU\_LOADOP\_CLEAR} is selected only when that flag is set, so the backend side is
+\texttt{SDL\_GPU\_LOADOP\_CLEAR} is selected only when that flag is set, so the renderer side is
 option-selective. It also queues the same clear into every active MRT colour sibling.
 
 The timing remains deferred: one pass sees final pending values before all queued draws, not a
@@ -537,14 +537,14 @@ same-pass ordering; \S\ref{sec:backend-clear-matrix} records that evidence bound
 \section{Verification methodology}
 
 Every claim above is backed by a real CTest binary, not a code read alone. Counting the actual
-CMake test registration directly (\texttt{cmake/Tests/SdlGpuTests.cmake}) rather than trusting a
+CMake test registration directly (\texttt{modules/renderers/sdl-gpu/examples/CMakeLists.txt}) rather than trusting a
 plan-doc's own snapshot shows \textbf{21} real CTest binaries today, spanning the 2D and 3D
 smoke tests, every stock effect (including \cnaclass{EnvironmentMapEffect},
-\cnaclass{SkinnedEffect}, and the \texttt{NOXNA} \cnaclass{PbrEffect} this book's WebGPU chapter
+\cnaclass{SkinnedEffect}, and the \texttt{CNAEXT} \cnaclass{PbrEffect} this book's WebGPU chapter
 already introduced), custom \cnaclass{ShaderEffect}, every render-target variant (2D, cube,
 multiple render targets, MSAA), both extra texture types, sampler/render state, draw order, and
-swapchain recovery, plus the render-target-lifetime regression above --- run, like every other backend's own CTest suite, against this project's
-own \texttt{cna\_register\_backend\_test()} convention, gracefully skipping with a clear reason
+swapchain recovery, plus the render-target-lifetime regression above --- run, like every other renderer's own CTest suite, against this project's
+own \texttt{cna\_register\_renderer\_test()} convention, gracefully skipping with a clear reason
 rather than hard-failing when no real \texttt{DISPLAY} / \texttt{WAYLAND\_DISPLAY} is present, the
 identical convention \texttt{D3D11} / \texttt{D3D12} / \texttt{WebGPU} already follow. All verification
 to date is against this project's own real dev-machine GPU via \texttt{SDL\_gpu}'s Vulkan
