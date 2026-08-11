@@ -344,6 +344,98 @@ three deterministic fuzz harnesses. The CNJ JSON parser has **no recursion depth
 size limit, and no fuzz coverage — the same threat model that REMED-CONTENT-006 explicitly
 closed on the XNB side.
 
+### 4.1a Graphics core, effects and shaders — headline conclusions
+
+**F-024 — `SurfaceFormat` has 27 values and, on every renderer except Skia, exactly one works.**
+**Confidence: VERIFIED.** `Texture::ValidateFormat` accepts **only** `SurfaceFormat::Color` and
+throws `std::runtime_error("Texture: SurfaceFormat N is not implemented by the selected graphics
+renderer")` for everything else (`Texture.cpp:109-116`). Only a `CNA_RENDERER_SKIA` build swaps
+in a 27-entry allow-list for `Texture2D` and a 14-entry renderable list for `RenderTarget2D`.
+`Texture3D`/`TextureCube` are `Color`-only on **every** renderer including Skia. So on a
+D3D11/Vulkan/EasyGL/bgfx build, `Texture2D(device, w, h, false, SurfaceFormat::Dxt5)` throws.
+
+Corollary: DXT and BC7 are **CPU-decompressed to RGBA8 before ever reaching the GPU** (except on
+Skia) — `DxtUtil::DecompressDxt1/3/5` is called from the XNB readers, not from a renderer upload
+path. Any book text implying broad format support is wrong.
+
+**F-025 — The `.fx` chapter's premise is now only one-quarter true.**
+**Confidence: VERIFIED.** The public `Effect(GraphicsDevice&, bytecode)` constructor still throws
+unconditionally (`Effect.cpp:18-26`), and the general `EffectReader` is refused by name at the
+content layer. But CNA now implements **four distinct answers** to XNA's `.fx`:
+
+1. **Reimplement** — hand-authored per-renderer shaders driven by `GpuDrawParams`; the default
+   for roughly twenty renderers.
+2. **Recompile Microsoft's own sources** — `modules/renderers/directx9/src/shaders/xna/` vendors
+   the six stock-effect `.fx` files plus their `.fxh` includes and compiles them with the real
+   Microsoft `d3dcompiler_47.dll` under a dedicated Wine prefix. `compare_against_fxb.py:11-16`
+   records **61 of 66 shaders matching Microsoft's shipped instruction stream exactly** after
+   stripping CTAB/creator tokens; the five misses are all PixelLighting vertex variants,
+   attributed to `d3dcompiler_47` vs the XNA-era `D3DCompiler_43`.
+3. **Execute Microsoft's bytecode** — six `.fxb` blobs vendored verbatim from FNA
+   (`30a427365a…`, Ms-PL) are committed at `modules/renderers/fna3d/effects/` and run through
+   **MojoShader** via `FNA3D_CreateEffect`. MojoShader is a pinned, submodule-recursed build
+   dependency at this SHA. The cost is total: FNA3D reports `CustomEffects == false`, because
+   `FNA3D.h` has no "compile this source" entry point at all.
+4. **Bypass `.fx`** — `ShaderEffect`, source-string based, with **22 of 42 renderers** overriding
+   `CreateEffectRenderer` across at least six dialects (raw GLSL; GLSL→SPIR-V via libshaderc; raw
+   HLSL via `D3DCompile`; pre-compiled SPIR-V bytes; marker-gated SkSL; and several deliberate
+   rejections).
+
+> **Trap worth a callout box:** Vulkan's `CreateEffectRenderer` takes **SPIR-V bytes packed in a
+> `std::string`**, not GLSL — it validates only `size % 4 == 0` then calls
+> `vkCreateShaderModule`. A caller handing it GLSL gets garbage or a driver error, not a compile
+> diagnostic.
+
+**F-026 — The real shader gap is `GpuDrawParams`, not the missing parser.**
+**Confidence: VERIFIED.** `Effect`→renderer communication is a single closed aggregate struct
+(`IGraphicsRenderer.hpp:846-990+`) holding every stock-effect uniform CNA knows about. Adding a
+uniform means editing that struct **and every renderer**. `EffectParameter` is a CPU-side value
+bag that nothing reads on the way to a renderer. Even a perfect MojoShader parser would have
+nowhere to put the reflected parameters. `docs/fx-bytecode-support-plan.md:70-84` says exactly
+this, and it is the strongest argument the current chapter is missing.
+
+**F-027 — SpriteBatch destination rectangles are integers; sub-pixel positioning is lost.**
+**Confidence: VERIFIED.** `SpriteInfo::destRect`/`srcRect` are integer `Rectangle`s;
+`Draw(texture, Vector2 position, …)` **truncates** via `static_cast<intcs>`. XNA computes the
+destination in floats. `DrawString` **rounds** instead — so text and sprites use different
+rasterization-position rules. This is a real, user-visible fidelity divergence the book omits.
+
+**F-028 — State objects are stored by value; XNA's reference semantics do not hold.**
+**Confidence: VERIFIED.** `GraphicsDevice` holds `BlendState`/`DepthStencilState`/
+`RasterizerState` **by value** (`GraphicsDevice.hpp:1137-1139`) and every setter copies. So
+`device.BlendState = myState; myState.ColorSourceBlend = …;` has **no effect** on the device.
+There is also no freeze, no device binding, and no XNA-style "cannot modify a bound state object"
+exception anywhere — every setter is an unconditional field write.
+
+**F-029 — `GraphicsDevice.Textures[]` is bookkeeping only and never reaches the GPU.**
+**Confidence: VERIFIED.** `applySamplerStatesToRenderer()` forwards sampler state for 16 slots but
+no textures, and nothing else reads `textures_`. `TextureCollection` does enforce real invariants
+(range, disposed, currently-bound-as-render-target), but a texture placed in a slot has no
+rendering effect. Textures reach the GPU only via `Effect::FillGpuDrawParams` or
+`ShaderEffect::SetTexture`.
+
+**F-030 — `Reset()` is not a real device reset.** **Confidence: VERIFIED.** It raises the events,
+restores presentation state and resizes the window, but never recreates the renderer or
+reallocates GPU resources. The header states plainly that real mid-game device reset "is a
+separate, not-yet-implemented feature". Device loss is genuinely wired on **D3D9 only**.
+
+**F-031 — Three distinct forwarding failure modes, and the most consequential is silent.**
+**Confidence: VERIFIED.** `DrawPrimitivesEx`/`DrawIndexedPrimitivesEx` have **default
+implementations that discard the entire `GpuDrawParams`** and fall back to the colored-primitive
+path — a renderer that has not implemented the effect-aware route renders *something*
+(untextured, unlit, no fog, no skinning) with no error. Contrast `DrawInstancedPrimitivesEx` and
+`ReadBackbuffer`, which throw, and `ApplyRasterizerState`/`ApplySamplerState`/`SetBlendFactor`,
+which are empty no-ops.
+
+**F-032 — CNA vertex structures are not blittable, and a parallel stream layer exists because of
+it.** **Confidence: VERIFIED.** `Color` implements `IPackedVector` and most vertex types implement
+`IVertexType`; both are polymorphic C++ bases, so every vertex object carries a vtable pointer
+(`sizeof(Color) == 24`). `BuiltInVertexStreams.hpp` therefore defines seven plain stream structs
+with `static_assert`ed sizes and offsets as the single source of truth for GPU bytes, and
+`GetBackBufferData` has to reconstruct each `Color(r,g,b,a)` from a byte vector rather than
+writing into a `Color*` directly. This is one of the cleanest "what porting C# to C++ actually
+costs" stories in the codebase and the book has no home for it yet.
+
 ### 4.2 3D and glTF — headline conclusions
 
 **F-012 — A real in-tree glTF 2.0 importer exists, shared by an offline tool and the runtime.**
