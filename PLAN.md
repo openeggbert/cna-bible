@@ -69,8 +69,8 @@ current, not stale.
 | Phase | State |
 |---|---|
 | **A — source audit** | **Complete. 10 of 10 areas delivered and on disk in `audit/`.** |
-| **B — new Table of Contents** | Part IV/renderers settled (§4 below). Parts I–III, V–IX not yet drafted — all research is in, this is a synthesis pass over `AUDIT.md` + `audit/*.md`, no further research needed. |
-| **C — structural migration** | Started: all 112 hard-coded chapter references migrated to `\ref{}`. Remaining: create/move/split chapter files once Phase B lands, rename `part4-backends/`, run the terminology sweep. |
+| **B — new Table of Contents** | **Complete.** The 12-Part / 79-chapter structure, appendices and old-to-new disposition map are settled in §4. |
+| **C — structural migration** | Started: all 112 hard-coded chapter references migrated to `\ref{}`. Next: create/move/split chapter files from §4.4, rename `part4-backends/`, establish semantic labels, update `main.tex`, then run the terminology/path sweep. |
 | **D — chapter writing** | Not started. No chapter prose has been rewritten yet. |
 | **E — appendices** | Not started. |
 | **F — whole-book consistency** | Not started. |
@@ -106,56 +106,180 @@ is only in the individual reports — read the relevant one before writing any c
 
 ---
 
-## 4. Proposed new structure
+## 4. Settled new structure
 
-Settled where marked; provisional elsewhere pending the four in-flight areas.
+Phase B is complete. The new edition has **12 Parts, 79 chapters and 8 appendices**. This is a
+content architecture, not a promise that every chapter receives equal length: page bands below
+are planning ranges, and evidence density takes precedence over symmetry.
 
-### Part IV — the renderers (**settled**)
+Four decisions prevent duplication:
 
-Cluster by *what the renderer talks to and how it obtains shaders*, which is the axis on which
-CNA's own code actually differs — not by age or vendor. The clusters partition all 46 identities
-exactly (10+4+7+9+6+4+3+3 = 46, arithmetic independently checked).
+1. Part II gives build and module architecture once; later Parts cross-reference it rather than
+   repeating option tables and dependency acquisition.
+2. Part III owns the renderer-independent graphics API. Part IV owns renderer selection,
+   capabilities and implementation families. Shader API semantics stay in Part III; shader
+   delivery differences stay in Part IV.
+3. Part V owns containers, readers and content security. Part VI owns the `Model` runtime, glTF,
+   skinning, the model-flavoured CNJ toolchain and its conformance campaign.
+4. Part X explains platform mechanisms. Part XI explains verification mechanisms. Wine and
+   browser chapters in Part X describe runtime constraints; Part XI compares their gates and
+   oracles without re-teaching the platform build.
 
-| # | Cluster | Identities | Count | Depth |
-|---|---|---|---|---|
-| 0 | **The renderer contract** | — | — | 22–28 pp |
-| 1 | **The OpenGL family** | `OPENGLES2` `OPENGLES3` `OPENGL33` `WEBGL1` `WEBGL2` `OPENGL1` `OPENGL2` `OPENGL4` `OPENGLES1` `PORTABLEGL` | 10 | 30 pp, 2 ch |
-| 2 | **Native modern GPU** | `VULKAN` `SDL_GPU` `WEBGPU` `METAL` | 4 | 24 pp, 1–2 ch |
-| 3 | **Abstraction-layer wrappers** | `BGFX` `MAGNUM` `LLGL` `DILIGENT` `SOKOL` `WICKED` `FNA3D` | 7 | 26 pp, 1–2 ch |
-| 4 | **The legacy DirectX / retro ladder** | `DIRECTX1` `DIRECTX2` `DIRECTX3` `DIRECTX5` `DIRECTX6` `DIRECTX7` `DIRECTX8` `FREEDIRECT` `GLIDE` | 9 | 30 pp, 2 ch |
-| 5 | **Modern Direct3D + Windows 2D** | `DIRECTX9` `DIRECTX10` `DIRECTX11` `DIRECTX12` `DIRECT2D` `GDI` | 6 | 24 pp, 1–2 ch |
-| 6 | **2D / vector rasterizers** | `SKIA` `BLEND2D` `OPENVG` `SDL_RENDERER` | 4 | 16 pp, 1 ch |
-| 7 | **Web / DOM** | `CANVAS` `HTML_DOM` `SVG_DOM` | 3 | 12 pp, 1 ch |
-| 8 | **Non-GPU / diagnostic** | `HEADLESS` `SOFTWARE` `STUB` | 3 | 12 pp, 1 ch |
+### 4.1 Parts I–III — identity, onboarding and renderer-independent graphics
 
-Cluster 0 is the highest-value new chapter in the book: 70 virtuals / 25 pure across ten
-sub-interfaces; 13 capability flags with a **default-true polarity** that makes a forgetful
-renderer over-claim; three *non-equivalent* 3D opt-out idioms; the `WarnAndStub` policy only six
-renderers honour; identity-vs-family; and the checked-in-generated-shader-header pattern with
-MAGNUM as its single exception. None of it is in the book today.
+| Ch. | Title | Planned depth | Principal source / disposition |
+|---:|---|---:|---|
+| 1 | **CNA and XNA 4.0** | 18–22 pp | Rewrite old Ch.01: identity, authority order, translation model, honest coverage and non-goals. |
+| 2 | **The CNA ecosystem and its vocabulary** | 16–20 pp | Rebuild old Ch.02; introduce renderer/backend distinction and the sibling graph. |
+| 3 | **Language, conventions, and CNAEXT** | 18–22 pp | Rebuild old Ch.03 around C++23-as-floor, namespaces, exceptions, ownership and CNAEXT's two meanings. |
+| 4 | **Configuring and building CNA** | 18–22 pp | Replace old Ch.04 commands with the verified option/compiler/toolchain matrix; state that CNA has no install/export/package step. |
+| 5 | **Your first CNA game** | 18–22 pp | Preserve the tutorial spine of old Ch.05; use only current renderer selectors and build commands. |
+| 6 | **The game lifecycle** | 24–30 pp | Correct and expand old Ch.06 with exact lifecycle order, dispatcher pump, disposal, timing and Emscripten divergence. |
+| 7 | **Vectors, matrices, quaternions, and conventions** | 32–40 pp | First half of old Ch.07: row vectors, handedness, depth range, multiply order, degeneracy and numeric evidence. |
+| 8 | **Geometry, color, curves, and C++ value layout** | 32–40 pp | Second half of old Ch.07: bounds, plane/ray, `Color`, polymorphic layout, exception splits and the live `Plane::Transform` bug. |
+| 9 | **The module monorepo** | 16–20 pp | New: physical modules, targets, `cna_add_module()`, public include roots and consumer include stability. |
+| 10 | **Cycles, umbrellas, boundaries, and enforcement** | 18–22 pp | New: declared cycles, umbrellas, link closures, ownership probes, Ninja skips and migration history. |
+| 11 | **Dependencies, tests, examples, and developer tools** | 14–18 pp | New build-system close: acquisition mechanisms, sharp-runtime seam, registration overview and tool targets; deep testing moves to Part XI. |
+| 12 | **GraphicsDevice and the rendering pipeline** | 28–34 pp | Revise old Ch.09: forwarding policies, reset semantics, texture-slot bookkeeping, streams and rollback. |
+| 13 | **SpriteBatch and 2D rendering** | 22–28 pp | Revise old Ch.10: integer truncation, text rounding, sort/state transactions and premultiplication. |
+| 14 | **Textures, render targets, and surfaces** | 24–30 pp | Revise old Ch.11: real format limits, CPU decompression, null objects, MSAA and target-switch invariants. |
+| 15 | **Stock effects and draw parameters** | 22–28 pp | Revise old Ch.13 around `GpuDrawParams`, parameter collections, cloning and CNAEXT effects. |
+| 16 | **State objects and C++ value semantics** | 16–20 pp | Revise old Ch.14: by-value storage, no freeze/binding semantics, dead properties and commit-after-success. |
+| 17 | **Shaders: four answers to XNA's `.fx`** | 26–32 pp | Replace old Ch.15: reimplement, recompile Microsoft sources, execute `.fxb`, bypass with `ShaderEffect`; close on the real parameter-plumbing gap. |
+| 18 | **Vertex streams, capabilities, and unsupported-call policy** | 18–22 pp | New bridge into Part IV: non-blittable public vertices, packed stream ABI, default-true capabilities and throw/no-op/silent-degrade modes. |
 
-Cluster 4 has **zero coverage today** and is the book's most distinctive material: one modern API
-projected onto 1995–2000 hardware APIs, with a measured port lineage and eight mechanically
-enforced era-discipline gates.
+### 4.2 Part IV — the renderers
 
-### Parts likely to change (provisional)
+The cluster axis remains *what the renderer talks to and how it obtains shaders*. The chapter
+allocation below partitions all **46 public identities / 42 implementation families** exactly:
+10+4+7+9+6+4+3+3 identities. Before prose is written, §3.2's draw-path divergence matrix must be
+completed and used in Chapters 19 and 32 as well as the family chapters.
 
-- **Content becomes its own Part** (~5 chapters). The single 2,247-line chapter now spans four
-  separable subsystems and has zero glTF coverage.
-- **A 3D/glTF Part** (~5 chapters), justified less by feature surface than by the conformance
-  apparatus: a pinned specification, a generated digest-verified corpus, a five-of-seven oracle
-  ladder, and an executable defect ledger with a three-state lifecycle.
-- **A Testing/Verification Part** (~6 chapters, 70–90 pp), including a chapter on *counting
-  discipline* — what a test number can and cannot mean — which is original and load-bearing.
-- **Effects/shaders retitled and restructured** around CNA's four real answers to `.fx`, not
-  around a gap.
-- **Math splits**; the game-loop chapter gains the lifecycle ordering it currently lacks.
-- **Appendix E** (`NOXNA Catalog`) rebuilt as a CNAEXT catalog around the two-meanings framing.
-- **Appendix B** rebuilt from `docs/renderer-registry.md`, which is current and dated to the pin —
-  *not* from `docs/graphics-renderer-feature-matrix.md`, which self-labels "master, up-to-date"
-  while carrying refuted rows and covering 4 of 46 renderers.
-- **A new verification-tiers appendix**: which renderers are actually proven and by what evidence.
-  Only 5 of 46 build an oracle-render binary; only 1 of those is a hard gate.
+| Ch. | Title | Identities | Planned depth |
+|---:|---|---|---:|
+| 19 | **The renderer contract** | — | 22–28 pp |
+| 20 | **Selection, identity, family, and capability** | all 46 / 42 families | 18–22 pp |
+| 21 | **OpenGL I: fixed-function and profile selection** | `OPENGL1` `OPENGL2` `OPENGLES1` plus EasyGL profile mechanism | 14–18 pp |
+| 22 | **OpenGL II: programmable, web, and portable profiles** | `OPENGLES2` `OPENGLES3` `OPENGL33` `OPENGL4` `WEBGL1` `WEBGL2` `PORTABLEGL` | 16–20 pp |
+| 23 | **Native modern GPU APIs** | `VULKAN` `SDL_GPU` `WEBGPU` `METAL` | 22–28 pp |
+| 24 | **Abstraction layers I: BGFX, Magnum, LLGL, and Diligent** | `BGFX` `MAGNUM` `LLGL` `DILIGENT` | 16–20 pp |
+| 25 | **Abstraction layers II: Sokol, Wicked, and FNA3D** | `SOKOL` `WICKED` `FNA3D` | 16–20 pp |
+| 26 | **The DirectX time machine: DirectX 1–3 and free-direct** | `DIRECTX1` `DIRECTX2` `DIRECTX3` `FREEDIRECT` | 16–20 pp |
+| 27 | **The retro ladder: DirectX 5–8 and Glide** | `DIRECTX5` `DIRECTX6` `DIRECTX7` `DIRECTX8` `GLIDE` | 16–20 pp |
+| 28 | **Modern Direct3D** | `DIRECTX9` `DIRECTX10` `DIRECTX11` `DIRECTX12` | 18–22 pp |
+| 29 | **Windows 2D: Direct2D and GDI** | `DIRECT2D` `GDI` | 10–14 pp |
+| 30 | **2D and vector rasterizers** | `SKIA` `BLEND2D` `OPENVG` `SDL_RENDERER` | 14–18 pp |
+| 31 | **Web and DOM renderers** | `CANVAS` `HTML_DOM` `SVG_DOM` | 10–14 pp |
+| 32 | **Non-GPU and diagnostic renderers** | `HEADLESS` `SOFTWARE` `STUB` | 10–14 pp |
+
+Chapters 19–32 replace old Ch.16–25 by subject, not one-for-one. `ASCII` is not a renderer and
+moves to the CNAEXT material; `DIRECTX3` and `FREEDIRECT` remain explicitly separate. The legacy
+ladder is the edition's most distinctive renderer material: a modern API projected onto
+1995–2000 APIs, guarded by eight mechanically enforced era-discipline gates.
+
+### 4.3 Parts V–XII — content, 3D, framework services, foundations, platforms and practice
+
+| Ch. | Title | Planned depth | Principal source / disposition |
+|---:|---|---:|---|
+| 33 | **Loading an asset: ContentManager and resolution** | 24–30 pp | Split from old Ch.08: façade, caches, resolution, manifest, unload and reader registration. |
+| 34 | **The XNB container** | 20–25 pp | Split from old Ch.08: headers, compression, LZX/LZ4, limits and external fixtures. |
+| 35 | **XNB type readers and object graphs** | 28–34 pp | Split from old Ch.08: registries, `std::any`, shared resources, full reader table and real gaps. |
+| 36 | **CNJ: CNA's own content format** | 24–30 pp | Split from old Ch.08: envelopes, per-type versions, loaders, sidecars and hybrid parser. |
+| 37 | **Content robustness and asset boundaries** | 14–18 pp | New: limits/enforcement table, containment, fuzzing, differential oracles and remaining asymmetries. |
+| 38 | **Models, meshes, materials, and drawing** | 20–24 pp | Preserve and correct old Ch.12 as the XNA-surface runtime chapter. |
+| 39 | **From glTF file to Model: the import core** | 16–18 pp | New: cgltf, scene graph, transforms, instances and runtime/offline split. |
+| 40 | **GPU packing and the stride ABI** | 14–16 pp | New: seven layouts, vtable inflation, indices, topology and hard caps. |
+| 41 | **Skinning and animation across two systems** | 16–18 pp | New: two runtimes, joint ordering, prefix transforms, morphs and D8. |
+| 42 | **The CNJ model toolchain** | 12–14 pp | New: `gltf_to_cnj`, v2 schema, sidecars, offline/runtime parity and material approximations. |
+| 43 | **Proving glTF: the conformance corpus and oracle ladder** | 18–20 pp | New flagship: spec pin, generator, digests, five-of-seven layers and executable defect ledger. |
+| 44 | **The input system** | 22–28 pp | Update/expand old Ch.26; retain its event-driven architecture and add coordinate transforms and exact constants. |
+| 45 | **The audio system** | 22–28 pp | Expand old Ch.27: SDL3_mixer object/lifetime model, decode matrix, formulas, XNB audio and offline rendering. |
+| 46 | **The media system** | 14–18 pp | Light revision of old Ch.28; correct counts, codec claims, platform guard and audio cycle. |
+| 47 | **Sensors: the Microsoft.Devices surface** | 18–22 pp | First half of old Ch.29 rewrite: Android/desktop split, delivery, concurrency, math and evidence limits. |
+| 48 | **Host integration through CNA.Devices** | 16–20 pp | Second half of old Ch.29 rewrite: off-by-default gate, clipboard/power/camera/haptics and shutdown coordination. |
+| 49 | **GamerServices and local identity** | 18–22 pp | Expand old Ch.30: exact persistence, silent Guide calls, dispatcher hang family and synthetic gamers. |
+| 50 | **Storage and persistence boundaries** | 16–20 pp | Rewrite old Ch.33 adjacent to Ch.49: shared root, selectors, containment asymmetry and live traversal defect. |
+| 51 | **Networking and session semantics** | 22–28 pp | Correct/expand old Ch.31: Local non-delivery, protocol, topology, ENet mapping, hostile input and web divergence. |
+| 52 | **Avatar: faithful absence and CNAEXT rendering** | 18–22 pp | Correct/expand old Ch.32: inert XNA surface, real EXT path, evidence tiers and remaining visual defect. |
+| 53 | **Why sharp-runtime exists** | 14–18 pp | Rebuild old Ch.34: role, history, scope and CNA co-evolution. |
+| 54 | **Components, modules, and CNA's consumption seam** | 16–20 pp | New: 44 components, registries, umbrellas, dual-shape adapter and 18 closures. |
+| 55 | **The object model, honestly** | 16–20 pp | New: `Object`, non-instantiable `String`, exception ancestry, delegates, reflection limits and ownership. |
+| 56 | **Namespaces, types, and include paths** | 18–22 pp | Re-derive old Ch.35 against the component graph. |
+| 57 | **Parity philosophy and permanent deviations** | 16–20 pp | Expand old Ch.36 with complete deviation taxonomy and frozen naming conventions. |
+| 58 | **Verification and audit in sharp-runtime** | 14–18 pp | New: per-component isolation, negative consumers, meta-tests and frozen audit numbering. |
+| 59 | **easy-gl and meta-gl: profile, loader, and dispatch** | 18–22 pp | Rebuild old Ch.37 around the current split and public-history rewrite. |
+| 60 | **free-direct and free-api** | 18–22 pp | Merge old Ch.25's library material with old Ch.38: three APIs, status census, pimpl/macro hazard and consumers. |
+| 61 | **The cross-platform contract** | 14–18 pp | New: CMake target selection over preprocessor branching, SDL3 as platform layer and admissibility vs proof. |
+| 62 | **Windows I: cross-compiling from Linux** | 12–16 pp | Split old Ch.39: toolchain, SDL cache, staging and the i686 wall. |
+| 63 | **Windows II: Wine, DXVK, and engagement gates** | 16–20 pp | Split old Ch.39: six prefixes, translation runtimes, log gates, workarounds and honest gaps. |
+| 64 | **Web I: compiling C++23 to WebAssembly** | 12–16 pp | Split old Ch.40: flags, ABI, assets, single-threading, MEMFS and network topology. |
+| 65 | **Web II: the main-loop problem** | 12–16 pp | Split old Ch.40: exception unwinding failure, diagnosis, fix and lifecycle divergence. |
+| 66 | **Web III: five renderers, four kinds of evidence** | 12–16 pp | Split old Ch.40: DOM/SVG/Canvas/WebGL harnesses and compositor-level checking. |
+| 67 | **Android, macOS, and platforms not yet reached** | 16–20 pp | Rewrite old Ch.41; include TitleContainer gap, NDK sensors, Metal evidence and explicit iOS refusal. |
+| 68 | **The CnaTests architecture** | 12–16 pp | Replace old Ch.42/48 opening: glob/filter contract, discovery, skips, isolation and compile-must-fail tests. |
+| 69 | **Counting discipline** | 10–14 pp | New: distinguish sources, macros, registrations and executables; reproducible derivations only. |
+| 70 | **Oracles: what does “correct” mean?** | 16–20 pp | New flagship: XNA pixels, CNA goldens, FNA values, tolerances and oracle taxonomy. |
+| 71 | **Verification in hostile environments** | 14–18 pp | New: compare Wine/Proton/browser verdict channels and prove that the intended runtime engaged. |
+| 72 | **Discipline as a test** | 12–16 pp | New: era gates, link closures, identity checks, meta-validation, mutation and gate self-tests. |
+| 73 | **What CI actually runs** | 10–14 pp | New: workflow reality, sanitizers, validation, fuzzing, property tests and the absence of code coverage. |
+| 74 | **Migrating an XNA or FNA game to CNA** | 18–22 pp | Correct old Ch.43 against current content, renderer, build and platform reality. |
+| 75 | **Case study: Speedy Blupi and Planet Blupi** | 18–22 pp | Preserve old Ch.44; refresh renderer names and cross-links. |
+| 76 | **Auditing compatibility with xna4-spec** | 14–18 pp | Preserve old Ch.45; clarify where executable oracles, not API inventories, decide behaviour. |
+| 77 | **cna-samples and cna-examples** | 14–18 pp | Refresh old Ch.46 against the pin and Part XI's evidence vocabulary. |
+| 78 | **Project practice and durable task tracking** | 14–18 pp | Refresh old Ch.47; fold in lessons from source-partition and glTF defect ledgers. |
+| 79 | **Roadmap, open gaps, and how to re-audit this book** | 12–16 pp | Rewrite old Ch.49 from code; no stale `.xnb`/`.fx` headline and no unqualified counts. |
+
+Part titles are fixed as follows: I **CNA and Its Ecosystem**; II **Architecture, Building, and
+the Framework**; III **The Graphics Machine**; IV **The Renderers**; V **The Content Pipeline**;
+VI **3D Content: Models, glTF, and Conformance**; VII **Input, Audio, Media, Devices, Networking,
+and Services**; VIII **sharp-runtime: The Foundation Layer**; IX **Sibling Foundation
+Libraries**; X **Cross-Platform Engineering**; XI **Testing and Verification**; XII **Porting,
+Practice, and the Road Ahead**.
+
+### 4.4 Old-to-new chapter disposition
+
+This map is the migration checklist. “Rebuild” means preserve sourced material selectively, not
+blindly move stale prose.
+
+| Old chapter(s) | New chapter(s) | Action |
+|---|---|---|
+| 01 | 1 | Rewrite. |
+| 02 | 2, 53, 59, 60 | Rebuild the map; move library depth to its owning Part. |
+| 03 | 3 and Appendix E | Rebuild conventions; move the catalog out. |
+| 04 | 4, 9–11 | Split build, architecture and tooling. |
+| 05 | 5 | Update in place after renumbering. |
+| 06 | 6 | Correct and expand. |
+| 07 | 7–8 | Split at the math/geometry seam. |
+| 08 | 33–37 | Split by façade, XNB container, reader architecture, CNJ and security. |
+| 09–11, 13–15 | 12–17 | Rebuild renderer-independent graphics chapters; Ch.17 replaces the old `.fx gap` premise. |
+| 12 | 38 | Move to the 3D Part and correct four asset routes. |
+| 16–24 | 19–32 | Recluster; no renderer chapter is migrated one-for-one. ASCII moves to Appendix E. |
+| 25 and 38 | 26 and 60 | Separate the `DIRECTX3`/`FREEDIRECT` renderers; merge the free-direct library prose. |
+| 26–28 | 44–46 | Update/expand. |
+| 29 | 47–48 | Split faithful Sensors from off-by-default CNA.Devices. |
+| 30, 33 | 49–50 | Keep adjacent because both use the same storage root; rewrite Storage's central narrative. |
+| 31–32 | 51–52 | Correct and expand. |
+| 34–36 | 53–58 | Expand three chapters to six around modules, object model and verification. |
+| 37 | 59 | Rebuild as the easy-gl/meta-gl split. |
+| 39 | 62–63 | Split cross-compilation from runtime verification. |
+| 40 | 64–66 | Split compiler/ABI, lifecycle, and renderer evidence. |
+| 41 | 67 | Expand to the platforms-not-reached matrix. |
+| 42 and 48 | 68–73 | Replace both with the dedicated verification Part; eliminate duplicate methodology prose. |
+| 43–47 | 74–78 | Refresh and retain their practical roles. |
+| 49 | 79 | Rewrite from the pinned source and the new evidence vocabulary. |
+
+### 4.5 Appendices
+
+| Appendix | Settled title and source |
+|---|---|
+| A | **API Quick Reference: Core Framework and Graphics** — rebuild after chapter writing. |
+| B | **Renderer Registry, Capabilities, and Evidence** — derive the registry from `docs/renderer-registry.md` plus code; never copy `docs/graphics-renderer-feature-matrix.md`. |
+| C | **Glossary of XNA and CNA Terms** — terminology authority; old spellings historical only. |
+| D | **Repository and Module Map** — sibling repositories plus the physical `modules/` tree. |
+| E | **CNAEXT: Marker and Engine-Layer Catalog** — replace the NOXNA appendix using the two-meanings framing; include `AsciiPostProcessEffect`. |
+| F | **Ecosystem and Platform Quick Reference** — refresh after Parts VIII–X. |
+| G | **Verification Tiers and Oracle Vocabulary** — state what each renderer/platform is actually proven to do. |
+| H | **glTF Importer / Runtime / Test-Evidence Matrix** — preserve the three columns; never flatten “parsed” and “played” into one support bit. |
 
 ---
 
@@ -225,3 +349,17 @@ mid-session at the owner's direction, so the build and visual passes are availab
   `Ch.N`) to `\ref{}`; caught and fixed a doubled-backslash regression that only the visual pass
   could detect, and added a check for that exact shape.
 - Archived the previous `PLAN.md`/`NEXT.md` and opened this plan.
+
+### 2026-08-11 — Phase B: new Table of Contents settled
+
+- Synthesised all ten audit reports into one non-overlapping content architecture: **12 Parts,
+  79 chapters and 8 appendices** (§4).
+- Kept Part IV's already-settled renderer taxonomy and allocated its eight clusters across 14
+  chapters while preserving the exact **46 identities / 42 implementation families** partition.
+- Promoted Content, 3D/glTF, and Testing/Verification to dedicated Parts; split Math and Devices;
+  expanded sharp-runtime from three to six chapters; merged the two undersized free-direct
+  treatments into one library chapter separate from CNA's `FREEDIRECT` renderer coverage.
+- Added a complete old-Ch.01–49 disposition map so Phase C has an explicit migration checklist;
+  no existing chapter is silently discarded.
+- Settled all appendix roles, including a two-meaning CNAEXT catalog, verification tiers, and a
+  three-column glTF importer/runtime/evidence matrix.
