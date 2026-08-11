@@ -1,7 +1,7 @@
 \chapter{The Avatar System}
 \label{ch:avatar}
 
-The Avatar system is the strangest corner of CNA, and deliberately so. Chapter~1 already
+The Avatar system is the strangest corner of CNA, and deliberately so. Chapter~\ref{ch:what-is-cna} already
 flagged it: unlike every other namespace in this book, Avatar was ported from
 a \emph{decompiled} real Microsoft XNA~4.0 reference assembly, because FNA never implemented
 it at all --- real avatar rendering depended on Xbox Live's cloud avatar-editor service, which
@@ -44,14 +44,14 @@ presets was requested.
 None of this is presented apologetically in the project's own documentation, and this book
 follows that lead: it is presented as a faithful, verified reproduction of a real, if
 surprising, historical API surface --- exactly the kind of specific, checkable claim
-Chapter~1 asked this book to preserve rather than round off into a vague ``Avatar
+Chapter~\ref{ch:what-is-cna} asked this book to preserve rather than round off into a vague ``Avatar
 support is limited.''
 
 \section{SkinnedModelEXT: the separate, real-rendering extension}
 
 Real avatar rendering in CNA does not live inside the classes above at all --- it lives in a
 structurally independent, entirely \texttt{NOXNA} system, \cnaclass{SkinnedModelEXT}, built
-specifically because \cnaclass{Model} / \cnaclass{ModelMesh} (Chapter~12's models-and-meshes
+specifically because \cnaclass{Model} / \cnaclass{ModelMesh} (Chapter~\ref{ch:models-meshes}'s models-and-meshes
 coverage) encode a rigid, per-mesh parent-bone hierarchy --- the wrong shape entirely for
 real per-vertex GPU skinning. \cnaclass{SkinnedModelEXT} owns its own bone hierarchy (a
 parent-index array, local bind poses, and global inverse bind poses), its own named animation
@@ -60,7 +60,7 @@ spherical-linear rotation interpolation), and its own mesh parts, deliberately m
 it owns real GPU buffer resources. Crucially, its bone count and hierarchy are wholly
 independent of the faithful 71-bone \cnaclass{AvatarBone} array above --- a typical
 \cnaclass{SkinnedModelEXT} skeleton runs 50 to 65 bones, comfortably inside
-\cnaclass{SkinnedEffect}'s (Chapter~13's stock-effects coverage) 72-bone cap, and the
+\cnaclass{SkinnedEffect}'s (Chapter~\ref{ch:stock-effects}'s stock-effects coverage) 72-bone cap, and the
 two bone-numbering schemes are never confused or bridged directly.
 
 A small, opt-in surface bridges the two systems without touching the faithful API's own
@@ -100,7 +100,7 @@ internal \cnaclass{SkinnedEffect} \texttt{EnableRealRenderingEXT} builds --- and
 found-and-fixed ordering bug lived in exactly that setup path: \texttt{AvatarRenderer::%
 DrawRealEXT} called \texttt{EnableDefaultLighting()} \emph{after} the caller's own custom
 ambient value had already been set, so \texttt{EnableDefaultLighting()}'s own unconditional
-overwrite (the same behavior Chapter~13's \cnaclass{BasicEffect} worked example already warns
+overwrite (the same behavior Chapter~\ref{ch:stock-effects}'s \cnaclass{BasicEffect} worked example already warns
 about) discarded it silently on every single draw call. A game calling
 \texttt{renderer.setAmbientLightColorProperty(...)} before \texttt{DrawRealEXT} would have seen
 no effect from it whatsoever, with no error of any kind --- fixed by reordering the two calls
@@ -115,7 +115,7 @@ avatars alone. \texttt{EmissiveColor} was multiplied by \texttt{DiffuseColor} \e
 three of EasyGL's shader-variant builders --- real FNA's own \texttt{Lighting.fxh} adds the
 emissive term \emph{after} the diffuse multiply, not as part of it. Because CNA pre-folds
 ambient light into the emissive term before it reaches the shader (the same convention
-Chapter~13 covers for the stock-effect lighting model generally), the double multiply meant
+Chapter~\ref{ch:stock-effects} covers for the stock-effect lighting model generally), the double multiply meant
 ambient light landed on screen as $\mathit{ambient} \times \mathit{diffuse}^2$ rather than the
 correct $\mathit{ambient} \times \mathit{diffuse}$ --- crushing any dark material's ambient
 contribution toward black far more aggressively than intended, and explaining exactly why
@@ -230,7 +230,7 @@ own span, not just against its own underlying bone), accept the residual overlap
 inherent, honestly-documented limitation of shelling a procedurally-generated placeholder body
 with convex per-bone primitives, or revisit the tessellation trade-off as an explicit
 owner-approved cost. This is exactly the kind of open, well-diagnosed-but-unresolved item this
-book's own closing chapters (Chapter~47, Chapter~49) point to as evidence that ``done'' and
+book's own closing chapters (Chapter~\ref{ch:project-practice}, Chapter~\ref{ch:roadmap}) point to as evidence that ``done'' and
 ``verified correct'' are not the same claim, even inside a single actively-maintained system.
 
 \subsection{A worked example: what \texttt{ComputeBoneTransformsEXT} actually computes}

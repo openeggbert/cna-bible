@@ -74,11 +74,12 @@ fi
 echo "-- index"
 ilg="$book_dir/main.ilg"
 if [ -f "$ilg" ]; then
-    entries=$(grep -oE "Accepted [0-9]+" "$ilg" | tail -1 | grep -oE "[0-9]+" || echo "?")
-    rejected=$(grep -oE "[0-9]+ rejected" "$ilg" | tail -1 | grep -oE "^[0-9]+" || echo 0)
-    info "makeindex accepted ${entries} entries, ${rejected} rejected"
-    if [ "${rejected:-0}" != "0" ]; then
-        fail "makeindex rejected ${rejected} entries"
+    entries=$(sed -n 's/.*(\([0-9]*\) entries accepted.*/\1/p' "$ilg" | tail -1)
+    rejected=$(sed -n 's/.*entries accepted, \([0-9]*\) rejected.*/\1/p' "$ilg" | tail -1)
+    warns=$(sed -n 's/.*lines written, \([0-9]*\) warnings.*/\1/p' "$ilg" | tail -1)
+    info "makeindex accepted ${entries:-?} entries, ${rejected:-?} rejected, ${warns:-?} warnings"
+    if [ "${rejected:-1}" != "0" ] || [ "${warns:-1}" != "0" ]; then
+        fail "makeindex reported rejected entries or warnings"
     else
         pass "makeindex clean"
     fi
@@ -114,12 +115,25 @@ fi
 # ---------------------------------------------------------------- stale facts
 echo "-- stale-fact sweep"
 
-hard=$(grep -rno 'Chapter~[0-9]\+' "$chapters" "$front" 2>/dev/null | wc -l)
+# Two hard-coded cross-reference styles exist in this manuscript's history:
+# "Chapter~N" and the shorter "Ch.N" / "Ch.~N". Both break silently on a restructure,
+# and neither produces a LaTeX warning, so only this check finds them.
+hard=$(grep -rnoE 'Chapter~[0-9]+|Ch\.~?[0-9]+' "$chapters" "$front" 2>/dev/null | wc -l)
 if [ "$hard" -gt 0 ]; then
-    info "hard-coded Chapter~N references: $hard (each must be a deliberate historical statement)"
-    grep -rn 'Chapter~[0-9]\+' "$chapters" "$front" 2>/dev/null | head -10 | sed 's/^/        /'
+    fail "hard-coded chapter-number references: $hard (use \\ref{ch:...} unless genuinely historical)"
+    grep -rnE 'Chapter~[0-9]+|Ch\.~?[0-9]+' "$chapters" "$front" 2>/dev/null | head -10 | sed 's/^/        /'
 else
-    pass "no hard-coded Chapter~N references"
+    pass "no hard-coded chapter-number references (Chapter~N or Ch.N)"
+fi
+
+# A \ref written with a doubled backslash silently degrades to a line break plus
+# literal text. It produces no warning and no undefined reference -- it is only
+# visible by rendering the page. Caught for real on 2026-08-11 in Appendix E.
+if grep -rq '\\\\ref{' "$chapters" "$front" 2>/dev/null; then
+    fail "doubled-backslash \\\\ref{...} -- renders as a line break plus literal text"
+    grep -rn '\\\\ref{' "$chapters" "$front" | head -10 | sed 's/^/        /'
+else
+    pass "no doubled-backslash \\ref"
 fi
 
 for term in NOXNA "both volumes" "this volume" "Volume I" "Volume II"; do

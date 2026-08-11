@@ -151,7 +151,7 @@ this entire codebase, documented as such rather than silently left unexplained.
 \cnaclass{NetworkSession} is the largest single class in this appendix, and its size is
 representative of what it actually does: five static factory families
 (\texttt{Create} / \texttt{Find} / \texttt{Join} / \texttt{JoinInvited}, each with a synchronous form
-and a \texttt{Begin} / \texttt{End} fake-async pair, per the pattern Chapter~33 introduces for
+and a \texttt{Begin} / \texttt{End} fake-async pair, per the pattern Chapter~\ref{ch:storage} introduces for
 \cnaclass{Storage}), four gamer collections (\texttt{AllGamers}/%
 \texttt{LocalGamers} / \texttt{RemoteGamers} / \texttt{PreviousGamers}), and six events
 (\texttt{GamerJoined} / \texttt{GamerLeft} / \texttt{HostChanged} / \texttt{GameStarted}/%
@@ -176,7 +176,7 @@ immutable value type (\texttt{Key} / \texttt{Name} / \texttt{Description} / \tex
 \texttt{IsEarned} / \texttt{EarnedDateTime}); its one XNA method, \texttt{GetPicture()}, is a
 deliberate, documented exception to this book's ``restore what FNA stubbed out'' pattern ---
 Xbox~360 achievement artwork was streamed from Xbox LIVE at request time with no real local
-equivalent to substitute, so it stays throwing by design, the same reasoning Chapter~30's
+equivalent to substitute, so it stays throwing by design, the same reasoning Chapter~\ref{ch:gamerservices}'s
 \texttt{Guide} coverage already applies to its own Xbox-Live-only methods.
 
 \section{Storage: StorageDevice and StorageContainer}
@@ -199,7 +199,7 @@ glob-pattern overload), \texttt{CreateFile} / \texttt{FileExists} / \texttt{Dele
 \texttt{GetFileNames} (same glob-pattern overload), and a three-overload \texttt{OpenFile}
 family (mode alone; mode plus access; mode plus access plus sharing), each returning a real
 \cnaclass{System::IO::Stream}. Every relative path passed to any of these methods is resolved
-by simple path concatenation with no \texttt{..}-traversal guard of any kind --- Chapter~33
+by simple path concatenation with no \texttt{..}-traversal guard of any kind --- Chapter~\ref{ch:storage}
 covers this real, currently open gap in full; a filename that ultimately came from outside a
 game's own hardcoded naming scheme should be validated by the caller before it ever reaches
 this API.
@@ -212,7 +212,7 @@ a quick-reference entry of their own rather than re-explaining at every use site
 \cnaclass{System::TimeSpan} stores a tick count (100~nanoseconds each, matching .NET exactly)
 behind \texttt{Days} / \texttt{Hours} / \texttt{Minutes} / \texttt{Seconds} / \texttt{Milliseconds} and
 their \texttt{TotalXxx} fractional counterparts, \texttt{FromXxx} static factories for every
-unit, and a full arithmetic/comparison operator set --- the type Chapter~6's
+unit, and a full arithmetic/comparison operator set --- the type Chapter~\ref{ch:game-loop}'s
 \cnaclass{GameTime} and the \cnaclass{Storage}, \cnaclass{NetworkSession}, and
 \cnaclass{SoundEffect} chapters all build on for durations and timestamps.
 \cnaclass{System::EventHandler<TEventArgs>} is a deliberate architectural departure from real
@@ -231,7 +231,7 @@ pure-virtual \texttt{Read} / \texttt{Close} / \texttt{Length}, with \texttt{Writ
 \texttt{Seek} / \texttt{SetLength} defaulting to \texttt{NotSupportedException} for a read-only
 stream and available to override where writing or seeking is genuinely supported --- the base
 class every concrete stream this book names (\cnaclass{MemoryStream}, and the real filesystem
-streams \cnaclass{StorageContainer::OpenFile} in Chapter~33 returns) derives from.
+streams \cnaclass{StorageContainer::OpenFile} in Chapter~\ref{ch:storage} returns) derives from.
 
 \cnaclass{MemoryStream} is the concrete in-memory \cnaclass{Stream} this ecosystem uses when
 there is no meaningful file path (notably loaded Android content). Its default constructor makes
@@ -243,7 +243,7 @@ it defaults to read-only, where real \texttt{MemoryStream(byte[])} defaults to w
 returns an independent vector; the latter exposes the live backing vector and so cannot be held
 across a write that may reallocate it. Argument validation rejects null buffers and negative
 offsets/counts, while a write whose \texttt{Position + count} overflows the runtime's signed
-integer range throws \cnaclass{System::IO::IOException} rather than corrupting memory --- Ch.35.
+integer range throws \cnaclass{System::IO::IOException} rather than corrupting memory --- Ch.\ref{ch:sharp-runtime-namespaces}.
 
 \section{Reading this appendix safely}
 
