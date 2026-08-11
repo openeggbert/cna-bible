@@ -7,6 +7,26 @@ whose scope is narrowest by explicit design: a 2D-only rendering path built dire
 SDL3's own 2D texture-blit renderer, with no 3D pipeline, no programmable shader stage, no
 depth/stencil buffer, and no multisample antialiasing at all.
 
+It is one of four 2D/vector families in this chapter.  Their common output is a raster image;
+the route to that image ranges from SDL texture blits through two CPU rasterizers to an
+OpenVG-on-fixed-OpenGL implementation.
+
+\begin{longtable}{p{0.16\textwidth}p{0.27\textwidth}p{0.20\textwidth}p{0.21\textwidth}}
+\toprule
+Identity & Raster route & 3D result & RT / MRT / query \\
+\midrule
+\endfirsthead
+\toprule
+Identity & Raster route & 3D result & RT / MRT / query \\
+\midrule
+\endhead
+\texttt{SDL\_RENDERER} & SDL3 texture-blit API & inherited route rejects & yes / no / no \\
+\texttt{SKIA} & Skia raster or Ganesh mode & explicit rejection & yes / no / no \\
+\texttt{BLEND2D} & CPU Blend2D, streamed through SDL & inherited route rejects & yes / no / no \\
+\texttt{OPENVG} & ShivaVG on fixed-function OpenGL & inherited route rejects & no / no / no \\
+\bottomrule
+\end{longtable}
+
 \section{Scope, by design}
 
 Every 3D-facing entry point on this renderer --- \texttt{CreateVertexBuffer},
@@ -416,3 +436,54 @@ of this test built without \texttt{PresentationMode::NativeBackBuffer} could com
 correct frame index every time and still fail the pixel check, for a reason that has nothing to
 do with the animation logic under test at all --- the classic shape of a flaky-looking test
 whose real root cause is a setup precondition, not the feature it claims to exercise.
+
+\section{SKIA: a bounded contract written down before expansion}
+
+\texttt{SKIA} is the only renderer whose dependency is neither a system library nor fetched by
+the project.  Configuration requires a separately built Skia artifact through
+\texttt{CNA\_SKIA\_ROOT} and \texttt{CNA\_SKIA\_BUILD\_DIR}; absence is fatal.
+
+\texttt{CNA\_SKIA\_MODE} selects raster or Ganesh inside the family.  It is not a second public
+renderer identity.  Both modes retain the same CNA contract and must be named separately only
+when their execution evidence differs.
+
+The implementation has a deliberately bounded 2D surface.  It owns CPU-raster targets and
+explicitly rejects 3D, MRT, MSAA, and occlusion queries.  Optional SkSL extensions widen
+specific shader-like operations without turning the renderer into a general
+\cnaclass{ShaderEffect} backend.  The companion capability matrix explains each refusal rather
+than relying on a default-true switch; this is one of the strongest capability-documentation
+patterns in the repository.
+
+\section{BLEND2D: CPU vectors presented as an SDL texture}
+
+\texttt{BLEND2D} fetches pinned Blend2D and AsmJit revisions unless root overrides are supplied.
+It rasterizes on the CPU, uploads the resulting pixels to a streaming SDL texture, and uses SDL
+only for the final presentation edge.
+
+The family implements 2D targets.  It has no MRT, query, or 3D path; inherited extended draws
+reach the explicit refusal.  Per-channel color-write masks are not natively expressible in its
+current compositor, a useful example of a state property that can exist in the public object
+without a portable 2D mapping.
+
+The evidence should separate CPU raster output from streaming-texture presentation.  Direct
+buffer inspection can prove shape and blend math, while only a real SDL present/readback path
+can prove pitch, upload format, and final channel order.
+
+\section{OPENVG: a vector API on a historical GL substrate}
+
+\texttt{OPENVG} uses ShivaVG, pinned to its only upstream commit, plus a local leak patch, a
+synthesized configuration header, a GL type shim, and GLU.  The resulting OpenVG~1.1 path runs
+over fixed-function OpenGL and needs a real compatible context.
+
+Its capability policy returns false for all 13 flags.  That is conservative but internally
+coherent: the renderer supplies its 2D drawing surface without promising the broader GPU
+features those flags describe.  It has no render-target factory, MRT, queries, shaders, or 3D;
+effect-aware draws inherit the common route and reject.
+
+\section{Four ways to prove a 2D renderer}
+
+For SDL Renderer, observe the actual SDL target and presentation mode.  For Skia, name raster
+or Ganesh and test the bounded SkSL path separately.  For Blend2D, compare the CPU pixels before
+and after SDL upload.  For OpenVG, capture the GL implementation and context profile alongside
+the vector result.  A single screenshot can look identical across all four while exercising
+four materially different ownership and delivery paths.

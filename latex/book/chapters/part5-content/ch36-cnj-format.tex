@@ -1,3 +1,140 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{CNJ: CNA's Own Content Format}
 \label{ch:cnj-format}
+\label{sec:cnj}
+
+CNJ is ordinary JSON.  It has no magic bytes, binary primitive layer, 7-bit integer encoding,
+or shared-resource object graph.  The earlier \texttt{.cnb} name was retired precisely because
+it suggested a binary container.  File extension, envelope fields, and type-specific readers
+provide the contract instead.
+
+\section{A small envelope, validated separately}
+
+Three top-level fields are recognized before type-specific parsing:
+
+\begin{longtable}{p{0.20\textwidth}p{0.20\textwidth}p{0.44\textwidth}}
+\toprule
+Field & JSON type & Meaning \\
+\midrule
+\endfirsthead
+\toprule
+Field & JSON type & Meaning \\
+\midrule
+\endhead
+\texttt{cnjVersion} & number & integer format version, bounded by a per-type ceiling \\
+\texttt{type} & string & cross-check against the caller's requested C++ type \\
+\texttt{sourceFile} & string & optional delegation to a native file for selected readers \\
+\bottomrule
+\end{longtable}
+
+\texttt{ParseCnjEnvelope()} records failure in \texttt{parseErrorDetail}; it does not throw.
+Validation is a separate step.  The parser retains both the truncated integer and raw numeric
+value so \texttt{1.5} cannot be silently accepted as version 1.
+
+\section{Version ceilings belong to types}
+
+The old documentation's global \texttt{cnjVersion == 1} rule is no longer true.
+\texttt{ValidateCnjEnvelopeBaseline()} accepts a maximum supplied by the reader.  Most formats
+retain a ceiling of 1; Model admits version 2 for its bone hierarchy and per-mesh parent-bone
+fields.  Raising one type's ceiling does not widen any other type.
+
+Dispatch still begins from the caller's compile-time \texttt{T}.  The envelope's \texttt{type}
+field is a cross-check, not a reflection-based factory selector.  A request for
+\texttt{Load<Texture2D>} against a Model envelope fails naming both sides instead of constructing
+whatever the file asks for.
+
+\section{Built-in type vocabulary}
+
+Current readers recognize Texture2D, TextureCube, Texture3D, SoundEffect, SpriteFont,
+AnimationClip, Curve, and Model envelopes.  The effect reader additionally distinguishes Effect,
+BasicEffect, AlphaTestEffect, DualTextureEffect, EnvironmentMapEffect, and SkinnedEffect.
+
+That vocabulary is not the same as the native-extension matrix.  A Model reader can also accept
+\texttt{.gltf} and \texttt{.glb}; a texture reader can accept image formats.  CNJ is one candidate
+in \cnaclass{ContentManager}'s resolution order, not a universal wrapper required around every
+loose asset.
+
+\section{sourceFile is a capability, not a convention}
+
+Readers fall into two enforced groups:
+
+\begin{longtable}{p{0.28\textwidth}p{0.24\textwidth}p{0.34\textwidth}}
+\toprule
+Policy & Types & Result \\
+\midrule
+\endfirsthead
+\toprule
+Policy & Types & Result \\
+\midrule
+\endhead
+required delegation & Texture2D, TextureCube, SoundEffect & absence is an error; reader loads the referenced native file \\
+self-contained & Texture3D, effects, SpriteFont, AnimationClip, Model, Curve & presence is an error; JSON and declared sidecars own the data \\
+\bottomrule
+\end{longtable}
+
+\texttt{ResolveCnjSourceFileSafely()} rejects an empty path, an absolute path, a component-wise
+escape after weak canonicalization, a target whose extension is itself \texttt{.cnj}, and a
+native-looking target that would resolve back to a sibling CNJ through normal selection.  The
+last rule closes an implicit self-cycle, not just the obvious \texttt{sourceFile: "x.cnj"} case.
+
+This containment applies to a reference inside the content document.  It does not contradict
+the top-level \cnaclass{ContentManager} contract that permits a caller to supply an explicit
+absolute asset name.
+
+\section{Two JSON implementations coexist}
+
+Newer readers use the recursive-descent \texttt{CNA::Internal::ParseJson} implementation, which
+has strict number grammar, escape handling, and surrogate-pair support.  Older readers still use
+field-specific substring scanners and manual brace-depth loops.  SpriteFont, Model, SkinnedModel,
+Texture2D color keys, and the custom-GLSL effect branch remain on that legacy path.
+
+The split is visible behavior.  A malformed document can be rejected by the real parser while a
+legacy scanner accepts a partial structure.  In particular, the SpriteFont glyph loop stops when
+it runs out of opening braces, so truncation can yield a partial font rather than a uniform parse
+error.
+
+Neither path currently has a document-size cap, and the recursive parser has no nesting-depth
+limit.  CNJ therefore lacks the object-depth, string, decompressed-size, and fuzzing boundaries
+now present on XNB.  Chapter~\ref{ch:content-robustness} treats that asymmetry as an open boundary,
+not as proof of an exploit CNA's audit did not execute.
+
+\section{Custom loaders receive raw JSON}
+
+\texttt{RegisterCnjLoader<T>(typeName, factory)} installs a deterministic per-type extension.
+The factory receives the raw document text and the manager, not a parsed JSON value.  Empty names
+or factories fail, a type that already has a loose reader fails, and duplicate
+\texttt{(T,typeName)} registration fails rather than silently replacing the earlier factory.
+
+The first custom registration for a type lazily installs a private generic CNJ reader.  That
+reader validates the baseline envelope, then dispatches on the envelope type name.  This is the
+exception where the type string selects among user factories; the outer
+\texttt{ContentManager::Load<T>} still fixes \texttt{T}.
+
+\section{Binary sidecars remain format-specific}
+
+Plain JSON does not mean every payload is textual.  Model and animation content can reference
+raw vertex/index blobs and \texttt{.skeleton.bin}/\texttt{.clip.bin} sidecars.  A bespoke binary
+reader decodes their fixed layouts.  Bone counts are sanity-bounded, while an optional appended
+skeleton-root block is detected by remaining bytes rather than a tagged field.
+
+That compatibility pattern is useful but fragile: a trailing block can only be distinguished
+from truncation or a future extension through expected remaining size.  New sidecar evolution
+should prefer an explicit tag/version rather than another implicit length test.
+
+\section{Production and provenance}
+
+The graphics-free \texttt{gltf\_to\_cnj} developer tool can produce Model CNJ plus sidecars and
+is built independently of a window or graphics device.  Runtime Model loading can also consume
+\texttt{.gltf} and \texttt{.glb} directly through the same import core, making the offline
+conversion optional for the common path.
+
+No CNJ file is checked into the pinned CNA source tree; tests generate them in temporary
+directories.  That means parser and envelope behavior has synthetic coverage, while long-term
+compatibility with a versioned real-world CNJ corpus is not yet established.  When shipping CNJ,
+record the producing tool revision and keep representative assets under version control outside
+the transient test-only corpus.
+
+\section{The format in one rule}
+
+Treat CNJ as a typed JSON contract whose version, source-file policy, parser, and sidecars depend
+on the requested asset type.  Do not infer safety or evolution rules from the extension alone,
+and do not describe it as binary merely because some readers own binary sidecars.

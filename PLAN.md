@@ -71,7 +71,7 @@ current, not stale.
 | **A — source audit** | **Complete. 10 of 10 areas delivered and on disk in `audit/`.** |
 | **B — new Table of Contents** | **Complete.** The 12-Part / 79-chapter structure, appendices and old-to-new disposition map are settled in §4. |
 | **C — structural migration** | **Complete.** The 12-Part / 79-chapter / 8-appendix migration, context-sensitive terminology pass, current selector/identifier migration, and module-owned source-path sweep are complete and PDF-verified clean at 645 pages. |
-| **D — chapter writing** | **In progress.** First verified batch complete: Chapters 19–27. Continue in verified 8–10 chapter batches. |
+| **D — chapter writing** | **In progress.** Two verified batches complete: Chapters 19–36. Continue in verified 8–10 chapter batches. |
 | **E — appendices** | Not started. |
 | **F — whole-book consistency** | Not started. |
 | **G — final verification** | Not started. |
@@ -337,6 +337,7 @@ log grep replaces.
 | 2026-08-11 | Phase C terminology/path completion | **645 pages**, build clean; makeindex 2,365 / 0 / 0; current renderer/CNAEXT identifiers and selectors; graphics “backend” removed from live prose while service backends remain; CNA citations migrated to `modules/<owner>/…` and existence-checked against the pin; all 645 pages re-rendered and reviewed as 26 contact sheets, with registry, Storage, preface, and long-path pages inspected full-size |
 | 2026-08-11 | Renderer draw-path matrix | **42/42 families, 46/46 identities**; 31 dual overrides / 11 dual inheritances; four hybrid colored tails; RT2D/MRT/occlusion paths mapped; capability contradictions recorded as CNA-BUG-054; row and partition counts mechanically checked; `git diff --check` clean |
 | 2026-08-11 | Phase D batch 1, Chapters 19–27 | **661 pages**, build clean; makeindex 2,378 / 0 / 0; renderer contract and selection corrected; OpenGL material separated into compatibility and programmable families; native-modern, wrapper, and retro clusters cover all assigned identities; physical PDF pages 194–303 rendered and reviewed as 11 contact sheets; no clipping, overlap, broken page, undefined reference, duplicate label, stale selector, or whitespace error |
+| 2026-08-11 | Phase D batch 2, Chapters 28–36 | **661 pages**, build clean; makeindex 2,345 / 0 / 0; Part IV completed across all 46 identities / 42 families; old combined Content chapter split without losing its reader material; XNB container, object graph, and CNJ each have a separate source-grounded chapter; physical pages 304–391 rendered and reviewed as 9 contact sheets; all automated and visual checks green |
 
 ---
 
@@ -449,3 +450,20 @@ mid-session at the owner's direction, so the build and visual passes are availab
   0 warnings, every automated check green. Rendered physical pages 194–303 and inspected all
   110 pages in 11 contact sheets; the new chapter openers, tables, notes, listings, and
   transitions are visually clean.
+
+### 2026-08-11 — Phase D batch 2: Chapters 28–36
+
+- Completed Part IV: added DIRECTX10's silent extended-draw downgrade to Chapter 28, wrote the
+  Direct2D/GDI and diagnostic chapters, expanded the 2D/vector cluster across SDL Renderer,
+  Skia, Blend2D and OpenVG, and replaced the removed ASCII renderer with the current Canvas,
+  HTML DOM and SVG DOM cluster plus a historical pointer to the post-process effect.
+- Mechanically split the old 2,248-line combined Content chapter at the audited subsystem seams.
+  Chapter 33 retains resolution, caches, lifetime, manifest and media dispatch; Chapter 35
+  preserves the detailed ContentReader/ContentTypeReader and concrete-reader material.
+- Wrote a separate XNB container chapter around the ten-byte header, four-valued compression,
+  stateful LZX, canonical reader names, enforcement limits and the uncapped initial read.
+- Wrote the CNJ chapter around its JSON envelope, per-type version ceilings, enforced
+  sourceFile matrix, hybrid parser split, custom loader contract and binary sidecars.
+- Verified the consolidated 661-page PDF with 2,345 accepted index entries and no rejected or
+  warned entries. Rendered physical pages 304–391 and reviewed all 88 as nine contact sheets;
+  every touched page and the Part IV-to-V transition are visually clean.

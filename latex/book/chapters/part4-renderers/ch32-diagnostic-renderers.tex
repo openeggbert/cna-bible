@@ -1,3 +1,116 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{Non-GPU and Diagnostic Renderers}
 \label{ch:diagnostic-renderers}
+
+\texttt{HEADLESS}, \texttt{SOFTWARE}, and \texttt{STUB} all run without a GPU, but they answer
+three different questions.  Headless asks whether calls and lifetimes form a valid trace.
+Software asks what a bounded CPU rasterizer would draw.  Stub asks whether framework code can
+survive a renderer that intentionally does almost nothing.
+
+\begin{longtable}{p{0.17\textwidth}p{0.30\textwidth}p{0.21\textwidth}p{0.19\textwidth}}
+\toprule
+Identity & Observable & Extended route & RT / MRT / query \\
+\midrule
+\endfirsthead
+\toprule
+Identity & Observable & Extended route & RT / MRT / query \\
+\midrule
+\endhead
+\texttt{HEADLESS} & validation, trace, counters & validate and trace & trace target / no / constant bookkeeping \\
+\texttt{SOFTWARE} & real CPU pixels & native bounded raster & yes / no / no \\
+\texttt{STUB} & no pixels or bookkeeping & inherited no-op & no / no / no \\
+\bottomrule
+\end{longtable}
+
+\section{HEADLESS: behavior without an image}
+
+Headless builds resource objects, validates arguments and sequencing, records state and draw
+events, and exposes counters and a trace log.  Its extended primitive methods do not rasterize;
+they validate and describe the call.  A render target is likewise a bookkeeping target whose
+bind/unbind transitions can be inspected.
+
+This makes the renderer valuable for deterministic unit tests, servers, and API misuse checks.
+It can prove that a draw used the expected primitive count, target, texture, or state sequence.
+It cannot prove coverage, interpolation, sampling, blending, depth, or final color.
+
+\subsection{A query result that is not an occlusion measurement}
+
+The Headless query object returns a constant pixel count of one.  That value keeps control-flow
+tests moving; it is not derived from geometry.  Treat it as validation scaffolding, never as an
+oracle for visibility or sample count.
+
+The capability switch currently falls through to true for MRT and occlusion queries even
+though setting more than one target throws and the query is trace-only.  These are default-true
+contract contradictions recorded in the audit.  Callers requiring real feature behavior must
+not infer it from the bit.
+
+\section{SOFTWARE: bounded 3D with real CPU pixels}
+
+Software is a renderer, not a recorder.  It rasterizes sprites and a bounded 3D subset into CPU
+buffers, supports \texttt{TriangleList}, depth, a BasicEffect subset, nearest-neighbour texture
+sampling, and simplified Opaque/AlphaBlend behavior.  Lighting and fog are outside the declared
+v1 surface.
+
+Both extended draw methods are native CPU paths, and \cnaclass{RenderTarget2D} produces real
+pixels.  MRT is not implemented and the occlusion-query factory remains the base null.  The
+capability switch nevertheless reports both as supported through its default branch, the same
+overclaim shape as Headless but with a real rasterizer beneath other operations.
+
+That distinction matters for test design.  A Software screenshot is genuine pixel evidence for
+the bounded CPU algorithm.  It is not evidence for GPU precision, driver shader compilation,
+MSAA resolve, or a programmable effect path.
+
+\subsection{A useful reference with known semantic limits}
+
+Software's deterministic memory buffers make it a strong local oracle for geometry ordering,
+basic texture coordinates, target usage, and simple blending.  When another renderer differs,
+first check that the scene stays inside Software's declared subset.  A lit, fogged, custom-shader
+scene cannot use the simplified CPU result as an XNA-exact ground truth.
+
+\section{STUB: the smallest terminal implementation}
+
+Stub intentionally keeps no rendering state worth observing.  It creates no targets, records no
+trace, and its inherited extended draw path ends in a no-op.  Its capability method returns
+false for every flag, avoiding the default-true trap entirely.
+
+The family is useful as an architectural teaching device.  It shows which renderer hooks must
+exist for the framework to construct and run even when their bodies have no presentation work.
+It can also expose accidental assumptions in code that should be renderer-independent, such as
+unconditional dereferences of optional resource factories.
+
+Stub must not be called a headless rasterizer.  It supplies neither Headless validation nor
+Software pixels.  A passing Stub lifecycle test proves only that the surrounding framework did
+not demand more than the deliberately minimal contract.
+
+\section{Choosing the right non-GPU test double}
+
+Use Headless when the assertion concerns call shape, order, counters, lifetime, or validation.
+Use Software when the assertion concerns pixels within its bounded raster vocabulary.  Use Stub
+when the assertion concerns framework survival in the absence of rendering behavior.
+
+\begin{longtable}{p{0.34\textwidth}p{0.20\textwidth}p{0.31\textwidth}}
+\toprule
+Question & Best identity & Invalid inference \\
+\midrule
+\endfirsthead
+\toprule
+Question & Best identity & Invalid inference \\
+\midrule
+\endhead
+Was the target bound before the draw? & \texttt{HEADLESS} & that the target contains correct pixels \\
+Did a simple textured triangle produce this color? & \texttt{SOFTWARE} & that a GPU shader or MSAA path agrees \\
+Can the game loop run with no rendering facilities? & \texttt{STUB} & that resource or draw semantics were validated \\
+Did an occlusion query count visible samples? & none of these & Headless's constant or Software's null factory is a measurement \\
+\bottomrule
+\end{longtable}
+
+\section{Capability discipline}
+
+The cluster illustrates all three outcomes of the renderer contract's default policy.  Stub
+overrides everything false.  Software implements substantial behavior but accidentally
+overclaims features it does not own.  Headless intentionally supplies validation objects yet
+lets their interface presence look like pixel capability.
+
+Documentation and tests should therefore name the observable, not only the method.  A target
+can be a trace object or a pixel buffer; a query can be a control-flow token or a sample count;
+a draw can be a log record, a CPU rasterization, or a no-op.  The same C++ signature does not
+make those results equivalent.

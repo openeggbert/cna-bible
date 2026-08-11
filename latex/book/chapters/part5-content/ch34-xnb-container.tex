@@ -1,3 +1,138 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{The XNB Container}
 \label{ch:xnb-container}
+
+An XNB begins with a small framing header, optionally decompresses into one object stream, and
+then hands that stream to the reader architecture in Chapter~\ref{ch:xnb-type-readers}.  Keeping
+the layers separate is important: a valid header does not make the object graph safe, and a
+correct type reader cannot repair a truncated or allocation-hostile container.
+
+\section{The ten-byte header}
+\label{sec:xnb-container-boundary}
+
+\begin{longtable}{p{0.19\textwidth}p{0.17\textwidth}p{0.50\textwidth}}
+\toprule
+Offset & Field & Rule \\
+\midrule
+\endfirsthead
+\toprule
+Offset & Field & Rule \\
+\midrule
+\endhead
+0--2 & magic & three separately read bytes: \texttt{XNB} \\
+3 & platform & one of the 16 FNA platform identifiers \\
+4 & version & exactly 4 or 5 \\
+5 & flags & compression bits plus profile flags \\
+6--9 & total length & little-endian signed 32-bit file length \\
+\bottomrule
+\end{longtable}
+
+Reading the magic one byte at a time is a deliberate deviation from FNA's implementation: a
+truncated stream throws \cnaclass{EndOfStreamException} at the missing byte rather than comparing
+partially initialized data against one packed magic constant.
+
+The accepted platform bytes are FNA-exact:
+\texttt{w x m i a d X W n u p M r P g l}.  MonoGame's later post-fork identifiers are rejected.
+Compatibility here means accepting the historical FNA/XNA set, not every container another
+descendant also calls XNB.
+
+\section{Compression is four-valued}
+
+Two independent flag bits produce four outcomes:
+
+\begin{longtable}{p{0.18\textwidth}p{0.20\textwidth}p{0.47\textwidth}}
+\toprule
+Bits & Result & Runtime behavior \\
+\midrule
+\endfirsthead
+\toprule
+Bits & Result & Runtime behavior \\
+\midrule
+\endhead
+neither & \texttt{None} & object stream starts at byte 10 \\
+\texttt{0x80} & \texttt{Lzx} & read decompressed-size hint and decode framed LZX blocks \\
+\texttt{0x40} & \texttt{Lz4} & named \cnaclass{ContentLoadException}; deliberately deferred \\
+both & \texttt{Unknown} & reject instead of guessing which codec wins \\
+\bottomrule
+\end{longtable}
+
+The LZ4 bit comes from MonoGame's implementation, while LZX is the historical XNA route.  The
+reader keeps this provenance explicit rather than treating compression as one Boolean.
+
+\section{LZX preserves state across blocks}
+
+CNA's decoder is a line-by-line C++ port of FNA's \texttt{LzxDecoder.cs}.  One decoder instance
+serves one file so the sliding window, repeated-offset LRU, and Huffman tables persist across
+the framed blocks.  Constructing a fresh decoder for each block would pass trivial independent
+payloads and corrupt real multi-block streams.
+
+The window exponent is bounded to 15--21; XNB uses 16.  Block framing uses a two-byte big-endian
+compressed size, with the \texttt{0xFF} sentinel introducing the extended form and explicit
+frame size.  After all blocks, the produced byte count must exactly equal the declared
+decompressed size.
+
+The strongest decoder oracle is cross-implementation: CNA output is compared byte-for-byte with
+FNA's unmodified decoder executed under Mono.  That oracle found a real heap-buffer-overflow in
+the long-code table-growth path, a class of defect that self-consistency fixtures could miss.
+
+\section{The reader table starts inside the decoded stream}
+
+The object stream begins with a 7-bit-encoded reader count, followed by reader-name/version
+pairs.  The count is bounded, each name is retained in raw and normalized form, and parse errors
+are translated into \cnaclass{ContentLoadException} so callers do not need to catch a parser's
+\texttt{std::invalid\_argument} separately.
+
+\subsection{Canonical names require a parser}
+\label{sec:xnb-type-name-contract}
+
+A reader name may contain nested generic arguments, assembly qualifiers, version, culture, and
+public-key tokens.  Splitting at the first comma is therefore wrong.  CNA's recursive parser
+tracks nested brackets, strips assembly metadata, and rebuilds a canonical
+\texttt{Base[[arg1],[arg2]]} key.  Its recursion is bounded by the same object-depth limit used
+later by the graph reader; before that guard, a sub-megabyte crafted name could exhaust the C++
+stack.
+
+\section{Limits and their real enforcement points}
+
+\begin{longtable}{p{0.30\textwidth}p{0.17\textwidth}p{0.38\textwidth}}
+\toprule
+Limit & Value & Enforcement \\
+\midrule
+\endfirsthead
+\toprule
+Limit & Value & Enforcement \\
+\midrule
+\endhead
+\texttt{maxFileSize} & 64 MiB & compressed payload before allocation; not the initial whole-file read \\
+\texttt{maxDecompressedSize} & 256 MiB & size hint and decoded output \\
+\texttt{maxStringBytes} & 1 MiB & post-read reader/string bounds \\
+\texttt{maxTypeReaderCount} & 4,096 & reader table count \\
+\texttt{maxObjectNestingDepth} & 256 & type-name and object-graph recursion \\
+\texttt{maxSharedResourceCount} & 1,000,000 & shared-resource table \\
+\bottomrule
+\end{longtable}
+
+The first row is intentionally uncomfortable.  \texttt{LoadXnbAsset<T>()} and the reader-name
+scanner read the entire file into memory before the compressed-payload guard runs.  The declared
+64-MiB limit therefore does not cap an uncompressed file or the initial allocation.  It is a
+partially enforced control, not a complete file-admission firewall.
+
+\section{Length checks close the container boundary}
+
+The loader cross-checks the header's \texttt{totalLength} against the bytes actually read before
+using offsets into the body.  Uncompressed content starts at byte 10; LZX adds the four-byte
+decompressed-size field and begins its compressed payload at byte 14.  Truncation, impossible
+lengths, unsupported compression, and decoded-size disagreement all fail before object readers
+receive the stream.
+
+This cross-check was added after a confirmed heap-buffer-overflow.  The durable rule is broader:
+never trust the internal length merely because the filesystem supplied that many bytes, and
+never trust the filesystem length merely because an internal field points inside it.  Validate
+the relationship in both directions.
+
+\section{What the container does not prove}
+
+A clean container says the envelope, compression, and reader table are structurally acceptable.
+It does not prove that reader versions are supported, nested object indices are in range,
+shared-resource fixups resolve, texture mip sizes match, or referenced paths remain inside their
+allowed root.  Those checks belong to the object session and concrete readers in the next
+chapter.

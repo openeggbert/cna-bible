@@ -11,8 +11,8 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
 |---|---|
 | cna-bible branch | `next`; local commits are ahead of `origin/next` (push requires explicit external-publication approval) |
 | CNA pinned SHA | `7a64362efef4119bf880459ef1704fb2c52199e2` (`develop` == `origin/develop`, 2026-08-11) |
-| Book builds | **yes** — 661 pages, all automated checks green; Phase D batch 1 visually verified |
-| Phase | **A, B, and C complete. Phase D in progress:** first verified batch, Chapters 19–27, is complete. |
+| Book builds | **yes** — 661 pages, all automated checks green; Phase D batches 1–2 visually verified |
+| Phase | **A, B, and C complete. Phase D in progress:** two verified batches, Chapters 19–36, are complete. |
 
 ## What is done
 
@@ -70,13 +70,17 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     contract and selection, all ten OpenGL identities, the four native-modern identities, all
     seven abstraction-layer identities, and the nine historical DirectX/Glide identities.
     The consolidated book is 661 pages; physical pages 194–303 were rendered and inspected.
+13. **Phase D batch 2 is complete and verified.** Chapters 28–32 finish all renderer clusters;
+    Chapters 33–36 split the ContentManager façade, XNB container, XNB object graph, and CNJ
+    format at their real implementation seams. Physical pages 304–391 were all inspected.
 
 ## Do this next
 
-**Continue Phase D with Chapters 28–36** as the next nine-chapter batch. Finish Part IV's
-modern Direct3D, Windows 2D, raster/vector, Web/DOM, and diagnostic renderer chapters, then
-begin Part V's content façade, XNB container, type-reader, and CNJ chapters. Use the matching
-raw audit reports before writing and finish with one consolidated build plus visual pass.
+**Continue Phase D with Chapters 37–45** as the next nine-chapter batch: content robustness;
+the Model runtime; glTF import, packing, skinning, CNJ toolchain and conformance; then Input and
+Audio. Read `audit/content-xnb-cnj.md`, `audit/3d-gltf-cnj.md`, and
+`audit/input-audio-net-services.md` before writing, then run one consolidated build and visual
+pass.
 
 ## Do not do these
 
@@ -94,10 +98,10 @@ raw audit reports before writing and finish with one consolidated build plus vis
 
 ## Verification status
 
-Everything through Phase D batch 1 is verified:
+Everything through Phase D batch 2 is verified:
 
 - `make -C latex book` succeeds; **661 pages**.
-- makeindex: 2,378 entries accepted, 0 rejected, 0 warnings.
+- makeindex: 2,345 entries accepted, 0 rejected, 0 warnings.
 - No undefined references, no undefined control sequences, no duplicate labels, no doubled-
   backslash `\ref`, no hard-coded chapter numbers.
 - `git diff --check` clean.
@@ -107,8 +111,9 @@ Everything through Phase D batch 1 is verified:
   renderer macro remains; all explicit `modules/...` file citations exist at the pin.
 - Phase C's full 645-page pass remains green. Phase D batch 1 additionally rendered and reviewed
   every touched physical page, 194–303, as 11 contact sheets.
+- Phase D batch 2 rendered and reviewed every touched physical page, 304–391, as 9 contact sheets.
 
-**No completed writing batch is pending PDF verification.** Continue with Chapters 28–36 and
+**No completed writing batch is pending PDF verification.** Continue with Chapters 37–45 and
 follow the normal ~8–10 chapter batch rule.
 
 ## Environment notes
@@ -123,5 +128,5 @@ follow the normal ~8–10 chapter batch rule.
 
 Ten source-audit reports and the 42-family draw-path matrix are complete against pinned CNA
 `7a64362e`. Phase B settled a 12-Part, 79-chapter, 8-appendix edition; Phase C put it on disk,
-migrated terminology, selectors and paths, and verified all 645 pages. Phase D batch 1 rewrote
-Chapters 19–27 and verified the resulting 661-page book; Chapters 28–36 are next.
+migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–2
+rewrote Chapters 19–36 and verified the resulting 661-page book; Chapters 37–45 are next.

@@ -2,13 +2,31 @@
 \label{ch:modern-direct3d}
 \label{ch:direct3d-backends}
 
-All three of CNA's Windows-only Direct3D renderers share one development loop:
+Four CNA identities occupy the modern Direct3D line.  Three broad implementations share one
+development loop; \texttt{DIRECTX10} is a deliberately narrower bridge between them:
 cross-compiled from this project's own Debian machine using the same MinGW-w64 toolchain
 Chapter~\ref{ch:building-cna}'s Windows cross-build section already introduced, then run and
 verified under Wine on a real GPU --- \texttt{D3D9} and \texttt{D3D11} through DXVK,
 \texttt{D3D12} through a different translation layer, vkd3d-proton, in its own separate Wine
-prefix. None of the three has been verified on real Windows hardware yet; that remains open
-for all three alike, tracked as its own \texttt{needs\_human} task in each renderer's plan.
+prefix. Native-Windows CI now covers \texttt{DIRECTX11} and \texttt{DIRECTX12}; local Wine
+evidence remains a distinct tier and \texttt{DIRECTX9}/\texttt{DIRECTX10} have no equivalent CI
+job.
+
+\begin{longtable}{p{0.15\textwidth}p{0.21\textwidth}p{0.22\textwidth}p{0.24\textwidth}}
+\toprule
+Identity & Shader model & Extended route & RT / MRT / query \\
+\midrule
+\endfirsthead
+\toprule
+Identity & Shader model & Extended route & RT / MRT / query \\
+\midrule
+\endhead
+\texttt{DIRECTX9} & D3D9 / XNA-native effects & native & yes / yes / yes \\
+\texttt{DIRECTX10} & two embedded SM4 shaders & inherited colored downgrade & yes / yes / no \\
+\texttt{DIRECTX11} & SM5 shared generated package & native & yes / yes / yes \\
+\texttt{DIRECTX12} & SM5 plus PSO/root-signature caches & native & yes / yes / yes \\
+\bottomrule
+\end{longtable}
 
 \section{D3D9: the one renderer that targets pixel authenticity, not just parity}
 
@@ -233,6 +251,25 @@ compile, link, and run correctly under Wine on this project's own machine before
 was finalized, precisely because leaks on resize, double-releases, and forgotten releases on a
 partially-failed initialization are the default failure mode for a hand-rolled COM wrapper that
 was never actually exercised end to end.
+
+\section{DIRECTX10: a deliberate MVP with one dangerous default}
+
+\texttt{DIRECTX10} uses Wine's D3D10/D3D10.1 forwarding path into DXVK's
+\texttt{d3d10core} and DXGI.  Its two embedded shaders provide colored 2D and 3D submission,
+render targets, and MRT, but it deliberately leaves effect creation, occlusion queries,
+Texture3D, TextureCube, and cube targets at their base null implementations.
+
+The sharpest boundary is not a throw.  The renderer does not override either effect-aware
+extended primitive method, so the base class calls its real colored draw implementation after
+discarding \cnaclass{GpuDrawParams}.  A BasicEffect-shaped call can therefore produce pixels
+while silently losing texture, lighting, fog, skinning, PBR, instancing, or custom-effect
+intent.  This is the sole unconditional inherited colored downgrade among all 42 renderer
+families.
+
+That behavior makes capability checks necessary but insufficient.  \texttt{ThreeD} can be true
+because colored geometry is real, while effect semantics are still absent.  A porter should
+treat \texttt{DIRECTX10} as an explicit MVP target and verify the exact draw vocabulary used by
+the game rather than infer parity from a successful triangle.
 
 \section{D3D11: the first native, dependency-free Windows path}
 

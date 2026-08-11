@@ -1,3 +1,82 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{Windows 2D: Direct2D and GDI}
 \label{ch:windows-2d-renderers}
+
+\texttt{DIRECT2D} and \texttt{GDI} share a platform and a 2D scope, but not a rendering
+architecture.  Direct2D submits retained native drawing commands.  GDI presents a CPU-raster
+bitmap produced by the same software core used by the platform-independent
+\texttt{SOFTWARE} renderer.
+
+\begin{longtable}{p{0.17\textwidth}p{0.26\textwidth}p{0.23\textwidth}p{0.20\textwidth}}
+\toprule
+Identity & Delivery path & 3D result & RT / MRT / query \\
+\midrule
+\endfirsthead
+\toprule
+Identity & Delivery path & 3D result & RT / MRT / query \\
+\midrule
+\endhead
+\texttt{DIRECT2D} & ID2D1 over Windows/Wine D2D, D3D11, and DXGI components & inherited route rejects & yes / no / no \\
+\texttt{GDI} & software raster into a GDI bitmap & explicit rejection & yes / no / no \\
+\bottomrule
+\end{longtable}
+
+\section{DIRECT2D: a different Windows delivery stack}
+
+The renderer is not a simplified mode of \texttt{DIRECTX11}.  It calls the ID2D1 API and has
+no shader stage.  Under Wine or Proton it relies on those environments' own built-in D2D,
+D3D11, and DXGI components; every registered path skips the project's ordinary DXVK gate.
+Replacing those built-ins with DXVK changes the delivery stack being tested.
+
+Sprite and shape work is expressed through native 2D resources and commands.  The renderer
+implements \cnaclass{RenderTarget2D}, but neither MRT nor occlusion queries.  Effect-aware 3D
+methods inherit the common colored route and terminate in the family's explicit 3D refusal.
+That is preferable to showing a plausible sprite-colored triangle after discarding a stock
+effect packet.
+
+\subsection{Evidence and the release boundary}
+
+The repository has a Windows workflow whose renderer matrix can include Direct2D, while local
+development also uses Wine/Proton.  The renderer's own release-gate document remains stricter:
+it calls the gate blocked pending a documented native-Windows run.  A workflow definition and
+a completed qualifying run are different facts; the latter needs an attributable result.
+
+The practical report for a Direct2D failure must therefore record whether it ran through native
+Windows or the Wine built-ins, and whether presentation, readback, or only off-screen rendering
+was observed.  A clean device construction proves neither pixel output nor the native release
+gate.
+
+\section{GDI: Win32 presentation over the software renderer}
+
+The key line in the implementation is its inheritance: the GDI renderer subclasses the
+software renderer.  The build enters the software module when \texttt{GDI} is selected and
+exports the CPU raster sources into the GDI target.  Geometry, depth, stencil, sampling, and
+blend behavior therefore belong to the shared CPU core; GDI owns the Windows bitmap and
+presentation edge.
+
+This architecture provides more than a trivial blit.  The CPU path has real stencil and an
+honest four-sample MSAA mode.  It implements a single 2D target, but not MRT or occlusion
+queries.  Its extended 3D methods reject unsupported input directly rather than relying on the
+base colored fallback.
+
+\subsection{Why shared code does not make the identities equivalent}
+
+\texttt{SOFTWARE} can run with no native window and returns pixels from its own buffers.
+\texttt{GDI} must also create, update, and present a Win32 bitmap.  A CPU raster test can prove
+the shared math while missing a stride, channel-order, invalidation, or lifetime defect in the
+GDI boundary.  Conversely, a present smoke test can show a bitmap without distinguishing the
+depth or stencil semantics beneath it.
+
+The renderer-specific CTests are excluded while cross-compiling, so a Linux-host build cannot
+execute them merely because it produced a Windows binary.  A separate native MSVC workflow is
+the meaningful automated platform tier.
+
+\section{Choosing and testing the Windows 2D paths}
+
+Choose Direct2D when native ID2D1 resource and composition behavior is the product goal.
+Choose GDI when a deterministic CPU-rendered image delivered through the classic Win32 surface
+is valuable.  Neither identity is a route to programmable 3D.
+
+A useful comparison scene should include alpha and additive sprites, a clipped draw, a target
+round trip, and a format-sensitive readback.  Add depth, stencil, and MSAA probes for GDI's
+shared software core.  Run the same scene off-screen and through real presentation so the
+raster and delivery boundaries are tested separately.
