@@ -95,14 +95,21 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     Chapter 64 boundary at 573 was inspected as six full contact sheets plus a tail sheet. Full-
     size inspection found one overlapping namespace/component table on page 528; manual line
     breaks fixed it, the full build was rerun, and pages 528–529 were re-rendered cleanly.
+17. **Phase D batch 6 is complete and verified.** Chapters 64–72 now separate Web translation,
+    host-owned main-loop lifetime and per-renderer browser evidence; bound Android claims to the
+    two recorded emulator campaigns and keep adapted Metal/iOS as explicit non-claims; and rebuild
+    the testing Part around CnaTests composition, reproducible counting, oracle authority,
+    hostile-runtime engagement and executable discipline gates. The consolidated book is 689
+    pages. Every touched physical page 573–606 plus the Chapter 73 boundary at 607 was rendered
+    and inspected as nine contact sheets. The Web evidence and counting tables, long literals,
+    and gate checklists were also read at full size; no visual correction was required.
 
 ## Do this next
 
-**Continue Phase D with Chapters 64–72** as the next nine-chapter batch: the three Web chapters;
-Android/macOS/unreached platforms; then the test architecture, counting discipline, oracle
-taxonomy, hostile-environment verification and discipline-as-test chapters. Read
-`audit/platforms.md` and `audit/testing-verification.md` before writing, then run one
-consolidated build and visual pass.
+**Finish Phase D with Chapters 73–79** as the final seven-chapter batch: current CI reality;
+the migration guide and case study; xna4-spec auditing; samples/examples; durable project
+practice; and the source-grounded roadmap. Re-read the relevant audit sections before changing
+each chapter, then run one consolidated build and visual pass through the appendices boundary.
 
 ## Do not do these
 
@@ -120,10 +127,10 @@ consolidated build and visual pass.
 
 ## Verification status
 
-Everything through Phase D batch 5 is verified:
+Everything through Phase D batch 6 is verified:
 
-- `make -C latex book` succeeds; **691 pages**.
-- makeindex: 2,396 entries accepted, 0 rejected, 0 warnings.
+- `make -C latex book` succeeds; **689 pages**.
+- makeindex: 2,369 entries accepted, 0 rejected, 0 warnings.
 - No undefined references, no undefined control sequences, no duplicate labels, no doubled-
   backslash `\ref`, no hard-coded chapter numbers.
 - `git diff --check` clean.
@@ -143,9 +150,12 @@ Everything through Phase D batch 5 is verified:
   plus a tail sheet through the Chapter 64 boundary at 573; high-risk namespace, status and Wine
   runtime tables were inspected at full size, and the one detected overlap was fixed, rebuilt and
   re-rendered cleanly.
+- Phase D batch 6 rendered and reviewed every touched physical page, 573–606, as 9 contact sheets
+  through the Chapter 73 boundary at 607; the two tables, long literals and gate checklist were
+  inspected at full size and were clean on the first visual pass.
 
-**No completed writing batch is pending PDF verification.** Continue with Chapters 64–72 and
-follow the normal ~8–10 chapter batch rule.
+**No completed writing batch is pending PDF verification.** Continue with the final seven
+chapters, 73–79, as one closing Phase D batch.
 
 ## Environment notes
 
@@ -159,5 +169,5 @@ follow the normal ~8–10 chapter batch rule.
 
 Ten source-audit reports and the 42-family draw-path matrix are complete against pinned CNA
 `7a64362e`. Phase B settled a 12-Part, 79-chapter, 8-appendix edition; Phase C put it on disk,
-migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–5
-rewrote Chapters 19–63 and verified the resulting 691-page book; Chapters 64–72 are next.
+migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–6
+rewrote Chapters 19–72 and verified the resulting 689-page book; Chapters 73–79 are next.

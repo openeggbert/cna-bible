@@ -339,6 +339,9 @@ log grep replaces.
 | 2026-08-11 | Phase D batch 1, Chapters 19–27 | **661 pages**, build clean; makeindex 2,378 / 0 / 0; renderer contract and selection corrected; OpenGL material separated into compatibility and programmable families; native-modern, wrapper, and retro clusters cover all assigned identities; physical PDF pages 194–303 rendered and reviewed as 11 contact sheets; no clipping, overlap, broken page, undefined reference, duplicate label, stale selector, or whitespace error |
 | 2026-08-11 | Phase D batch 2, Chapters 28–36 | **661 pages**, build clean; makeindex 2,345 / 0 / 0; Part IV completed across all 46 identities / 42 families; old combined Content chapter split without losing its reader material; XNB container, object graph, and CNJ each have a separate source-grounded chapter; physical pages 304–391 rendered and reviewed as 9 contact sheets; all automated and visual checks green |
 | 2026-08-12 | Phase D batch 3, Chapters 37–45 | **675 pages**, build clean; makeindex 2,392 / 0 / 0; content failure boundaries completed; four model routes corrected; glTF import, stride ABI, dual skeletal systems, CNJ toolchain and five-of-seven oracle ladder written; Input and Audio reconciled to current source; physical pages 392–455 rendered and reviewed as 8 contact sheets with high-risk tables/equations inspected full-size; all automated and visual checks green |
+| 2026-08-12 | Phase D batch 4, Chapters 46–54 | **683 pages**, build clean; makeindex 2,395 / 0 / 0; Media, Devices, GamerServices, Storage, networking, Avatar and sharp-runtime integration rewritten against current source; physical pages 456–523 rendered and reviewed; one long-path overflow fixed and re-rendered cleanly |
+| 2026-08-12 | Phase D batch 5, Chapters 55–63 | **691 pages**, build clean; makeindex 2,396 / 0 / 0; sharp-runtime object model and audit layers, sibling foundation libraries, platform contract, MinGW cross-build and Wine engagement completed; physical pages 523–573 rendered and reviewed; one table overlap fixed and re-rendered cleanly |
+| 2026-08-12 | Phase D batch 6, Chapters 64–72 | **689 pages**, build clean; makeindex 2,369 / 0 / 0; Web build/main-loop/evidence split, Android/macOS evidence boundary, CnaTests architecture, reproducible counting, oracle taxonomy, hostile-host verification and discipline gates completed; physical pages 573–607 rendered and reviewed as 9 contact sheets, with tables and long literals inspected full-size; all automated and visual checks green |
 
 ---
 
@@ -489,3 +492,24 @@ mid-session at the owner's direction, so the build and visual passes are availab
   automated checks green. Rendered physical pages 392–455 and reviewed all 64 as eight contact
   sheets; inspected the stride table, defect ledger and audio equations at full size. No clipping,
   overlap, broken float, unreadable table, stale reference or visual defect remains in the batch.
+
+### 2026-08-12 — Phase D batches 4–6: Chapters 46–72
+
+- Completed the framework-services, foundation-layer and sibling-library sequence through the
+  platform contract and both Windows chapters, preserving only evidence supported by the pinned
+  CNA tree. Two visual defects found in batches 4–5 were corrected and independently re-rendered.
+- Split the former Web chapter into translation, host-owned main-loop lifetime, and renderer-
+  specific browser evidence. The 12 repaired stack-lifetime entry points, one benchmark survivor,
+  five Web-loop semantic differences, volatile MEMFS storage and five-renderer evidence matrix
+  are now separate claims rather than one broad support statement.
+- Rebuilt Android/macOS coverage around the two recorded AVD runs, absent durable artifacts,
+  never-attempted Android graphics, partial lifecycle state machine, unreachable TitleContainer
+  fallback, historical pre-adaptation Metal run and explicit iOS/tvOS rejection.
+- Replaced the Testing Part's placeholders and stale comparative prose with the one-binary glob/
+  filter architecture, runtime discovery, skip semantics, standalone corpus, counting grammar,
+  XNA/FNA/CNA oracle hierarchy, Wine/Proton/browser engagement channels, structural gates,
+  mutation sensitivity and actual automation boundary.
+- Ran `tools/verify-book.sh`: 689 pages, makeindex 2,369 accepted / 0 rejected / 0 warnings, all
+  automated checks green. Rendered physical pages 573–607 and reviewed all 35 as nine contact
+  sheets; inspected both tables, long monospace literals and gate lists at full size. No clipping,
+  overlap, unreadable table, broken heading or other visual defect remains in batch 6.

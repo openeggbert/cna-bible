@@ -1,3 +1,105 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{Web III: Five Renderers, Four Kinds of Evidence}
 \label{ch:web-renderer-evidence}
+
+CNA exposes five Web renderer identities, but their names do not imply five equally verified
+implementations.  The audited tree contains four distinct kinds of evidence: translation,
+module startup, browser structure, and browser pixels.  Keeping those levels separate produces
+a more useful map than a binary supported/unsupported table.
+
+\section{An evidence ladder}
+
+\begin{description}
+  \item[Build evidence] The selected implementation compiled and linked to WebAssembly.
+  \item[Host-start evidence] A JavaScript host loaded the module far enough to execute startup.
+  \item[Structural evidence] A real browser observed renderer-specific DOM or SVG objects and
+        invariants that another backend could not trivially impersonate.
+  \item[Pixel evidence] A real browser compositor produced sampled colors at expected screen
+        positions.
+\end{description}
+
+Higher rungs include more of the delivery chain but do not erase lower-level tests.  A pixel
+sample may prove presentation while missing a malformed object tree; a structural assertion
+may prove the renderer identity while missing blending.  The strongest suite combines both.
+
+\section{HTML\_DOM: automated browser and pixel evidence}
+
+HTML-DOM has the only genuine Web workflow at the audited revision.  The workflow pins
+emsdk~6.0.3, installs Playwright with Chromium, builds the renderer, and serves six pages over
+HTTP.  The harness waits for a verdict on \texttt{window}, because a WebAssembly process exit
+code is not observable in the same way as a native child process.
+
+The browser driver also samples the real compositor.  It takes a screenshot, transfers it
+back into an in-page canvas, and calls \texttt{getImageData}.  Four point samples across its
+smoke and pixel cases use bounded RGB tolerances.  This route is important: inspecting the
+renderer-owned DOM alone would not prove what Chromium finally composed on screen.
+
+A separate host-integration case rewrites the HTML response with Playwright
+\texttt{page.route()}.  It verifies that CNA refuses to seize host-owned DOM and does not create
+its viewport.  Earlier injection through \texttt{addInitScript} was measurably too late, so the
+test modifies the document before module bootstrap.  The timing mechanism is part of the proof.
+
+\section{SVG\_DOM: strong manual evidence, no workflow}
+
+SVG-DOM has a browser driver and 34 checks across three pages.  It verifies SVG namespace
+identity for the root and its flush-slot descendants, keeps the SDL canvas hidden, and performs
+a four-point scissor-order pixel check.  Those namespace assertions are anti-spoofing evidence:
+an HTML or canvas renderer cannot satisfy them merely by producing a similar picture.
+
+The limitation is automation, not test design.  Its shell runner has no CI or CTest caller.
+The evidence is therefore reproducible on demand but is not refreshed on every change.  It
+should be described as a browser-tested implementation with a manual gate, not as continuously
+verified.
+
+\section{WEBGL2 and WEBGL1: translation without browser execution}
+
+Both WebGL identities have reached Emscripten builds, but neither was run in a browser in the
+audited campaign.  A bare-Node attempt stopped at \texttt{window is not defined}; that is host-
+environment evidence only.  In particular, generated GLSL for \texttt{WEBGL1} has not been
+compiled by an actual WebGL~1 implementation.
+
+This leaves essential questions open: context creation, shader-version compatibility, buffer
+uploads, presentation, and context loss.  The source contains context-loss handling, but source
+presence is not a recovery test.  A browser test must deliberately lose and restore the context
+and then demand a fresh, visible frame.
+
+\section{CANVAS: startup failure before renderer evidence}
+
+The Canvas backend also builds, but its bare-Node run fails during SDL initialization.  Its
+manual browser checklist remains unchecked.  The result is therefore build evidence, not
+browser execution evidence, and certainly not pixel evidence.  The correct next test is not
+another Node invocation; it is an HTTP-served browser page with an explicit verdict and a
+small compositor sample.
+
+\section{The matrix}
+
+\begin{center}
+\small
+\begin{tabular}{lcccc}
+\toprule
+Identity & Builds & Browser run & Structure & Pixels \\
+\midrule
+\texttt{HTML\_DOM} & yes & automated & yes & four samples \\
+\texttt{SVG\_DOM}  & yes & manual runner & yes & four samples \\
+\texttt{WEBGL2}    & yes & no & no & no \\
+\texttt{WEBGL1}    & yes & no & no & no \\
+\texttt{CANVAS}    & yes & no & no & no \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The table is deliberately asymmetric.  ``Builds'' says nothing about frame one, and four
+samples say nothing about complete rendering parity.  It nevertheless gives each claim a
+precise meaning and exposes the shortest path to stronger evidence.
+
+\section{A common browser-verification shape}
+
+All five identities can converge on one harness pattern: serve artifacts over loopback HTTP;
+wait for a named \texttt{window} verdict with a timeout; fail on console errors and page
+exceptions; assert a renderer-specific structural token; sample a few compositor pixels; and
+archive the page log plus screenshot.  Renderer-specific tests then add shader compilation,
+context restoration, DOM ownership, or canvas behavior.
+
+The central rule is simple: prove that the intended runtime engaged.  A green build can be
+produced without a browser, a green page can be produced before a frame, and a plausible image
+can be produced by the wrong rendering route.  Identity, execution, and visible output are
+three separate facts, so the evidence should contain all three.

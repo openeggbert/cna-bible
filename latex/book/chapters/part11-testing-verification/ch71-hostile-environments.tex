@@ -1,3 +1,105 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{Verification in Hostile Environments}
 \label{ch:hostile-environments}
+
+Some test hosts can return success while silently substituting a different runtime.  Wine may
+fall back from DXVK to WineD3D, Proton may resolve an unpinned release, a browser page may load
+without reaching a frame, and CTest discovery may invoke a graphics binary without opening a
+device.  In these environments the first oracle is not the game output.  It is proof that the
+intended execution route engaged.
+
+\section{The Wine wrapper as a verdict pipeline}
+
+CNA's Wine wrappers follow one recurring sequence: validate arguments, choose an isolated
+prefix, configure diagnostic variables, refuse a missing prefix, run \texttt{wine} through
+\texttt{tee}, preserve Wine's exit status, and inspect the captured log.  They do not bootstrap
+ordinary prefixes.  Missing \texttt{system.reg} produces setup instructions and a failure rather
+than silently mutating developer state.
+
+The final inspection is the essential step.  D3D9, D3D11, D3D8, and D3D10 require a log line
+matching \texttt{DXVK: <version>}; D3D12 requires
+\texttt{vkd3d-proton - applicationVersion:}; DirectDraw generations require a
+\texttt{:ddraw:} trace.  If that token is absent, the wrapper returns code~3 regardless of the
+program's own exit status.  A passing executable through the wrong translation layer is treated
+as a failed experiment.
+
+The prefix map is part of reproducibility.  D3D9 and D3D11 share
+\texttt{\string~/.wine-cna-d3d11}; DirectX~1, 2, 3, 5, 6, and 7 share
+\texttt{\string~/.wine-cna-dx1}; D3D12, D3D8, and D3D10 have dedicated prefixes.  D3D10 forces
+\texttt{DISPLAY=:0} because of a recorded DXGI/EDID failure under Xvfb, while D3D8 selects
+llvmpipe to avoid a specific surface-loss path.  These are measured environment constraints,
+not renderer semantics.
+
+Direct2D is the dangerous exception: its Wine shim defaults to the developer's ordinary
+\texttt{\$HOME/.wine}.  A separate fresh-prefix suite demonstrates the safer pattern with a
+temporary directory and \texttt{wineboot --init}.  Evidence intended to be reproducible should
+prefer the disposable route and record the prefix identity.
+
+\section{Discovery needs a controlled escape hatch}
+
+Cross-compiled \texttt{CnaTests} uses CMake's \texttt{CROSSCOMPILING\_EMULATOR} to place the Wine
+wrapper before the executable.  GoogleTest discovery then runs
+\texttt{--gtest\_list\_tests}.  Listing names does not create a graphics device, so no DXVK or
+DirectDraw token can legitimately appear.  Per-wrapper
+\texttt{CNA\_*\_SKIP\_*\_GATE=1} variables bypass only the engagement check for discovery.
+
+This is a narrowly justified exception.  The execution CTests must run with the gate enabled,
+or a green result loses its renderer identity.  Recording the bypass in generated test commands
+makes the distinction reviewable instead of teaching every wrapper to accept missing evidence.
+
+\section{Proton solves a different reproducibility problem}
+
+The Proton wrappers bootstrap their own compatibility prefix rather than requiring an existing
+Wine prefix.  Direct2D resolves the first available runtime from a checked-in priority list,
+currently Proton~9.0 Beta then Proton~8.0, and rejects directories named Experimental unless an
+explicit override marks the result non-reproducible.  It publishes runtime identity, including
+the DXVK version extracted from the shipped DLL.
+
+Both Proton paths refuse to operate under the ordinary Wine prefix.  That safeguard follows a
+real incident in which a mixed prefix was partly upgraded and remained hung for hours.  Proton
+does not use the Wine wrappers' log-token gate; its verdict is the child program's exit status
+plus the recorded runtime identity.  The contrast is instructive: engagement proof must match
+the host's actual substitution risk rather than be copied mechanically.
+
+\section{Virtual displays are infrastructure, not evidence}
+
+Direct2D's Xvfb wrapper validates display geometry, creates private Xauthority state in a
+temporary directory, installs cleanup traps, and is reentrant.  That makes headless presentation
+repeatable.  It does not prove physical display behavior, vendor drivers, HDR, or desktop
+composition.  The report must still say that Xvfb and a translation layer were used.
+
+Likewise, a native process returning zero under Wine does not become a native-Windows result.
+The environment belongs in the claim: compiler, executable format, Wine or Proton version,
+translation backend, GPU or software device, display server, and prefix.
+
+\section{Browsers need an out-of-process verdict}
+
+WebAssembly's exit status is not a reliable observable for the browser harness.  HTML-DOM and
+SVG-DOM therefore publish completion and result fields on \texttt{window}.  Playwright waits
+with a bounded timeout, treats page exceptions and failure console lines as errors, and combines
+that verdict with structural and screenshot evidence.
+
+Serving over loopback HTTP is also part of the environment.  The shell wrappers start a local
+server, poll it for readiness, and terminate it through a cleanup trap.  They do not use
+\texttt{file://}, whose origin and asset behavior would differ from a deployed page.  Distinct
+ports permit the six HTML-DOM cases to run without collision.
+
+The compositor check takes a browser screenshot, decodes it into a canvas, and samples pixels
+with bounded RGB tolerance.  This deliberately crosses out of renderer-owned state and back
+through Chromium's real composition result.  SVG-DOM adds namespace and hidden-canvas assertions
+to prove that the expected implementation, not merely a look-alike image, supplied the frame.
+
+\section{Hostility is any plausible false green}
+
+Wine fallback, stale Proton selection, headless skips, browser startup without a frame, and
+renderer impersonation look unrelated.  They share one failure mode: the program can appear
+healthy while the intended experiment never occurred.  A robust harness therefore has two
+verdicts:
+
+\begin{enumerate}
+  \item an engagement verdict proving the named runtime, renderer, device, or browser path;
+  \item a behavior verdict applying the actual functional oracle.
+\end{enumerate}
+
+Only their conjunction is a pass.  This pattern is more transferable than any particular grep
+token: identify how the host can substitute or skip the thing under test, then make evidence of
+non-substitution a first-class artifact.

@@ -1,3 +1,120 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{Discipline as a Test}
 \label{ch:discipline-as-test}
+
+Many CNA regressions would compile, render a plausible frame, and pass ordinary API tests while
+violating the architecture or historical era a backend is meant to preserve.  The project turns
+those negative constraints into executable checks: forbidden-token scans, link-closure probes,
+identity-table comparisons, document-to-code validators, log parsers, and mutation tests.  In
+this layer the gate itself is the principal artifact.
+
+\section{DirectX eras as executable boundaries}
+
+Eight shell gates scan the source and public headers of DirectX~1, 2, 3, 5, 6, 7, 8, and 10.
+They strip comments, search for forbidden interface names or call shapes, and fail if the source
+directory is missing.  Each forbidden list encodes an architectural statement:
+
+\begin{itemize}
+  \item DirectX~1 permits only first-generation DirectDraw and no Direct3D;
+  \item DirectX~2 forbids execute buffers, while DirectX~3 differs by allowing
+        \texttt{IDirectDraw2};
+  \item DirectX~5 and 6 require version-4 surfaces and reject the bare legacy surface name;
+  \item DirectX~7 forbids viewport objects, texture-handle indirection, and a texture-blend
+        state empirically rejected under Wine;
+  \item DirectX~8 removes DirectDraw and requires modern state names;
+  \item DirectX~10 rejects both the FVF model and D3D9-style render-state calls.
+\end{itemize}
+
+The later scripts use a line-preserving Perl pass to remove both line and block comments.  That
+upgrade became necessary when Doxygen prose began matching forbidden tokens.  Preserving line
+numbers keeps violations actionable.  The lesson is not that grep replaces compilation; it is
+that a focused lexical invariant can reject historically impossible shortcuts that a compiler
+would happily accept.
+
+\section{Link closures make module boundaries observable}
+
+Fourteen minimal consumers link public module aliases.  A companion Python gate reads each
+generated \texttt{link.txt}, rejects forbidden libraries, and can require expected ones.  Math,
+for example, must not acquire a graphics, SDL, ENet, or renderer dependency merely because a
+transitive umbrella target makes the program link.
+
+The gate returns skip~77 when a generator does not produce \texttt{link.txt}.  That is honest
+but weakens the evidence, so reports need generator and skip data.  The broader pattern remains
+valuable: compile proves usability; link inspection proves dependency direction.
+
+Renderer identities receive a similar structural check.  An order-sensitive canonical table is
+compared with the C\texttt{++} enum and set-wise with the CMake cache choices.  This detects
+missing, stale, reordered, or unselectable identities before a user discovers the mismatch at
+configure time.
+
+\section{Documents can be machine-checked contracts}
+
+Six Skia validators connect ledgers and decision records to implementation.  They require every
+backend method and capability to have a classified parity row; classify every test-matrix entry;
+hold the accepted 2D-only decision to 37 enumerated 3D requirements; check release-gate row
+contiguity and Ganesh guards; require successor-contract routes to cover an exact numeric range;
+and compare a 27-row surface-format table with the live enum and size functions.
+
+These checks turn documentation from commentary into schema-bearing input.  They also reveal the
+maintenance cost.  At the audited revision, three registered Skia validators still read paths
+removed by modularization, and the native HLSL verifier has the same kind of path rot.  A gate
+that aborts before reaching its invariant is not evidence, even if its design is sound.
+
+Every validator should therefore test its own assumptions: required files exist, anchors occur
+exactly once, parsed sets are non-empty, and fixtures include both accepted and rejected cases.
+Treating a missing input as success would be the worst possible failure mode.
+
+\section{Can the green test go red?}
+
+Direct2D's mutation checker applies seven pinned edits to the renderer.  Every anchor must occur
+exactly once.  In full \texttt{--run} mode it rebuilds and runs the named test; if the test still
+passes, the mutation survived and the checker fails.  Source is restored in a \texttt{finally}
+path.
+
+Mutation testing asks a question ordinary execution cannot answer: is the oracle sensitive to
+the defect it claims to prevent?  CI currently performs only the dry-run anchor validation, not
+the seven rebuild-and-test mutations.  That distinction belongs in any claim about mutation
+coverage.
+
+The Direct2D debug-log verifier applies the same self-suspicion differently.  It fails if
+diagnostics never engaged, the debug layer was off, the report was truncated, severe messages
+appeared, or unexpected live objects remained.  Six checked-in fixtures exercise the parser's
+pass and failure paths through \texttt{--self-test}.  A log parser without hostile fixtures is
+only an untested second program.
+
+\section{Automation is narrower than apparatus}
+
+The audited tree contains 56 files under \texttt{scripts}.  Thirty scripts are wired as CTest
+commands, but only seven are referenced by CI workflow files.  Five of those seven live in the
+dispatch-only Windows D3D workflow; routine push/PR automation directly exercises only the two
+HTML-DOM runner layers from that set.  CTest wiring still matters, but it exists only when the
+corresponding renderer configure is built and run.
+
+The eight workflows tell a similarly uneven story.  Six trigger automatically and two are
+manual-only.  Windows D3D CI deliberately avoids \texttt{CnaTests} because some test sources use
+POSIX-only process APIs; it builds renderer-specific executables instead.  Metal has a macOS
+workflow, HTML-DOM has a browser workflow, and Devices has a UBSan path, while many manual
+scripts have no automated caller.
+
+Automation records should therefore distinguish four states: script exists, script is a CTest,
+workflow references it, and workflow triggers for the change in question.  Collapsing them into
+``covered by CI'' hides exactly the gaps the gates were built to expose.
+
+\section{A gate-quality checklist}
+
+A structural gate is trustworthy when it:
+
+\begin{enumerate}
+  \item states one invariant in language a reviewer can compare with the code;
+  \item proves that its input and engagement conditions were present;
+  \item fails closed on missing or empty inputs, or reports an explicit skip whose consequence is
+        retained;
+  \item carries positive and negative fixtures, mutation, or another self-test showing that the
+        verdict can change;
+  \item records its configuration and is actually wired into the intended automation path;
+  \item is updated atomically when modularization moves its inputs.
+\end{enumerate}
+
+The unifying principle is that a green result that was never produced is worse than a red one.
+Wine log tokens, compile-must-fail tests, link closures, mutation inversion, diagnostics-engaged
+checks, and browser verdict channels are independent expressions of that idea.  Discipline
+becomes a test when the project can prove both the rule and the fact that the rule was applied.

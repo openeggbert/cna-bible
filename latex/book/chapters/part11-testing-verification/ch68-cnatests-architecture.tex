@@ -2,187 +2,104 @@
 \label{ch:cnatests-architecture}
 \label{ch:verification-methodology}
 
-Chapter~\ref{ch:testing-philosophy} in this Part covers the individual verification
-\emph{mechanisms} this ecosystem relies on --- pixel tests, differential testing, the D3D9
-oracle, sanitizers, and the \texttt{CNAEXT} build gate. This opening chapter of Part~XI takes
-a platform-oriented cut through that material: comparing how much of the machinery actually
-reaches each of the principal target environments side by side, because
-the honest answer varies more than a single ``cross-platform and verified'' claim would
-suggest.
+CNA's test system is not a directory of independent unit-test programs.  It is a composition
+of one large GoogleTest binary, hundreds of standalone renderer executables, process-isolation
+harnesses, negative compilation, and script-based structural gates.  Understanding which layer
+produced a result is a prerequisite for interpreting that result.
 
-\section{A comparative summary}
+\section{One discovered GoogleTest binary}
 
-\begin{center}
-\small
-\begin{tabular}{lp{8.7cm}}
-\toprule
-\textbf{Platform} & \textbf{What is actually verified, as of this book's source material} \\
-\midrule
-Linux (native) & The deepest verification of any platform: the full roughly~4{,}370-test unit
-  suite, the roughly~490-test GPU pixel suite across four renderers, real differential testing
-  against a genuine FNA install (Chapter~\ref{ch:windows-wine}), and the sanitizer trio where
-  applied (Chapter~\ref{ch:testing-philosophy}). This is the ground every other platform's own
-  claims are ultimately measured against. \\
-Windows (via Wine) & Real GPU-accelerated rendering through DXVK/vkd3d-proton, gated by a
-  self-verifying marker check so a silent WineD3D fallback cannot corrupt a result
-  (Chapter~\ref{ch:windows-wine}); includes the single strictest test in the whole project,
-  the D3D9 oracle against a genuinely running XNA~4.0 install. Real Windows hardware
-  verification remains open on all three Direct3D renderers. \\
-Web (Emscripten) & Split sharply by renderer. \texttt{CANVAS}: a real build exists, links, and
-  runs its test suite under Node --- but no test in this environment can touch a real
-  \cnaclass{GraphicsDevice} at all, since Node provides no WebGL/Canvas context, leaving a
-  13-item manual browser checklist entirely unchecked (Chapter~\ref{ch:web-emscripten}).
-  \texttt{WEBGL2}, using the shared EasyGL implementation and the platform's actual default,
-  had never been built under Emscripten as of the cited measurement. \\
-Android (NDK) & Split sharply by demo, not just by renderer. The devices/sensors demo: real,
-  live-verified on an x86\_64 emulator, down to synthetic sensor injection producing a real
-  on-screen response. Graphics (\texttt{SDL\_RENDERER}, Android's own default): never run on
-  any device or emulator, and, per a documented regression in an unrelated sibling project,
-  currently not even confirmed to \emph{build} (Chapter~\ref{ch:android-ndk}). \\
-macOS & The one platform in this comparison with no dedicated chapter of its own in this
-  book, and worth naming as exactly that kind of gap rather than silently omitted: the
-  project's own input-platform notes confirm mouse warp and global cursor position genuinely
-  work through the SDL3 Cocoa backend, the same as X11, but explicitly flag every macOS
-  specific as ``manual-gated,'' since the CI matrix is Linux-only and macOS is
-  ``not headless-verifiable'' there at all --- no CI, no emulator equivalent, and no
-  automated substitute the way Wine stands in for Windows. \\
-\bottomrule
-\end{tabular}
-\end{center}
+\texttt{cmake/UnitTests.cmake} recursively globs C\texttt{++} test sources from three roots:
+non-renderer modules, renderer modules, and the repository-level \texttt{tests} directory.  The
+result becomes exactly one executable, \texttt{CnaTests}.  There is no GoogleTest executable per
+framework module.
 
-\section{Why the gradient exists, and why it is not a criticism}
+The broad glob is narrowed by nine explicit \texttt{list(FILTER ... EXCLUDE REGEX)} operations.
+They remove standalone Glide ABI programs and minimal-link probes, conditionally remove five
+FFmpeg video tests, remove Net and GamerServices trees when networking is disabled, exclude
+POSIX-process tests on Windows, Emscripten, and Android, and select only the configured
+renderer-specific test directory.  One exclusion group even checks itself with a fatal error
+if Net sources survived a Net-disabled configure.  Filtering is therefore part of the build
+contract, not housekeeping.
 
-None of the gaps this table names are hidden anywhere in this ecosystem's own documentation
---- every one of them was found, in this book's own research, stated plainly in the project's
-own docs, exactly the way Chapter~\ref{ch:what-is-cna} described this project's
-overall relationship with its own claims. The gradient itself is a predictable consequence of
-where the actual development happens: this is a Linux development environment first, with
-Windows reached through an elaborate but real Wine-based bridge, and Web/Android reached
-through cross-compilation toolchains that can verify \emph{building} far more easily than
-they can verify \emph{running correctly}, absent a real browser or a real device. A native
-Linux pixel test can assert on an exact color value; an Emscripten build that cannot even
-construct a graphics device has no equivalent assertion available to it at all, no matter how
-carefully the surrounding C\texttt{++} is written.
+GoogleTest cases are exposed to CTest with
+\texttt{gtest\_discover\_tests(... DISCOVERY\_MODE PRE\_TEST)}.  Discovery runs the built binary
+at test time, so the complete CTest list does not exist at configure time.  Its working directory
+is pinned to the source root after cases failed to find \texttt{tests/assets} when CTest launched
+them from the runtime-output directory.  Both details explain why a source-only count and a
+\texttt{ctest -N} count answer different questions.
 
-This book's own coverage has exactly the same shape of gradient, worth naming rather than
-leaving implicit: Windows, Web, and Android each earned a full chapter in this Part because
-each has a substantial, documented, mechanically-interesting verification story to tell; macOS
-has real, working input support confirmed in the project's own platform notes, but no
-comparably deep verification narrative exists to expand into its own chapter, since --- unlike
-Windows' Wine bridge or Android's emulator --- there is no equivalent automated or
-semi-automated stand-in for a real Mac in this project's own dev loop at all.
+\section{One configure, one renderer}
 
-\section{The oracle corpus, end to end}
+Renderer selection enters only the chosen renderer family.  Metal and Glide contribute
+portable policy suites unconditionally, but their native implementation is still gated.  Thus
+no build registers all renderer tests, and a result whose renderer identity is omitted cannot
+be interpreted safely.
 
-The Linux row of the table above credits ``real differential testing against a genuine FNA
-install'' in one clause, but the single strictest instance of that testing --- the D3D9 oracle
-corpus under \repolink{tools/xna-oracle/} --- is worth tracing through completely at least once,
-because its actual pass/fail mechanics are stricter, and its scope narrower, than ``differential
-testing'' alone suggests.
+There are three layers of renderer gating:
 
-Each scene in the corpus is a small, hand-authored text file. The full corpus, directly recounted
-against the checked-in files rather than trusted from an older snapshot (this project's own
-``re-verify a stale count'' rule, restated in Chapter~\ref{ch:what-is-cna}), currently holds
-39 scenes under \repolink{tools/xna-oracle/scenes/}. \repolink{colored3d.scene}, already cited in
-Chapter~\ref{ch:direct3d-backends} for its \cnaclass{BasicEffect} content, is short enough to
-show in full:
+\begin{enumerate}
+  \item source filtering decides which renderer GoogleTests enter \texttt{CnaTests};
+  \item CMake conditions decide which standalone executables and CTests are registered;
+  \item runtime pre-flight may return the project-wide skip code~77 when no display is usable.
+\end{enumerate}
 
-\begin{lstlisting}[style=cnashell]
-width=256
-height=256
-profile=HiDef
-clearcolor=100,149,237,255
-vertexcolor=true
-lighting=false
-primitive=TriangleList
-vertex=-0.6,-0.6,0,255,0,0,255
-vertex=0.0,0.7,0,0,255,0,255
-vertex=0.6,-0.6,0,0,0,255,255
-\end{lstlisting}
+That last result is deliberately SKIPPED rather than FAILED.  It keeps headless machines from
+turning absence of a display into a renderer defect, but it also means a green CTest summary may
+contain no executed pixel comparison.  Reports must retain skip counts and the display setup.
 
-\repolink{tools/xna-oracle/CnaOracleRender.cpp} is the one piece of code that turns a scene file
-into a pixel buffer, and it is deliberately renderer-agnostic: it calls only the public
-\cnaclass{Game} / \cnaclass{GraphicsDeviceManager} / \cnaclass{GraphicsDevice} / \cnaclass{SpriteBatch}
-surface this book documents everywhere else, with no \verb|#ifdef| branch for any specific
-renderer. The same source file is compiled twice --- once through real XNA~4.0 under Wine
-(producing the checked-in reference PNG under \repolink{tools/xna-oracle/reference/}, captured
-once by hand and never regenerated except when a scene's own content changes) and once through
-whichever CNA renderer is under test. \repolink{scripts/xna-diff.py} then compares the two PNGs
-one pixel at a time, taking the \emph{maximum} absolute per-channel delta at each pixel (not an
-average, and not a whole-image error metric) and counting how many pixels exceed
-\texttt{{-}{-}tolerance}. The default tolerance is \texttt{0}: an exact match, every channel, every
-pixel. This is stricter than it may first sound, and the script's own documentation is explicit
-about why it can afford to be: on Linux, both the CNA/D3D9 render and the real-XNA reference
-render pass through the identical DXVK D3D9-over-Vulkan implementation, so a tolerance-0 diff is
-measuring CNA's own correctness against XNA's own D3D9 behavior with no driver-stack difference
-between the two sides to launder into the result. \repolink{scripts/run-oracle-corpus-diff.sh}
-runs every scene through this comparison and is wired into the real \cnaclass{CTest} suite as
-\texttt{D3D9\_XNA\_Diff} --- a genuine, permanently-enforced gate, not a one-time measurement, and
-the project's own script comments say plainly that widening the tolerance to turn a red result
-green ``is exactly how an authenticity project quietly becomes a parity project.''
+\section{Standalone examples are a separate corpus}
 
-\section{A measurement that deliberately is not a gate}
+Files named \texttt{*\_test.cpp} under renderer \texttt{examples} usually do not contain
+GoogleTest at all.  Per-renderer CMake macros build them one executable at a time, each with its
+own \texttt{main()}, then optionally register it with CTest.  Many consume the same public
+fixture from \texttt{modules/graphics/examples}, allowing one renderer to expose a defect while
+the others serve as controls.
 
-Not every comparison this project runs is meant to become a permanent CTest, and the corpus's
-own cross-renderer EasyGL measurement is a useful, honestly-documented example of the opposite
-choice. \repolink{scripts/run-oracle-corpus-diff-easygl.sh} runs the identical scene corpus and
-the identical tolerance-0 \repolink{xna-diff.py} comparison through
-\repolink{tools/xna-oracle/CnaOracleRender.cpp} recompiled natively against the EasyGL renderer
-instead of D3D9-over-Wine --- reusing, unmodified, both the renderer and the reference images the
-D3D9 gate already depends on. As of the measurement recorded in
-\repolink{docs/d3d9-divergence-report.md} (against the 31-scene corpus checked in at the time; the
-corpus has since grown to the 39 scenes counted above, so this specific pass/fail split is a
-historical snapshot rather than a currently-reproduced number), the result was 10 of 31 scenes
-pixel-perfect and 21 of 31 diverging at tolerance~0 --- every \cnaclass{SpriteBatch} scene passed
-exactly, while triangle-rasterized scenes mostly did not.
+Building and registering are independent acts.  Some renderers build far more executables than
+they register; others add Python audit registrations that are not executables.  Labels are also
+uneven: \texttt{GraphicsSmoke} is cross-renderer, while several large renderer families label
+only one or two of hundreds of registrations.  A command such as \texttt{ctest -L EasyGL}
+therefore cannot be assumed to select the EasyGL corpus.
 
-The project's own explanation for why this was never promoted to a CTest the way the D3D9 gate
-was is the more important finding than the raw pass count: EasyGL renders through an entirely
-different GPU API and driver stack (OpenGL via Mesa, versus D3D9-over-DXVK-over-Vulkan for both
-sides of the D3D9 comparison), so a tolerance-0 diff here cannot isolate a CNA correctness bug
-from an ordinary rasterizer-implementation difference between two unrelated GPU drivers --- the
-same confound the D3D9 methodology goes out of its way to rule out by keeping both sides of that
-comparison on the identical DXVK stack. Rather than discard the measurement or silently widen the
-tolerance until it passed (the one move the project's own script comments explicitly forbid), the
-21 divergent scenes were histogrammed by their differing-pixel pattern instead of reported as one
-flat failure count, and three distinct shapes emerged. Pattern A, 17 scenes, differs only in a
-thin band of pixels at a primitive's silhouette edge with a bit-exact interior --- a rasterizer
-fill-rule/pixel-center convention difference between Mesa/RADV and DXVK, not a shading bug. Five
-of those seventeen are scenes deliberately built to expose CNA's per-pixel-vs-XNA's-default-
-per-vertex lighting divergence (Chapter~\ref{ch:stock-effects} covers the same design decision),
-but each uses a spatially uniform normal across the whole primitive, so per-pixel and per-vertex
-evaluation are mathematically identical for them --- structurally incapable of detecting the gap
-they were meant to probe, the same trap Chapter~\ref{ch:direct3d-backends} names for a different
-scene. Pattern B, 2 scenes (\repolink{colored3d} itself among them), is whole-primitive but
-imperceptible: interior pixels differ by 1--2 per channel almost everywhere, consistent with
-ordinary GPU/driver floating-point rounding rather than a bug, with the same edge effect as
-Pattern A layered on top at the silhouette. Pattern C, 2 scenes, is the measurement's real payoff:
-\repolink{fog\_gradient\_quad} rendered as solid black across the entire primitive where real XNA
-produces a smooth white-to-black gradient, and \repolink{envmap\_fresnel\_quad} rendered nearly
-flat where real XNA produces a smooth per-vertex Fresnel gradient --- both genuine, large,
-whole-primitive EasyGL bugs, confirmed as EasyGL-renderer-local because the same two scenes render
-correctly (0 differing pixels) through the D3D9 side of the identical corpus. Both are now fixed
-in current source, as Chapter~\ref{ch:easygl-backend} documents in full. None of the 21 were
-investigated further under this specific task, by design --- its own scope was ``record the
-deltas,'' not ``fix them'' --- and each was logged with its evidence for whoever picked up the
-corresponding \repolink{plan\_graphics.md} item next, which is exactly how Pattern C's two bugs
-were later closed.
+\section{Why some tests need another process}
 
-The methodological lesson generalizes beyond this one measurement: a pixel-diff tool with a fixed
-numeric tolerance answers ``do these two images match,'' not ``is this renderer correct,'' and the
-gap between those two questions is exactly the shared execution stack (or its absence) between
-whatever two things are being compared. The D3D9 oracle can afford tolerance~0 as a blocking gate
-because both sides share DXVK; EasyGL cannot, so the same tool is reused for insight without being
-promoted to a gate that would otherwise be measuring Mesa against DXVK rather than CNA against
-XNA.
+Several failures concern process-global state: SDL shutdown, the audio mixer's global owner,
+GamerServices dispatch, and network peers.  CNA builds small helper executables for these cases
+and embeds their absolute paths into \texttt{CnaTests}.  A GoogleTest case spawns the helper and
+judges its result, gaining a clean address space and making crashes or shutdown ordering
+observable without poisoning later cases.
 
-\section{What this means for a reader of this book}
+Other helpers are diagnostic tools rather than isolation tests: an XNB audio metadata dumper,
+XWB inspector, FNA-reference dump, and Devices microbenchmark.  Their presence beside harnesses
+does not make them part of every test run.  The governing question is always who invokes the
+target and under what configuration.
 
-If you are choosing a target platform for a new CNA project, or evaluating CNA for a port,
-this table is the single fact most likely to change your plan: build success and behavioral
-correctness are two different claims, verified to different degrees on different platforms,
-and this ecosystem's own documentation is careful --- and this book has tried to be equally
-careful --- to say which one it means every time it makes one. Treat a Linux-verified claim as
-the strongest evidence available in this project today; treat a Windows claim as strong but
-not hardware-final; and treat a Web or Android graphics claim as, at best, ``compiles,'' until
-someone actually runs it where you intend to ship it.
+\section{Compilation failure can be the oracle}
+
+\texttt{cna\_strict\_xna\_api\_leak\_check} is excluded from the normal build.  Its CTest command
+invokes the build system for that target and is marked \texttt{WILL\_FAIL TRUE}.  The test passes
+only when the compiler rejects the forbidden API use.  This inverted polarity turns a namespace
+and surface rule into executable evidence: successful compilation would be the regression.
+
+Fourteen module probes apply the complementary idea to linking.  Each builds a minimal consumer
+of one module alias, then a link-closure test inspects the generated \texttt{link.txt} against a
+module-specific forbidden-library expression.  The probe asks whether the public target works;
+the closure gate asks whether it works for the right architectural reason.
+
+\section{Discovery, selection, execution, verdict}
+
+A reliable test report separates four stages:
+
+\begin{description}
+  \item[Discovery] Which sources and runtime-expanded GoogleTest cases were present?
+  \item[Selection] Which filter, label, renderer, and feature options chose the cases?
+  \item[Execution] Did the intended executable, display, GPU, browser, or compatibility layer
+        actually engage?
+  \item[Verdict] Which oracle declared pass, fail, or skip?
+\end{description}
+
+This model explains most apparent contradictions in CNA's historical test prose.  A source can
+exist but be filtered out; a target can build but not be registered; a CTest can register but
+skip; a program can pass while running through the wrong graphics translation layer.  The rest
+of this Part examines the numbers and oracles that make those stages auditable.

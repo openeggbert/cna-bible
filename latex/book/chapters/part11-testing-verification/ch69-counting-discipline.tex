@@ -1,3 +1,108 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{Counting Discipline}
 \label{ch:counting-discipline}
+
+``How many tests does CNA have?'' has no context-free answer.  The repository contains source
+files, GoogleTest definitions, standalone executables, and CTest registrations; one renderer is
+selected per configure; GoogleTest cases are discovered by executing the binary.  A useful
+number must therefore name both its unit and its configuration.
+
+\section{Four quantities that must not be exchanged}
+
+At CNA commit \texttt{7a64362e}, static inspection gives the following representative counts:
+
+\begin{center}
+\small
+\begin{tabular}{rp{9.1cm}}
+\toprule
+Count & Exact definition \\
+\midrule
+433 & C\texttt{++} source files in the three roots matched by the CnaTests glob, before
+      configure-dependent filtering. \\
+6,818 & GoogleTest macro definitions across all those test-directory sources. \\
+6,670 & Definitions compiled into the default Linux \texttt{OPENGLES3}, Net-enabled,
+        FFmpeg-available CnaTests source set. \\
+1,785 & Static CTest registration statements made through the renderer-test helper, after
+        expanding Skia's wrapper calls; not active tests in one build. \\
+1,233 & C\texttt{++} files under module \texttt{examples} directories; 1,169 happen to be named
+        \texttt{*\_test.cpp}, but almost none are GoogleTest sources. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+These figures describe different populations.  Adding them is meaningless, and selecting the
+largest does not make it the most authoritative.  A test source can define many cases; a
+parameterized definition can expand at runtime; one executable can become thousands of CTest
+entries; one standalone executable can exist without any CTest registration.
+
+\section{How the static counts are reproduced}
+
+The source population is a sorted union, not a sum of unchecked directory totals:
+
+\begin{verbatim}
+{ find modules -path 'modules/*/tests/*' -name '*.cpp' -type f
+  find tests -name '*.cpp' -type f; } | sort -u | wc -l
+\end{verbatim}
+
+Macro counts search only declaration starts, distinguishing \texttt{TEST}, \texttt{TEST\_F},
+and \texttt{TEST\_P}.  The default-configure figure then subtracts the renderer test directories
+excluded by CMake.  This is still a source definition count, not a run count.  Six
+\texttt{INSTANTIATE\_TEST\_SUITE\_P} sites and platform conditionals can change runtime
+expansion.
+
+Renderer registrations require another derivation.  The tree contains 1,624 direct calls to
+\texttt{cna\_register\_renderer\_test}; three are Skia wrapper bodies rather than registrations,
+and 164 calls invoke those wrappers.  Hence $1624-3+164=1785$ static statements.  Nested CMake
+conditions still decide which subset exists in any actual configure.
+
+\section{Why there is no all-renderer total}
+
+The build enters exactly one selected renderer family.  EasyGL's 293 registration statements,
+Vulkan's 211, bgfx's 179, and Skia's 175 belong to mutually exclusive configurations.  Summing
+them creates a number that no build can expose and no machine can run as one CTest suite.
+
+CTest discovery adds a second barrier.  \texttt{PRE\_TEST} obtains case names by running
+\texttt{CnaTests --gtest\_list\_tests}; configure-time source inspection cannot know the complete
+expanded list.  Build features, conditional compilation, and parameter instantiation all affect
+it.  The authoritative count for a particular build must come from that built artifact and must
+name its renderer and feature set.
+
+\section{Identity counts can be settled}
+
+Not every disputed number is inherently unknowable.  The canonical cache value table contains
+46 public renderer identities, while \texttt{modules/renderers} contains 42 implementation
+families after excluding common infrastructure.  Four identities share implementations with
+other public modes.  Thus ``46 identities, 42 families'' resolves the apparent conflict instead
+of choosing one number and calling the other wrong.
+
+This pattern is widely useful: define the noun before reconciling the count.  An identity is a
+user-selectable contract; a family is a source implementation.  They need not be one-to-one.
+
+\section{Counts that require execution}
+
+Static inspection cannot establish:
+
+\begin{itemize}
+  \item the CTest count for a configured and built tree;
+  \item how many parameterized GoogleTests expand or actually run;
+  \item active standalone registrations after nested conditions;
+  \item pass, failure, timing, or skip totals;
+  \item whether any pixel assertion reached a display;
+  \item image-oracle divergence counts;
+  \item line, branch, or function coverage---no coverage tool is configured.
+\end{itemize}
+
+CNA documents several other kinds of ``coverage'': API-surface estimates, mappings from source
+files to suites, and feature checklists.  None is measured code coverage.  A percentage without
+that qualifier is more misleading than no percentage at all.
+
+\section{A reporting grammar}
+
+A durable result can fit in one sentence if every noun is present: ``On commit X, the Y renderer
+build with features Z discovered N CTest entries; it ran R, skipped S, and failed F under host
+H.''  A source audit uses a different sentence: ``At commit X, this command found N declarations
+matching definition D.''
+
+Three historical comments claimed approximately 247, 330, and 600 renderer registrations, each
+using a different unstated meaning; the audited tree statically contains 1,785 statements across
+exclusive configurations.  Comments rot, while reproducible definitions can be rerun.  The
+discipline is therefore not to avoid numbers, but to make every number carry its derivation.

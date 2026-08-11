@@ -2,248 +2,93 @@
 \label{ch:web-compiling}
 \label{ch:web-emscripten}
 
-CNA's Web target compiles the same C\texttt{++}23 codebase through Emscripten rather than a
-native toolchain, and this chapter covers the specific build-system machinery that makes that
-possible, along with an honest account of exactly how far it has actually been verified.
+CNA does not have a separate JavaScript implementation.  Its Web builds send the same
+C\texttt{++}23 framework through Emscripten, link it with SDL's browser port, and package one
+of five renderer identities into a WebAssembly application.  That compact description hides
+three independent questions: can the source be translated, can the program survive the
+browser main-loop hand-off, and has the selected renderer actually been exercised?  This
+chapter answers only the first.  Chapters~\ref{ch:web-main-loop} and
+\ref{ch:web-renderer-evidence} answer the other two.
 
-\section{Build-system adjustments specific to Emscripten}
+\section{The toolchain changes the execution contract}
 
-Two adjustments apply project-wide before any renderer-specific configuration happens.
-Emscripten disables C\texttt{++} exception unwinding by default, for code-size reasons; CNA
-force-re-enables it globally, since exceptions are used throughout the codebase (every
-\texttt{NotImplementedException}, every \texttt{ArgumentOutOfRangeException} this book has
-cited depends on real unwinding working). The \texttt{WEBGL2} identity (using the shared EasyGL
-implementation and a GLES~3.0 context) is the default renderer under Emscripten; Linux instead
-defaults to \texttt{OPENGLES3} ---
-while \texttt{CANVAS} (Chapter~\ref{ch:canvas-ascii-backends}) is hard-gated the other
-direction, refusing to configure at all outside Emscripten, since HTML \texttt{<canvas>} has
-no meaning anywhere else.
+The root build selects \texttt{WEBGL2} by default when \texttt{EMSCRIPTEN} is true.  This is a
+public renderer identity backed by the EasyGL family, just as \texttt{WEBGL1} selects another
+configuration of that family.  \texttt{HTML\_DOM}, \texttt{SVG\_DOM}, and \texttt{CANVAS}
+select distinct implementations.  The choice is still exclusive: one configure produces one
+renderer, not a universal Web binary containing all five.
 
-\begin{lstlisting}[style=cnashell]
-# Worked example: the exact compile/link options the top-level CMakeLists.txt
-# applies globally under Emscripten, before sharp-runtime is even added --
-# unwinding requires every frame in the call chain to be compiled with
-# -fexceptions, so this has to happen before anything else is configured.
-# (from CMakeLists.txt's own if(EMSCRIPTEN) block)
-add_compile_options(-fexceptions)
-add_link_options(-fexceptions -sNO_DISABLE_EXCEPTION_CATCHING=1)
-\end{lstlisting}
+Exception handling is the first project-wide adjustment.  CNA uses C\texttt{++} exceptions in
+ordinary control and error paths, so the Web build enables real WebAssembly exceptions with
+\texttt{-fwasm-exceptions}.  This is not merely a compiler-acceptance flag.  It affects what
+the generated cleanup machinery catches, and therefore participates directly in the
+main-loop lifetime defect studied in Chapter~\ref{ch:web-main-loop}.
 
-Several test categories are excluded specifically under Emscripten, each for a concrete
-reason rather than a blanket ``skip on web'' rule: pixel/integration test suites for every
-renderer's own CMake test registration are excluded here, and a handful of process-spawning
-tests (a two-process networking loopback test, a gamer-services-dispatcher hang-regression
-test, an audio mixer test, a glTF-tool test) are excluded specifically because there is no
-real multi-process spawning available inside a single Node.js/WebAssembly module.
+The build remains single-threaded.  No Web target enables Emscripten pthread support, and the
+tree has no corresponding cross-origin isolation setup.  One CnaTests configuration uses
+\texttt{ASYNCIFY=1} for asynchronous WebSocket/ENet behavior; that transformation is not
+evidence of a worker-thread architecture.  A port that needs concurrent game, networking, or
+asset work would have to define that architecture and its hosting headers explicitly.
 
-\section{Making the shared test binary actually exit, and actually yield}
+\section{Assets must cross the virtual-filesystem boundary}
 
-Two further Emscripten-specific link flags apply only to the shared \texttt{CnaTests} binary,
-each solving a distinct, concrete problem. Emscripten's default behavior keeps its JavaScript
-runtime alive after \texttt{main()} returns, so \texttt{node CnaTests.js} would otherwise never
-exit on its own --- a runtime-exit flag corrects this specifically for the test binary.
-Separately, the system-link networking loopback tests need to actually yield control back to
-Node's own event loop mid-test (so a WebSocket handshake, for instance, has a chance to
-complete) --- ordinary synchronous, single-threaded Emscripten execution cannot yield at all
-without help, confirmed directly: a real one-second sleep loop never let a WebSocket handshake
-finish without Emscripten's Asyncify transformation enabled, so Asyncify is applied, scoped
-specifically to this one test binary rather than the whole project.
+A native executable can discover files already present beside its working directory.  A
+browser cannot.  Emscripten exposes a virtual filesystem, and a file exists there only if the
+page creates it or the linker packages it.
 
-\begin{lstlisting}[style=cnashell]
-# Worked example: both CnaTests-only link flags, exactly as the real
-# cmake/UnitTests.cmake applies them -- neither affects any other
-# Emscripten target (demos, the two-process harness) in the same build.
-target_link_options(CnaTests PRIVATE -sEXIT_RUNTIME=1)
-target_link_options(CnaTests PRIVATE -sASYNCIFY=1)
-\end{lstlisting}
+At the audited revision, exactly two build sites use \texttt{--preload-file}: the 2D graphics
+demo and the sound demo.  There is no project-wide asset manifest, no \texttt{--embed-file}
+policy, and no custom shell file that silently fills the gap.  Consequently, successful
+translation of a target proves nothing about the availability of its content at run time.
+Each Web application must account for every filename that can reach
+\texttt{TitleContainer} or \texttt{ContentManager}.
 
-\section{What has actually been built and run, versus what has not}
+The same distinction applies to writes.  SDL's preference path resolves inside Emscripten's
+in-memory filesystem, under \texttt{/libsdl}.  CNA does not mount IDBFS, call
+\texttt{FS.syncfs}, or bridge its storage abstractions to \texttt{localStorage}.  Saved data
+therefore survives within the current page instance but not a reload.  \texttt{StorageDevice}
+and GamerServices persistence on a native platform must be described as volatile on Web until
+a durable browser store is deliberately connected.
 
-This is the section most worth reading carefully, because the picture differs sharply by
-renderer. The \texttt{CANVAS} renderer has a real, confirmed success story: a genuine
-\texttt{emcmake} / \texttt{emcc} (version 6.0.2) configure-and-build succeeded, producing a real
-build directory for the first time in this project's history, and \texttt{CnaTests.js}
-genuinely links and runs under \texttt{node}, with a real, renderer-agnostic GoogleTest suite
-passing in full.
+\section{What a successful build establishes}
 
-\begin{lstlisting}[style=cnashell]
-# Worked example: the real invocation shape behind that CANVAS success
-# story, following the same -DCNA_GRAPHICS_RENDERER convention this book's
-# Building CNA chapter already established for native builds.
-emcmake cmake -S . -B build-canvas -DCNA_GRAPHICS_RENDERER=CANVAS
-cmake --build build-canvas
-node build-canvas/tests/CnaTests.js
-# The GoogleTest suite genuinely passes here -- but see the next section
-# for the hard ceiling on what "passes" can actually prove in this
-# environment, even for a build that genuinely links and runs.
-\end{lstlisting}
+A completed Emscripten link is meaningful evidence.  It establishes that the selected source
+closure is accepted by the Web toolchain, that its C\texttt{++}23 surface is compatible with
+the chosen SDK, and that the requested renderer's symbols can be resolved.  It does not
+establish any of the following:
 
-The default \texttt{WEBGL2}/EasyGL path tells a different, more honest story: at the time of
-the cited measurement, no Emscripten build directory had existed for \texttt{WEBGL2}, and no
-automated workflow builds it under Emscripten either. Every specific claim in this project's
-own Web/Emscripten graphics-limitations documentation about EasyGL behavior under
-WebGL2 --- geometry and tessellation shader absence, anisotropic-filtering extension gating,
-whether a WebGL1 fallback exists --- is explicitly labeled a \emph{design-time expectation},
-not something empirically verified, precisely because the build that would let someone verify
-it has never actually been produced.
+\begin{itemize}
+  \item that all runtime assets were packaged;
+  \item that save data survives a page reload;
+  \item that a frame was reached after Emscripten took control;
+  \item that generated WebGL shaders compiled in a browser;
+  \item that the page displayed the selected renderer rather than merely loading its module.
+\end{itemize}
 
-\subsection{One real asset the \texttt{CANVAS} build left behind: a reusable SDL3-for-Emscripten cache}
+This boundary matters because a bare-Node launch is a poor substitute for a browser.  DOM
+renderers need \texttt{window} and \texttt{document}; SDL-backed renderers need browser host
+services; WebGL needs a real graphics context.  Errors such as \texttt{window is not defined}
+or an SDL initialization failure say that the wrong host was used, not that the renderer's
+drawing semantics were tested.
 
-The \texttt{CANVAS} build described above did not just prove \texttt{emcc} works in this
-project's dev environment; it also left a concrete, still-present artifact on disk that
-directly affects the cost of the next attempt at \texttt{EasyGL} under Emscripten. CNA's
-vendored-SDL build machinery (\texttt{cmake/ThirdPartySDL.cmake}) installs SDL3, SDL3\_image,
-and SDL3\_mixer once into a persistent cache directory keyed by target platform ---
-\texttt{.sdl-prebuilt-emscripten/} specifically for Emscripten, distinct from the
-per-native-platform \texttt{.sdl-prebuilt-Linux-x86\_64} / \texttt{.sdl-prebuilt-Windows-x86\_64}
-directories this book's Building CNA chapter (Chapter~\ref{ch:building-cna}) already
-describes --- and the cache's own comment states its purpose plainly: it lives
-\emph{``OUTSIDE any cmake build tree, so \texttt{cmake --build --clean-first} (or deleting the
-build directory entirely) does NOT remove SDL artefacts.''} Deleting an Emscripten build
-directory and reconfiguring from scratch does not force SDL3 to rebuild; only manually
-deleting \texttt{.sdl-prebuilt-emscripten/} itself does that.
+\section{A reproducible build record}
 
-That cache is real and still present: a genuine WebAssembly static-library build of all three
-SDL3 libraries exists on disk right now, confirmed directly by inspecting the installed
-archives rather than trusting a build log --- \texttt{libSDL3.a} at 2{,}024{,}910 bytes,
-\texttt{libSDL3\_image.a} at 321{,}570 bytes, \texttt{libSDL3\_mixer.a} at 384{,}298 bytes, plus
-a \texttt{libSDL3\_test.a} at 128{,}890 bytes, alongside a proper CMake package-config
-install (\texttt{install/lib/cmake/\{SDL3,SDL3\_image,SDL3\_mixer\}/}) that lets any later
-configure step find them via ordinary \texttt{find\_package()} rather than hand-wired paths.
-Crucially, this build machinery is entirely renderer-agnostic: \texttt{ThirdPartySDL.cmake}
-branches only on platform (\texttt{EMSCRIPTEN} / \texttt{ANDROID} / \texttt{WIN32} / \texttt{APPLE}/
-plain Unix), never on \texttt{CNA\_GRAPHICS\_RENDERER}. That means the SDL3-for-Emscripten cache
-the \texttt{CANVAS} build populated is exactly the same cache an \texttt{EasyGL} Emscripten
-build would consume --- whoever attempts that build next does not start from zero; the
-slowest, most failure-prone part of a first Emscripten configure (compiling SDL3 and its two
-satellite libraries to WebAssembly) is already done and sitting on disk, and only the
-\texttt{EasyGL}-specific and \texttt{easy-gl}-sibling-repository code paths remain genuinely
-unattempted.
+Evidence for a Web build should record at least the CNA commit, emsdk version, renderer
+identity, configure options, named target, and produced \texttt{.html}, \texttt{.js}, and
+\texttt{.wasm} artifacts.  It should also list every preload mapping.  Without the mapping,
+two apparently identical builds may have different runtime content.
 
-\section{Why even a successful build cannot be pixel-verified here}
+For testing, the record should say whether the target was merely linked, launched under Node,
+or served over HTTP to a named browser.  These are ascending evidence levels, not synonyms.
+The current HTML-DOM workflow, for example, pins emsdk~6.0.3 and serves six pages to Playwright's
+Chromium.  That is a browser execution result; a successful build of the other identities is
+not equivalent to it.
 
-Even where a build genuinely succeeds and a test binary genuinely runs, there is a hard
-ceiling on what it can prove: \texttt{node} provides no WebGL context and no
-\texttt{CanvasRenderingContext2D}/DOM at all --- confirmed directly, since
-\texttt{SDL\_Init(SDL\_INIT\_VIDEO)} itself throws under Emscripten running inside
-\texttt{node}, and the project's own build comments record the exact underlying error rather
-than a paraphrase: \texttt{"window is not defined"}, the literal exception a real, genuine
-\texttt{CANVAS} smoke-test build hits the moment it tries to touch a browser global that
-simply does not exist in a bare Node.js process. This is the same ceiling Chapter~\ref{ch:canvas-ascii-backends} already
-described for \texttt{CANVAS} specifically: any test suite that constructs a real
-\cnaclass{GraphicsDevice} simply cannot execute in this dev loop at all, real browser or not,
-which is exactly why \texttt{docs/canvas-renderer.md}'s own manual browser verification
-checklist --- covering rotation and origin math, blend modes, and wrap/mirror sampling among
-thirteen total items --- is left entirely unchecked, deferred to a human running the game in
-an actual browser via a tool like \texttt{emrun}, rather than claimed as done.
+\section{The portability lesson}
 
-One further, genuinely interesting piece of real code is worth knowing about even though it
-has never been exercised against a real browser: \texttt{EasyGL}'s own renderer implementation
-contains real, reviewed WebGL-context-loss handling --- registering for the browser's own
-\texttt{WEBGL\_lose\_context} extension and its \texttt{webglcontextlost} /
-\texttt{webglcontextrestored} events. This code path exists and has been read and reviewed,
-but --- consistent with everything else in this section --- has never actually run against a
-real browser; only the ordinary desktop code path (a synchronous SDL GL context
-destroy/recreate) has ever actually executed.
-
-\subsection{What the WebGL-context-loss code actually does, read directly}
-
-\texttt{EasyGLRenderer.cpp} defines two \texttt{EM\_JS} blocks --- real, inline
-JavaScript compiled directly into the Emscripten build, not a C\texttt{++} approximation of
-browser behavior --- gated entirely behind \texttt{\#if defined(\_\_EMSCRIPTEN\_\_)}, so none
-of this code exists at all in a native desktop build:
-
-\begin{lstlisting}
-EM_JS(void, CNA_DebugLoseWebGLContext, (), {
-    const canvas = Module['canvas'] || document.querySelector('canvas');
-    const gl = Module['ctx'] || canvas.getContext('webgl2') || canvas.getContext('webgl');
-    const ext = gl.getExtension('WEBGL_lose_context');
-    ext.loseContext();
-});
-// CNA_DebugRestoreWebGLContext mirrors this exactly, calling ext.restoreContext() instead.
-\end{lstlisting}
-
-Both functions look up the live \texttt{WebGLRenderingContext} the same way (preferring
-Emscripten's own \texttt{Module['ctx']} handle, falling back to querying the canvas directly
-for a \texttt{webgl2} or \texttt{webgl} context), then call the real
-\texttt{WEBGL\_lose\_context} extension's \texttt{loseContext()} / \texttt{restoreContext()}
-methods --- the same browser mechanism a real GPU driver crash or a backgrounded tab actually
-triggers, not a simulation built from first principles. \texttt{metagl::\allowbreak{}Install\allowbreak{}Emscripten\allowbreak{}ContextLossCallbacks()},
-installed once at renderer construction, is what turns the resulting
-\texttt{webglcontextlost} / \texttt{webglcontextrestored} canvas events into calls to
-\texttt{metagl::NotifyContextLost()} / \texttt{NotifyContextRestored()} --- the same two
-notification points the desktop code path calls directly and synchronously.
-
-That synchronicity difference is the one genuine architectural divergence between the two
-platforms, and it is handled explicitly rather than papered over. \texttt{DebugSimulateContextLoss()}'s
-own source comment states it plainly for the Emscripten branch: ``The \texttt{webglcontextlost}
-canvas event fires asynchronously and triggers \texttt{metagl::NotifyContextLost()} via
-\texttt{InstallEmscripten\allowbreak{}ContextLoss\allowbreak{}Callbacks()}'' --- the call to
-\texttt{CNA\_DebugLoseWebGLContext()} only \emph{requests} the loss; the actual
-\cnaclass{ResourceRegistry} notification happens later, asynchronously, whenever the browser's
-own event loop delivers the event. The desktop \texttt{\#else} branch is the opposite shape
-entirely: a four-step synchronous sequence performed inline in the same function call ---
-\texttt{metagl::NotifyContextLost()} (releasing every tracked GL handle without issuing GL
-calls, since the context is still technically valid at that point), resetting every stock-effect
-shader program handle via \texttt{reset\_no\_gl()}, destroying and recreating the real SDL GL
-context (\texttt{SDL\_GL\_DestroyContext} / \texttt{SDL\_GL\_CreateContext}), reloading every GL
-function pointer, and finally \texttt{metagl::NotifyContextRestored()} to make every tracked
-resource recreate itself. \texttt{DebugRestoreContext()} reflects the same asymmetry one level
-up: on Emscripten it is a second, independent call (mirroring the browser's own two separate
-events); on desktop it is simply \texttt{DebugSimulateContextLoss()} called a second time,
-since loss and restore are one atomic operation there with no separate event to wait for.
-
-The public entry point is less isolated than those renderer methods suggest. Every
-\cnaclass{Game} sends each SDL event through the ordinary input bridge first and then reserves
-non-repeated F9 for the loss request and F10 for restore. On Web those are genuinely separate,
-asynchronous browser operations; on desktop EasyGL either key runs the whole synchronous
-cycle. Calling \texttt{SetContextRecoveryEnabled(false)} after device construction but before
-content creation also prevents future EasyGL resources from joining the recovery registry
-and permits uploaded \cnaclass{Texture2D} objects to discard their CPU shadow. A later
-simulated loss cannot reconstruct those resources. This browser branch remains source-audited
-rather than executed in a real browser; the complete product/evidence matrix is in
-\S\ref{sec:backend-recovery-debug-matrix}.
-
-\subsection{A real, still-open inconsistency: only one of three Emscripten targets pins a WebGL version}
-
-Reading \texttt{modules/graphics/examples/CMakeLists.txt} directly turns up a genuine, previously-undocumented gap
-in this project's own Emscripten link-flag consistency. \texttt{cna\_house3d\_demo} --- the one
-real 3D EasyGL demo --- explicitly pins its WebGL version under Emscripten:
-
-\begin{lstlisting}[style=cnashell]
-target_link_options(cna_house3d_demo PRIVATE
-    -sALLOW_MEMORY_GROWTH=1
-    -sSTACK_SIZE=1048576
-    -sINITIAL_MEMORY=67108864
-    -sFORCE_FILESYSTEM=1
-    "-sMIN_WEBGL_VERSION=2"         # WebGL 2 = OpenGL ES 3.0
-    "-sMAX_WEBGL_VERSION=2"
-)
-\end{lstlisting}
-
-\texttt{cna\_demo\_2d}'s own Emscripten \texttt{target\_link\_options} block, confirmed by
-reading it directly rather than assuming symmetry with the 3D demo, has no equivalent pin at
-all: \texttt{-sALLOW\_MEMORY\_GROWTH=1}, a smaller \texttt{-sSTACK\_SIZE}, a larger
-\texttt{-sINITIAL\_MEMORY} (134~MB versus 64~MB, sized for its preloaded \texttt{Content}
-directory rather than a procedural scene), \texttt{-sFORCE\_FILESYSTEM=1}, and a
-\texttt{--preload-file} flag for that content --- but no \texttt{MIN\_WEBGL\_VERSION} /
-\texttt{MAX\_WEBGL\_VERSION} anywhere in the block. Without the pin, Emscripten is free to
-negotiate WebGL~1 with a browser/GPU combination that does not offer WebGL~2, silently handing
-that build a GLES~2-class context instead of the GLES~3.0-class one \texttt{EasyGL}'s own code
-assumes everywhere else. This is exactly the failure mode \texttt{docs/web-emscripten-graphics-limitations.md}
-names as a documented risk rather than a hypothetical one, and this book's own source read
-confirms the doc's claim precisely: \texttt{cna\_demo\_sound} (audio-only, no 3D rendering
-surface at all) has the same gap for the same underlying reason --- it was never built with a
-3D pipeline in mind, so nobody had reason to add the pin --- but \texttt{cna\_demo\_2d}
-genuinely does draw through \cnaclass{SpriteBatch}, meaning it is the one target where an
-un-pinned WebGL~1 negotiation could actually produce a silently degraded, unverified rendering
-path rather than simply being irrelevant.
-
-\section{The honest summary}
-
-Web support in CNA is real in the sense that a specific, narrow slice of it (\texttt{CANVAS},
-building and linking under Node) has been genuinely produced and run; it is aspirational in
-the sense that the renderer most users would actually reach for (\texttt{EasyGL}/WebGL2) has
-never been built under Emscripten at all in this project's own history, and no claim about
-its WebGL2-specific behavior should be read as more than a design-time expectation until
-someone actually produces that build and checks it in a real browser.
+WebAssembly preserves much of the language and loses much of the process model.  The hard
+porting work is therefore at the boundaries: ownership across a non-returning host call,
+assets crossing into a virtual filesystem, persistence crossing into a browser store, and a
+verdict crossing out of a process whose exit status the harness cannot observe.  Treating
+those boundaries as explicit interfaces keeps ``Web build'' from becoming a claim broader
+than the evidence behind it.

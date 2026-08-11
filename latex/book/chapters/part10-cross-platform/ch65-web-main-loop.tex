@@ -1,3 +1,99 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{Web II: the Main-Loop Problem}
 \label{ch:web-main-loop}
+
+A native \texttt{Game::Run()} owns a straightforward loop: construct the game, enter the loop,
+return when it ends, and then destroy the object.  Emscripten inverts that control.  The program
+registers a callback and yields to JavaScript so the browser can schedule frames.  CNA once
+treated that yield like an ordinary returning call, creating a lifetime bug before the first
+frame was drawn.
+
+\section{The throw that is not a C\texttt{++} exception}
+
+The Web path calls \texttt{emscripten\_set\_main\_loop} with
+\texttt{simulateInfiniteLoop=1}.  Emscripten implements the apparent non-return by emitting a
+raw JavaScript \texttt{throw 'unwind'}.  With WebAssembly exception handling enabled by
+\texttt{-fwasm-exceptions}, CNA's generated C\texttt{++} cleanup path intercepted that foreign
+throw and unwound the current stack.
+
+That interaction made this apparently conventional entry point unsafe:
+
+\begin{verbatim}
+int main() {
+    MyGame game;
+    game.Run();
+}
+\end{verbatim}
+
+The unwind destroyed \texttt{game}, while the registered callback still retained pointers into
+it, including the graphics-device manager.  The page could build and start successfully, yet
+the first scheduled frame dereferenced dead state.  This is a useful counterexample to the
+idea that compilation plus module startup proves a viable Web port.
+
+\section{Reducing the failure before explaining it}
+
+The first hypothesis blamed multiple inheritance and pointer adjustment in the graphics
+manager.  It was plausible: a stale-looking address crossed an interface boundary, and Web
+builds expose layouts differently from familiar native debuggers.  Focused reproductions under
+AddressSanitizer, UndefinedBehaviorSanitizer, vptr checks, and Emscripten \texttt{SAFE\_HEAP}
+did not support it.
+
+An isolated lifetime reproduction did.  Destruction occurred during the control hand-off,
+before frame one, and the callback later observed the destroyed object.  The decisive evidence
+was temporal rather than structural: constructor, hand-off, destructor, callback.  Recording
+that sequence ruled out a renderer-specific theory and located the defect in the hosting
+contract shared by every Web renderer.
+
+\section{The repair and its boundary}
+
+The repaired examples allocate the game for browser lifetime rather than automatic scope:
+
+\begin{verbatim}
+int main() {
+    auto* game = new MyGame();
+    game->Run();
+}
+\end{verbatim}
+
+Twelve example entry points were changed in commit \texttt{b6686bfba}.  Intentional process-
+lifetime ownership is appropriate here because the browser loop does not return to a normal
+destruction point.  A richer host could instead hold the object in explicitly managed state
+and delete it after cancelling the loop, but stack lifetime cannot cross this hand-off.
+
+The repair was not mechanically complete.  The renderer benchmark still constructs its game
+on the stack at \texttt{modules/graphics/examples/graphics\_renderer\_benchmark.cpp:274}.  It
+is an Emscripten-only target and remains a regression-shaped exception.  This matters as much
+as the twelve repaired sites: a search-based migration must end with a search for survivors,
+not with a count of edited files.
+
+\section{The Web loop is not the native loop}
+
+Fixing ownership prevents use-after-destruction, but it does not make the two schedulers
+semantically identical.  At the audited revision, the Web path has five observable differences:
+
+\begin{enumerate}
+  \item \texttt{SuppressDraw} is ignored;
+  \item variable time-step mode is ignored and the loop always advances as fixed-step;
+  \item \texttt{IsRunningSlowly} remains false;
+  \item \texttt{EndRun} and \texttt{AfterLoop} are never called;
+  \item elapsed time is clamped to a hard-coded 250\,ms rather than the configured
+        \texttt{MaxElapsedTime}.
+\end{enumerate}
+
+The clock source differs too: the Web route uses \texttt{SDL\_GetTicks}, whereas the native
+route uses a performance counter and delay.  None of these differences necessarily prevents
+a demo from drawing.  Each can change game behavior, tests, shutdown, or timing-sensitive
+network code, so they belong in the compatibility contract rather than in an implementation
+footnote.
+
+\section{How to test a host-owned loop}
+
+A useful regression test cannot stop at ``the callback was registered.''  It must keep the
+page alive until at least one frame, assert that the game object is still alive inside that
+frame, and communicate the result through a browser-visible channel.  It should separately
+exercise cancellation and shutdown if those semantics are claimed.
+
+The minimum diagnostic trace is equally small: construction, registration, apparent unwind,
+first callback, and destruction.  On a conventional process these events seem obvious; under
+a foreign scheduler, spelling them out is often the fastest route to the bug.  The transferable
+rule is that a function which syntactically does not return may still run cleanup machinery.
+Ownership must follow the host's actual control flow, not the C\texttt{++} surface illusion.
