@@ -1,3 +1,222 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{Renderer Selection and Identity}
 \label{ch:renderer-selection-identity}
+
+CNA exposes forty-six public renderer names, but it does not ship forty-six unrelated rendering
+engines and it does not choose among them while a game is running. Configuration selects exactly
+one public identity; CMake maps that identity to one of forty-two implementation families; the
+resulting binary contains one implementation of the renderer factory. Keeping those three facts
+separate prevents most of the counting and portability mistakes surrounding CNA's renderer list.
+
+\begin{sourcenote}
+\textbf{Authority order.} The current identities are jointly pinned by
+\texttt{modules/core/include/CNA/GraphicsRendererType.hpp} and
+\texttt{cmake/RendererSelection.cmake}. The family mapping is stated by
+\texttt{docs/renderer-registry.md} and the physical module list. Older counts in plans, generated
+scripts, and migration documents are historical snapshots. This edition always prints
+\textbf{46 identities / 42 implementation families}, with both nouns present.
+\end{sourcenote}
+
+\section{Identity, family, and native API are different axes}
+
+A \emph{public identity} is the spelling supplied to
+\texttt{CNA\_GRAPHICS\_RENDERER}, such as \texttt{VULKAN}, \texttt{WEBGPU}, or
+\texttt{OPENGLES3}. It becomes a \texttt{GraphicsRendererType} enumerator and a
+\texttt{CNA\_RENDERER\_*} compile definition.
+
+An \emph{implementation family} is the source module that provides
+\texttt{CreateGraphicsRenderer()}. Five public identities share the \texttt{easygl} family:
+\texttt{OPENGLES2}, \texttt{OPENGLES3}, \texttt{OPENGL33}, \texttt{WEBGL1}, and
+\texttt{WEBGL2}. That one five-to-one mapping accounts for the arithmetic:
+$46-5+1=42$ families.
+
+A \emph{native API} is what the implementation ultimately calls. Usually it follows the family
+name, but not always. BGFX is itself an abstraction layer that can submit through OpenGL, GLES,
+Vulkan, Metal, or Direct3D. FNA3D similarly selects a driver below CNA. HEADLESS and STUB call no
+GPU at all. SOFTWARE and PORTABLEGL rasterize on the CPU. Asking ``which API is selected?''
+is therefore ambiguous until the axis is named.
+
+\section{The complete registry, grouped by implementation}
+
+\begingroup
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.12}
+\begin{longtable}{@{}p{0.23\textwidth}p{0.69\textwidth}@{}}
+\toprule
+\textbf{Family group} & \textbf{Public identities} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Family group} & \textbf{Public identities} \\
+\midrule
+\endhead
+EasyGL, five profiles
+  & \texttt{OPENGLES2}, \texttt{OPENGLES3}, \texttt{OPENGL33},
+    \texttt{WEBGL1}, \texttt{WEBGL2} \\
+Independent OpenGL-shaped
+  & \texttt{OPENGL1}, \texttt{OPENGL2}, \texttt{OPENGL4},
+    \texttt{OPENGLES1}, \texttt{PORTABLEGL} \\
+Native modern
+  & \texttt{VULKAN}, \texttt{SDL\_GPU}, \texttt{WEBGPU}, \texttt{METAL} \\
+Cross-API abstractions
+  & \texttt{BGFX}, \texttt{MAGNUM}, \texttt{LLGL}, \texttt{DILIGENT},
+    \texttt{SOKOL}, \texttt{WICKED}, \texttt{FNA3D} \\
+Direct3D and Direct2D
+  & \texttt{DIRECTX9}, \texttt{DIRECTX10}, \texttt{DIRECTX11},
+    \texttt{DIRECTX12}, \texttt{DIRECT2D} \\
+DirectX / retro ladder
+  & \texttt{DIRECTX1}, \texttt{DIRECTX2}, \texttt{DIRECTX3},
+    \texttt{DIRECTX5}, \texttt{DIRECTX6}, \texttt{DIRECTX7},
+    \texttt{DIRECTX8}, \texttt{FREEDIRECT}, \texttt{GLIDE} \\
+2D raster and vector
+  & \texttt{SDL\_RENDERER}, \texttt{GDI}, \texttt{SKIA},
+    \texttt{BLEND2D}, \texttt{OPENVG} \\
+Browser DOM
+  & \texttt{CANVAS}, \texttt{HTML\_DOM}, \texttt{SVG\_DOM} \\
+Diagnostic / CPU
+  & \texttt{HEADLESS}, \texttt{SOFTWARE}, \texttt{STUB} \\
+\bottomrule
+\end{longtable}
+\endgroup
+
+These groups are explanatory, not another registry. The exact Appendix~B table remains the quick
+reference; the chapters that follow group families by the API they speak and how their shaders
+arrive.
+
+\section{Selection happens at configure time}
+
+The normal interface is one cache variable:
+
+\begin{lstlisting}[language=bash]
+cmake -S . -B build -DCNA_GRAPHICS_RENDERER=VULKAN
+cmake --build build
+\end{lstlisting}
+
+CMake validates the spelling, applies platform and dependency gates, sets the matching
+\texttt{CNA\_RENDERER\_*} definition, chooses a \texttt{RENDERER\_DIR}, and builds the selected
+module as the renderer target. There is no supported call that swaps a live
+\cnaclass{GraphicsDevice} from Vulkan to SDL\_GPU or from SOFTWARE to BGFX. Comparing two families
+means producing two configurations or binaries.
+
+The default is platform-sensitive:
+
+\begin{itemize}
+  \item Emscripten selects \texttt{WEBGL2};
+  \item Linux selects \texttt{OPENGLES3};
+  \item other hosts select \texttt{SDL\_RENDERER}.
+\end{itemize}
+
+Treat those defaults as convenience, not as a portability promise. A game depending on MRT,
+hardware instancing, or a particular shader source language should select and test an explicit
+identity.
+
+\subsection{Legacy Boolean options are a compatibility surface}
+
+The \texttt{CNA\_RENDERER\_*} Booleans still exist for scripts that predate the single selector.
+If any are enabled, exactly one must be true. Mixing them does not create a multi-renderer build;
+the configure step terminates instead. New build instructions should prefer
+\texttt{CNA\_GRAPHICS\_RENDERER}, because one string is easier to cache, display, and validate
+than forty-six mutually exclusive switches.
+
+\section{Names that no longer select anything}
+
+Several spellings remain common in old documentation but are not aliases:
+
+\begin{itemize}
+  \item \texttt{EASYGL} is a family name, not a public selector. Choose one of its five profiles.
+  \item \texttt{ASCII} was removed as a renderer. Its reusable behavior is now
+    \cnaclass{CNA::Graphics::AsciiPostProcessEffect} in \texttt{modules/graphics-ext}.
+  \item \texttt{DX3} does not select anything. \texttt{DIRECTX3} is the real DirectX~3 family;
+    \texttt{FREEDIRECT} is the separate renderer built over the sibling free-direct library.
+  \item \texttt{D3D9}, \texttt{D3D11}, and \texttt{D3D12} are not public selector aliases;
+    use \texttt{DIRECTX9}, \texttt{DIRECTX11}, and \texttt{DIRECTX12}.
+  \item The former GLES identity was made explicit as \texttt{OPENGLES3}; GLES~2 is the separate
+    \texttt{OPENGLES2} profile.
+\end{itemize}
+
+Unknown names fail at configure time. That strictness is useful: silently redirecting
+\texttt{EASYGL} to whichever profile happens to be convenient would erase the capability
+differences Chapter~\ref{ch:opengl-programmable} must preserve.
+
+\section{Platform gates are part of identity}
+
+An entry in the registry means CNA has an implementation family, not that the current host can
+build it. The most important gates are:
+
+\begin{itemize}
+  \item \texttt{WEBGL1}, \texttt{WEBGL2}, \texttt{CANVAS}, \texttt{HTML\_DOM}, and
+    \texttt{SVG\_DOM} are Emscripten identities; native builds reject them.
+  \item The native EasyGL profiles are rejected under Emscripten.
+  \item DirectX, Direct2D, GDI, and Glide are Windows-shaped families. Some can be exercised under
+    Wine or Proton; that is a verification route, not a change in their API ownership.
+  \item \texttt{METAL} requires Apple platforms.
+  \item \texttt{FREEDIRECT} requires the sibling \texttt{../free-direct} checkout; EasyGL profiles
+    require \texttt{../easy-gl}. Other families have their own system, vendored, pinned-artifact,
+    or \texttt{FetchContent} dependencies.
+\end{itemize}
+
+The configure error is usually the most faithful evidence available on an unsupported host.
+Forcing past it would not prove the renderer portable; it would only bypass the source tree's
+declared boundary.
+
+\section{How the selected identity reaches C++}
+
+\texttt{GraphicsRendererType.hpp} owns the public enum and
+\texttt{getCurrentGraphicsRendererName()}. For EasyGL it decodes the profile compile definition
+back into the correct public identity, rather than returning a generic family name.
+\cnaclass{GraphicsDevice::GetGraphicsRendererType()} exposes the result to game code.
+
+The factory boundary is deliberately smaller:
+
+\begin{lstlisting}
+std::unique_ptr<IGraphicsRenderer>
+CreateGraphicsRenderer(const GraphicsRendererCreateArgs& args);
+\end{lstlisting}
+
+Exactly one selected module supplies that symbol. \cnaclass{GraphicsRendererCreateArgs} carries
+the SDL window, virtual dimensions, presentation mode, swap interval, MSAA request, recovery
+policy, graphics profile, and CNAEXT presentation fields. A field's presence does not mean every
+family honors it: Chapter~\ref{ch:renderer-contract} shows why the contract includes truthful
+no-op, refusal, and renderer-specific interpretations.
+
+\section{Family selection is not BGFX driver selection}
+
+Selecting \texttt{BGFX} chooses CNA's BGFX family. The environment variable
+\texttt{CNA\_BGFX\_RENDERER} can then ask bgfx to use OpenGL, GLES, Vulkan, Metal, D3D11, D3D12,
+or its own no-op driver. That second choice happens below CNA's identity layer:
+\cnaclass{GetGraphicsRendererType()} still reports BGFX, and all CNA capability and lifetime
+behavior still belongs to \cnaclass{BgfxRenderer}.
+
+The same reasoning applies when FNA3D selects a native driver. A lower layer changing from
+OpenGL to D3D11 does not turn the public identity into \texttt{OPENGL4} or
+\texttt{DIRECTX11}; it changes how one implementation family fulfills its contract.
+
+\section{Mechanical checks and the remaining CI trap}
+
+\texttt{scripts/check\_renderer\_identities.py} compares the enum and CMake registry against a
+hard-coded identity table. The check is useful even though its prose count was stale at the pin:
+the comparison itself enforces the forty-six entries and caught an integration reconciliation
+error.
+
+One live build-system defect demonstrates why registry checks and workflow checks are different.
+Two CI workflow areas still pass \texttt{EASYGL}, even though the selector rejects it. The
+identity checker can remain green while those jobs fail before compilation, because it proves
+the two registries agree; it does not parse every workflow command line. The defect is recorded
+for upstream repair rather than patched from this book.
+
+\section{A selection checklist}
+
+Before choosing a renderer for a port, answer in this order:
+
+\begin{enumerate}
+  \item Is the public identity buildable on every target platform?
+  \item Does its \emph{implementation behavior} provide the required 2D/3D, target, effect, and
+    query paths? Do not stop at a default-true capability flag.
+  \item What verification tier exists on each platform: real-XNA oracle, pixel tests, smoke test,
+    compile-only gate, or no execution?
+  \item Does a lower abstraction layer add a second runtime driver choice?
+  \item Are the required sibling checkouts or fetched dependencies acceptable to the product?
+\end{enumerate}
+
+The registry answers \emph{what can be selected}. The rest of Part~IV answers the harder
+question: \emph{what that selection is actually proven to do}.

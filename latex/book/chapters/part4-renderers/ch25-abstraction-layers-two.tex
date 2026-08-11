@@ -1,3 +1,141 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{Abstraction Layers II: Sokol, Wicked, and FNA3D}
 \label{ch:abstraction-layers-two}
+
+These three renderers place another graphics system between CNA and the native API, but that
+is nearly all they share.  Sokol chooses its native API at compile time; Wicked is hardwired
+to its Vulkan device in CNA; FNA3D chooses a driver at runtime and consumes precompiled XNA
+effect programs rather than CNA-authored shaders.
+
+\begin{longtable}{p{0.14\textwidth}p{0.25\textwidth}p{0.26\textwidth}p{0.21\textwidth}}
+\toprule
+Identity & Native-backend axis & Shader delivery & RT / MRT / query \\
+\midrule
+\endfirsthead
+\toprule
+Identity & Native-backend axis & Shader delivery & RT / MRT / query \\
+\midrule
+\endhead
+\texttt{SOKOL} & compile-time \texttt{CNA\_SOKOL\_API} & GLSL through offline \texttt{sokol-shdc} & yes / yes / GL build only \\
+\texttt{WICKED} & hardcoded Vulkan device & HLSL compiled by Wicked's DXC wrapper at startup & yes / yes / yes \\
+\texttt{FNA3D} & runtime FNA3D driver selection & pinned D3D9 Effect Framework bytecode via MojoShader & yes / yes / yes \\
+\bottomrule
+\end{longtable}
+
+All three own native extended primitive paths; none inherits the base colored downgrade.  That
+common endpoint hides radically different build and deployment risks.
+
+\section{SOKOL: two selectors, only one mature cross-product}
+
+Selecting \texttt{SOKOL} chooses the CNA renderer.  A second CMake value,
+\texttt{CNA\_SOKOL\_API}, chooses \texttt{GLCORE}, \texttt{GLES3},
+\texttt{DIRECTX11}, \texttt{METAL}, or \texttt{WGPU} before compilation.  The build warns for
+anything other than GLCORE because the implemented surface is functionally verified as a
+single-backend path, not as five interchangeable products.
+
+The shader source is processed offline by \texttt{sokol-shdc}.  Its generated C++ header
+contains conditional blocks for the native APIs and has a check mode for stale output.  The
+generator binary is a sizeable prebuilt tool and is not vendored, so shader maintenance has a
+distinct developer dependency even though consuming an already-generated header does not.
+
+\subsection{Capabilities leak the compile-time API}
+
+2D targets and MRT are implemented.  Occlusion queries and custom effects are reported only
+when the build exposes the renderer's GL readback/extension path.  That conditional answer is
+important: the public identity alone is insufficient to predict these features.
+
+The current Texture3D path illustrates a different danger.  Capability reporting can say
+true while the object remains CPU storage with no GPU allocation.  Code that only constructs
+and round-trips bytes may pass without proving that a shader ever sampled a volume texture.
+For this renderer, resource evidence must cross the draw boundary.
+
+\section{WICKED: an experimental Vulkan adapter}
+
+CNA fetches Wicked Engine and applies local patches for SDL3 platform integration, orderly
+device teardown, and staging-footprint behavior.  This is not a transparent dependency:
+upgrading upstream means revalidating both the adapter and the patch set.
+
+Although Wicked can support several graphics devices, CNA's renderer constructs
+\texttt{GraphicsDevice\_Vulkan} unconditionally.  D3D12 is not a fallback.  HLSL entry points
+are compiled at device creation by Wicked's DXC wrapper with Shader Model~6 as the minimum.
+
+That runtime compilation creates a packaging trap: \texttt{libdxcompiler.so} or
+\texttt{dxcompiler.dll} must be discoverable when the executable starts.  A successful link
+does not prove that the shader compiler will be present on a clean target machine.
+
+Wicked implements native extended draws, 2D targets, MRT, and occlusion queries.  Its
+experimental label describes evidence maturity, not a base-class stub.  The useful next proof
+is representative pixel behavior under the packaged runtime, including an environment where
+DXC is found exactly as an end-user installation would find it.
+
+\section{FNA3D: the XNA shader-program path}
+
+\texttt{FNA3D} is architecturally special.  CNA creates an FNA3D device and the library
+chooses among its available SDL GPU, D3D11, and OpenGL drivers; the
+\texttt{FNA3D\_FORCE\_DRIVER} hint can constrain that choice.  The repository's declared
+verification scope currently pins the OpenGL driver, so other driver paths remain separate
+claims.
+
+CNA authors no shaders for this renderer.  Six checked-in \texttt{.fxb} files are compiled
+D3D9 Effect Framework programs taken from a pinned FNA revision.  FNA3D accepts effects only
+through that compiled representation and executes them through MojoShader.  This makes the
+renderer CNA's closest path to the shader programs XNA content itself expects, rather than a
+fresh reimplementation of those effects in GLSL, HLSL, WGSL, or MSL.
+
+\begin{sourcenote}
+The effect blobs are versioned assets, not outputs fetched transitively with FNA3D.  Their
+provenance and pinned source revision belong in any regeneration review.  Rebuilding the C++
+dependency alone cannot refresh them.
+\end{sourcenote}
+
+\subsection{A strong oracle with a bounded public surface}
+
+Native extended draws, 2D targets, MRT, and occlusion queries are implemented.  Custom CNA
+effects are not: the only shader entry point accepts compiled effect bytecode.  Instancing is
+also reported false because the stock shader/input contract does not expose the required
+instance stream, even though multi-stream vertex input itself is available.
+
+Those refusals are consistent rather than contradictory.  A library may accept multiple
+vertex streams without the selected stock effect understanding per-instance data; likewise,
+it may execute real XNA effects without accepting arbitrary source strings through CNA's
+custom-effect abstraction.
+
+\subsection{Why this path is a useful comparison oracle}
+
+When a CNA-authored stock shader and FNA3D's compiled XNA program render the same scene, pixel
+agreement compares independent shader implementations.  Disagreement does not automatically
+make FNA3D correct, but it narrows investigation to semantics that one translation likely
+lost: matrix convention, fog, alpha test, lighting, texture coordinates, or blend state.
+
+The repository's corpus comparison script deliberately forces the OpenGL driver and tallies
+results as measurements rather than treating them as a universal gate.  This is the right
+scope: a fixed driver makes comparisons reproducible, while the label still records that
+FNA3D's other runtime drivers were not exercised by that run.
+
+\section{Six shader strategies across the wrapper chapters}
+
+Together with Chapter~\ref{ch:abstraction-layers-one}, the abstraction renderers demonstrate
+that a wrapper does not standardize shader delivery:
+
+\begin{enumerate}
+  \item BGFX consumes its own platform shader assets;
+  \item Magnum compiles raw GLSL strings at runtime;
+  \item LLGL embeds generated SPIR-V and GLSL variants;
+  \item Diligent cross-compiles one HLSL source at runtime;
+  \item Sokol uses an offline multi-backend generator;
+  \item Wicked invokes DXC at device creation;
+  \item FNA3D executes pinned compiled XNA effect programs through MojoShader.
+\end{enumerate}
+
+The list has seven entries because the two-chapter cluster contains seven renderers, and no
+two delivery contracts are quite identical.  Build reproducibility, package contents, runtime
+compiler availability, and shader-source ownership must therefore be audited separately.
+
+\section{Selection and verification}
+
+Choose Sokol when its compile-time native axis and generated-shader workflow fit the product.
+Choose Wicked for deliberate experimentation with its patched Vulkan path.  Choose FNA3D when
+running the XNA effect representation and its supported runtime driver is the central value.
+
+For every one, record both layers of selection and test a representative draw, target switch,
+MRT write, and query result where claimed.  A wrapper can make device creation portable; it
+cannot make unobserved renderer behavior portable by declaration.

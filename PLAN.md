@@ -71,7 +71,7 @@ current, not stale.
 | **A — source audit** | **Complete. 10 of 10 areas delivered and on disk in `audit/`.** |
 | **B — new Table of Contents** | **Complete.** The 12-Part / 79-chapter structure, appendices and old-to-new disposition map are settled in §4. |
 | **C — structural migration** | **Complete.** The 12-Part / 79-chapter / 8-appendix migration, context-sensitive terminology pass, current selector/identifier migration, and module-owned source-path sweep are complete and PDF-verified clean at 645 pages. |
-| **D — chapter writing** | Ready to start. The renderer draw-path matrix in §3.2 is complete; write in verified 8–10 chapter batches. |
+| **D — chapter writing** | **In progress.** First verified batch complete: Chapters 19–27. Continue in verified 8–10 chapter batches. |
 | **E — appendices** | Not started. |
 | **F — whole-book consistency** | Not started. |
 | **G — final verification** | Not started. |
@@ -336,6 +336,7 @@ log grep replaces.
 | 2026-08-11 | Phase C structural migration | **645 pages**, build clean; makeindex 2,367 / 0 / 0; 12 Parts, 79 chapter inputs/files, 8 appendix inputs/files; all old labels preserved, no missing/duplicate labels or inputs, exact Ch.01–79 order; all 645 pages reviewed as 26 contact sheets, affected title pages inspected at full size, one real Ch.18 title overflow and fifteen poor mid-word title breaks fixed and re-rendered clean |
 | 2026-08-11 | Phase C terminology/path completion | **645 pages**, build clean; makeindex 2,365 / 0 / 0; current renderer/CNAEXT identifiers and selectors; graphics “backend” removed from live prose while service backends remain; CNA citations migrated to `modules/<owner>/…` and existence-checked against the pin; all 645 pages re-rendered and reviewed as 26 contact sheets, with registry, Storage, preface, and long-path pages inspected full-size |
 | 2026-08-11 | Renderer draw-path matrix | **42/42 families, 46/46 identities**; 31 dual overrides / 11 dual inheritances; four hybrid colored tails; RT2D/MRT/occlusion paths mapped; capability contradictions recorded as CNA-BUG-054; row and partition counts mechanically checked; `git diff --check` clean |
+| 2026-08-11 | Phase D batch 1, Chapters 19–27 | **661 pages**, build clean; makeindex 2,378 / 0 / 0; renderer contract and selection corrected; OpenGL material separated into compatibility and programmable families; native-modern, wrapper, and retro clusters cover all assigned identities; physical PDF pages 194–303 rendered and reviewed as 11 contact sheets; no clipping, overlap, broken page, undefined reference, duplicate label, stale selector, or whitespace error |
 
 ---
 
@@ -431,3 +432,20 @@ mid-session at the owner's direction, so the build and visual passes are availab
   corrected `AUDIT.md` F-031's formerly over-broad statement that every inherited fallback
   necessarily renders a wrong picture.
 - Phase D is now unblocked.
+
+### 2026-08-11 — Phase D batch 1: Chapters 19–27
+
+- Corrected the renderer contract and selection chapters against the complete 42-family matrix,
+  including all 13 capability flags, default-true polarity, the DIRECTX10 unconditional
+  downgrade, four hybrid draw tails, and the MRT/query capability contradictions.
+- Reassigned the old EasyGL prose from Chapter 21 to Chapter 22 without losing its compatibility
+  label; rebuilt Chapter 21 around OPENGL1, OPENGL2, and OPENGLES1, then added OPENGL4 and
+  PORTABLEGL to Chapter 22.
+- Extended the native-modern chapter across VULKAN, SDL_GPU, WEBGPU, and METAL; completed both
+  abstraction-layer chapters across BGFX, MAGNUM, LLGL, DILIGENT, SOKOL, WICKED, and FNA3D.
+- Added the full historical renderer ladder: DIRECTX1/2/3 and FREEDIRECT in Chapter 26,
+  DIRECTX5/6/7/8 and GLIDE in Chapter 27, with API ceilings and evidence tiers kept separate.
+- Ran the consolidated verification pass: 661 pages, makeindex 2,378 accepted / 0 rejected /
+  0 warnings, every automated check green. Rendered physical pages 194–303 and inspected all
+  110 pages in 11 contact sheets; the new chapter openers, tables, notes, listings, and
+  transitions are visually clean.

@@ -1160,13 +1160,22 @@ prove the declaration won over the fixed 48-byte interpretation.
 
 The two ordinary effect-aware defaults look dangerously permissive:
 \path{DrawPrimitivesEx()} drops its entire parameter block and calls the colored draw, while
-\path{DrawIndexedPrimitivesEx()} does the same to its indexed counterpart. The current
-factory graph makes both defaults dead. EasyGL, Vulkan, BGFX, WebGPU, SDL GPU, D3D9/11/12,
-Software, and Headless all override both methods. The remaining SDL\_RENDERER, ASCII, Canvas,
-and FREEDIRECT products are 2D-only: public buffer construction fails first, and their colored
-fallback target throws if invoked directly. This is the same useful distinction as the dead
-\path{UpdatePixels()} default below: a
-permissive body is a maintenance risk, but not a current public data-loss path.
+\path{DrawIndexedPrimitivesEx()} does the same to its indexed counterpart. The exhaustive
+42-family audit shows that these bodies are not dead. Thirty-one families override both methods;
+eleven inherit both. Nine of those eleven eventually reject the call through their colored route,
+and STUB intentionally does nothing. DIRECTX10 is the consequential exception: its inherited
+fallback reaches a real D3D10 colored draw, so a textured, lit, fogged, skinned, or alpha-tested
+request can succeed as a plausible untextured colored approximation after the whole
+\cnaclass{GpuDrawParams} payload was discarded.
+
+Override presence is still not enough to conclude that no fallback exists. OPENGLES1, SDL GPU,
+OPENGL4, and WebGPU own both methods but explicitly re-enter their colored route for unmatched
+effect/layout combinations. Guards make some of those tails fail loudly; supported colored
+layouts can still draw with reduced semantics. The portable classification is therefore
+\emph{inherited fallback}, \emph{hybrid renderer-owned route}, or \emph{direct renderer-owned
+route} --- not merely \emph{override present}. Appendix~\ref{ch:feature-matrix} summarizes the
+family results, and the source evidence is curated in the edition audit rather than inferred
+from a virtual-method declaration count.
 
 \path{DrawInstancedPrimitivesEx()} is different. Its shared default throws
 \path{std::runtime_error}, and is live on two constructible 3D implementations. The public
@@ -1999,9 +2008,12 @@ Rather than requiring game code to attempt an operation and catch an exception t
 whether a renderer supports it, \cnaclass{GraphicsCapability} is a small enum ---
 \texttt{ThreeD}, \texttt{DepthStencilBuffer}, \texttt{MultiSampleAntiAliasing},
 \texttt{MultipleRenderTargets}, \texttt{AnisotropicFiltering}, \texttt{WireFrame},
-\texttt{OcclusionQuery}, \texttt{CustomEffects} --- queryable via
+\texttt{OcclusionQuery}, \texttt{CustomEffects}, \texttt{Texture3D},
+\texttt{MultiStreamVertexInput}, \texttt{Instancing}, \texttt{StencilBuffer}, and
+\texttt{AdditiveBlending} --- queryable via
 \texttt{GraphicsDevice::\allowbreak{}SupportsCapability\allowbreak{}(GraphicsCapability)}. The default implementation
-returns \texttt{true} for everything; a 2D-only renderer like \texttt{SDL\_RENDERER}
+returns \texttt{true} for everything except multi-stream input, while stencil delegates to the
+separate \texttt{SupportsStencilBuffer()} hook; a 2D-only renderer like \texttt{SDL\_RENDERER}
 (Chapter~\ref{ch:sdl-renderer}) overrides this to honestly report what it cannot do, rather
 than accepting a 3D draw call and throwing only once the call actually arrives.
 
@@ -2016,7 +2028,8 @@ if (device.SupportsCapability(GraphicsCapability::ThreeD)) {
 const bool knownOcclusionFalsePositive =
     renderer == GraphicsRendererType::WebGPU ||
     renderer == GraphicsRendererType::SdlGpu ||
-    renderer == GraphicsRendererType::Software;
+    renderer == GraphicsRendererType::Software ||
+    renderer == GraphicsRendererType::Headless;
 if (!device.SupportsCapability(GraphicsCapability::OcclusionQuery) ||
     knownOcclusionFalsePositive) {
     // Skip GPU occlusion culling entirely rather than constructing an OcclusionQuery
@@ -2024,19 +2037,18 @@ if (!device.SupportsCapability(GraphicsCapability::OcclusionQuery) ||
 }
 \end{lstlisting}
 
-This is precisely the ``ask, don't catch'' pattern this section's own title promises, and a
-Chapter~\ref{ch:graphicsdevice} finding is worth recalling here as the reason it must be used
-deliberately rather than assumed reliable everywhere: \cnaclass{MultipleRenderTargets}
-is one of the eight values this mechanism covers, but no renderer's \texttt{SupportsCapability}
-override actually gates on it, so it silently returns \texttt{true} even on renderers (like
-\texttt{SOFTWARE}) where a real MRT draw demonstrably fails --- a capability flag that exists,
-but that this specific query cannot yet be trusted to answer honestly for.
+This is precisely the ``ask, don't catch'' pattern this section's own title promises, but the
+default-true polarity means it must be audited against behavior. Many renderer overrides answer
+MRT honestly, including runtime/device-dependent answers in EasyGL, Magnum, and OpenGL2. Three do
+not: HEADLESS, SOFTWARE, and WebGPU report true while their multi-target bind path throws. A
+capability flag can therefore exist and still be an unreliable preflight on a named renderer.
 
 The source audit confirms further failures of that default-true design. \texttt{CustomEffects}
 reports true on BGFX and WebGPU despite two different non-support shapes: an always-invalid
 compiled object and a null factory plus a throwing \cnaclass{SpriteBatch}. \texttt{OcclusionQuery}
 has a parallel confirmed set in WebGPU, SDL GPU, and Software, which inherit a null factory but
-report \texttt{true}. Thus ``ask, don't catch'' is the intended API, not yet a universal guarantee.
+report \texttt{true}; HEADLESS returns a bookkeeping query whose pixel count is the constant one,
+not a real GPU query. Thus ``ask, don't catch'' is the intended API, not yet a universal guarantee.
 A caller targeting one of these known exceptions needs the explicit guards above and, for
 custom effects, the renderer-specific boundary documented in
 Chapter~\ref{ch:shader-fx-gap}.

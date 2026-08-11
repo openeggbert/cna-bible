@@ -8,6 +8,26 @@ same contract every other renderer implements, using bgfx's own native API --- w
 platform initialization, texture creation, sprite draws, frame submission --- rather than
 routing through SDL\_Renderer.
 
+The chapter compares four wrappers whose underlying API can be chosen below CNA.  That second
+selection axis is part of every bug report: \texttt{BGFX} on Vulkan and \texttt{BGFX} on
+OpenGL are one CNA family but not the same native execution path.
+
+\begin{longtable}{p{0.14\textwidth}p{0.25\textwidth}p{0.22\textwidth}p{0.24\textwidth}}
+\toprule
+Identity & Backend resolution & Shader strategy & RT / MRT / query \\
+\midrule
+\endfirsthead
+\toprule
+Identity & Backend resolution & Shader strategy & RT / MRT / query \\
+\midrule
+\endhead
+\texttt{BGFX} & runtime library selection, CNA override available & bgfx shader assets & yes / yes / device bit \\
+\texttt{MAGNUM} & compile-time desktop GL path & raw GLSL compiled at runtime & yes / runtime maximum / yes \\
+\texttt{LLGL} & runtime module selection, Linux currently OpenGL & generated SPIR-V and verbatim GLSL & yes / yes / yes \\
+\texttt{DILIGENT} & runtime ordered device fallback & one HLSL source cross-compiled at runtime & yes / yes / device features \\
+\bottomrule
+\end{longtable}
+
 \begin{sourcenote}
 The abstraction boundary also owns this renderer's default attachments. CNA passes bgfx a
 window, dimensions, renderer selection, and reset flags, but neither the requested
@@ -423,3 +443,61 @@ the old ``only depth bias remains'' shorthand were repeated literally. The still
 \texttt{SlopeScaleDepthBias} omission and the two environment-bound render-target checks remain
 important limitations, while later feature work should be evaluated from the current renderer
 plan and its registered tests rather than from that earlier closure slogan alone.
+
+\section{MAGNUM: a wrapper with no offline shader generator}
+
+\texttt{MAGNUM} first searches for an installed Magnum and otherwise fetches pinned Corrade
+and Magnum revisions.  Emscripten is rejected.  Its default desktop path is GLX, with EGL an
+explicit CMake option rather than a runtime driver choice.
+
+Its shader boundary is unique in this cluster: GLSL lives as C++ string literals and is
+compiled by \texttt{Magnum::GL::Shader} at runtime.  There is no checked-in generated shader
+header and no staleness checker to run.  That removes an offline tool dependency while moving
+syntax and driver compatibility failures into device startup.
+
+Extended draws and 2D targets are native.  MRT capability follows the discovered maximum
+target count rather than an unconditional constant, anisotropy follows the runtime sampler
+limit, and occlusion queries are real.  This is the desirable capability shape: report the
+device actually created, not the feature ceiling of the wrapper library in the abstract.
+
+\section{LLGL: a broad library behind a deliberately narrower CNA path}
+
+\texttt{LLGL} is fetched at a pinned release unless \texttt{CNA\_LLGL\_ROOT} supplies it.
+The renderer has its own module-selection helper, but the available set is platform-bounded:
+on Linux CNA presently offers OpenGL, and an explicit request for Vulkan throws instead of
+quietly selecting something else.
+
+Two shader forms are checked in.  Vulkan-style sources are compiled to SPIR-V, while
+OpenGL-specific sources are preserved as GLSL; both are assembled into a generated header.
+The generator has a check mode, so CI can distinguish a source change from a forgotten
+regeneration.
+
+The current renderer owns native extended draws, 2D targets, MRT, and occlusion queries.  Its
+documentation nevertheless describes a narrower boundary than upstream LLGL.  Library
+support is not automatically CNA support: each resource and state path still requires an
+adapter, a capability answer, and observable evidence through the selected module.
+
+\section{DILIGENT: one HLSL program, several device types}
+
+\texttt{DILIGENT} fetches DiligentCore and resolves a device at runtime.  The preference order
+is D3D12, Vulkan, D3D11, then OpenGL, filtered by what the build contains; on Linux the real
+candidate list is Vulkan followed by OpenGL.  Tests that exercise only the first successful
+candidate therefore do not prove the fallback path.
+
+Rather than shipping one shader package per device type, the renderer stores a single HLSL
+source and asks DiligentCore to cross-compile it at runtime.  The row-major pragma is part of
+that contract because the HLSL-to-GLSL converter recognizes the pragma form.  A shader edit
+can thus affect several native backends without generating separate checked-in blobs, but
+each translation path still needs its own execution evidence.
+
+Native extended draws, 2D targets, and MRT are implemented.  Occlusion-query support follows
+device features.  Of the wrappers in this chapter, Diligent is closest to broad CNA parity,
+yet its runtime fallback order creates the sharpest test-design warning: one test binary
+registered twice is useful only if the device override genuinely forces two different paths.
+
+\section{Wrapper-selection checklist}
+
+For every reproduction, capture the CNA identity, underlying native backend, shader delivery
+path, and whether fallback was automatic or forced.  Then verify the specific feature through
+pixels or query values.  Construction proves that two abstraction layers agreed on startup;
+it does not prove that state and resources survived both translations.

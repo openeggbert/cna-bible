@@ -1,3 +1,126 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{The Retro Ladder: DirectX 5--8 and Glide}
 \label{ch:retro-ladder}
+
+The second retro chapter follows four successive Direct3D interface generations and one
+contemporary rival.  Every family maps CNA's modern contract onto fixed-function hardware
+concepts; none has a programmable shader stage in its declared scope.
+
+\begin{longtable}{p{0.15\textwidth}p{0.28\textwidth}p{0.24\textwidth}p{0.19\textwidth}}
+\toprule
+Identity & API shape & Extended draws & RT / MRT / query \\
+\midrule
+\endfirsthead
+\toprule
+Identity & API shape & Extended draws & RT / MRT / query \\
+\midrule
+\endhead
+\texttt{DIRECTX5} & DirectDraw~4 + Direct3D~3 & native fixed function & yes / no / no \\
+\texttt{DIRECTX6} & same COM generation, real stencil & native fixed function & yes / no / no \\
+\texttt{DIRECTX7} & flattened Direct3D~7 device model & native fixed function & yes / no / no \\
+\texttt{DIRECTX8} & Direct3D~8 device API & native fixed function & yes / no / no \\
+\texttt{GLIDE} & Glide~3 runtime ABI & native fixed function & no / no / no \\
+\bottomrule
+\end{longtable}
+
+There is no \texttt{DIRECTX4} selector because DirectX~4 was not a public release.  The jump
+in names is historical, not a missing CNA family.
+
+\section{DIRECTX5: the stable immediate-mode baseline}
+
+\texttt{DIRECTX5} moves to DirectDraw~4 and Direct3D~3, where flexible vertex formats and
+\texttt{DrawPrimitive} form the baseline.  Execute buffers are fully absent from CNA's path.
+The earlier spike result therefore becomes a repeatable port strategy rather than a one-off
+experiment.
+
+The renderer translates effect-aware draws into fixed-function matrices, texture stages,
+lighting, fog, alpha test, blend, depth, and raster state.  A native override does not mean
+arbitrary effects are possible; it means supported stock semantics are reduced intentionally
+inside the family instead of being dropped by the interface default.  2D targets work, while
+MRT and occlusion queries remain outside the era's contract.
+
+\section{DIRECTX6: a small delta with a real stencil gain}
+
+The DirectX~6 port retained the same broad COM interface shape as DirectX~5.  The measured
+source delta was about six percent, an example of why close lineage is useful: shared behavior
+can be brought up first, then the changed surface can be audited directly.
+
+One change is user-visible.  This rung implements and tests real stencil behavior.  Its
+\texttt{SupportsCapability(StencilBuffer)} answer nevertheless returns false.  That is a
+capability-reporting defect, not evidence that the implementation lacks stencil.  Callers
+that trust the bit will unnecessarily disable a working feature; callers that ignore it may
+use behavior the renderer demonstrably provides.
+
+\section{DIRECTX7: the flattened device model}
+
+Direct3D~7 removes the separate viewport-object model and folds more state into the device.
+The CNA contract above it remains stable, which makes this renderer a useful adapter study:
+the same viewport and state calls require a different ownership mapping even when the visible
+scene is unchanged.
+
+Its feature outline remains native fixed-function draws, 2D targets, no MRT, and no occlusion
+queries.  Real stencil exists, while the same false capability answer found in DirectX~6
+persists here.
+
+\section{DIRECTX8: a new device generation, deliberately no Shader Model 1}
+
+Direct3D~8 is a much more recognizable device API, but CNA intentionally stops at its
+fixed-function surface.  Shader Model~1 assembly is too narrow for realistic XNA effect
+content and would create a misleading partial programmable promise.  The renderer therefore
+keeps the same honest semantic ceiling as the preceding rungs.
+
+The build has a distinctive dependency.  A normal 64-bit mingw-w64 installation does not
+provide the required D3D8 import library; CNA expects the D8VK/DXVK import path and refuses
+configuration when it is absent.  Runtime evidence uses a dedicated Wine prefix and can
+force llvmpipe through the DXVK device filter for reproducibility.
+
+2D targets are implemented; MRT and queries are not.  Stencil is implemented but its
+capability answer is false, completing the same defect across DirectX~6, 7, and 8.
+
+\begin{sourcenote}
+For all four DirectX identities, a passing Wine run proves CNA plus Wine or DXVK.  It does not
+retroactively prove every native driver shipped with the historical SDK.  The compatibility
+layer is part of the recorded environment.
+\end{sourcenote}
+
+\section{GLIDE: a contemporary fixed-function branch}
+
+\texttt{GLIDE} targets the Glide~3 ABI and is intentionally constrained to Windows and
+32-bit builds.  CNA does not vendor the runtime DLL; a user-supplied \texttt{glide3x.dll} is
+required.  That packaging boundary exists partly because common compatibility implementations
+have licenses unsuitable for vendoring here.
+
+The renderer owns a native fixed-function extended draw path, but it cannot create
+\cnaclass{RenderTarget2D}; the factory throws.  MRT and occlusion queries are likewise absent.
+This makes Glide the only family in the retro table without even the single off-screen target
+that the DirectX rungs provide.
+
+Its evidence boundary is sharper still.  The repository contains a real example target, but
+deliberately does not register it with \texttt{ctest}; no automated job executes Glide
+rendering.  Compilation can validate headers and ABI shape, while pixels remain a manual
+claim requiring a suitable 32-bit runtime.
+
+\section{What the ladder teaches}
+
+The sequence is less about nostalgia than contract design:
+
+\begin{itemize}
+  \item a single public draw packet can be reduced across several fixed pipelines without
+        pretending that arbitrary shaders exist;
+  \item measured port similarity accelerates implementation but cannot replace per-family
+        capability and presentation evidence;
+  \item capability bits can be less accurate than executable behavior, as the three stencil
+        false negatives demonstrate;
+  \item build, compatibility-layer, and runtime-DLL success are distinct proof tiers.
+\end{itemize}
+
+\section{A practical retro verification pass}
+
+For each DirectX rung, exercise clear/present, one textured 2D draw, one depth-ordered 3D
+scene, target bind/unbind, and every state feature the family claims.  On DirectX~6--8 add a
+stencil pixel test and record the known capability mismatch.  Capture the Wine version,
+translation layer, prefix, and device name beside the result.
+
+For Glide, keep compile evidence and execution evidence separate.  A successful 32-bit link
+does not show that a compatible DLL loaded, and a loaded DLL does not show that a triangle
+reached the screen.  Until the example is executed and its pixels observed in a documented
+environment, the honest status remains implemented ABI with unautomated rendering evidence.

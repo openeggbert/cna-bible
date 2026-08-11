@@ -11,8 +11,8 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
 |---|---|
 | cna-bible branch | `next`; local commits are ahead of `origin/next` (push requires explicit external-publication approval) |
 | CNA pinned SHA | `7a64362efef4119bf880459ef1704fb2c52199e2` (`develop` == `origin/develop`, 2026-08-11) |
-| Book builds | **yes** — 645 pages, all automated and visual checks green |
-| Phase | **A, B, and C complete and verified; renderer draw-path matrix complete.** Phase D chapter writing is unblocked. |
+| Book builds | **yes** — 661 pages, all automated checks green; Phase D batch 1 visually verified |
+| Phase | **A, B, and C complete. Phase D in progress:** first verified batch, Chapters 19–27, is complete. |
 
 ## What is done
 
@@ -51,9 +51,9 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
    chapter distinct from CNA's `FREEDIRECT` renderer treatment.
 9. **Phase C is complete and verified.** The filesystem and `main.tex` now
    contain exactly 12 Parts, Ch.01–79 and Appendices A–H. Every old label survived; every new
-   chapter has a semantic label; all old prose remains compiled. Split/new chapters are honest
-   structural placeholders. The three old Vulkan/WebGPU/SDL GPU chapters are preserved together
-   under the new native-modern chapter until Part IV is rewritten.
+   chapter has a semantic label; all old prose remains compiled. Chapters not yet reached by
+   Phase D remain honest structural placeholders. The old Vulkan/WebGPU/SDL GPU material was
+   preserved together under the native-modern chapter and was integrated in Phase D batch 1.
 10. **The edition-wide terminology and path migration is complete.** The live manuscript uses
     current renderer/CNAEXT identifiers and selectors, distinguishes `FREEDIRECT` from
     `DIRECTX3`, leads with the authoritative **46 identities / 42 implementation families**
@@ -66,16 +66,17 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     inherited colored downgrade. Four override families retain conditional colored tails.
     RT2D/MRT/occlusion behavior is mapped separately from capability claims, exposing the further
     default-true contradictions recorded as CNA-BUG-054.
+12. **Phase D batch 1 is complete and verified.** Chapters 19–27 now cover the renderer
+    contract and selection, all ten OpenGL identities, the four native-modern identities, all
+    seven abstraction-layer identities, and the nine historical DirectX/Glide identities.
+    The consolidated book is 661 pages; physical pages 194–303 were rendered and inspected.
 
 ## Do this next
 
-**Start Phase D:** write chapters in batches, per the project's batched-verification
-methodology (`CLAUDE.md`) — write across ~8–10 chapters, then one consolidated `make book` +
-visual pass, not one verification per chapter.
-
-The first Part IV batch should use `audit/renderer-draw-path-matrix.md` alongside
-`audit/renderer-catalog.md` and `audit/graphics-core-effects.md`; do not reduce “has an override”
-or “capability says true” to “feature works.”
+**Continue Phase D with Chapters 28–36** as the next nine-chapter batch. Finish Part IV's
+modern Direct3D, Windows 2D, raster/vector, Web/DOM, and diagnostic renderer chapters, then
+begin Part V's content façade, XNB container, type-reader, and CNJ chapters. Use the matching
+raw audit reports before writing and finish with one consolidated build plus visual pass.
 
 ## Do not do these
 
@@ -93,10 +94,10 @@ or “capability says true” to “feature works.”
 
 ## Verification status
 
-Everything through the completed Phase C checkpoint is verified:
+Everything through Phase D batch 1 is verified:
 
-- `make -C latex book` succeeds; **645 pages**.
-- makeindex: 2,365 entries accepted, 0 rejected, 0 warnings.
+- `make -C latex book` succeeds; **661 pages**.
+- makeindex: 2,378 entries accepted, 0 rejected, 0 warnings.
 - No undefined references, no undefined control sequences, no duplicate labels, no doubled-
   backslash `\ref`, no hard-coded chapter numbers.
 - `git diff --check` clean.
@@ -104,11 +105,11 @@ Everything through the completed Phase C checkpoint is verified:
   zero missing inputs, lost old labels, duplicate labels or hard-coded chapter numbers.
 - Terminology/path pass: no obsolete CNA identifier, option, live selector assignment, or legacy
   renderer macro remains; all explicit `modules/...` file citations exist at the pin.
-- Final visual pass: all 645 pages were freshly rendered into 26 contact sheets and inspected;
-  registry, Storage, preface, and long-path pages were read at full size.
+- Phase C's full 645-page pass remains green. Phase D batch 1 additionally rendered and reviewed
+  every touched physical page, 194–303, as 11 contact sheets.
 
-**No Phase D writing batch is pending PDF verification.** Phase C is fully verified. Complete
-the draw-path matrix, then follow the normal ~8–10 chapter batch rule.
+**No completed writing batch is pending PDF verification.** Continue with Chapters 28–36 and
+follow the normal ~8–10 chapter batch rule.
 
 ## Environment notes
 
@@ -122,5 +123,5 @@ the draw-path matrix, then follow the normal ~8–10 chapter batch rule.
 
 Ten source-audit reports and the 42-family draw-path matrix are complete against pinned CNA
 `7a64362e`. Phase B settled a 12-Part, 79-chapter, 8-appendix edition; Phase C put it on disk,
-migrated renderer/CNAEXT terminology, selectors and module-owned paths, and verified all 645 pages
-mechanically and visually. Phase D now begins in verified 8–10 chapter batches.
+migrated terminology, selectors and paths, and verified all 645 pages. Phase D batch 1 rewrote
+Chapters 19–27 and verified the resulting 661-page book; Chapters 28–36 are next.

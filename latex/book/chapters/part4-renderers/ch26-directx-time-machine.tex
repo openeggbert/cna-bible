@@ -3,6 +3,77 @@
 \label{ch:dx3-freedirect-renderer}
 \label{ch:dx3-freedirect-backend}
 
+Four identities meet here, but only three are Microsoft-era rungs.  \texttt{DIRECTX1},
+\texttt{DIRECTX2}, and \texttt{DIRECTX3} use historical DirectDraw/Direct3D interfaces on
+Windows.  \texttt{FREEDIRECT} is a portable 2D renderer over the separate \texttt{free-direct}
+project and is not an implementation of the \texttt{DIRECTX3} selector.
+
+\begin{longtable}{p{0.16\textwidth}p{0.24\textwidth}p{0.24\textwidth}p{0.22\textwidth}}
+\toprule
+Identity & Native surface & 3D route & RT / MRT / query \\
+\midrule
+\endfirsthead
+\toprule
+Identity & Native surface & 3D route & RT / MRT / query \\
+\midrule
+\endhead
+\texttt{DIRECTX1} & DirectDraw v1 & unavailable; base fallback rejects & off-screen surface / no / no \\
+\texttt{DIRECTX2} & DirectDraw and Direct3D v2 & fixed-function \texttt{DrawPrimitive} & yes / no / no \\
+\texttt{DIRECTX3} & DirectDraw v2 and Direct3D v2 & fixed-function \texttt{DrawPrimitive} & yes / no / no \\
+\texttt{FREEDIRECT} & free-direct surface API & unavailable; base fallback rejects & yes / no / no \\
+\bottomrule
+\end{longtable}
+
+\section{DIRECTX1: before Direct3D existed}
+
+DirectX~1 shipped DirectDraw but no Direct3D.  CNA's renderer is consequently a real 2D
+implementation, not an unfinished 3D backend.  Its off-screen surfaces provide
+\cnaclass{RenderTarget2D}; MRT and occlusion queries do not exist at this API level.
+
+The extended primitive methods are inherited.  Their base route reaches colored rendering,
+and this 2D family rejects that request.  This is the correct visible failure for a permanent
+API ceiling.  Reporting successful effect-aware 3D would be more misleading than throwing.
+
+Build and execution are Windows-shaped.  The repository can cross-compile with mingw-w64 and
+exercise the binary under Wine's DirectDraw implementation, but that proves a compatibility
+layer as well as CNA.  Native historical drivers remain a different environment claim.
+
+\section{DIRECTX2: fixed function without execute buffers}
+
+Direct3D~2 is often associated with execute buffers, yet CNA deliberately submits immediate
+\texttt{DrawPrimitive} calls.  This was not guessed from later APIs: a spike established
+that Wine's implementation accepts the route and provides real transform, lighting, texture,
+depth, and raster behavior needed by the bounded renderer.
+
+Both extended draw entry points are native fixed-function adapters.  CNA's modern draw packet
+is reduced to texture, matrix, lighting, fog, alpha, and state concepts available in the old
+pipeline.  Custom programmable effects are outside the API's design.  2D targets work;
+multiple attachments and queries do not.
+
+\section{DIRECTX3: a small port, not a renamed free-direct}
+
+This renderer uses the DirectDraw~2 and Direct3D~2 interface generation available with the
+DirectX~3 SDK surface.  It landed under a temporary \texttt{DX30} name because the old
+\texttt{DIRECTX3} selector was still occupied by what is now \texttt{FREEDIRECT}.  The
+identity cleanup separated historical Microsoft DirectX from the portable sibling project.
+
+The measured source delta from the DirectX~2 port was small, roughly 3.7 percent, but that
+number describes lineage rather than semantic equivalence.  Interface acquisition,
+presentation, and platform behavior still belong to a separate family and build target.
+Its draw and target feature shape matches the preceding rung: native fixed-function draws,
+one 2D target, no MRT, and no occlusion queries.
+
+\section{Why the first three rungs matter}
+
+The sequence isolates what the API itself added.  DirectX~1 can compose surfaces but cannot
+express 3D.  DirectX~2 introduces an immediate fixed-function route sufficient for CNA's
+bounded 3D mapping.  DirectX~3 changes the surrounding SDK/interface generation without
+turning that fixed pipeline into a programmable one.  The same CNA call surface therefore
+reveals an actual historical boundary rather than flattening every old renderer into one
+generic legacy label.
+
+\section{FREEDIRECT: a separate portable 2D branch}
+
 \texttt{FREEDIRECT} is CNA's second 2D-only renderer, and its odd one out architecturally: it does
 not use SDL3's 2D API at all, instead fronting \texttt{IDirectDraw} / \texttt{IDirectDrawSurface}-shaped
 calls against \texttt{free-direct}, the narrow DirectDraw reimplementation introduced in
