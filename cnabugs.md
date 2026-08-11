@@ -660,6 +660,35 @@ examples, so it too inherits `true`, while its `CompileProgram` is a hardcoded
 Every other non-supporting renderer returns `false` explicitly. (See also CNA-BUG-011/012/013,
 which record the sibling capability-reporting defects found in the renderer catalog.)
 
+### CNA-BUG-054 — HEADLESS, SOFTWARE and WEBGPU advertise MRT while rejecting it; two also overclaim occlusion queries
+**Severity: medium · Confidence: VERIFIED · Area: `modules/renderers`, `modules/graphics`**
+
+The completed 42-family draw-path matrix found three further consequences of
+`IGraphicsRenderer::SupportsCapability()` defaulting to true:
+
+- HEADLESS reports `MultipleRenderTargets=true` through its switch's default
+  (`HeadlessRenderer.cpp:644-661`) but throws for every `SetRenderTargets` count above one
+  (`:617-629`). It also reports `OcclusionQuery=true`, although its query is a bookkeeping object
+  whose `PixelCount()` is the constant 1 and whose renderer touches no GPU
+  (`HeadlessRenderer.hpp:512-535`).
+- SOFTWARE's capability switch falls through to true for both entries
+  (`SoftwareRenderer2DState.cpp:96-120`), but its MRT path throws for count above one (`:143-153`)
+  and its own header states that `CreateOcclusionQuery()` keeps the shared `nullptr` default
+  (`SoftwareRenderer.hpp:504-507`).
+- WEBGPU reports MRT true through its base delegation (`WebGPURenderer.cpp:6065-6074`) while
+  `SetRenderTargets` throws for count above one (`:7108-7123`). Its occlusion-query half is already
+  recorded by CNA-BUG-012.
+
+The enum contracts are explicit: MRT means “more than one simultaneous render target,” and
+occlusion support means a “real GPU occlusion query.” Validation objects, null factories and
+throwing bind paths do not satisfy them.
+
+The shared capability test reinforces the errors. HEADLESS, SOFTWARE, SDL_GPU and WEBGPU fall into
+the catch-all `true` expectations in `GraphicsDeviceCapabilityTests.cpp:66-152`; the assertions at
+`:212-221` compare Booleans only and never attempt a two-target bind or require a usable query.
+
+Full 42-family evidence: `audit/renderer-draw-path-matrix.md` §4.
+
 ---
 
 ## What this list does not cover
@@ -668,12 +697,10 @@ Stated plainly so nothing here is over-read:
 
 - **Nothing was executed.** No build, no test, no renderer was run. Every finding is static.
   Severity judgements in particular would benefit from reproduction.
-- **The per-renderer draw-path matrix was not audited.** Which of the 42 renderer families
-  implement `DrawPrimitivesEx`/`DrawIndexedPrimitivesEx` versus inheriting the default that
-  **silently discards the entire `GpuDrawParams`** and falls back to the colored-primitive path
-  (`IGraphicsRenderer.hpp:1718-1742`) is unknown. Any renderer in that set renders an untextured,
-  unlit approximation of every stock effect with no error and no diagnostic. This is the largest
-  known blind spot in the audit.
+- **The draw-path matrix is static, not a 42-family runtime reproduction.**
+  `audit/renderer-draw-path-matrix.md` exhaustively maps both ordinary `Draw*Ex` routes, RT2D, MRT
+  and occlusion-query behavior from source. Native API/device-conditional rows remain labelled
+  conditional; no renderer was executed as part of that matrix.
 - **Only five of 46 renderers were checked for oracle coverage.** Only `directx9`, `easygl`,
   `fna3d`, `opengles1` and `skia` build a `cna_oracle_render_*` binary, and only the D3D9 one is a
   hard gate; the others' pixel verification is entirely self-referential.

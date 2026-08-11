@@ -451,10 +451,28 @@ separate, not-yet-implemented feature". Device loss is genuinely wired on **D3D9
 **F-031 — Three distinct forwarding failure modes, and the most consequential is silent.**
 **Confidence: VERIFIED.** `DrawPrimitivesEx`/`DrawIndexedPrimitivesEx` have **default
 implementations that discard the entire `GpuDrawParams`** and fall back to the colored-primitive
-path — a renderer that has not implemented the effect-aware route renders *something*
-(untextured, unlit, no fog, no skinning) with no error. Contrast `DrawInstancedPrimitivesEx` and
-`ReadBackbuffer`, which throw, and `ApplyRasterizerState`/`ApplySamplerState`/`SetBlendFactor`,
-which are empty no-ops.
+path. The completed 42-family matrix makes the consequence precise: 11 families inherit both
+defaults; nine then reject 3D through their colored route, STUB reaches an intentional no-op, and
+**DIRECTX10 alone submits a real colored draw after discarding the parameters**. Four additional
+families own both overrides but retain a conditional colored tail: OPENGLES1, SDL_GPU, OPENGL4 and
+WEBGPU. Contrast `DrawInstancedPrimitivesEx` and `ReadBackbuffer`, which throw by default, and
+`ApplyRasterizerState`/`ApplySamplerState`/`SetBlendFactor`, which are empty no-ops. Full evidence:
+`audit/renderer-draw-path-matrix.md`.
+
+**F-031a — Override presence is not a sufficient effect-fidelity test.**
+**Confidence: VERIFIED.** Of 42 families, 31 override both ordinary effect-aware draw methods.
+Twenty-eight own a rendering route, GDI/SKIA refuse, and HEADLESS validates/traces only. But four
+of those 28 rendering overrides still call the colored path for unmatched effect/layout
+combinations. DIRECTX10 is the only *unconditional inherited* downgrade; OPENGLES1, SDL_GPU,
+WEBGPU and OPENGL4 are hybrid routes with narrower downgrade-or-reject tails.
+
+**F-031b — Capability answers overclaim MRT and occlusion-query behavior in reachable code.**
+**Confidence: VERIFIED.** HEADLESS, SOFTWARE and WEBGPU report
+`MultipleRenderTargets=true` while their `SetRenderTargets(count>1)` paths throw. HEADLESS and
+SOFTWARE also report real occlusion-query support despite a constant bookkeeping object and a
+null factory respectively, joining the already-recorded SDL_GPU/WEBGPU query overclaim. The
+shared capability test's catch-all `true` expectations preserve the contradictions without ever
+binding two targets or requiring a usable query. Recorded as CNA-BUG-054 in `cnabugs.md`.
 
 **F-032 — CNA vertex structures are not blittable, and a parallel stream layer exists because of
 it.** **Confidence: VERIFIED.** `Color` implements `IPackedVector` and most vertex types implement

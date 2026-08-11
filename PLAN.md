@@ -71,7 +71,7 @@ current, not stale.
 | **A — source audit** | **Complete. 10 of 10 areas delivered and on disk in `audit/`.** |
 | **B — new Table of Contents** | **Complete.** The 12-Part / 79-chapter structure, appendices and old-to-new disposition map are settled in §4. |
 | **C — structural migration** | **Complete.** The 12-Part / 79-chapter / 8-appendix migration, context-sensitive terminology pass, current selector/identifier migration, and module-owned source-path sweep are complete and PDF-verified clean at 645 pages. |
-| **D — chapter writing** | Not started. The renderer draw-path matrix in §3.2 is the final research prerequisite for Part IV. |
+| **D — chapter writing** | Ready to start. The renderer draw-path matrix in §3.2 is complete; write in verified 8–10 chapter batches. |
 | **E — appendices** | Not started. |
 | **F — whole-book consistency** | Not started. |
 | **G — final verification** | Not started. |
@@ -95,14 +95,24 @@ Each report ends with its own "BOOK IMPACT" section proposing chapter-level chan
 `AUDIT.md` §4 carries a curated cross-report summary; the full detail (with `path:line` citations)
 is only in the individual reports — read the relevant one before writing any chapter.
 
-### 3.2 Commissioned but not yet run
+### 3.2 Renderer draw-path matrix — complete
 
-- **The per-renderer draw-path divergence matrix.** Which of the 42 families implement
-  `DrawPrimitivesEx`/`DrawIndexedPrimitivesEx` versus silently falling back to the
-  colored-primitive path, which implement render targets, occlusion queries and MRT. Flagged as a
-  gap by the graphics-core pass. This matters because the effect-aware draw defaults **silently
-  degrade rather than fail** (`AUDIT.md` F-031), so a renderer that has not implemented them
-  renders an untextured, unlit picture with no error. **Commission this before writing Part IV.**
+`audit/renderer-draw-path-matrix.md` exhaustively covers all **42 implementation families / 46
+public identities** at the pin: both ordinary effect-aware draw routes, RenderTarget2D, MRT and
+occlusion queries. The principal results are:
+
+- 31 families override both `DrawPrimitivesEx` and `DrawIndexedPrimitivesEx`; 11 inherit both.
+- Of the 11 inheritance families, nine ultimately reject 3D, STUB no-ops, and **DIRECTX10 alone
+  performs a real colored draw after silently discarding `GpuDrawParams`**.
+- Four overrides are hybrid rather than purely effect-owned: OPENGLES1, SDL_GPU, OPENGL4 and
+  WEBGPU conditionally call their colored route for unmatched combinations.
+- The matrix exposed further default-true capability defects: HEADLESS, SOFTWARE and WEBGPU claim
+  MRT while rejecting multi-target binds; HEADLESS/SOFTWARE also overclaim real occlusion queries,
+  joining the already-recorded SDL_GPU/WEBGPU query mismatch. See `AUDIT.md` F-031a/F-031b and
+  `cnabugs.md` CNA-BUG-054.
+
+This prerequisite is closed. Chapters 19, 23, 25, 27 and 32 plus Appendix B must consume the
+matrix rather than infer support from override presence or `SupportsCapability()` alone.
 
 ---
 
@@ -152,8 +162,8 @@ Four decisions prevent duplication:
 
 The cluster axis remains *what the renderer talks to and how it obtains shaders*. The chapter
 allocation below partitions all **46 public identities / 42 implementation families** exactly:
-10+4+7+9+6+4+3+3 identities. Before prose is written, §3.2's draw-path divergence matrix must be
-completed and used in Chapters 19 and 32 as well as the family chapters.
+10+4+7+9+6+4+3+3 identities. §3.2's completed draw-path divergence matrix is mandatory evidence
+for Chapters 19 and 32 as well as the family chapters.
 
 | Ch. | Title | Identities | Planned depth |
 |---:|---|---|---:|
@@ -325,6 +335,7 @@ log grep replaces.
 | 2026-08-11 | After migrating 112 chapter references to `\ref{}` | **575 pages**, build clean; makeindex 2,367 entries / 0 rejected / 0 warnings; no undefined references, no duplicate labels, no doubled-backslash refs, no hard-coded chapter numbers; `git diff --check` clean; Appendix E pages 559–560 rendered and visually verified |
 | 2026-08-11 | Phase C structural migration | **645 pages**, build clean; makeindex 2,367 / 0 / 0; 12 Parts, 79 chapter inputs/files, 8 appendix inputs/files; all old labels preserved, no missing/duplicate labels or inputs, exact Ch.01–79 order; all 645 pages reviewed as 26 contact sheets, affected title pages inspected at full size, one real Ch.18 title overflow and fifteen poor mid-word title breaks fixed and re-rendered clean |
 | 2026-08-11 | Phase C terminology/path completion | **645 pages**, build clean; makeindex 2,365 / 0 / 0; current renderer/CNAEXT identifiers and selectors; graphics “backend” removed from live prose while service backends remain; CNA citations migrated to `modules/<owner>/…` and existence-checked against the pin; all 645 pages re-rendered and reviewed as 26 contact sheets, with registry, Storage, preface, and long-path pages inspected full-size |
+| 2026-08-11 | Renderer draw-path matrix | **42/42 families, 46/46 identities**; 31 dual overrides / 11 dual inheritances; four hybrid colored tails; RT2D/MRT/occlusion paths mapped; capability contradictions recorded as CNA-BUG-054; row and partition counts mechanically checked; `git diff --check` clean |
 
 ---
 
@@ -405,4 +416,18 @@ mid-session at the owner's direction, so the build and visual passes are availab
 - Ran the consolidated build and complete PDF workflow again: 645 pages; makeindex 2,365
   accepted / 0 rejected / 0 warnings; all automated checks green; all 645 pages rendered into
   26 contact sheets and inspected, with registry, Storage, preface, and long-path pages read at
-  full size. Phase C is closed; §3.2's draw-path divergence matrix is next.
+  full size. Phase C closed here; the §3.2 matrix was the next task and is closed in the entry
+  below.
+
+### 2026-08-11 — renderer draw-path research prerequisite closed
+
+- Audited all 42 renderer-family implementations for both ordinary effect-aware draw routes,
+  RenderTarget2D, MRT and occlusion-query behavior; recorded the source-grounded matrix in
+  `audit/renderer-draw-path-matrix.md`.
+- Distinguished 31 dual overrides from 11 dual inheritances, then inspected the terminal behavior
+  rather than trusting declarations: DIRECTX10 is the sole unconditional inherited colored
+  downgrade, while OPENGLES1/SDL_GPU/OPENGL4/WEBGPU retain conditional colored tails.
+- Found and recorded the additional default-true capability contradictions in CNA-BUG-054;
+  corrected `AUDIT.md` F-031's formerly over-broad statement that every inherited fallback
+  necessarily renders a wrong picture.
+- Phase D is now unblocked.

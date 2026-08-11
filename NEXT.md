@@ -12,7 +12,7 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
 | cna-bible branch | `next`; local commits are ahead of `origin/next` (push requires explicit external-publication approval) |
 | CNA pinned SHA | `7a64362efef4119bf880459ef1704fb2c52199e2` (`develop` == `origin/develop`, 2026-08-11) |
 | Book builds | **yes** — 645 pages, all automated and visual checks green |
-| Phase | **A, B, and C complete and verified.** The renderer draw-path divergence matrix is the final research prerequisite before Part IV prose. |
+| Phase | **A, B, and C complete and verified; renderer draw-path matrix complete.** Phase D chapter writing is unblocked. |
 
 ## What is done
 
@@ -33,16 +33,17 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
    - `framework-core-math.md` — exact Game lifecycle order, math/core type semantics
 3. **`AUDIT.md`** is the curated cross-report matrix and contradiction log. Its §4 has the
    headline conclusions from every area, cited back to the raw reports.
-4. **`cnabugs.md`** records 53 genuine CNA-side defects found during the audit, in English, for
+4. **`cnabugs.md`** records 54 genuine CNA-side defects found during the audit, in English, for
    upstream triage. CNA was never patched — this is a record, not a fix.
 5. **Verification tooling added.** `tools/verify-book.sh` runs build + reference/label/index/
    stale-term/whitespace checks in one pass; `tools/render-pages.sh FIRST LAST` drives the visual
    PNG pass a log grep cannot replace.
 6. **All 112 hard-coded chapter references migrated to `\ref{}`** (two styles: `Chapter~N`,
    `Ch.N`). This had to happen before any restructuring could safely begin.
-7. **Part IV's taxonomy is settled** — see `PLAN.md` §4: eight clusters partition all 46
-   renderer identities exactly (10+4+7+9+6+4+3+3 = 46, checked). The one remaining research
-   prerequisite is the effect-aware draw-path divergence matrix in `PLAN.md` §3.2.
+7. **Part IV's taxonomy and draw-path evidence are settled** — see `PLAN.md` §4 and
+   `audit/renderer-draw-path-matrix.md`: eight clusters partition all 46 renderer identities
+   exactly (10+4+7+9+6+4+3+3 = 46, checked), and all 42 implementation families now have
+   effect-aware draw, RT2D, MRT and occlusion-query behavior mapped from source.
 8. **Phase B is complete.** `PLAN.md` §4 settles a 12-Part / 79-chapter / 8-appendix TOC, gives
    every chapter a depth band and evidence remit, and maps every old Ch.01–49 to its new home.
    Content, 3D/glTF and Testing/Verification now have dedicated Parts; Math and Devices split;
@@ -60,18 +61,21 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     their `modules/<owner>/…` paths. Every explicit module file citation was existence-checked
     against the pin. The sweep also corrected Storage's current boundary: five `StorageDevice`
     tests exist; `StorageContainer` remains untested.
+11. **The renderer draw-path divergence matrix is complete.** Thirty-one families override both
+    ordinary `Draw*Ex` methods and eleven inherit both; DIRECTX10 is the sole unconditional
+    inherited colored downgrade. Four override families retain conditional colored tails.
+    RT2D/MRT/occlusion behavior is mapped separately from capability claims, exposing the further
+    default-true contradictions recorded as CNA-BUG-054.
 
 ## Do this next
 
-**1. Complete the per-renderer draw-path divergence
-matrix** (`PLAN.md` §3.2). This is the one deliberately-identified research gap. It matters
-because the effect-aware draw defaults **silently degrade rather than fail** — a renderer that
-never implemented `DrawPrimitivesEx` renders an untextured, unlit picture with no error, and
-nothing currently records which renderers those are.
-
-**2. Then Phase D:** write chapters in batches, per the project's batched-verification
+**Start Phase D:** write chapters in batches, per the project's batched-verification
 methodology (`CLAUDE.md`) — write across ~8–10 chapters, then one consolidated `make book` +
 visual pass, not one verification per chapter.
+
+The first Part IV batch should use `audit/renderer-draw-path-matrix.md` alongside
+`audit/renderer-catalog.md` and `audit/graphics-core-effects.md`; do not reduce “has an override”
+or “capability says true” to “feature works.”
 
 ## Do not do these
 
@@ -116,8 +120,7 @@ the draw-path matrix, then follow the normal ~8–10 chapter batch rule.
 
 ## The short version, if you read nothing else
 
-Ten source-audit reports are complete against pinned CNA `7a64362e`. Phase B settled a 12-Part,
-79-chapter, 8-appendix edition; Phase C put it on disk, migrated renderer/CNAEXT terminology,
-selectors and module-owned paths, and verified all 645 pages mechanically and visually. The
-only remaining pre-writing research is the 42-family draw-path divergence matrix. After that,
-Phase D begins in verified 8–10 chapter batches.
+Ten source-audit reports and the 42-family draw-path matrix are complete against pinned CNA
+`7a64362e`. Phase B settled a 12-Part, 79-chapter, 8-appendix edition; Phase C put it on disk,
+migrated renderer/CNAEXT terminology, selectors and module-owned paths, and verified all 645 pages
+mechanically and visually. Phase D now begins in verified 8–10 chapter batches.
