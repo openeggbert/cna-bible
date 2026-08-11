@@ -193,6 +193,19 @@ types across the XNA surface). A sixth, `Magnum::Platform`, is reopened by one r
 Searches for "stands for" / "acronym" across all CNA markdown return nothing; `README.md:1` is
 simply `# CNA`. **The book must not invent an expansion.**
 
+**F-022a — CNA includes 54 sharp-runtime headers, not two.** **Confidence: VERIFIED.** An earlier
+form of this audit said CNA includes only `SharpRuntimeHelper.hpp` and `Prop.hpp`. That was wrong,
+and it came from misreading `cna/CLAUDE.md:106`, which is about the primitive-alias table
+specifically rather than the whole dependency. CNA directly includes **54 distinct sharp-runtime
+headers**: two under the `SharpRuntime/` prefix (`SharpRuntimeHelper.hpp` 67×, `Prop.hpp` 9×) and
+**52 under `System/`** — `NotSupportedException.hpp` 112×, `ArgumentOutOfRangeException.hpp` 101×,
+`TimeSpan.hpp` 65×, `Object.hpp` 58×, `EventArgs.hpp` 57×, `IO/MemoryStream.hpp` 43×, and so on.
+CNA owns **zero** `System/` headers of its own.
+
+> **Accurate formulation:** CNA consumes sharp-runtime through `System/…` include paths that
+> mirror .NET fully-qualified type names; the two `SharpRuntime/`-prefixed headers are only the
+> library's own namespace-prefix surface, not the extent of the dependency.
+
 ### F-023 — The exception convention splits by layer, and it is load-bearing
 **Confidence: VERIFIED.** `System::*` .NET-shaped exceptions are the **XNA-facing contract** — a
 port target sees `ArgumentOutOfRangeException`/`ObjectDisposedException` exactly where the C#
