@@ -11,8 +11,8 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
 |---|---|
 | cna-bible branch | `next`; local commits are ahead of `origin/next` (push requires explicit external-publication approval) |
 | CNA pinned SHA | `7a64362efef4119bf880459ef1704fb2c52199e2` (`develop` == `origin/develop`, 2026-08-11) |
-| Book builds | **yes** — 675 pages, all automated checks green; Phase D batches 1–3 visually verified |
-| Phase | **A, B, and C complete. Phase D in progress:** three verified batches, Chapters 19–45, are complete. |
+| Book builds | **yes** — 683 pages, all automated checks green; Phase D batches 1–4 visually verified |
+| Phase | **A, B, and C complete. Phase D in progress:** four verified batches, Chapters 19–54, are complete. |
 
 ## What is done
 
@@ -77,13 +77,23 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     all four model routes, the shared glTF importer, stride ABI, skinning/animation, CNJ toolchain,
     the five implemented oracle layers, current Input facts and current SDL3_mixer/XACT behavior.
     The consolidated book is 675 pages; physical pages 392–455 were all inspected.
+15. **Phase D batch 4 is complete and verified.** Chapters 46–54 now cover the Media layer's
+    real codec and ownership boundaries; SDL/Android sensor delivery; the optional CNA.Devices
+    host seam; local GamerServices identity and persistence; Storage containment asymmetry;
+    session delivery, discovery and hostile-input behavior; Avatar's inert API and rendered EXT
+    path; sharp-runtime's honest object model; and its current 44-component CNA consumption seam.
+    The consolidated book is 683 pages. Physical pages 456–523 were inspected as eight full
+    contact sheets plus a tail sheet; component tables, link closures and long include paths were
+    checked at full size. That zoomed pass found and corrected two overflowing include paths in
+    Chapter 54, after which the full build and affected-page render were repeated.
 
 ## Do this next
 
-**Continue Phase D with Chapters 46–54** as the next nine-chapter batch: Media; both halves of
-Devices; GamerServices; Storage; Networking; Avatar; then the sharp-runtime overview and
-component integration. Read `audit/input-audio-net-services.md` and
-`audit/sibling-libraries.md` before writing, then run one consolidated build and visual pass.
+**Continue Phase D with Chapters 55–63** as the next nine-chapter batch: finish the remaining
+sharp-runtime chapters (object model, namespaces, parity, verification), rebuild easy-gl/meta-gl
+and free-direct/free-api from the sibling audit, then begin the platform Part with the
+cross-platform contract and both Windows chapters. Read `audit/sibling-libraries.md` and
+`audit/platforms.md` before writing, then run one consolidated build and visual pass.
 
 ## Do not do these
 
@@ -101,10 +111,10 @@ component integration. Read `audit/input-audio-net-services.md` and
 
 ## Verification status
 
-Everything through Phase D batch 3 is verified:
+Everything through Phase D batch 4 is verified:
 
-- `make -C latex book` succeeds; **675 pages**.
-- makeindex: 2,392 entries accepted, 0 rejected, 0 warnings.
+- `make -C latex book` succeeds; **683 pages**.
+- makeindex: 2,400 entries accepted, 0 rejected, 0 warnings.
 - No undefined references, no undefined control sequences, no duplicate labels, no doubled-
   backslash `\ref`, no hard-coded chapter numbers.
 - `git diff --check` clean.
@@ -117,8 +127,11 @@ Everything through Phase D batch 3 is verified:
 - Phase D batch 2 rendered and reviewed every touched physical page, 304–391, as 9 contact sheets.
 - Phase D batch 3 rendered and reviewed every touched physical page, 392–455, as 8 contact sheets;
   the stride table, defect ledger, and audio equations were also inspected at full size.
+- Phase D batch 4 rendered and reviewed every touched physical page, 456–523, as 8 contact sheets
+  plus a tail sheet; high-risk component tables, link closures and include paths were inspected
+  at full size, and the one detected overflow was fixed and re-rendered cleanly.
 
-**No completed writing batch is pending PDF verification.** Continue with Chapters 46–54 and
+**No completed writing batch is pending PDF verification.** Continue with Chapters 55–63 and
 follow the normal ~8–10 chapter batch rule.
 
 ## Environment notes
@@ -133,5 +146,5 @@ follow the normal ~8–10 chapter batch rule.
 
 Ten source-audit reports and the 42-family draw-path matrix are complete against pinned CNA
 `7a64362e`. Phase B settled a 12-Part, 79-chapter, 8-appendix edition; Phase C put it on disk,
-migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–3
-rewrote Chapters 19–45 and verified the resulting 675-page book; Chapters 46–54 are next.
+migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–4
+rewrote Chapters 19–54 and verified the resulting 683-page book; Chapters 55–63 are next.

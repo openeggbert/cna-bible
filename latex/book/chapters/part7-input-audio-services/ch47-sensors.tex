@@ -2,10 +2,9 @@
 \label{ch:sensors}
 \label{ch:devices-sensors}
 
-This chapter covers two namespaces that share a directory prefix but almost nothing else:
 \cnans{Microsoft::Devices::Sensors} is a real, historical Windows Phone~7 API surface CNA
-faithfully ports; \cnans{CNA::Devices} is an entirely CNA-original, \texttt{CNAEXT} desktop
-utility layer with no XNA or WP7 equivalent at all.
+ports onto SDL3 and Android NDK sensors. The separately gated, CNA-original host utility layer
+lives in Chapter~\ref{ch:host-devices}; it shares the word ``Devices'', not this runtime model.
 
 \section{Microsoft::Devices::Sensors: a real WP7 API, engineered for real concurrency}
 
@@ -206,68 +205,60 @@ if (vibrate->getIsSupportedProperty())
 vibrate->Stop();
 \end{lstlisting}
 
-\section{CNA::Devices: a CNAEXT desktop utility layer}
+\section{Desktop delivery and Android delivery are different}
 
-Distinct from the sensor namespace above, \cnans{CNA::Devices} has no XNA or WP7 precedent at
-all --- every class in it is a CNA-original addition, built directly on an SDL3 capability
-with no XNA equivalent to preserve fidelity against. \cnaclass{Camera} captures live video
-frames from a camera device directly into a \cnaclass{Texture2D}, deliberately poll-based
-(matching SDL3's own \texttt{SDL\_AcquireCameraFrame()} shape) rather than forcing a
-callback model onto a fundamentally poll-driven API; its first-implementation scope is
-explicitly narrow --- a single, first-reported camera device, synchronous permission
-polling, RGBA8-only frame delivery. \cnaclass{SystemTray} shows a real system tray icon with
-a flat menu, confirmed genuinely desktop-only by reading SDL3's own per-platform tray source
-directly (no Android, iOS, or Emscripten backend exists at all --- unlike
-\cnaclass{FileDialog}, which turned out to have a real Android backend once actually
-investigated, rather than being assumed desktop-only by analogy). \cnaclass{DisplayInfo}
-deliberately does not duplicate what \cnaclass{GameWindow} (this book's game-loop chapter)
-already exposes --- only the two genuinely new SDL3 capabilities
-\cnaclass{GameWindow} has no property for at all: per-window display content scale, and a
-window's safe interactive area (relevant on displays with notches or rounded corners).
-\cnaclass{MessageBox}, \cnaclass{FileDialog}, \cnaclass{UrlLauncher}, \cnaclass{Locale},
-\cnaclass{Clipboard}, \cnaclass{SystemInfo}, and \cnaclass{PowerInfo} round out this layer,
-each a thin, real wrapper over the corresponding SDL3 host-integration capability.
+Desktop Accelerometer and Gyroscope use no polling thread. CNA installs an
+\texttt{SDL\_EventFilter} with \texttt{SDL\_AddEventWatch}; an
+\texttt{SDL\_EVENT\_SENSOR\_UPDATE} is dispatched on whichever thread pushes it. A
+\texttt{static\_assert} proves the callback has SDL's exact function-pointer type, replacing an
+older undefined-behavior \texttt{reinterpret\_cast}. Accelerometer divides SI acceleration by
+9.80665 to report $g$; Gyroscope needs no conversion because SDL3 and WP7 both use radians per
+second. Dispatch timestamps are UTC wall clock, not SDL's monotonic timestamp.
 
-\subsection{Camera: a worked example of the poll, not push, contract}
+Android Compass and Motion use the NDK C API---\texttt{ASensorManager}, event queues, and
+\texttt{ALooper}---not JNI. Each sensor bridge owns a worker thread. Motion owns six bridges
+(rotation, game rotation, gravity, linear acceleration, gyroscope, magnetic field), so one
+Motion instance can create six workers. The target links \texttt{android} and \texttt{log}; the
+legacy manager acquisition also fixes the minimum Android API expectation at 24.
 
-\cnaclass{Camera}'s \texttt{getStateProperty()} re-checks the platform's permission decision on
-\emph{every} call rather than caching the answer from construction time, deliberately --- a
-real permission grant or denial can arrive seconds, minutes, or even hours after the camera was
-first opened, depending on the platform's own UI for asking the user, so the honest answer can
-only ever be ``ask again right now,'' cheap enough to do from every \texttt{Game::Update()}
-call alongside \texttt{TryAcquireFrame()}. \texttt{TryAcquireFrame()} itself requires a
-destination \cnaclass{Texture2D} already constructed at exactly
-\texttt{getFrameWidthProperty()}~$\times$~\texttt{getFrameHeightProperty()}, returning false
-without touching it at all if those dimensions don't match, the state isn't
-\cnaclass{CameraState}\texttt{::Ready}, or no new frame happened to be available on this
-particular poll --- there is no callback to wait for instead.
+\section{Compass and attitude math}
 
-\begin{lstlisting}
-// Worked example: opening the first available camera and polling it
-// once per frame, matching the poll-based (not callback-based) contract
-// SDL_AcquireCameraFrame() itself has.
-Camera camera;
-Texture2D* cameraTexture = nullptr;
+Compass selects an upright heading only when gravity indicates a near-upright device using the
+$\cos45^\circ=0.70710678\ldots$ threshold; otherwise it uses the flat quaternion heading. Both
+paths normalize \texttt{atan2} output into $[0,360)$. An invalid quaternion deliberately maps
+to $0^\circ$. Accuracy maps High/Medium/Low/Unreliable to 5/15/20/180 degrees; Low is 20 rather
+than 45 so it cannot contradict WP7's calibration threshold. Without a geomagnetic-declination
+source, \texttt{TrueHeading} equals \texttt{MagneticHeading}.
 
-// In Game::Update() or Draw(), called every frame:
-if (camera.getStateProperty() == CameraState::Ready)
-{
-    if (cameraTexture == nullptr)
-    {
-        cameraTexture = new Texture2D(graphicsDevice,
-            camera.getFrameWidthProperty(), camera.getFrameHeightProperty());
-    }
-    camera.TryAcquireFrame(*cameraTexture);  // false is not an error -- just no new frame yet
-}
-\end{lstlisting}
+Motion normalizes and passes the Android rotation quaternion through, then derives pitch, yaw,
+and roll from its matrix. The default landscape vector remap is a CNAEXT deviation and can be
+disabled process-wide. It applies to acceleration, rotation rate, gravity, and linear
+acceleration, but never to \texttt{Attitude}: the requested axis map is a reflection with
+determinant $-1$, and no quaternion can represent a reflection. Fusion uses the latest values
+within a 500~ms window rather than timestamp-aligned interpolation.
 
-\section{Why this namespace matters despite its small XNA surface}
+\section{Subsystem ownership and shutdown}
 
-Real XNA's own \cnans{Microsoft.Devices.Sensors} surface is small, and CNA's port of it is
-correspondingly modest in scope compared to Graphics or Audio. What makes it worth a chapter
-in this book is not size but craft: this is the one namespace in the whole project whose own
-documentation most explicitly foregrounds thread-safety as a first-class design concern
-(\texttt{docs/devices-thread-safety.md} is described, in the source itself, as the single
-consolidated contract every sensor class's own comments defer back to), precisely because it
-is the one place in CNA where a callback genuinely can arrive from a thread the game's own
-code never spawned.
+One process-wide mutex serializes both \texttt{SDL\_INIT\_SENSOR} and
+\texttt{SDL\_INIT\_HAPTIC}. Internal initialization helpers accept an otherwise-unused
+\texttt{const std::lock\_guard\&}; that parameter is compile-time evidence that the caller
+holds the global lock and preserves the documented per-instance-before-global lock order.
+
+\texttt{DevicesShutdownCoordinator::Shutdown()} must run before an application's own
+\texttt{SDL\_Quit()}. It marks the process-lifetime vibration backend so its later static
+destructor skips SDL close/quit calls; without that order, SDL may free the native device before
+the C++ function-local static destructs. The regression harness runs out of process because the
+static lifetime cannot be reset reliably inside one test executable.
+
+\section{Evidence boundary}
+
+The automated suites exercise math, lifecycle, races, fake backends, and an actual TSan stress
+case. No hardware QA report has been filed, and the Android math source explicitly says its
+sign/zero convention has never been checked on real hardware. The Android demo built into the
+APK is also a stale 447-line copy of the 523-line desktop demo. Treat Android behavior as
+source-grounded and host-tested, not device-verified.
+
+One live API defect remains independent of hardware: all four concrete sensors expose
+\texttt{Dispose(bool)} publicly although the base declares it protected. External
+\texttt{Dispose(false)} marks the object disposed without stopping, decrementing counts, or
+releasing SDL ownership.

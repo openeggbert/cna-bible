@@ -34,6 +34,12 @@ with or without an explicit required free-space and directory-count --- for show
 device-selection UI, even though, again, there is only ever one real ``device'' (the local
 filesystem) for this to resolve to.
 
+The selector's \texttt{sizeInBytes} and \texttt{directoryCount} arguments are ignored by every
+overload; there is no capacity-based choice to make. \texttt{DeviceChanged} is declared but
+never raised. If the lazily resolved root does not exist yet, \texttt{FreeSpace} and
+\texttt{TotalSpace} return \texttt{LLONG\_MAX} rather than a measured filesystem value. These
+properties preserve XNA's selection shape, not a removable-device inventory.
+
 Two \texttt{CNAEXT} static methods exist specifically because CNA has no Xbox-360-style
 concept of a physically distinct storage device to select in the first place:
 \texttt{SetAppNameEXT(appName)} sets the application name used to build a real,
@@ -42,6 +48,10 @@ per-application storage root directory on the host filesystem, and
 \texttt{SetAppNameEXT} once, early --- the class's own documentation recommends the
 \cnaclass{Game} constructor --- before any other storage call, since the storage root is
 lazily resolved and cached on first use.
+
+The same root also stores Chapter~\ref{ch:gamerservices}'s achievements and leaderboards under
+\texttt{GamerServices/}. Changing \texttt{SetAppNameEXT} therefore moves more than save
+containers: existing local gamer progress becomes invisible under the newly selected app root.
 
 One further detail distinguishes this namespace from the other fake-async ports this book has
 covered: every \texttt{Begin} / \texttt{End} result here is a real \texttt{std::unique\_ptr}, not

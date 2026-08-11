@@ -8,9 +8,12 @@ alone might suggest.
 
 \section{Scale}
 
-\texttt{sharp-runtime} ships 982 public headers, 210 implementation files, and a test suite
-of 12{,}476 tests, all passing at the time of writing, grown from a starting baseline the
-project's own porting rules treat as a floor that must never be lowered. This is a
+At the audited revision, \texttt{sharp-runtime} contains 1{,}037 public headers, 217
+implementation files, and 78{,}934 lines of production C/C\texttt{++}. Its tests are larger
+still: 102{,}342 lines, roughly 30\% more than production. The registered GoogleTest surface
+contains 16{,}310 tests across 37 executables; the repository's continuation record reports
+16{,}303 passing, one skipped, and six failing, rather than concealing those failures behind
+an obsolete all-green count. This is a
 considerably larger surface than ``just enough .NET to make XNA's API vocabulary work in
 C\texttt{++}'' might suggest --- coverage genuinely extends to \texttt{System.Text.Json},
 \texttt{System.Xml.Linq} / \texttt{XPath}, \texttt{System.Buffers.Text} / \texttt{Binary},
@@ -19,7 +22,8 @@ C\texttt{++}'' might suggest --- coverage genuinely extends to \texttt{System.Te
 
 \section{Namespace structure}
 
-\texttt{include/System/} mirrors real .NET's namespace tree directly:
+The public headers live below two include roots. \texttt{System/} mirrors real .NET's
+namespace tree directly:
 \texttt{Collections} (with \texttt{Concurrent}, \texttt{Frozen}, \texttt{Generic},
 \texttt{Immutable}, \texttt{ObjectModel}, \texttt{Specialized} sub-namespaces),
 \texttt{IO} (with \texttt{Compression}, \texttt{Hashing}, \texttt{IsolatedStorage}),
@@ -30,28 +34,50 @@ C\texttt{++}'' might suggest --- coverage genuinely extends to \texttt{System.Te
 (\texttt{Object}, \texttt{String}, \texttt{Exception}, \texttt{EventHandler},
 \texttt{IDisposable}, \texttt{TimeSpan}, \texttt{DateTimeOffset}, \texttt{Delegate},
 \texttt{Guid}, \texttt{Random}, \texttt{Uri}, \texttt{Version}, \texttt{Nullable},
-\texttt{Span}, \texttt{Memory}, and more). A separate \texttt{include/SharpRuntime/}
+\texttt{Span}, \texttt{Memory}, and more). A separate \texttt{SharpRuntime/}
 namespace holds project-internal helpers that are not part of the .NET mirror at all ---
 most importantly \texttt{SharpRuntimeHelper.hpp}, home to the type-alias table
 Chapter~\ref{ch:design-philosophy} already introduced (\texttt{bytecs},
 \texttt{intcs}, \texttt{Single}, and the rest).
 
-\section{Object and IDisposable: the two roots}
+There is no umbrella header. The on-disk include spelling follows the fully-qualified .NET
+name mechanically: \texttt{System.IO.FileStream} becomes
+\texttt{System/IO/FileStream.hpp}. CNA consequently consumes far more than the two headers
+whose spelling begins with \texttt{SharpRuntime/}: its source directly includes 54 distinct
+headers from this repository, 52 below \texttt{System/} and two below \texttt{SharpRuntime/}.
+Those two are \texttt{SharpRuntimeHelper.hpp} and \texttt{Prop.hpp}; the latter exports
+property-declaration macros used downstream even though the runtime's own modules do not use
+it. Chapter~\ref{ch:sharp-components-consumption} maps these include paths to their owning
+link components.
 
-\cnaclass{System::Object} is CNA's substitute for .NET's universal base type, and its own
-design is honest about the substitution's limits: it is abstract here (a pure-virtual
-\texttt{GetTypeName()}), because C\texttt{++} has no universal root type of its own to anchor
-it to the way every .NET type implicitly inherits \texttt{object}. \texttt{GetHashCode()},
-\texttt{Equals}, \texttt{ToString()}, and a non-virtual \texttt{GetType()} (backed by
-\texttt{typeid(*this)}) round out the surface; two macros,
-\texttt{GetTypeNameHPP()} / \texttt{GetTypeNameCPP()}, exist purely to reduce the boilerplate of
-implementing the required override on every concrete class --- the same
-\texttt{GetTypeName()} override Chapter~\ref{ch:design-philosophy} already showed CNA's own
-porting checklist requires on every class inheriting \texttt{System::Object}.
+\section{Object and IDisposable: deliberately not two roots}
+
+\cnaclass{System::Object} is not a universal root for this C\texttt{++} type system. It is an
+abstract, vestigial compatibility type with a pure-virtual \texttt{GetTypeName()}, and only
+\cnaclass{DateTime} and \cnaclass{DateTimeOffset} derive from it in the entire runtime.
+\cnaclass{Stream} does not; exceptions derive from \texttt{std::exception}. Its
+\texttt{GetHashCode()}, \texttt{Equals}, \texttt{ToString()}, and RTTI-backed
+\texttt{GetType()} are useful to the few types that opt in, while the
+\texttt{GetTypeNameHPP()} / \texttt{GetTypeNameCPP()} macros reduce their override
+boilerplate. Reading those helpers as evidence that every ported class inherits
+\cnaclass{Object} would import a .NET invariant the implementation intentionally does not
+have.
+
 \cnaclass{System::IDisposable} is a single pure interface method,
 \texttt{virtual void Dispose() = 0}; its own documentation is explicit that C\texttt{++} has
 no equivalent of C\#'s \texttt{using} statement, so callers either use RAII or call
 \texttt{Dispose()} explicitly, and every implementation is expected to be idempotent.
+It is a capability interface, not a second hierarchy root.
+
+\subsection{String and Exception expose the same adaptation strategy}
+
+\cnaclass{System::String} is a non-instantiable collection of static source-porting helpers;
+both its constructor and destructor are deleted. Runtime strings remain \texttt{std::string},
+also exported as \texttt{SharpRuntime::String}. Likewise,
+\cnaclass{System::Exception} derives from \texttt{std::exception}, carries an
+\texttt{exception\_ptr} for its inner exception and a default HRESULT, and returns an empty
+stack trace because no managed stack is available. These are deliberate C\texttt{++}
+representations of useful .NET behavior, not attempts to reproduce the CLR's object layout.
 
 \section{EventHandler and MulticastAction: solving a problem C\# doesn't have}
 
@@ -260,39 +286,32 @@ compile time, while the reflection-based overloads real .NET exposes ---
 because \texttt{sharp-runtime} has no \texttt{System.Reflection} for them to resolve a
 \texttt{Type} argument against in the first place.
 
-\section{Vendored dependencies and build structure}
+\section{The build is part of the public architecture}
 
-\texttt{sharp-runtime}'s own \texttt{CMakeLists.txt} builds a single static library target,
-\texttt{SHARP\_RUNTIME}, from every \texttt{.cpp} file glob-matched under \texttt{src/}, linked
-against three vendored third-party libraries built alongside it in the same configure step:
-\texttt{tinyxml2} (a two-file XML parser, zlib license), \texttt{miniz} (a multi-file ZIP/DEFLATE
-implementation, MIT/public domain), and \texttt{nlohmann/json} (header-only, vendored directly
-rather than built as a target). \texttt{ZLIB::ZLIB} is the one dependency this project expects
-the host system to already provide rather than vendoring. When \texttt{cna} adds
-\texttt{sharp-runtime} as a subdirectory, it inherits this single \texttt{SHARP\_RUNTIME} link
-target directly --- there is no separate ``core'' versus ``extended'' split at the build-system
-level, matching the single-namespace-tree structure Section~2 above already described. One
-platform-specific wiring detail worth knowing precisely rather than assuming: on Android,
-\texttt{StoragePaths.cpp} calls \texttt{SDL\_GetPrefPath} / \texttt{SDL\_GetAndroidInternalStoragePath}
-directly, which means \texttt{sharp-runtime} depends on SDL3 being available on that one
-platform specifically --- but its own \texttt{CMakeLists.txt} does not vendor or find SDL3
-itself; it expects the parent project (\texttt{cna}) to have already configured a real
-\texttt{SDL3::SDL3} target via its own \texttt{cna\_configure\_vendored\_sdl()} call before
-\texttt{sharp-runtime}'s subdirectory is added, and links against it conditionally
-(\texttt{if(ANDROID AND TARGET SDL3::SDL3)}) only if that target already exists by the time this
-project's own \texttt{CMakeLists.txt} runs.
+Since the 2026-08-10 modularization merge, \texttt{sharp-runtime} is not one static archive.
+Its 41 module directories register 44 link components: 30 static libraries, 13 interface
+components, and the \texttt{Xml.XPath} alias of \texttt{Xml}. Compatibility umbrellas named
+\texttt{Core} and \texttt{Collections} coexist with the narrower components. The distinction
+matters to CNA because an include path names a source-level dependency while a
+\texttt{SharpRuntime::<Component>} target declares its link closure. The complete registry,
+component selection rules, and CNA's old-checkout adapter are covered in
+Chapter~\ref{ch:sharp-components-consumption}.
+
+One platform-specific edge remains useful context here. On Android, the storage-path
+implementation calls SDL3 path APIs, so a parent such as CNA must have created an
+\texttt{SDL3::SDL3} target before adding the runtime. This conditional edge does not turn SDL
+into a universal runtime dependency.
 
 \section{A local CI gate exists; a tracked CI pipeline deliberately does not}
 
 The absence of a GitHub Actions workflow is not evidence that sharp-runtime has no repeatable
-quality gate. Its real \texttt{scripts/local\_ci\_check.sh} is deliberately written as the
-local equivalent: strict shell failure handling; a fresh CMake configure; a parallel build whose
-captured log must contain zero \texttt{warning:} and zero \texttt{error:} matches; then the
-full \texttt{SharpRuntimeTests} binary. It exits at the first failed stage, making it suitable
-as a pre-push command rather than an advisory checklist. The CMake project independently
-registers that same test binary with GoogleTest discovery, so developers can also use
-\texttt{ctest}; the script intentionally invokes the binary directly to inspect its aggregate
-GoogleTest failure output itself.
+quality gate. Its local gate configures and builds under strict shell failure handling and
+rejects compiler warnings and errors. The modular test topology is finer-grained than the old
+single-binary design: 36 component executables plus one integration executable feed GoogleTest
+discovery. Each component test links its own component and declared test-only dependencies,
+so an undeclared cross-module use can fail at link time instead of remaining hidden inside a
+monolith. Python meta-tests and deliberately failing consumer fixtures add build-boundary
+checks that ordinary positive unit tests cannot express.
 
 What is deliberately absent is a tracked remote trigger: sharp-runtime's current \texttt{NEXT.md}
 records that no \texttt{.github/workflows/*.yml} exists, and that adding one was offered to the
@@ -302,14 +321,12 @@ forbid adding it unilaterally. The correct operational claim is therefore narrow
 ``no CI'' or ``CI covers every change'': there is a concrete, fail-fast local gate, but it is
 not automatically run by a hosted service.
 
-\subsection{A small documentation conflict is itself a verification finding}
+\subsection{Recorded failures and platform claims need scope}
 
-The same sources show why a build claim must carry a date and scope. The README says that
-MinGW and Emscripten have each built the \texttt{SHARP\_RUNTIME} library cleanly in earlier
-stabilization work, while explicitly saying their GoogleTest binary was not cross-compiled.
-The newer continuation note, however, lists Windows and Emscripten as never compiled and needing
-verification. Those statements cannot both be a current, unqualified platform-status claim.
-Until a fresh cross-build resolves the record, this book treats the portable-library assertion as
-historical evidence only, and does not upgrade it to a current full-suite or runtime-validation
-claim. That distinction is practical: a native Linux test pass proves neither a cross compiler's
-headers/linker path nor a target platform's test execution.
+The current continuation note records six failing and one skipped test; an older baseline that
+claims every test passes is therefore historical, not authoritative. The same discipline
+applies to platform reports: a past MinGW or Emscripten library build does not prove that all
+37 current executables cross-compile, much less that they execute on their target. Native Linux
+results establish neither a cross compiler's header and linker path nor runtime behavior on a
+different operating system. Keeping those scopes separate is part of the evidence model, not
+mere cautionary wording.

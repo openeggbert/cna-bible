@@ -10,12 +10,21 @@ tracking record. A dedicated, from-scratch effort ran sixteen phases and 231 tas
 this namespace, closing 224 of them, backed by fifteen independent adversarial external
 review rounds. All 24 \cnans{Media} types are now real implementations backed by genuine file
 parsing --- Vorbis and ID3v2 tag parsing, \texttt{.m3u} / \texttt{.m3u8} playlist parsing,
-FFmpeg-backed video, SDL3\_mixer-backed audio --- not shells. 5{,}471 tests exist for this
-namespace, with 5{,}467 passing and only four hardware-only skips (accelerometer/gyroscope).
+FFmpeg-backed video, SDL3\_mixer-backed audio --- not shells. The current media module contains
+285 test cases. The formerly quoted 5{,}471/5{,}467 figure was a whole-suite snapshot with a
+Devices-specific hardware-skip note attached to the wrong namespace; the current whole-project
+audit counts 6{,}171 cases across all modules.
 This is exactly the kind of documentation drift this book's first chapter warned readers to
 watch for: a specific, dated, checkable claim that this book preserves as evidence of the
 project's own earlier state, corrected here against the namespace's own current record rather
 than silently repeated as still current.
+
+Audio and Media form an explicit static-library cycle: the audio-side
+\cnaclass{FrameworkDispatcher} pumps \cnaclass{MediaPlayer}, while Media routes song playback
+through the audio mixer. CMake records both edges and resolves the archive cycle by repeating
+the libraries. This is genuine XNA-semantic coupling, not an accidental include dependency;
+breaking it requires moving ownership of the shared dispatcher/pump contract, not deleting one
+link line.
 
 \section{Song, and the one gap even FNA has}
 
@@ -67,6 +76,15 @@ MediaPlayer::Play(introTrack);
 // actually starts -- MediaPlayer overwrites it with the real decoded
 // duration read back from the audio backend once the file is opened.
 \end{lstlisting}
+
+\subsection{The resolver advertises three undecodable extensions}
+
+\cnaclass{MediaLibrary} correctly avoids indexing AAC and WMA, but the loose-file
+\texttt{SongTypeReader} separately advertises \texttt{.opus}, \texttt{.aac}, and
+\texttt{.wma} alongside MP3, Ogg, WAV, and FLAC. CNA's vendored SDL3\_mixer build has no Opus,
+AAC, or WMA decoder. Resolution can therefore select a path that construction cannot decode.
+This is a real inconsistency between extension discovery and the playback dependency, not a
+promise that every listed extension works.
 
 \section{The library hierarchy}
 \label{sec:medialibrary}
@@ -379,6 +397,15 @@ graceful exception --- a direct consequence of the project owner explicitly reje
 integration on those platforms instead. This is not closeable from a Linux-only development
 environment, and is recorded here as exactly that kind of gap: not silently missing, not
 falsely claimed complete, but named and left for real cross-platform FFmpeg packaging work.
+
+There is also a concrete native-Windows build defect in the two-layer gate. CMake disables the
+video translation units for \texttt{WIN32}, MinGW, Emscripten, and Android, but
+\texttt{ContentManager.cpp}'s matching include guard repeats \texttt{\_\_MINGW32\_\_} and never
+checks native \texttt{\_WIN32}. An MSVC build can therefore retain the \cnaclass{Video} include
+and dispatch reference while the implementation was excluded, producing a link failure. The
+comment beside that guard also omits \texttt{WIN32} when describing the CMake rule. Whenever a
+feature is gated in both build code and C++, test their truth tables rather than trusting two
+similar-looking expressions.
 
 \section{Deliberate, documented non-gaps}
 

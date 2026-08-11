@@ -1,3 +1,131 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{Host Integration through CNA.Devices}
 \label{ch:host-devices}
+
+\cnans{CNA::Devices} is an SDL3 host-integration layer with no XNA or Windows Phone precedent.
+It is also absent from a default CNA build. Both facts belong before its API tour because code
+that compiles in a devices-enabled demo can otherwise look like an unconditional framework
+surface.
+
+\section{The option removes the types}
+
+\texttt{CNA\_DEVICES} defaults to \texttt{OFF}. It gates all 24 public headers, 14 production
+sources, and ten test files in \texttt{modules/devices-ext}; with the default setting the
+archive contains object files with no defined API symbols and its tests register no cases.
+Names such as \cnaclass{Camera}, \cnaclass{FileDialog}, and \cnaclass{SystemTray} do not merely
+throw at runtime---they do not exist as C++ types.
+
+The option does \emph{not} gate Chapter~\ref{ch:sensors}'s
+\cnans{Microsoft::Devices::Sensors} module. The option help text's broad ``device/sensor''
+wording is therefore misleading: Accelerometer, Gyroscope, Compass, Motion, and
+VibrateController compile in every configuration, while this chapter's namespace is entirely
+conditional.
+
+Enable it explicitly at configure time:
+
+\begin{lstlisting}
+cmake -S . -B build -DCNA_DEVICES=ON
+\end{lstlisting}
+
+Any public header or application source using these types must be compiled with the same
+definition propagated by CNA's build targets; hand-defining the macro without linking the
+enabled archive only postpones failure to link time.
+
+\section{The SDL wrapper map}
+
+The implemented classes are deliberately thin:
+
+\begin{description}
+  \item[Clipboard] gets, sets, and probes SDL clipboard text;
+  \item[DisplayInfo] exposes a window's display scale and safe interactive area;
+  \item[Locale] returns SDL's preferred locale list;
+  \item[MessageBox] shows simple or multi-button native dialogs;
+  \item[FileDialog] opens file, save, and directory choosers asynchronously;
+  \item[SystemTray] owns a tray icon and flat callback-driven menu;
+  \item[PowerInfo] exposes host power state, percentage, and remaining seconds;
+  \item[SystemInfo] reports logical CPU cores and physical RAM;
+  \item[UrlLauncher] forwards a URL to the platform; and
+  \item[Camera] polls SDL camera frames into a \cnaclass{Texture2D}.
+\end{description}
+
+There are no \texttt{TODO}, \texttt{NotImplemented}, or throw-placeholder tokens in the
+module, but thin forwarding still has behavioral edges. \cnaclass{MessageBox} reports support
+unconditionally, never parents the dialog to a window, sets no default/cancel button, and does
+not validate an empty label list despite the header contract. FileDialog and SystemTray
+platform checks are advisory: show/construct still forwards. \cnaclass{PowerInfo}'s three
+properties call \texttt{SDL\_GetPowerInfo} separately, so they can represent three different
+snapshots. SystemTray exposes no usable icon object, and UrlLauncher does no URL validation.
+
+\section{Camera: poll, do not wait for a callback}
+
+\cnaclass{Camera} chooses the first reported device, requests RGBA32, and closes/reports
+unsupported if SDL negotiates another pixel format. Permission state is re-read on every
+\texttt{State} query because a platform prompt can resolve long after construction.
+\texttt{TryAcquireFrame} requires a destination texture with exactly the negotiated dimensions;
+it returns \texttt{false} without modifying the texture if permission is not ready, dimensions
+do not match, or no fresh frame is available.
+
+\begin{lstlisting}
+#ifdef CNA_DEVICES
+Camera camera;
+std::unique_ptr<Texture2D> frame;
+
+if (camera.getStateProperty() == CameraState::Ready)
+{
+    if (!frame)
+    {
+        frame = std::make_unique<Texture2D>(
+            graphicsDevice,
+            camera.getFrameWidthProperty(),
+            camera.getFrameHeightProperty());
+    }
+
+    if (camera.TryAcquireFrame(*frame))
+    {
+        DrawCameraPreview(*frame);
+    }
+}
+#endif
+\end{lstlisting}
+
+The production tree never calls \texttt{SDL\_InitSubSystem(SDL\_INIT\_CAMERA)}. Unless the
+host initializes that subsystem itself, available-camera enumeration is empty and
+\cnaclass{Camera} settles in \texttt{NotSupported}. This is a latent initialization gap, not a
+permission denial. The backend's \texttt{Lost} and \texttt{Closed} states are also unreachable
+in its current implementation.
+
+\section{Platform support is per class}
+
+SystemTray is genuinely desktop-only in SDL3; Android, iOS, and Emscripten have no tray backend.
+FileDialog is not equivalent: SDL3 supplies an Android implementation. Display scale and safe
+area depend on a real associated window. Message boxes and URL launchers inherit whatever the
+host platform permits, even though CNA's support predicates can be optimistic.
+
+This makes a namespace-level ``desktop utilities'' label useful as orientation but wrong as a
+capability test. Query the particular class, expect callbacks to be platform-threaded, and
+retain a non-dialog fallback for sandboxed or web targets.
+
+\section{Overlap with CNA::Input}
+
+\cnaclass{Clipboard} and \cnaclass{PowerInfo} duplicate functionality already present as the
+unconditional \texttt{CNA::Input::Clipboard} and \texttt{CNA::Input::Power}. They were created
+on parallel workstreams and use type-incompatible enums despite wrapping the same SDL calls.
+With \texttt{CNA\_DEVICES=OFF}, the Input versions are the only clipboard and host-battery API.
+
+Input's \texttt{Sensors} is not a duplicate of Chapter~\ref{ch:sensors}: it is a stateless,
+poll-oriented open/read/close API returning raw vectors, while Microsoft.Devices exposes
+stateful WP7 objects, events, throttling, and disposal. \texttt{InputDevices} has no counterpart
+here.
+
+\section{Lifetime and test boundary}
+
+File dialogs, tray menus, and camera permission all cross native asynchronous boundaries.
+Application-owned state captured by their callbacks must outlive the native operation, and UI
+callbacks should hand work back to the game thread before touching graphics state. Host shutdown
+must destroy these objects before global SDL teardown; the sensor/haptic side additionally uses
+the explicit shutdown coordinator described in Chapter~\ref{ch:sensors}.
+
+The ten devices-ext test sources exercise fake/native-wrapper contracts only when the gate is
+on; in a default build they silently contribute zero tests. A CI matrix that never configures
+\texttt{CNA\_DEVICES=ON} proves neither the public types nor their platform forwarding. Camera,
+dialogs, tray integration, and permissions still require real-host validation beyond those unit
+tests.

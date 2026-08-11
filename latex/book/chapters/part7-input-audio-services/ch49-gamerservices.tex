@@ -36,6 +36,11 @@ functioning classes), but because nothing anywhere in the codebase actually popu
 this is the one honestly-acknowledged, still-open gap in this namespace's population story,
 not a design limitation like the Xbox-Live-only methods above.
 
+Initialization creates exactly four profiles named \texttt{"Stub Gamer"} and
+\texttt{"Stub Gamer (1)"} through \texttt{(3)}. Player One is not a guest; the other three
+are guests. All four report \texttt{IsSignedInToLive=true} despite there being no live service.
+These are fixed local identities, not user accounts or randomized test data.
+
 One further CNAEXT detail worth knowing: real XNA's own \texttt{Presence} property is get-only,
 but it returns a \cnaclass{GamerPresence} \emph{reference type}, so real game code writes
 \texttt{gamer.Presence.PresenceMode = ...} and mutates the same live object the getter
@@ -45,8 +50,7 @@ reproduce, so \cnaclass{SignedInGamer} additionally exposes a non-\texttt{const}
 
 \begin{lstlisting}
 // Worked example: awarding an achievement synchronously, then reading
-// the achievement list back (empty in this platform's implementation,
-// per GetAchievements()'s own documented contract).
+// the locally persisted achievement list back.
 SignedInGamer* gamer = /* obtained from SignedInGamer::SignedIn, etc. */;
 gamer->AwardAchievement("ACH_FIRST_BOSS_DEFEATED");
 AchievementCollection achievements = gamer->GetAchievements();
@@ -55,6 +59,27 @@ AchievementCollection achievements = gamer->GetAchievements();
 // the real XNA reference-type idiom this CNAEXT overload exists to preserve.
 gamer->getPresenceProperty().setPresenceModeProperty(GamerPresenceMode::SinglePlayer);
 \end{lstlisting}
+
+\subsection{The exact on-disk contract}
+
+Persistence starts at \cnaclass{StorageDevice}'s \texttt{GetStorageRootEXT()}, itself based on
+\texttt{SDL\_GetPrefPath}, then uses
+\texttt{GamerServices/achievements} and \texttt{GamerServices/leaderboards}. Achievements are
+one JSON file per sanitized gamertag with records shaped
+\texttt{\{"key":...,"earnedTicks":...\}}; leaderboards use one file per sanitized
+\texttt{(key)\_(gameMode)}. Characters outside \texttt{[A-Za-z0-9.\_-]} become underscores and
+an empty name becomes \texttt{\_}.
+
+Writes go to a temporary file and rename into place, with a direct-write fallback when rename
+cannot cross a filesystem boundary. Missing or corrupt files start empty rather than throwing.
+Calling \texttt{StorageDevice::SetAppNameEXT} changes this root and silently relocates both
+achievements and leaderboards; Chapter~\ref{ch:storage} covers the shared boundary.
+
+One precision caveat contradicts the store header's ``exact round-trip'' wording.
+\texttt{earnedTicks} enters the JSON model as \texttt{double}; a 2026 \cnaclass{DateTime} value
+is far beyond $2^{53}$ and is quantized in steps of roughly 128 ticks, about 12.8 microseconds.
+The already-quantized integer is stable after serialization, but the original tick count is not
+bit-exact.
 
 \section{Leaderboards: real persistence, CNA-original policy}
 \label{sec:leaderboards}
@@ -139,9 +164,12 @@ expecting \cnaclass{Achievement} itself to already know its own display name.
 
 \section{Guide: mostly a stub, with two real, CNA-built exceptions}
 
-\cnaclass{Guide} is where this namespace's ``real versus stub'' distinction is sharpest. Most
-of its surface --- \texttt{ShowFriends}, \texttt{ShowMarketplace}, \texttt{ShowGamerCard},
-\texttt{ShowSignIn}, \texttt{ShowParty}, and the rest of the \texttt{Show*} family --- is a
+\cnaclass{Guide} is where this namespace's ``real versus stub'' distinction is sharpest. Its
+fourteen empty \texttt{Show*} methods plus \texttt{DelayNotifications} are \texttt{DelayNotifications}, \texttt{ShowComposeMessage},
+\texttt{ShowFriendRequest}, \texttt{ShowFriends}, both \texttt{ShowGameInvite} overloads,
+\texttt{ShowGamerCard}, \texttt{ShowMarketplace}, \texttt{ShowMessages}, \texttt{ShowParty},
+\texttt{ShowPartySessions}, \texttt{ShowPlayerReview}, \texttt{ShowPlayers},
+\texttt{ShowSignIn}, and the CNAEXT \texttt{ShowAchievementsEXT}. This family is a
 genuine, documented no-op: there is no system UI to show for any of them, matching FNA's own
 minimal PC-side stub. Two specific methods are the deliberate exception, and are real, CNA-built
 overlay UI, not stubs at all: \texttt{BeginShowMessageBox} / \texttt{EndShowMessageBox} and
@@ -231,6 +259,16 @@ a C\texttt{++} \texttt{std::string} return value cannot express directly, since 
 is exactly what a player who pressed Enter with nothing typed would also produce. Checking this
 method first, before trusting whatever \texttt{EndShowKeyboardInput} returns, is the only way to
 tell those two real, distinct outcomes apart.
+
+\section{Presence, privileges, and profile are local data}
+
+\cnaclass{GamerPresence} contains all 60 XNA display strings, including parameterized entries,
+and updates its formatted local string when mode/value changes. Its final
+\texttt{SetPresenceModeStringEXT} publish hook is empty; no service consumes the result.
+\cnaclass{GamerPrivileges} is a fixed all-permissive value and nothing enforces it.
+\cnaclass{GamerProfile} is mostly synthetic defaults; \texttt{Region} is its only field derived
+from the host. These types have useful API shape and data, but no authentication, policy, or
+remote-presence authority.
 
 \section{Dispatcher and component}
 

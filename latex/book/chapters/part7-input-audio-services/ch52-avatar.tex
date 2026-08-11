@@ -30,6 +30,8 @@ is never true in faithful usage, so this call always throws in practice.
 \cnaclass{AvatarDescription} tells the same story from a different angle: its constructor
 requires exactly 1{,}021 bytes and throws otherwise, a real format that was never publicly
 documented and cannot be reverse-engineered from the reference assembly alone.
+Its entire validity test is \texttt{description\_[0] != 0}; the other 1{,}020 bytes remain
+opaque to this implementation.
 \texttt{CreateRandom()} --- despite its name --- never actually randomizes anything; both
 overloads always return an all-zero, invalid description, and the second overload's
 \cnaclass{AvatarBodyType} parameter is not read at all. \texttt{BeginGetFromGamer} /
@@ -73,6 +75,10 @@ was never enabled in the first place. Nothing about this opt-in path changes wha
 that never calls \texttt{EnableRealRenderingEXT} sees exactly the inert behavior described
 above, unchanged.
 
+The conventional real-content root is \texttt{avatar/male/avatar} or
+\texttt{avatar/female/avatar}, selected by the extension path rather than inferred from the
+opaque faithful description.
+
 \begin{lstlisting}
 // Worked example: the same AvatarRenderer instance, opted into real
 // rendering. The AvatarDescription passed to the constructor still goes
@@ -106,6 +112,10 @@ about) discarded it silently on every single draw call. A game calling
 no effect from it whatsoever, with no error of any kind --- fixed by reordering the two calls
 so the default lighting setup runs first and any caller customization applied afterward
 genuinely sticks.
+
+The final avatar-specific setup retains one key light, disables default lights 1 and 2, and
+zeroes stock specular/emissive terms before applying the caller's ambient value. This avoids
+turning the placeholder avatar into an unintended three-light stock-effect showcase.
 
 The second bug is not avatar-specific in where it lives, only in how it was found: three
 consecutive rounds of tuning avatar ambient lighting to fix visibly-too-dark materials all
@@ -163,6 +173,10 @@ geometry customization. One default value was itself the subject of a real, conf
 the default shoe tint was originally near-black, causing avatar shoes to render as a
 ``featureless pure-black blob'' until fixed through direct pixel-sampling verification rather
 than a guess.
+
+Per-part overrides use substring routing through \texttt{PartTintEXT}: names containing skin,
+hair, shirt/top, pants/bottom, or shoe tokens select the corresponding appearance tint. This is
+deliberately heuristic; custom names without those tokens carry no hidden proprietary metadata.
 
 \subsection{Real bugs found building the content pipeline}
 
@@ -307,18 +321,26 @@ by its own dedicated test:
 
 \section{Renderer support and real content proof}
 
-Real GPU skinning through this extension is proven end-to-end via pixel readback on EasyGL;
-Vulkan and BGFX both have the real pipeline wiring in place (descriptor sets and per-frame
-bone uniform buffers) but had not, as of the source material this book draws from, been
-separately smoke-tested for this specific feature. On \texttt{SDL\_RENDERER}, any attempt to
+Real GPU skinning through this extension is proven end-to-end via pixel readback on both EasyGL
+and Vulkan: all three avatar integration programmes are registered for both renderers. BGFX has
+relevant pipeline code but no registered avatar integration test at the pinned revision. The
+pixel tests intentionally use a synthetic one-bone quad, isolating effect/palette/draw wiring
+from the asset converter; they are renderer proof, not proof that a complete avatar asset is
+correct. On \texttt{SDL\_RENDERER}, any attempt to
 create the 3D resources this extension needs throws the same ``does not support 3D'' error
 already covered in Part~IV's renderer chapters, consistent with that renderer's documented
 scope. Beyond synthetic tests, a dedicated demo application loads real content and renders a
 complete, correctly proportioned, animated humanoid avatar in a real window, toggling between
-clips live --- alongside seven sibling demo applications covering an animation gallery,
-appearance-tint studio, wardrobe hot-swapping, multi-attach stress testing, and a
-side-by-side comparison against the faithful, inert base API, so a reader can see both halves
-of this chapter's story running at once.
+clips live. The eight demonstrations are \texttt{demo\_avatar}; the 31-preset/two-gender
+\texttt{demo\_avatar\_animation\_gallery}; appearance tint studio; faithful-versus-EXT bone
+state boundary; dual comparison; multi-attach stress; wardrobe hot-swap; and
+\texttt{demo\_net\_avatar\_sync}, which synchronizes position, yaw, and clip between two real
+processes. Together they separate content, animation, appearance, attachment, API-boundary, and
+network evidence instead of treating one attractive screenshot as proof of all six.
+
+Five audit rounds closed two of three tracked visual defects. The remaining collar/cuff garment
+interpenetration is measured and reproducible, so the overall avatar presentation is
+\emph{partially fixed}, not visually complete.
 
 \section{The shape of this chapter, restated}
 

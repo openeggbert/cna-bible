@@ -119,8 +119,8 @@ to this) will actually work:
 \midrule
 \texttt{SystemLink} & Real: hosting, joining, LAN discovery, AppData relay, disconnect \\
                      & handling, host migration --- all genuinely networked over ENet \\
-\texttt{Local} & Real, loopback-style, no network transport (split-screen/dev testing) \\
-\texttt{LocalWithLeaderboards} & \texttt{Local} plus the real, locally-persisted \\
+\texttt{Local} & Synthetic lifecycle only: \texttt{SendData} delivers nothing \\
+\texttt{LocalWithLeaderboards} & Same non-delivery, plus locally persisted \\
                                 & leaderboards/achievements from Chapter~\ref{ch:gamerservices} \\
 \texttt{PlayerMatch} / \texttt{Ranked} & Documented stub --- no matchmaking backend exists \\
                                         & to connect to, not an artificially withheld feature \\
@@ -131,6 +131,12 @@ to this) will actually work:
 Session invites are stubbed for the identical reason \texttt{PlayerMatch} / \texttt{Ranked}
 are: there is no online service behind them to implement against, not a deliberately
 Xbox-Live-exclusive feature CNA chose not to attempt.
+
+For all four synthetic types, no port is bound, \texttt{ConnectToHost} is a no-op,
+\texttt{Find} returns empty without the 150~ms network wait, and \texttt{SendData} leaves no
+local data available. Their useful behavior is session lifecycle: \texttt{StartGame},
+\texttt{EndGame}, state changes, and events. Only \texttt{SystemLink} passes
+\texttt{RealNetworkingEnabled}.
 
 \section{Real LAN discovery, concretely}
 
@@ -146,6 +152,27 @@ own acknowledged-incomplete, no-measurement stub exactly (byte-for-byte, for API
 a second that computes a real round-trip-time measurement from the discovery query/reply
 exchange itself --- bandwidth remains unmeasured in both cases, since no established peer
 connection exists yet at discovery time to measure it against.
+
+The discovery protocol uses UDP port 61190, version~1, and a 150~ms search window. A finder
+sends both broadcast and an explicit loopback query, then deduplicates replies by connect port.
+Ordinary hosts use an OS-assigned ENet port; Emscripten's fixed host port is 61191, but raw UDP
+discovery is a permanent browser no-op. Session transport allows 31 peers, two ENet channels,
+and 64 queued pre-handshake application sends.
+
+\subsection{Wire opcodes, topology, and hostile input}
+
+The complete application protocol is small: \texttt{ClientHello=0x01},
+\texttt{ServerWelcome=0x02}, join/leave broadcasts \texttt{0x03}/\texttt{0x04},
+\texttt{0x05} reserved for an unimplemented host-change broadcast,
+\texttt{StateChangeBroadcast=0x06}, and \texttt{AppData=0x10}. The topology is a star: clients
+talk to the host and the host relays application data to its target. Host migration instead
+promotes locally or rediscovers the new host by gamertag, retrying three 150~ms searches.
+
+Untrusted discovery packets are version-checked before deeper parsing. Property indices must
+be non-negative and below 256, preventing a crafted roughly two-billion-entry growth loop.
+List counts are one byte and encoding throws above 255 rather than wrapping. The threat model
+includes a custom ENet client speaking this inferable wire format; a non-host peer sending a
+host-only broadcast is logged and disconnected, as is a completed peer that repeats its hello.
 
 \section{Real bugs found and fixed}
 
@@ -481,7 +508,10 @@ reality --- mostly around Avatar-adjacent rendering concerns (Chapter~\ref{ch:av
 than this namespace's own networking logic --- and the specific networking-side gap those
 audits did surface (the pre-handshake application-data lifecycle above) is now fixed and
 test-confirmed, with a fourth, final audit confirming the networking side as genuinely
-settled. Of a broader run of 4{,}935 tests touching this area, 4{,}884 pass; every one of the
-51 remaining failures has been individually traced to a missing test fixture, a software
-rendering limitation, or parallel-test port contention on the well-known discovery port ---
-none traced back to this namespace's own logic.
+settled. The current net module contains 293 test cases; the whole audited project contains
+6{,}171. Cross-machine delivery is proven by an out-of-process two-instance ENet harness, while
+discovery, codec hardening, policy, simulated latency/loss, and the deliberately preserved
+\cnaclass{Color} asymmetry have focused tests. The history's more durable lesson is that each
+``final'' audit found a different layer---lifetime, protocol, hostile input, or process
+interaction---so a green feature checklist was repeatedly treated as a new claim to attack,
+not as proof that further audit was unnecessary.

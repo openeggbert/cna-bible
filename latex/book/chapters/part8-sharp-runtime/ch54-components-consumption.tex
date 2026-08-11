@@ -1,3 +1,196 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{Components and CNA Integration}
 \label{ch:sharp-components-consumption}
+
+The most consequential sharp-runtime change near CNA's audited revision did not alter a
+\texttt{System::} method. On 2026-08-10, the runtime merged a modular remediation snapshot
+that replaced the one-archive build shape with named components. The merge touched 3{,}828
+files and landed one day before the CNA revision examined for this book. A description based
+on the earlier monolith can therefore be internally coherent and still be wrong for the
+actual sibling pair.
+
+This chapter follows one question through both repositories: when a CNA source includes a
+runtime header, what target supplies it, and how does that target reach the final program?
+
+\section{Directories, components, and targets are different counts}
+
+The runtime has 41 module directories, but those directories register 44 components. The
+registry produces the shape in Table~\ref{tab:sharp-component-shape}.
+
+\begin{table}[htbp]
+  \centering
+  \caption{The audited sharp-runtime component shape.}
+  \label{tab:sharp-component-shape}
+  \begin{tabular}{@{}lrp{0.56\textwidth}@{}}
+    \toprule
+    Kind & Count & Meaning \\
+    \midrule
+    \texttt{STATIC} & 30 & Components with compiled implementation objects. \\
+    \texttt{INTERFACE} & 13 & Header-only surfaces or compatibility umbrellas carrying usage requirements. \\
+    \texttt{ALIAS} & 1 & \texttt{Xml.XPath} aliases \texttt{Xml}, whose implementation boundary is shared. \\
+    \midrule
+    Total & 44 & Registered components across 41 physical module directories. \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Two extra names explain why a directory count cannot predict the component count.
+\texttt{Core} and \texttt{Collections} are compatibility umbrellas over narrower components,
+and \texttt{Xml.XPath} is the alias. The remaining names cover families such as
+\texttt{Core.Base}, \texttt{Collections.Core}, \texttt{IO}, \texttt{Text.Json},
+\texttt{Threading.Tasks}, and \texttt{Net.WebSockets}. Consumers link the namespaced form,
+for example \texttt{SharpRuntime::Core.Base}, rather than guessing an archive filename.
+
+The module CMake files do not each call \texttt{add\_library} directly. They register their
+kind, dependencies, include directory, and optional test dependencies with a common registry.
+The registry later materializes targets in a consistent order. Production sources and module
+tests are globbed within the registered directory, while a source-partition validator and an
+empty dependency allowlist make accidental ownership leaks visible.
+
+\section{Header names predict location, not the link closure}
+
+There is no \texttt{SharpRuntime.hpp}. If ported code needs
+\texttt{System::IO::MemoryStream}, it includes
+\texttt{System/IO/MemoryStream.hpp}; the \texttt{IO} component owns that public include
+directory. The component can in turn expose public dependencies needed by the header.
+Consequently, a consumer names its direct component and lets CMake propagate the remainder.
+
+CNA directly includes 54 distinct sharp-runtime headers: 52 below \texttt{System/} and two
+below \texttt{SharpRuntime/}. The latter count must not be misread as the total dependency.
+\texttt{SharpRuntime/\allowbreak SharpRuntimeHelper.hpp} supplies primitive aliases, while
+\texttt{SharpRuntime/\allowbreak Prop.hpp} supplies downstream property macros. Both belong
+to \texttt{Core.Base}; headers such as
+\texttt{System/IO/\allowbreak BinaryWriter.hpp} and
+\texttt{System/Security/\allowbreak Cryptography/\allowbreak SHA256.hpp} introduce other
+component needs.
+
+\section{Standalone selection and embedded selection differ}
+
+When sharp-runtime is the top-level CMake project, it exposes
+\texttt{SHARP\_RUNTIME\_COMPONENTS}. A developer may select a subset, or leave the default
+\texttt{All}. The compatibility \texttt{SHARP\_RUNTIME} interface target exists only for that
+complete selection; a deliberately partial build should use namespaced component targets.
+
+That cache option is created only when the runtime is the top-level project. CNA adds the
+runtime with \texttt{add\_subdirectory}, so the option is not created and selection falls
+through to \texttt{All}. Every component is therefore available in a normal CNA build. CNA's
+narrow component lists reduce each target's \emph{link interface}; at this revision they do
+not prevent unrelated runtime components from being configured and compiled.
+
+This distinction prevents two opposite mistakes:
+
+\begin{itemize}
+  \item a narrow CNA declaration is meaningful because it documents and enforces the target's
+        link boundary;
+  \item it is not yet a build-time pruning mechanism for the embedded sibling.
+\end{itemize}
+
+\section{CNA's sibling contract}
+
+Sharp-runtime is CNA's one unconditional sibling dependency. CNA first forces
+\texttt{SHARP\_RUNTIME\_BUILD\_TESTS} off; otherwise embedding it would add 37 runtime test
+executables to every CNA build. It then resolves \texttt{CNA\_SHARP\_RUNTIME\_ROOT}, whose
+default is the adjacent \texttt{../sharp-runtime} checkout. A missing
+\texttt{CMakeLists.txt} is a configure-time fatal error with a clone remedy. There is no
+submodule, vendored copy, \texttt{FetchContent} fallback, or reduced internal substitute.
+
+After \texttt{add\_subdirectory}, CNA loads its 59-line
+\texttt{SharpRuntimeConsumption.cmake} adapter. The adapter recognizes two historical build
+shapes:
+
+\begin{description}
+  \item[Modular] \texttt{SharpRuntime::Core.Base} exists, so requested component names are
+  translated to namespaced targets. This is the authoritative shape for the audited siblings.
+  \item[Monolithic] That target does not exist, so CNA links the legacy
+  \texttt{SHARP\_RUNTIME} archive. This is a compatibility path for older checkouts, not the
+  architecture of current sharp-runtime.
+\end{description}
+
+The detection intentionally tests a target rather than a version string. That makes the seam
+describe the capability CNA needs and avoids teaching CNA the runtime's release-numbering
+history.
+
+\section{The linking helper makes closures explicit}
+
+Every CNA module calls
+\texttt{cna\_link\_sharp\_runtime(target visibility [Components...])}. In a modular checkout,
+the helper prefixes each supplied name with \texttt{SharpRuntime::}; in a legacy checkout it
+falls back to the single archive. Omitting the optional names uses CNA's default closure:
+
+\begin{lstlisting}
+Core.Base
+IO
+Collections.Core
+Collections.ObjectModel
+Runtime
+Threading
+Text
+Globalization
+Storage
+\end{lstlisting}
+
+That list is not every transitive component. Dependencies such as \texttt{Uri},
+\texttt{TimeZone}, \texttt{ComponentModel}, and \texttt{Buffers} arrive through the public
+edges of the named targets. Repeating the transitive closure in CNA would duplicate the
+runtime registry and make upgrades more fragile.
+
+Eighteen CNA module call sites declare their own closure. Small modules can be genuinely
+narrow: \texttt{math} and \texttt{input} request only \texttt{Core.Base}. Graphics requests
+\texttt{Core.Base}, \texttt{IO}, \texttt{Collections.Core}, and \texttt{Text}. Networking
+adds \texttt{Runtime} and \texttt{Threading}; gamer services additionally needs
+\texttt{Globalization}. The renderer aggregation target uses the default closure because it
+spans more of the framework.
+
+\begin{lstlisting}
+# Shape-independent CNA module declaration
+cna_link_sharp_runtime(CNA_Input PUBLIC Core.Base)
+
+cna_link_sharp_runtime(CNA_Net PUBLIC
+    Core.Base IO Collections.Core Runtime Threading)
+\end{lstlisting}
+
+The helper is therefore more than syntactic convenience. It lets present-day modules state
+precise boundaries while retaining a controlled path to old sibling checkouts.
+
+\section{Tests enforce component ownership}
+
+The modular test layout is part of the boundary design. Each component with tests gets a
+\texttt{SharpRuntimeTests\_<component>} executable linked only to its component,
+\texttt{gtest\_main}, and explicitly declared test-only dependencies. GoogleTest discovery
+adds the component name as a prefix. A test that accidentally reaches into an undeclared
+component can consequently fail to link; the old monolithic test executable could have
+masked the same dependency.
+
+Thirty-six components currently contribute such an executable, and a separate integration
+executable brings the total to 37. Five module directories have no component tests:
+\texttt{io-compression-zip}, \texttt{io-isolated-storage},
+\texttt{security-cryptography-random}, \texttt{storage}, and
+\texttt{text-regular-expressions}. The last is a 12-header interface component with no
+implementation and no tests, a concrete coverage gap rather than an implied success.
+
+Outside GoogleTest, Python meta-tests validate boundaries and consumer fixtures exercise both
+positive and intentionally failing configurations. A negative fixture is successful when a
+forbidden dependency fails to compile or link; treating every non-zero compiler exit as a CI
+failure would invert the purpose of that test.
+
+\section{Upgrade rules for the seam}
+
+The safe upgrade procedure follows directly from the architecture:
+
+\begin{enumerate}
+  \item pin and identify both CNA and sharp-runtime revisions;
+  \item configure through \texttt{CNA\_SHARP\_RUNTIME\_ROOT} rather than moving sibling
+        directories to satisfy a hidden assumption;
+  \item confirm the shape-detection message and inspect unexpected fallbacks to the monolith;
+  \item keep each CNA module's direct component list narrow and let public dependencies close
+        transitively;
+  \item run runtime boundary fixtures when the registry changes, then run CNA's normal build
+        and tests with runtime tests still disabled in the embedded build;
+  \item distinguish ``all components were built'' from ``this CNA target links only its
+        declared closure'' in any verification report.
+\end{enumerate}
+
+The final rule is the most important. Modularity has two observable layers here: what the
+parent configures and what an individual target consumes. At the audited revision CNA gets
+all 44 components from its sibling, but its module targets no longer pretend that they need
+all 44. That narrower declaration is the durable integration contract on which later
+build-time pruning can be based.

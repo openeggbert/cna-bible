@@ -71,7 +71,7 @@ current, not stale.
 | **A — source audit** | **Complete. 10 of 10 areas delivered and on disk in `audit/`.** |
 | **B — new Table of Contents** | **Complete.** The 12-Part / 79-chapter structure, appendices and old-to-new disposition map are settled in §4. |
 | **C — structural migration** | **Complete.** The 12-Part / 79-chapter / 8-appendix migration, context-sensitive terminology pass, current selector/identifier migration, and module-owned source-path sweep are complete and PDF-verified clean at 645 pages. |
-| **D — chapter writing** | **In progress.** Two verified batches complete: Chapters 19–36. Continue in verified 8–10 chapter batches. |
+| **D — chapter writing** | **In progress.** Four verified batches complete: Chapters 19–54. Continue in verified 8–10 chapter batches. |
 | **E — appendices** | Not started. |
 | **F — whole-book consistency** | Not started. |
 | **G — final verification** | Not started. |
