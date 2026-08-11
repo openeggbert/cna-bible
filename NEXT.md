@@ -5,14 +5,14 @@ Read this file, then `PLAN.md`, then `AUDIT.md`. The raw per-area research evide
 edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
 `NEXT-ARCHIVE-2026-07-26.md` — history, not instructions.
 
-## State at handoff (2026-08-11)
+## State at handoff (2026-08-12)
 
 | | |
 |---|---|
 | cna-bible branch | `next`; local commits are ahead of `origin/next` (push requires explicit external-publication approval) |
 | CNA pinned SHA | `7a64362efef4119bf880459ef1704fb2c52199e2` (`develop` == `origin/develop`, 2026-08-11) |
-| Book builds | **yes** — 661 pages, all automated checks green; Phase D batches 1–2 visually verified |
-| Phase | **A, B, and C complete. Phase D in progress:** two verified batches, Chapters 19–36, are complete. |
+| Book builds | **yes** — 675 pages, all automated checks green; Phase D batches 1–3 visually verified |
+| Phase | **A, B, and C complete. Phase D in progress:** three verified batches, Chapters 19–45, are complete. |
 
 ## What is done
 
@@ -73,14 +73,17 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
 13. **Phase D batch 2 is complete and verified.** Chapters 28–32 finish all renderer clusters;
     Chapters 33–36 split the ContentManager façade, XNB container, XNB object graph, and CNJ
     format at their real implementation seams. Physical pages 304–391 were all inspected.
+14. **Phase D batch 3 is complete and verified.** Chapters 37–45 now cover content robustness,
+    all four model routes, the shared glTF importer, stride ABI, skinning/animation, CNJ toolchain,
+    the five implemented oracle layers, current Input facts and current SDL3_mixer/XACT behavior.
+    The consolidated book is 675 pages; physical pages 392–455 were all inspected.
 
 ## Do this next
 
-**Continue Phase D with Chapters 37–45** as the next nine-chapter batch: content robustness;
-the Model runtime; glTF import, packing, skinning, CNJ toolchain and conformance; then Input and
-Audio. Read `audit/content-xnb-cnj.md`, `audit/3d-gltf-cnj.md`, and
-`audit/input-audio-net-services.md` before writing, then run one consolidated build and visual
-pass.
+**Continue Phase D with Chapters 46–54** as the next nine-chapter batch: Media; both halves of
+Devices; GamerServices; Storage; Networking; Avatar; then the sharp-runtime overview and
+component integration. Read `audit/input-audio-net-services.md` and
+`audit/sibling-libraries.md` before writing, then run one consolidated build and visual pass.
 
 ## Do not do these
 
@@ -98,10 +101,10 @@ pass.
 
 ## Verification status
 
-Everything through Phase D batch 2 is verified:
+Everything through Phase D batch 3 is verified:
 
-- `make -C latex book` succeeds; **661 pages**.
-- makeindex: 2,345 entries accepted, 0 rejected, 0 warnings.
+- `make -C latex book` succeeds; **675 pages**.
+- makeindex: 2,392 entries accepted, 0 rejected, 0 warnings.
 - No undefined references, no undefined control sequences, no duplicate labels, no doubled-
   backslash `\ref`, no hard-coded chapter numbers.
 - `git diff --check` clean.
@@ -112,8 +115,10 @@ Everything through Phase D batch 2 is verified:
 - Phase C's full 645-page pass remains green. Phase D batch 1 additionally rendered and reviewed
   every touched physical page, 194–303, as 11 contact sheets.
 - Phase D batch 2 rendered and reviewed every touched physical page, 304–391, as 9 contact sheets.
+- Phase D batch 3 rendered and reviewed every touched physical page, 392–455, as 8 contact sheets;
+  the stride table, defect ledger, and audio equations were also inspected at full size.
 
-**No completed writing batch is pending PDF verification.** Continue with Chapters 37–45 and
+**No completed writing batch is pending PDF verification.** Continue with Chapters 46–54 and
 follow the normal ~8–10 chapter batch rule.
 
 ## Environment notes
@@ -128,5 +133,5 @@ follow the normal ~8–10 chapter batch rule.
 
 Ten source-audit reports and the 42-family draw-path matrix are complete against pinned CNA
 `7a64362e`. Phase B settled a 12-Part, 79-chapter, 8-appendix edition; Phase C put it on disk,
-migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–2
-rewrote Chapters 19–36 and verified the resulting 661-page book; Chapters 37–45 are next.
+migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–3
+rewrote Chapters 19–45 and verified the resulting 675-page book; Chapters 46–54 are next.

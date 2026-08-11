@@ -1,3 +1,162 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{glTF Conformance and Oracles}
 \label{ch:gltf-conformance}
+
+CNA's most instructive glTF feature is not a shader or loader. It is the evidence system around
+the loader: a pinned specification, a deterministic committed corpus, numerical observations at
+five boundaries, and an executable ledger that distinguishes known wrong output from intended
+truth. This chapter explains what that system can prove and, just as importantly, what it
+cannot.
+
+\section{Pin the authority before writing expectations}
+
+\texttt{docs/gltf-conformance.md} identifies a specific Khronos glTF~2.0 specification commit,
+the byte size and SHA-256 of its AsciiDoc source, and the anchors used by the tests. Pinning the
+source makes a sentence such as ``indices default to a sequential range'' reproducible even if
+the public website later changes its rendering or section links.
+
+The specification is not vendored into or required by CNA at build time. It is research input
+for authors and reviewers. The document includes a download-and-hash recipe so a future audit
+can establish whether it is reading the same authority before changing any expected value.
+
+\section{One deterministic source produces asset and expectation}
+
+The fixture generator under \texttt{tools/gltf\_fixtures} uses only Python's standard library.
+One definition emits the JSON/GLB content, spec-derived expected values, golden vertex/index
+bytes where implemented, and a manifest entry. Generated outputs are committed. The test suite
+does not require Python; it verifies each committed file against the SHA-256 manifest before
+using it.
+
+This arrangement has two benefits. A clean checkout contains the exact evidence reviewed in a
+commit, and accidental edits are detected before a geometric comparison gives a confusing
+failure. The generator can also run in a check-only mode that proves regeneration is
+byte-identical. It does \emph{not} currently invoke Khronos's external glTF Validator, so the
+word deterministic must not be inflated into externally validated.
+
+The audited corpus contains 16 CNA-authored assets, each with a \texttt{.gltf}, a
+\texttt{.glb}, and an \texttt{.expected.json} twin; 14 also carry vertex/index golden pairs,
+for 76 manifest-tracked files. The two topology-rejection assets intentionally have no buffer
+golden. This is 16 of a planned 136-asset campaign, not a completed 136-asset corpus.
+
+\section{The seven-layer ladder}
+
+An oracle should observe a boundary close enough to a defect to identify it. CNA defines seven
+layers:
+
+\begin{description}
+  \item[L1: container structure] scenes, nodes, accessors, modes, and declared relationships;
+  \item[L2: decoded accessors] typed numerical arrays after offsets, strides, normalization,
+        and sparse overrides;
+  \item[L3: semantic mesh streams] the import core's positions, attributes, indices,
+        materials, and grouping decisions;
+  \item[L4: composed geometry] expected world positions after scene-node transforms;
+  \item[L5: GPU bytes] byte-exact vertex and index buffers with field-aware diagnostics;
+  \item[L6: bound effect state] the parameters and textures that a renderer actually receives;
+  \item[L7: rendered pixels] output images compared with a trusted visual reference.
+\end{description}
+
+Layers L1--L5 exist. L6 and L7 do not. Consequently the corpus can prove that a position was
+decoded, transformed, and packed as expected; it cannot prove that every backend binds the
+matching matrix/material or renders the expected pixels. CNA has EasyGL golden tests for some
+hand-authored skinned and PBR examples, but none is a glTF fixture and none closes the general
+L7 gap.
+
+The L5 comparator reports a mismatch by stride, vertex, field, and byte offset rather than
+printing two opaque binary blobs. Its layout table is intentionally stated independently in
+the Python golden generator and the C++ oracle, with a test asserting agreement. A table stated
+only once cannot reveal its own drift; two independently consumed statements plus a consistency
+test can.
+
+\section{Truth and current behavior are different fields}
+
+Each \texttt{.expected.json} keeps spec-derived L1--L4 expectations separate from a defect's
+measured \texttt{currentActual}. A known-defect test makes a two-sided assertion:
+
+\begin{enumerate}
+  \item CNA still fails to equal the normative expectation; and
+  \item it fails in exactly the recorded way.
+\end{enumerate}
+
+The first side prevents a silently fixed behavior from remaining classified as broken. The
+second prevents a familiar defect from masking a new regression. Updating
+\texttt{currentActual} merely to make the test green is not remediation; it is rewriting the
+measurement without explaining why behavior changed.
+
+\section{A ledger that never forgets}
+
+Defects move through \texttt{known-failing}, \texttt{partially-remediated}, and
+\texttt{fixed}. A fixed record is not deleted. Its former measured output moves to historical
+evidence and the fixture becomes a permanent regression witness. A bidirectional meta-test
+checks both directions: every open defect must have an executable known-defect test, and a
+remediated defect must no longer retain a test that insists on the old wrong result.
+
+At the audited CNA revision, the ledger reads:
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}lXl@{}}
+\toprule
+Defect & Meaning & State \\
+\midrule
+D1--D3 & node TRS, hierarchy, and matrix transforms & fixed \\
+D4 & sparse index accessors decoded as zero & fixed \\
+D5 & non-triangle primitives reinterpreted & partial: classified and rejected, not drawn \\
+D6 & rigid node animation silently dropped & known failing \\
+D7 & factor-only PBR material lost & known failing \\
+D8 & ancestry above a skin's joint set lost & fixed \\
+\bottomrule
+\end{tabularx}
+\caption{The executable glTF defect ledger at the pinned source revision.}
+\end{table}
+
+The D5 state is deliberately partial. Named early rejection is a correctness improvement over
+drawing points or a strip as triangles, but it is not support for those topologies.
+
+\section{Fixtures designed to distinguish wrong answers}
+
+A good regression fixture does not merely make old and new output different. It makes plausible
+failure modes distinguishable. The skin/mesh-node coordinate-space fixture is constructed so
+missing the inverse cancellation, applying it once, and applying it twice produce three known
+positions. The test names the exact expected middle result.
+
+The same principle appears throughout the corpus:
+
+\begin{itemize}
+  \item shared-mesh placement distinguishes preserved instancing from baked transforms;
+  \item reversed joint order distinguishes source ordinals from topological palette indices;
+  \item sparse indices with no base buffer view distinguish true sparse support from an
+        ordinary overwrite case;
+  \item normalized byte colour is compared both numerically and after byte-exact repacking; and
+  \item out-of-range indices must report the offending value rather than merely throw.
+\end{itemize}
+
+Tests also establish that invoking a diagnostic oracle does not mutate production output. An
+observer that changes allocator state or import records would not be a trustworthy observer.
+
+\section{What the current evidence says honestly}
+
+The glTF-specific test code is larger than the import core and covers container twins, digest
+verification, accessor decoding, sparse indices, topology classification, scene/model-bone
+agreement, skin spaces, materials, tangents, lights, runtime import, converter output, CNJ
+reload, animation, and the L1--L5 helpers. GPU-dependent tests gate on the renderer's declared
+3D capability; CPU import tests do not.
+
+Coverage is nevertheless incomplete:
+
+\begin{itemize}
+  \item there is no L6 effect-binding oracle or L7 glTF pixel oracle;
+  \item external-file and percent-encoded buffer URIs lack corpus evidence despite production
+        code paths;
+  \item runtime loss of later mesh groups is documented but not directly exercised;
+  \item samplers, cameras, transmission, variants, colour spaces, and negative-scale winding
+        remain outside the supported surface;
+  \item rigid animation and factor-only materials remain executable known defects; and
+  \item renderer capability declarations can overclaim, so a capability gate is necessary but
+        not sufficient visual proof.
+\end{itemize}
+
+The campaign snapshot contains 21 completed tasks out of 460. That number is evidence of an
+active correctness programme, not a completion percentage for the glTF specification. The
+right conclusion is narrower and stronger: for the cases represented through L5, CNA has a
+reproducible chain from pinned rule to committed input to numerical and byte-level observation,
+while its remaining unsupported and unproved boundaries are explicitly named.

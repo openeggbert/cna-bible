@@ -1,3 +1,114 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{The CNJ Model Toolchain}
 \label{ch:cnj-model-toolchain}
+
+Direct runtime glTF loading is convenient, but it returns only the first mesh group and fixes
+unit scale at~1. The offline \texttt{cna\_tool\_gltf\_to\_cnj} path uses the same semantic
+import core and material packing, then writes every group as explicit CNJ and binary sidecars.
+It is the reproducible path for multi-skin files, controlled scaling, and inspectable build
+artifacts.
+
+\section{A renderer-free build tool}
+
+The tool is configured by \texttt{cmake/ToolGltfToCnj.cmake}, built unconditionally rather than
+behind \texttt{CNA\_BUILD\_TESTS}, and links CNA plus sharp-runtime. It does not initialize a
+window, graphics device, or renderer. The command line is
+
+\begin{lstlisting}
+cna_tool_gltf_to_cnj input.gltf outputDir baseName [unitScale]
+\end{lstlisting}
+
+The input may be \texttt{.gltf} or \texttt{.glb}. For each group, the tool writes a model
+descriptor and sidecars:
+
+\begin{itemize}
+  \item \texttt{<name>.cnj}, a version-2 \texttt{Model} envelope;
+  \item \texttt{<name>\_meshN\_verts.bin} and \texttt{\_idx.bin};
+  \item optional \texttt{\_morph.bin} files;
+  \item optional \texttt{<name>.skeleton.bin};
+  \item one version-1 \texttt{AnimationClip} CNJ per clip; and
+  \item extracted base, occlusion, and other texture images with stable suffixes.
+\end{itemize}
+
+Multiple groups receive stable \texttt{\_static} or skin-name suffixes. Unlike runtime
+\texttt{groups.front()}, no later group is silently discarded.
+
+\section{The Model envelope is version 2}
+
+CNJ's common envelope contains a version and a logical type. Most types accept version~1 only;
+\texttt{Model} has a per-type maximum of~2. Raising the Model ceiling did not globally bless
+version~2 for textures, effects, or animation clips. Validation receives the requested type
+and that type's maximum, so a version accepted for one reader can still be rejected by another.
+
+Version~2 adds a top-level \texttt{bones} array. Each record carries a name, parent index, and
+16-float local transform, and records are parent-before-child with an identity root at index~0.
+Each mesh also receives a \texttt{parentBone} index. These fields preserve the glTF scene
+hierarchy and rigid instancing placement that a flat list of pre-transformed meshes could not.
+
+Version-1 Model files remain loadable. When no general hierarchy exists, the reader constructs
+the older per-mesh fallback bone. This makes version~2 an additive fidelity improvement rather
+than a flag day.
+
+\section{Binary sidecars and bounded reads}
+
+Vertex and index bytes use the packed ABI from Chapter~\ref{ch:gpu-packing}. The descriptor
+supplies counts, strides, formats, primitive counts, and paths; the reader verifies limits and
+spans before allocating or uploading. Morph sidecars retain base bytes and target deltas used
+by \texttt{MorphTargetDataEXT}.
+
+The skeleton sidecar historically contained two matrix blocks: bind poses and inverse binds.
+Version~2 can append a third block containing \texttt{SkeletonRootPrefix}. The reader checks
+whether at least \texttt{boneCount * 64} bytes remain before reading it; if not, it supplies
+identity prefixes. Appending an optional fixed-size block rather than changing the meaning of
+the old two is what keeps earlier sidecars valid.
+
+The descriptor may reference separate clip CNJs. Those pass through the manager's normal
+cached loading path, so repeated names can share a clip object. Mesh buffers, built-in effects,
+and most graph objects are still created per described part and retained by the model's private
+ownership bundle.
+
+\section{Offline and runtime parity}
+
+Sharing \texttt{GltfImportCore} reduces drift, but does not prove parity by itself. The two
+front ends perform different work after extraction: one creates textures, effects, buffers and
+a live model; the other serializes bytes and descriptors that a later CNJ reader recreates.
+Tests therefore compare semantic and rendering-visible results across both routes, including
+reversed skin order, animation, PBR data, morph tracks, texture extraction, and hierarchy.
+
+The important contract is not byte identity between a live object and JSON. It is that a group
+imported directly and the same group converted then loaded from CNJ produce the same scene-node
+placement, palette coordinate spaces, vertex/index bytes, material choice, and animation
+records. A fix made only in one front end is a regression even if the shared parser still
+builds.
+
+\section{Worked example: occlusion through DualTextureEffect}
+
+glTF occlusion uses 1.0 for fully visible light and 0.0 for full occlusion. XNA's
+\cnaclass{DualTextureEffect}, however, multiplies its second texture contribution by~2; in that
+equation 0.5 is neutral. Passing glTF's occlusion image unchanged would brighten rather than
+preserve an unoccluded surface.
+
+For the non-PBR dual-texture approximation, CNA therefore decodes the occlusion image, halves
+its RGB channels, and re-encodes it. The resulting mapping is
+
+\[
+  o_{dual} = \frac{o_{gltf}}{2},
+  \qquad 2o_{dual}=o_{gltf}.
+\]
+
+The remapped image is cached separately from the original because the same source image may
+also be bound to \cnaclass{PbrEffect}, where glTF's original convention is correct. The runtime
+and converter both use this shared extraction rule; tests cover successful remapping and decode
+failure.
+
+\section{Choosing a route}
+
+Use direct glTF for rapid iteration on a file known to have one relevant group and unit scale.
+Use the converter when the file contains multiple characters or static plus skinned content,
+when unit conversion is required, or when asset bytes must be reviewed and committed. Use XNB
+when compatibility with an existing XNA content pipeline is the governing requirement. The
+legacy \texttt{.skinnedmodel.json} path is for \cnaclass{SkinnedModelEXT}, not an alternate CNJ
+spelling.
+
+Do not hand-edit counts or offsets in a generated Model CNJ without regenerating or validating
+the sidecars. The JSON is readable, but its numerical metadata and binary files form one asset
+contract.

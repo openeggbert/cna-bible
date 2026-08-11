@@ -1,3 +1,136 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{GPU Packing and the Stride ABI}
 \label{ch:gpu-packing}
+
+Between glTF's typed accessors and a renderer's vertex fetch lies a compact byte protocol that
+is not declared as a C++ type. \texttt{ExtractMesh} chooses one of seven layouts, writes tightly
+packed bytes, and records only the stride. Later, \texttt{ContentManager} switches on that
+stride to choose an upload route. Renderer shaders must independently agree with the same
+offsets. The stride is therefore a de-facto ABI.
+
+\section{The seven glTF layouts}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}lXl@{}}
+\toprule
+Stride & Fields and byte offsets & Effect family \\
+\midrule
+20 & position 0, UV 12 & dual texture \\
+24 & position 0, colour u8x4 at 12, UV 16 & basic, vertex colour \\
+32 & position 0, normal 12, UV 24 & basic \\
+48 & position 0, normal 12, tangent vec4 at 24, UV 40 & PBR \\
+52 & position 0, normal 12, UV 24, weights 32, joint u8x4 at 48 & skinned \\
+56 & stride 52 plus colour u8x4 at 52 & skinned, vertex colour \\
+68 & position 0, normal 12, tangent 24, UV 40, weights 48, joint u8x4 at 64 & skinned PBR \\
+\bottomrule
+\end{tabularx}
+\caption{The glTF vertex-byte ABI. Offsets and strides are bytes.}
+\label{tab:gltf-stride-abi}
+\end{table}
+
+Selection is semantic rather than user-configurable. A base-colour plus occlusion texture on an
+unskinned, uncoloured, non-PBR primitive selects stride~20 and
+\cnaclass{DualTextureEffect}; colour selects~24 unless skinning changes it to~56; normal or
+metallic--roughness maps select a tangent-bearing PBR layout; and skinning otherwise selects
+52. Missing normals, UVs, and colours receive stable defaults.
+
+The downstream upload switch also recognizes stride~16 for a typed
+\texttt{VertexPositionColor} path used by non-glTF raw content. That makes the upload switch an
+eight-case protocol, but stride~16 is not an eighth layout emitted by the current glTF
+selection expression. Keeping those two counts separate avoids a recurring documentation
+contradiction.
+
+\section{Why ordinary C++ structs were unsafe}
+
+Several CNA vertex structs implement polymorphic \cnaclass{IVertexType}. Their in-memory C++
+objects consequently contain a vtable pointer, so \texttt{sizeof(Vertex...)} is larger than
+the clean GPU layout and the first declared field need not begin at byte~0. Reinterpreting the
+tightly packed glTF byte array as an array of those objects shifts every field. The renderer
+then sees plausible-sized buffers containing nonsense, a root cause of the long-lived
+``invisible model'' symptom family.
+
+The current bridge is explicit:
+
+\begin{itemize}
+  \item strides 16, 20, 24, and 32 are reconstructed field-by-field as real typed vertex
+        objects before typed \texttt{SetData};
+  \item strides 48, 52, 56, and 68 use \texttt{SetDataRaw}, preserving the packed bytes; and
+  \item unknown strides are rejected rather than guessed.
+\end{itemize}
+
+This fixes the object-layout error, but it leaves the protocol stated in more than one place:
+the packer, the upload switch, renderer declarations, morph-target offset logic, and the L5
+golden oracle. A future refactor should generate these views from one declarative layout table.
+Until then, tests that compare independently stated tables are more valuable than comments
+claiming they agree.
+
+\section{Indices: source width is not destination width}
+
+CNA decodes glTF indices itself rather than relying on cgltf's index helper, because the helper
+cannot report why a sparse read failed. The decoder accepts unsigned byte, unsigned short, and
+unsigned int scalar accessors, honours buffer-view/accessor offsets and sparse overrides, and
+uses \texttt{memcpy} for possibly unaligned components. A non-indexed primitive receives the
+implicit sequence $0,1,\ldots,n-1$.
+
+Every decoded index is checked against the position count before packing. Only after that proof
+does the destination width get selected:
+
+\[
+  \text{destination width} =
+  \begin{cases}
+    16\text{ bits}, & vertexCount \le 65{,}535,\\
+    32\text{ bits}, & vertexCount > 65{,}535.
+  \end{cases}
+\]
+
+The source component type is deliberately irrelevant. A glTF accessor stored as 32-bit indices
+for a 100-vertex mesh becomes a 16-bit GPU index buffer; the preceding range check makes that
+narrowing safe. This is a useful example of proving a conversion rather than preserving a
+source representation merely because it existed.
+
+\section{Topology is narrower than the file format}
+
+glTF defines seven primitive modes. CNA classifies all seven by their real numeric value and
+name, accepts \texttt{TRIANGLES} only, and rejects points, lines, strips, and fans before
+producing an index list. That is the remediated half of defect D5: unsupported modes are no
+longer silently reinterpreted as triangles.
+
+The remaining half is architectural. Every model loader computes
+\texttt{primitiveCount = numIndices / 3}, \cnaclass{ModelMeshPart} has no topology field, and
+\cnaclass{ModelMesh::Draw} hardcodes \cnaclass{PrimitiveType::TriangleList}. Adding another
+glTF mode therefore requires an end-to-end runtime change, not merely relaxing the importer
+check. A count that truncates a non-triangle index list would be wrong even if a backend knew
+how to draw the intended mode.
+
+\section{Tangents and winding}
+
+If a glTF primitive supplies \texttt{TANGENT}, CNA preserves it. Otherwise PBR extraction
+computes tangent and handedness from positions, normals, and UV gradients. Contributions are
+weighted by corner angle, degenerate UV triangles are skipped, and the result is
+Gram--Schmidt-orthogonalized. This is intentionally not a bit-exact MikkTSpace implementation:
+corners are not welded across matching position/normal seams.
+
+No coordinate-system conversion is required, but one winding case remains: a node with a
+negative-determinant transform changes front-face orientation. CNA does not flip that
+primitive's winding, so culling can hide geometry mirrored by a negative scale. This is an
+open limitation separate from tangent handedness.
+
+\section{Hard limits carried by the bytes}
+
+The ABI makes several limits concrete rather than advisory:
+
+\begin{itemize}
+  \item only one UV stream reaches the effect, even when maps select different glTF UV sets;
+  \item only \texttt{JOINTS\_0}/\texttt{WEIGHTS\_0} are imported: four influences per vertex;
+  \item joint indices are four unsigned bytes, so at most 256 palette addresses are encodable;
+  \item \cnaclass{SkinnedEffect} and \cnaclass{SkinnedPbrEffect} cap actual palettes at 72
+        bones; and
+  \item morph targets are CPU-blended into the base byte array and re-uploaded. Normal deltas
+        are currently written only for strides 32, 52, and 56, so PBR strides 48 and 68 receive
+        position-only morphing without a diagnostic.
+\end{itemize}
+
+These are different layers of limit. Raising the shader palette above~72 does not widen an
+8-bit joint index, and widening the index does not add a fifth influence or a second UV set.
+Any format change must update the full stride ABI and its oracles together.

@@ -338,6 +338,7 @@ log grep replaces.
 | 2026-08-11 | Renderer draw-path matrix | **42/42 families, 46/46 identities**; 31 dual overrides / 11 dual inheritances; four hybrid colored tails; RT2D/MRT/occlusion paths mapped; capability contradictions recorded as CNA-BUG-054; row and partition counts mechanically checked; `git diff --check` clean |
 | 2026-08-11 | Phase D batch 1, Chapters 19–27 | **661 pages**, build clean; makeindex 2,378 / 0 / 0; renderer contract and selection corrected; OpenGL material separated into compatibility and programmable families; native-modern, wrapper, and retro clusters cover all assigned identities; physical PDF pages 194–303 rendered and reviewed as 11 contact sheets; no clipping, overlap, broken page, undefined reference, duplicate label, stale selector, or whitespace error |
 | 2026-08-11 | Phase D batch 2, Chapters 28–36 | **661 pages**, build clean; makeindex 2,345 / 0 / 0; Part IV completed across all 46 identities / 42 families; old combined Content chapter split without losing its reader material; XNB container, object graph, and CNJ each have a separate source-grounded chapter; physical pages 304–391 rendered and reviewed as 9 contact sheets; all automated and visual checks green |
+| 2026-08-12 | Phase D batch 3, Chapters 37–45 | **675 pages**, build clean; makeindex 2,392 / 0 / 0; content failure boundaries completed; four model routes corrected; glTF import, stride ABI, dual skeletal systems, CNJ toolchain and five-of-seven oracle ladder written; Input and Audio reconciled to current source; physical pages 392–455 rendered and reviewed as 8 contact sheets with high-risk tables/equations inspected full-size; all automated and visual checks green |
 
 ---
 
@@ -467,3 +468,24 @@ mid-session at the owner's direction, so the build and visual passes are availab
 - Verified the consolidated 661-page PDF with 2,345 accepted index entries and no rejected or
   warned entries. Rendered physical pages 304–391 and reviewed all 88 as nine contact sheets;
   every touched page and the Part IV-to-V transition are visually clean.
+
+### 2026-08-12 — Phase D batch 3: Chapters 37–45
+
+- Replaced the content-robustness placeholder with the real enforcement matrix: decompression,
+  depth/count limits, contained internal references, fuzz entry points, the independent FNA LZX
+  oracle, exception asymmetries and the remaining uncapped edges.
+- Corrected the Model chapter from three routes to four and wrote the complete five-chapter 3D
+  sequence: one import core/two consumers, seven glTF stride layouts versus the eight-case upload
+  switch, two independent skeleton runtimes and the D8 root prefix, CNJ Model v2/tool output, and
+  the seven-layer conformance ladder with L1--L5 implemented and D5--D7 kept honest.
+- Reconciled Input to 522 cases, four pad slots, exact dead zones, 160 keys/125-versus-126 maps,
+  all ten gestures, unconditional CNA::Input extensions, default-build Clipboard/Power overlap,
+  and the latent missing `SDL_INIT_SENSOR` initialization.
+- Reconciled Audio to the `MIX_Mixer`/`MIX_Audio`/`MIX_Track` lifetime model, real codec matrix,
+  exact attenuation/pan/pitch/Doppler formulas, five XNB formats, uncapped fire-and-forget tracks,
+  non-operational `InstancePlayLimitException`, partial `REPLACE_QUIETEST`, mixer pinning and the
+  device-free `OfflineAudioRenderer`; retained the three unchecked release blockers explicitly.
+- Ran `tools/verify-book.sh`: 675 pages, makeindex 2,392 accepted / 0 rejected / 0 warnings, all
+  automated checks green. Rendered physical pages 392–455 and reviewed all 64 as eight contact
+  sheets; inspected the stride table, defect ledger and audio equations at full size. No clipping,
+  overlap, broken float, unreadable table, stale reference or visual defect remains in the batch.

@@ -1,3 +1,113 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{Robust Content and Asset Boundaries}
 \label{ch:content-robustness}
+
+Content loading combines attacker-controlled lengths, recursion, compression, paths, decoders,
+and GPU allocations.  CNA's XNB side has undergone a substantial hardening campaign; CNJ and
+glTF retain explicitly narrower controls.  This chapter states the enforcement points and the
+remaining gaps without turning either into a blanket claim of safety or insecurity.
+
+\section{Limits are useful only where they are enforced}
+
+\begin{longtable}{p{0.27\textwidth}p{0.16\textwidth}p{0.34\textwidth}p{0.12\textwidth}}
+\toprule
+Control & Bound & Enforcement point & Status \\
+\midrule
+\endfirsthead
+\toprule
+Control & Bound & Enforcement point & Status \\
+\midrule
+\endhead
+XNB compressed payload & 64 MiB & before decompression allocation & partial: initial file read uncapped \\
+XNB decoded payload & 256 MiB & hint and final decoded size & enforced \\
+XNB string & 1 MiB & after \texttt{ReadString} & enforced post-read \\
+reader count & 4,096 & type-reader table & enforced \\
+object/type nesting & 256 & RAII graph guard and type-name parser & enforced \\
+shared resources & 1,000,000 & table count before fixups & enforced \\
+CNJ document size & none & whole text read & open \\
+CNJ JSON depth & none & recursive parser & open \\
+\bottomrule
+\end{longtable}
+
+The 64-MiB row is the canonical warning against reading a constant name as a guarantee.
+\texttt{maxFileSize} protects a compressed payload after the entire XNB file has already been
+read into a string.  An oversized uncompressed file can therefore allocate before the guard.
+
+\section{Top-level names and internal references have different trust rules}
+
+\cnaclass{ContentManager::Load<T>} deliberately accepts an explicit absolute asset name;
+\texttt{RootDirectory} is a base, not a sandbox.  Containment applies instead to paths supplied
+\emph{inside} content: XNB external references, CNJ \texttt{sourceFile}, model sidecars, and
+embedded media paths.
+
+The shared containment tests cover traversal, absolute and drive paths, Unicode-shaped input,
+and existing-symlink escapes.  They also assert that rejection occurs before file access and
+does not poison the manager cache.  Legitimate \texttt{.} segments, repeated separators, and
+\texttt{..} that normalize back inside the root remain allowed.
+
+Symlink checking is not claimed to be race-proof.  Weak canonicalization followed by later open
+has a time-of-check/time-of-use window.  The correct statement is that resolved escapes are
+rejected in the tested filesystem state, not that an adversarial concurrent filesystem cannot
+change between check and use.
+
+\section{Object graphs are bounded on both recursive axes}
+
+XNB contains two distinct recursion surfaces.  Canonical reader names can nest generic
+arguments, and object data can recursively dispatch nested readers.  Both are capped at 256.
+The object path uses an RAII guard so depth is decremented on success and on every exception;
+otherwise one failed read could poison the session's remaining depth budget.
+
+Shared resources use a separate two-pass discipline.  Every shared object is read before any
+queued fixup runs, preserving identity even when objects refer forward.  Counts and indices are
+validated before lambdas capture them.
+
+\section{Fuzzing reaches the public loader}
+
+The strongest container fuzz target mutates complete real XNB fixtures by flipping, truncating,
+overwriting, and inserting bytes, then loads them through the real
+\cnaclass{ContentManager::Load<T>} path.  Acceptable outcomes are success or an enumerated clean
+exception; \texttt{std::bad\_alloc} is explicitly treated as an allocation-guard failure, not a
+valid rejection.
+
+A second target mutates LZX payloads and the decoded-size hint.  Any successful decode must still
+produce exactly the declared length.  These targets found memory-safety defects that review did
+not, including table growth and malformed texture payload paths.
+
+Fuzzing scope is not universal.  CNJ has no equivalent document fuzzer, no size limit, and no
+depth limit.  glTF relies on cgltf parsing plus CNA's extraction tests, but production code does
+not call \texttt{cgltf\_validate}.  Those are remaining coverage boundaries.
+
+\section{Differential oracles reduce self-consistency risk}
+
+The LZX decoder is compared byte-for-byte with FNA's unmodified C\# decoder under Mono.  This
+matters because a compressor and decoder sharing the same mistaken assumption can agree with one
+another.  A separate implementation gives the bytes an external reference.
+
+Texture and audio readers use other independent checks: decoded byte counts against block-rounded
+format expectations, duration metadata as a broad audio sanity oracle, and real fixtures from
+multiple encodings.  Each oracle has a stated scope; duration agreement cannot prove waveform
+identity, and storage round-trip cannot prove shader sampling.
+
+\section{Error normalization and its limits}
+
+Container and reader errors are generally translated to \cnaclass{ContentLoadException} with
+asset context.  Parser-specific \texttt{std::invalid\_argument} is caught at the reader-table
+boundary.  Some glTF extraction failures still escape as plain \texttt{std::runtime\_error}, and
+custom CNJ factories can throw arbitrary exceptions.  A caller should not assume every failed
+\texttt{Load<T>} has one dynamic exception type.
+
+\section{Current asymmetries to keep visible}
+
+\begin{itemize}
+  \item the initial whole-XNB read is uncapped despite \texttt{maxFileSize};
+  \item CNJ has neither document-size nor recursion-depth controls and mixes strict and legacy
+        parsers;
+  \item SpriteFont does not cross-check the lengths of its parallel glyph, crop, character, and
+        kerning tables;
+  \item raw Color texture payload validation remains less uniform than compressed-level checks;
+  \item symlink containment is not TOCTOU-proof;
+  \item a low-severity misaligned-load issue remains open in the vendored cgltf path.
+\end{itemize}
+
+The remediation record is strong precisely because these gaps are not erased from the account.
+One critical and several high-severity content findings were closed; future work should extend
+the same observable limits and fuzz discipline to the still-asymmetric formats.

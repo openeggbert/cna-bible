@@ -11,18 +11,32 @@ deviation from FNA's own audio behavior catalogued in this chapter.
 
 \section{Why SDL3\_mixer, and what that choice costs}
 
-SDL3\_mixer's own device model hard-floors every audio device to one fixed format, and CNA
-leans into that rather than fighting it: its internal mixer always requests 16-bit signed
+The CNA mixer uses a fixed reference format: its device mixer always requests 16-bit signed
 stereo at 44100~Hz, regardless of what the physical output device's native format actually
-is --- a deliberate simplification, since XACT content is itself almost always authored at
-44100~Hz anyway. The cost of building on SDL3\_mixer rather than a dedicated 3D-audio engine
+is, then queries and logs the format SDL3\_mixer actually negotiated. This is CNA's deliberate
+simplification, not a universal SDL3\_mixer restriction. The cost of building on SDL3\_mixer rather than a dedicated 3D-audio engine
 shows up consistently: no true per-source 3D audio graph, no auxiliary-send/reverb bus, and a
 single shared ``cooked callback'' slot per track used for both filtering and pan-crossfeed at
 once, rather than independent processing stages.
 
+The library's object model has three levels. One process-wide \texttt{MIX\_Mixer} owns the
+device-side mix; decoded \texttt{MIX\_Audio} objects hold playable audio; and each playback is a
+\texttt{MIX\_Track} carrying gain, frequency ratio, loop state, and the cooked callback. A
+\cnaclass{SoundEffect} retains decoded audio, while a \cnaclass{SoundEffectInstance} creates and
+controls a track.
+
+Mixer creation and lookup are serialized by one mutex. The first use also pins an extra
+\texttt{SDL\_INIT\_AUDIO} reference. Without that pin, destroying an SDL3\_mixer device could
+drop SDL's global audio-subsystem reference to zero while a
+\cnaclass{DynamicSoundEffectInstance} still owned an \texttt{SDL\_AudioStream}; a real ASan
+trace ended in \texttt{SDL\_UnbindAudioStream}. \texttt{DestroyMixer()} is implemented and a
+generation counter protects stale tracks if it is ever used, but no production caller invokes
+it. In the current lifecycle the mixer and its initialization reference live until process
+exit.
+
 \section{SoundEffect and its instances}
 
-\cnaclass{SoundEffect} loads raw PCM/WAV assets and is move-only, specifically so that
+\cnaclass{SoundEffect} loads decoded file/stream assets or raw PCM and is move-only, specifically so that
 disposing the parent cascades correctly to every \cnaclass{SoundEffectInstance} it ever
 handed out via \texttt{CreateInstance()}. Its raw-buffer constructors require
 \emph{headerless} 16-bit PCM data --- passing an entire WAV file's bytes, RIFF header
@@ -30,8 +44,8 @@ included, is flagged directly in the class's own documentation as a common, spec
 to avoid. \cnaclass{SoundEffectInstance} exposes volume/pan/pitch/looping/state and a
 \texttt{Apply3D(listener, emitter)} method implementing a distance-and-pan
 \emph{approximation} rather than full 3D audio --- SDL3\_mixer has no native Doppler
-computation, so \texttt{DopplerScale} only ever feeds this approximation, never a true
-per-sample Doppler shift. Pitch shifting uses XNA's exact exponential formula,
+computation, so CNA computes the F3DAudio-compatible Doppler frequency ratio itself and applies
+it to the track rather than spatializing samples through a native 3D engine. Pitch shifting uses XNA's exact exponential formula,
 $2^{\text{pitch}}$, and a real state-variable filter (low-pass, high-pass, or band-pass) is
 implemented via an SDL3\_mixer per-track callback matching FAudio's own filter algorithm
 precisely. \cnaclass{DynamicSoundEffectInstance} supports both integer and, as a
@@ -55,6 +69,14 @@ sample rate) --- both requiring \emph{headerless} PCM data as already emphasized
 buffer's byte size and its playback duration, in either direction, for PCM data at a given
 format --- the calculation a streaming or dynamically-generated sound needs to know how large
 a buffer to allocate for a target duration, or how long a given buffer will actually play for.
+
+File and stream construction delegates to \texttt{MIX\_LoadAudio} or
+\texttt{MIX\_LoadAudio\_IO} with predecode enabled. CNA's vendored build consequently decodes
+WAVE, AIFF, VOC, AU, FLAC through dr\_flac, MP3 through dr\_mp3, Ogg Vorbis through
+stb\_vorbis, and MIDI through Timidity. It explicitly disables GME, XMP/MOD, mpg123,
+FluidSynth, Opus, WavPack, libFLAC, vorbisfile, and Tremor. In particular, advertised or
+third-party \texttt{.opus}, AAC, and WMA files are not made decodable merely by this constructor.
+The raw-buffer overloads remain signed 16-bit PCM only.
 
 \begin{lstlisting}
 // Worked example: loading a sound effect from raw, headerless PCM data
@@ -104,11 +126,35 @@ explosionInstance.Apply3D(listener, emitter);
 explosionInstance.Play();
 \end{lstlisting}
 
-As this chapter's own opening already stated, this is a genuine \emph{approximation} rather
-than full 3D audio --- there is no real Doppler shift computed per-sample, no multi-speaker
-diffusion, and \texttt{DistanceScale} / \texttt{DopplerScale} / \texttt{SpeedOfSound} exist purely
-to tune that approximation's distance-attenuation and pan-based Doppler curves, not to enable
-capabilities SDL3\_mixer's own mixing model does not have.
+The exact scalar rules are stronger than ``some distance and pan approximation''. With
+$d_n=d/\texttt{DistanceScale}$, attenuation is
+
+\[
+  a(d_n)=\begin{cases}1,&d_n<1,\\
+  \operatorname{clamp}(1/d_n,0,1),&d_n\geq1.
+  \end{cases}
+\]
+
+This is FAudio's default inverse law: full volume inside \texttt{DistanceScale}, inverse
+falloff beyond it. Pan projects emitter displacement onto the listener's actual right vector
+$\texttt{Forward}\times\texttt{Up}$, not world~X. For pan $p\in[-1,1]$, the stereo crossfeed
+coefficients $(LL,RL,LR,RR)$ are
+
+\[
+\begin{cases}
+(1+0.5p,-0.5p,0,1+p),&p\leq0,\\
+(1-p,0,0.5p,1-0.5p),&p>0.
+\end{cases}
+\]
+
+Thus a hard pan mixes both source channels into the favoured speaker; it does not merely mute
+one input channel. Doppler uses the F3DAudio velocity projections and clamps the resulting
+factor to $[0.5,4.0]$, with a NaN guard. The final frequency ratio is
+$2^{\text{Pitch}}\times\text{dopplerFactor}\times\texttt{DopplerScale}$, using a default
+\texttt{SpeedOfSound} of 343.5. These scalar results persist after \texttt{Apply3D}; later play,
+volume, and pitch calls recombine them. What remains approximate is speaker diffusion,
+elevation/HRTF, and per-sample spatial filtering, not the documented attenuation and Doppler
+formulae themselves.
 
 \subsection{Full method reference: DynamicSoundEffectInstance}
 
@@ -126,6 +172,11 @@ floating-point form and would otherwise need to manually quantize to 16-bit inte
 real XNA has no equivalent at all, since the strict API only ever accepts integer PCM.
 \texttt{PendingBufferCount} (already named above) is the standard way to decide whether
 \texttt{BufferNeeded} needs a response right now or the queue still has enough buffered ahead.
+The instance owns an \texttt{SDL\_AudioStream} and binds it to a mixer track; the stream is not
+owned by the mixer. Playback keeps the track alive while exhausted so future submitted chunks
+can resume it. Matching FNA, \texttt{Stop(false)} is not a graceful drain operation here: a
+non-immediate stop throws \texttt{InvalidOperationException}; use \texttt{Stop()} for the
+supported immediate stop.
 
 \begin{lstlisting}
 // Worked example: a procedurally generated tone using the pull-based
@@ -314,10 +365,10 @@ the one \cnaclass{SoundEffect} construction path that \emph{wants} the container
 in explicit contrast to every other constructor's headerless-PCM requirement named earlier in
 this section.
 
-This namespace defines three of its own exception types, each thrown for a distinct real
-condition rather than as a single generic audio-error catch-all.
-\cnaclass{InstancePlayLimitException} is thrown when a category's simultaneous-instance limit
-is exceeded --- one of the accepted-deviation instance-limit behaviors covered below.
+This namespace defines three audio-specific exception types, but only two represent active
+throw paths. \cnaclass{InstancePlayLimitException} is declared and its constructors are tested,
+yet no production implementation throws it. Fire-and-forget \texttt{SoundEffect::Play} creates
+a fresh \texttt{MIX\_Track} per call and has no simultaneous-instance cap.
 
 \cnaclass{NoAudioHardwareException} and \cnaclass{NoMicrophoneConnectedException} are thrown
 when no playback or capture device is available, respectively; both wrap a plain error message
@@ -328,8 +379,8 @@ COM-interop-style external exception base, matching real XNA's own choice to mod
 conditions as externally-originating errors.
 
 \cnaclass{NoMicrophoneConnectedException}, the third, derives from a plain exception base
-instead --- a real, if minor, asymmetry across three otherwise structurally similar
-exception types.
+instead --- a real, if minor, asymmetry across three otherwise structurally similar exception
+types. Its existence does not make \cnaclass{InstancePlayLimitException} operational.
 
 \section{A real user-reported bug, and the audit it triggered}
 
@@ -341,7 +392,11 @@ meaning \emph{any} MS-ADPCM-compressed XACT wave bank or XNB sound effect --- a 
 space-saving compression choice for XACT content --- silently failed to decode at all,
 because the reader's synthetic WAV wrapper was missing the coefficient table MS-ADPCM
 decoding requires. This is now fixed, and the fix was extended to cover 8-bit PCM, IEEE
-float, and IMA-ADPCM as well, not just the one format that triggered the investigation.
+float, and IMA-ADPCM as well, not just the one format that triggered the investigation. The
+current XNB reader's exact set is therefore PCM 16-bit (direct), PCM 8-bit, IEEE float 32-bit,
+MS-ADPCM 4-bit, and IMA-ADPCM 4-bit (the latter four wrapped for SDL decoding), restricted to
+mono or stereo. XMA2 remains explicitly rejected. For XNA-authored MS-ADPCM with
+\texttt{cbSize=0}, the wrapper synthesizes the standard seven coefficient pairs before decode.
 
 A second real fix addressed an asymmetry in how \cnaclass{DynamicSoundEffectInstance}
 handled integer versus float buffer submission --- a genuine code-level risk, not merely a
@@ -352,12 +407,12 @@ the cause of the reported pitch issue, confirming frequency is preserved within 
 22050/44100/48000/96000~Hz source material resampled into the fixed 44100~Hz mixer, provided
 the source sample rate is declared correctly.
 
-A separate, real stereo-panning bug was found and fixed for \cnaclass{SoundEffectInstance}:
-a hard pan used to eliminate the opposite channel entirely rather than crossfeed-blending it
-down, corrected for the \texttt{Play} / \texttt{Apply3D} / pan-setter paths --- but the static,
-fire-and-forget \texttt{SoundEffect::Play(volume, pitch, pan)} convenience helper still
-carries the old, unfixed behavior, tracked separately rather than silently left inconsistent
-without a record.
+A separate, real stereo-panning bug used to eliminate the opposite source channel rather than
+crossfeed both inputs into the favoured speaker. The current instance \texttt{Play},
+\texttt{Apply3D}, pan setter, and static fire-and-forget
+\texttt{SoundEffect::Play(volume,pitch,pan)} paths all use the cooked-callback crossfeed model;
+the convenience helper allocates a small per-track pan state and defers freeing it until the
+stop callback has safely returned.
 
 A follow-up round of the same audit, prompted by nothing external this time --- simply
 re-reading \cnaclass{SoundEffect} / \cnaclass{SoundEffectInstance} /
@@ -387,10 +442,9 @@ aspirational comment describing behavior the code had never actually had.
 \section{Accepted deviations, stated as such}
 
 Several differences from a hypothetical ``full XACT'' implementation are documented as
-deliberate, accepted deviations rather than open bugs. XACT's three instance-limit-behavior
-modes (queue, replace-oldest, replace-quietest) all collapse to a single ``evict the oldest
-active cue'' behavior --- matching FAudio's own shipped implementation, which makes the same
-collapse, not a CNA-specific shortcut. A cue-level instance limit has no category- or
+partial or accepted behavior. The \texttt{REPLACE\_QUIETEST} instance-limit branch is
+unfinished, while queue and replace-oldest share behavior inherited from the FACT/FNA model;
+do not present the three policies as independently complete. A cue-level instance limit has no category- or
 same-cue victim-search filter. Runtime Parameter Control curves targeting a DSP preset are
 never evaluated, because no DSP preset system exists at all. \texttt{Apply3D}'s panning is a
 single-axis linear approximation, not full multi-speaker 3D diffusion. A parsed per-track
@@ -409,6 +463,21 @@ own cache --- \texttt{Dispose()} could race a concurrently in-flight
 \texttt{GetSoundEffect()} decode --- fixed with a mutex. Two intermittent, undiagnosed
 crashes in the full test suite remain open at the time of writing, both resistant to
 diagnosis under both \texttt{gdb} and Valgrind so far.
+
+\section{Testing what reaches the mixer}
+
+\texttt{OfflineAudioRenderer} is a test helper with unusually broad value: it creates a
+device-less \texttt{MIX\_Mixer} and calls \texttt{MIX\_Generate} to render real decode,
+resample, track properties, callbacks, and mixing into memory. It needs neither an audio device
+nor \texttt{SDL\_AUDIODRIVER}, and advances by requested sample count rather than wall-clock
+time. Tests can therefore measure pitch, channel energy, duration, and waveform output
+deterministically on a headless machine.
+
+This is stronger than asserting which setter was called and narrower than perceptual audio
+quality. It proved, for example, that SDL3\_mixer preserves frequency within the chosen
+tolerance when 22050, 44100, 48000, and 96000~Hz sources are correctly declared and resampled
+to the fixed 44100~Hz mix. That evidence ruled out the resampler as the reported high-pitch
+cause and redirected the audit to the incorrect linear pitch formula.
 
 \section{Microphone}
 
@@ -461,3 +530,15 @@ mic->BufferReady += [mic, &playback](System::Object*, const System::EventArgs&)
 mic->Start();
 playback.Play();
 \end{lstlisting}
+
+\section{Status}
+
+The audio surface is substantial: real SDL3\_mixer playback, deterministic offline mixing,
+streaming dynamic audio, capture, bounded XACT parsing, wave banks, sound banks, cues,
+categories, variables, filters, and partial instance-limit behavior. It is not a closed
+conformance claim. \texttt{plan\_audio.md}'s three user-reported release blockers---high-pitch
+effects, missing/failing loads, and distorted audio---remain unchecked at the pinned revision.
+The corrected format readers and pitch/pan fixes materially narrow those reports, but the plan
+itself has not declared them resolved. Reverb/aux send is a permanent no-op,
+\texttt{REPLACE\_QUIETEST} is partial, \cnaclass{InstancePlayLimitException} has no throw site,
+and production mixer teardown is unreachable.

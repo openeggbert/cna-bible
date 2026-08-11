@@ -1,3 +1,138 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{From glTF File to Model: the Import Core}
 \label{ch:gltf-import-core}
+
+CNA does not have a small ``glTF reader'' hidden inside \cnaclass{ContentManager}. It has a
+shared import library, \texttt{CNA::Internal::GltfImport}, used by two independent front ends:
+the runtime \texttt{.gltf}/\texttt{.glb} path and the offline
+\texttt{cna\_tool\_gltf\_to\_cnj} converter. This distinction matters. Parsing and semantic
+extraction are shared; turning the extracted records into live graphics objects or persistent
+CNJ sidecars is not.
+
+The shared core is about 2,500 lines across \texttt{GltfImportCore.hpp} and
+\texttt{GltfImportCore.cpp}. It delegates container parsing and accessor decoding to the
+vendored cgltf~1.15 library. Exactly one translation unit defines
+\texttt{CGLTF\_IMPLEMENTATION}; the stb image implementations in the same translation unit
+are declared static so they cannot collide with another copy linked through SDL image support.
+That is a build invariant, not incidental preprocessor decoration.
+
+\section{The parser boundary}
+
+Both JSON \texttt{.gltf} and binary \texttt{.glb} enter through the same
+\texttt{cgltf\_parse\_file} path and must declare \texttt{asset.version} exactly
+\texttt{"2.0"}. Buffers are then loaded relative to the source path. Embedded buffer views,
+base64 data URIs, and external percent-decoded file URIs are all supported. Images use the same
+three storage forms and are exposed as memory blocks; the runtime front end decodes those blocks
+without staging temporary files.
+
+This is not equivalent to full glTF validation. CNA never calls \texttt{cgltf\_validate}, and
+does not inspect \texttt{extensionsRequired} or \texttt{extensionsUsed}. A syntactically
+parseable file that declares an unsupported required extension can therefore continue until a
+later semantic limitation either rejects it or silently loses information. The importer's own
+named checks remain valuable---accessor shape, buffer span, index range, primitive mode, and
+version failures generally identify the offending value---but they are not a substitute for a
+validator in an asset-production pipeline.
+
+\paragraph{Practical rule.}
+Run the Khronos validator before shipping third-party content. A successful CNA load proves
+that the code paths it used were acceptable; it does not prove that the complete document is
+spec-conformant or that every required extension was honoured.
+
+\section{Scene graph first, meshes second}
+
+\texttt{BuildSceneGraph} selects the document's default scene, falling back to the first scene,
+then walks it iteratively in parent-before-child order. Index~0 is a synthetic identity node
+named \texttt{Root}; each reachable glTF node follows exactly once. The core asks cgltf for the
+local matrix, converts it to CNA's row-vector convention, and composes
+
+\[
+  W_i = L_i W_{parent(i)}.
+\]
+
+The conversion copies the affine basis into CNA's matrix convention. It does not apply an axis
+or handedness conversion, and that is correct: both glTF and the XNA conventions used here are
+right-handed, use $+Y$ as up, $-Z$ as forward, and place the UV origin at the top left. The
+only handedness value imported separately is a tangent's fourth component.
+
+Each flattened scene node becomes a \cnaclass{ModelBone}, index-for-index after the synthetic
+root. Vertex positions remain in mesh-local space. Consequently one glTF mesh instanced by two
+nodes yields two \cnaclass{ModelMesh} placements with distinct parent bones instead of one
+destructively pre-transformed vertex buffer. For rigid geometry the mesh is parented to its
+instancing node. For skinned geometry the node still exists, but the mesh is parented to the
+synthetic root because skin matrices already account for the mesh-node coordinate space; doing
+both would apply the transform twice.
+
+Nodes unreachable from the selected scene do not enter this graph. If no scene node references
+any mesh, the importer has a compatibility fallback that exposes every mesh at the identity
+root. That fallback is useful for incomplete authoring exports, but it is not the same semantic
+result as a fully authored scene.
+
+\section{Groups are an ownership boundary}
+
+\texttt{CollectMeshGroups} partitions scene instances into one group for each distinct
+\texttt{skin} pointer plus one group for unskinned content. A group record contains the source
+node, mesh, flattened scene-node index, composed world transform, and whether the instance is
+skinned. This division is the unit that later becomes one model output.
+
+The offline converter writes every group. A file containing static scenery and two characters
+can therefore produce three CNJ models, with stable suffixes for the static group and named
+skins. The runtime \texttt{Load<Model>} path deliberately returns only
+\texttt{groups.front()}. It does not return a scene object and does not warn that later groups
+were discarded. Multi-character or mixed static/skinned files should be converted offline or
+split at authoring time.
+
+The two front ends also differ in scale control. The core's \texttt{unitScale} multiplies
+translations---including vertices, bind translations, animation translations and tangents,
+morph position deltas, inverse binds, and ancestor terms---but never rotations or dimensionless
+scale factors. The runtime path fixes it at~1.0; only the command-line converter exposes a
+caller-supplied value.
+
+\section{What extraction preserves}
+
+For each triangle primitive, the core produces an explicit semantic record before any graphics
+object is allocated. It decodes positions, normals, tangents, texture coordinates, colours,
+joint indices and weights; validates every index; synthesises a sequential index stream for a
+non-indexed primitive; and computes tangents when required by a normal-mapped material. Sparse
+attributes and sparse indices, including an accessor with no base buffer view, are handled.
+
+Materials are less complete. PBR effects are selected only when a normal or
+metallic--roughness \emph{map} is present. Metallic, roughness, and emissive factors survive
+only after that selection; \texttt{baseColorFactor}, alpha mode/cutoff, double-sidedness,
+sampler state, and colour-space intent are not represented. A factor-only metallic--roughness
+material therefore becomes a white \cnaclass{BasicEffect}. This is the open D7 defect, not a
+supported approximation.
+
+Exactly four extension families have production handling:
+
+\begin{itemize}
+  \item \texttt{KHR\_texture\_transform}, for the base-colour texture, baked into the one UV
+        stream;
+  \item \texttt{KHR\_materials\_emissive\_strength}, on the PBR path;
+  \item \texttt{KHR\_lights\_punctual}, reduced to at most three directional-light
+        approximations; and
+  \item \texttt{KHR\_draco\_mesh\_compression}, only when CNA was compiled with libdraco.
+\end{itemize}
+
+Transmission, variants, cameras, glTF sampler choices, and negative-determinant winding repair
+are absent. A PBR map that selects a second UV set is detected through
+\texttt{pbrUv2Mismatch}; the CLI warns, while the runtime currently computes and then hides the
+flag. Keep ``parsed'', ``represented'', and ``drawn'' as three separate claims.
+
+\section{Failure and lifetime boundaries}
+
+The core throws \texttt{std::runtime\_error} for several semantic rejections, including an
+unsupported primitive topology. The runtime reader does not normalize all of these into
+\cnaclass{ContentLoadException}; a caller catching only the latter can miss a glTF import
+failure even though it derives from \texttt{std::runtime\_error}. This exception asymmetry is
+part of the current contract.
+
+On success, the runtime front end creates model bones, meshes, parts, buffers, effects,
+textures, skinning records, and morph records in one private ownership bundle, then attaches
+that bundle to the otherwise raw-pointer-heavy \cnaclass{Model}. Images are cached by source
+image pointer for that one import. The result is self-retaining, but repeated primitives still
+receive their own mesh-part graphics resources unless the front end explicitly shares them.
+
+The next four chapters follow the same pipeline at progressively sharper boundaries: exact GPU
+bytes in Chapter~\ref{ch:gpu-packing}, skeletal coordinate spaces in
+Chapter~\ref{ch:skinning-animation}, persistent CNJ output in
+Chapter~\ref{ch:cnj-model-toolchain}, and the conformance evidence in
+Chapter~\ref{ch:gltf-conformance}.

@@ -167,18 +167,20 @@ parent order/cycles, raw out-of-range part fields, direct mutable-effect desynch
 concurrent \texttt{Draw}; treat those as construction-time invariants, not tested recovery
 paths.
 
-\section{Three model asset routes, not two}
+\section{Four model asset routes, not two}
 \label{sec:model-loading}
 
 The old two-loader and \texttt{.model.json} framing no longer describes the resolver.
-CNA now has two reader implementations but three current \cnaclass{Model} asset routes:
-the wire-compatible XNB \texttt{ModelReader}, plus one \texttt{ModelTypeReader} that reads
-self-contained \texttt{.cnj} descriptions and direct \texttt{.gltf}/\texttt{.glb} files. For an
+CNA now has four distinct model-producing paths: the wire-compatible XNB
+\texttt{ModelReader}, self-contained \texttt{.cnj}, direct \texttt{.gltf}/\texttt{.glb}, and
+the older Avatar-specific \texttt{.skinnedmodel.json} reader. The first three return the
+ordinary \cnaclass{Model}; the fourth returns \cnaclass{SkinnedModelEXT}, a separate runtime
+type that must not be mistaken for another serialization of the same graph. For an
 extensionless cache miss, \cnaclass{ContentManager} looks for \texttt{name.xnb}, then a literal
 \texttt{name}, then \texttt{name.cnj}, \texttt{name.gltf}, and \texttt{name.glb}. Thus a
 same-named CNJ hides a glTF/GLB asset, and an XNB sibling hides both; passing an existing literal
 \texttt{name.gltf} explicitly reaches that literal before the extensionless sidecar probe. The
-full resolver contract is in Chapter~\ref{ch:content-and-assets}; the three resulting runtime
+full resolver contract is in Chapter~\ref{ch:content-and-assets}; the resulting runtime
 graphs are the important distinction here.
 
 \begin{description}
@@ -220,6 +222,14 @@ graphs are the important distinction here.
         targets and their tracks are retained on each \cnaclass{ModelMeshPart.Tag}. Extracted
         images are decoded in memory and cached by glTF image pointer during that one import, but
         mesh buffers and effects remain per primitive.
+  \item[The legacy \texttt{.skinnedmodel.json} route]
+        dispatches to \texttt{SkinnedModelTypeReader} and produces
+        \cnaclass{SkinnedModelEXT}, the Avatar-oriented runtime described later in
+        Chapter~\ref{ch:skinning-animation}. It is neither a CNJ alias nor the historical name
+        of the current Model descriptor. Code loading it opts into a different public type,
+        animation representation, and draw path; its continued presence is therefore a
+        compatibility route, not evidence that the generic \cnaclass{Model} reader accepts a
+        fourth file spelling.
 \end{description}
 
 The evidence is much stronger than the old chapter wording suggested. The focused CNJ tests
@@ -227,9 +237,10 @@ cover a real descriptor and envelope rejection, shared animation-clip resolution
 additional tests, and the direct runtime-glTF suite has eight unconditional end-to-end cases
 (textures, reversed-order skinning/animation, morph weights and cubic splines, PBR, skinned PBR,
 occlusion remapping, and punctual lights), plus a Draco case when that optional dependency is
-enabled. Those tests do not make the three routes interchangeable: use XNB for compiled XNA
-asset fidelity, CNJ for a controlled self-contained/imported description, and direct glTF/GLB
-for the first supported group of a glTF~2.0 file when the resolver priority selects it.
+enabled. Those tests do not make the four routes interchangeable: use XNB for compiled XNA
+asset fidelity, CNJ for a controlled self-contained/imported description, direct glTF/GLB for
+the first supported group of a glTF~2.0 file when the resolver priority selects it, and the
+legacy route only when the application actually consumes \cnaclass{SkinnedModelEXT}.
 
 \section{Lifetime and copies: value syntax, one mutable graph}
 \label{sec:model-lifetime-copy}

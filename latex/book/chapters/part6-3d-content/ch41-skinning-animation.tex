@@ -1,3 +1,145 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{Skinning and Animation across Two Systems}
 \label{ch:skinning-animation}
+
+CNA contains two skeletal-animation systems that deliberately do not share a runtime graph.
+\cnaclass{SkinningData} plus \cnaclass{AnimationPlayer} animate an ordinary
+\cnaclass{Model}; \cnaclass{SkinnedModelEXT} is an Avatar-oriented model, skeleton, clip, and
+draw system of its own. Similar interpolation code appears in both. The duplication is
+documented as intentional because forcing the public types together would couple two distinct
+asset contracts.
+
+\section{The ordinary Model path}
+
+A skinned \cnaclass{Model} carries \cnaclass{SkinningData} through \texttt{Model.Tag}. The
+record contains bind-pose local matrices, inverse-bind matrices, parent indices, animation
+clips, and a fourth matrix array named \texttt{SkeletonRootPrefix}. An
+\cnaclass{AnimationPlayer} samples a clip into local transforms, composes worlds in topological
+order, then builds the skin palette used by \cnaclass{SkinnedEffect} or
+\cnaclass{SkinnedPbrEffect}.
+
+The model itself does not do that last step. \texttt{Model::Draw} sets the ordinary
+\cnaclass{IEffectMatrices} world matrix for each mesh, but never installs a bone palette. The
+application or animation helper must call the skinned effect's
+\texttt{SetBoneTransforms} before drawing. A model whose effect does not implement
+\cnaclass{IEffectMatrices} is rejected by \texttt{Model::Draw}.
+
+\section{The Avatar path}
+
+\cnaclass{SkinnedModelEXT} is explicitly not built from \cnaclass{ModelBone},
+\cnaclass{ModelMesh}, or \cnaclass{ModelMeshPart}. It owns its Avatar-specific geometry and
+animation representation and is loaded through the legacy \texttt{.skinnedmodel.json} reader.
+Its superficially similar \texttt{SampleTrack} logic is a local copy, not a hidden conversion
+to \cnaclass{AnimationPlayer}.
+
+Both players nevertheless enforce the same essential inputs. Bone arrays must agree in size,
+and every non-root parent index must precede its child; a parent index greater than or equal to
+the current index throws. Looping uses floor-modulo on raw ticks, so negative or over-duration
+times wrap consistently. Translations and scales interpolate linearly, rotations spherically.
+Track search is linear in the number of keyframes per bone.
+
+\section{Scene indices are not palette indices}
+
+The glTF scene is flattened into \cnaclass{ModelBone} indices, while a skin's
+\texttt{joints} array defines a separate palette. Those spaces need not have the same order and
+the glTF joint array need not be parent-before-child. \texttt{BuildSkeleton} therefore
+reorders joints breadth-first into topological order and records an old-to-new map. Packed
+\texttt{JOINTS\_0} values are rewritten through that map.
+
+This yields three indices worth naming explicitly:
+
+\begin{description}
+  \item[scene-node index] selects the model bone representing placement in the selected scene;
+  \item[source-joint index] is the ordinal stored in glTF \texttt{JOINTS\_0}; and
+  \item[palette index] selects the reordered bind, inverse-bind, and animated world arrays.
+\end{description}
+
+Treating any two as interchangeable works only on conveniently authored fixtures. Reversed
+joint-order tests exist precisely to rule out that accident.
+
+\section{The coordinate-space failure that produced D8}
+
+A joint root may have ancestors that are not themselves listed in \texttt{skin.joints}. Older
+logic walked parents only within the joint set. It therefore dropped the armature node's world
+transform from the reconstructed bind hierarchy while retaining the file's inverse-bind matrix,
+which already encoded that ancestry. A uniform armature scale became an inverse scale in the
+final palette, collapsing the character toward the origin.
+
+The corrected root term is
+
+\[
+  P_{root} = W_{ancestor} \, W_{meshNode}^{-1}.
+\]
+
+The first factor recovers scene ancestry above the joint set. The second cancels the transform
+of the node that instances the skinned mesh, because the mesh is parented to the model's
+synthetic root rather than to that node. The importer does not stop at glTF's optional
+\texttt{skin.skeleton} hint, and can obtain ancestry for a joint outside the selected scene
+through cgltf's world-transform calculation.
+
+\subsection{Why the prefix must remain separate}
+
+It is tempting to multiply $P_{root}$ into the root bind-pose local matrix. That works until an
+animation channel replaces that local transform. At the first sampled frame the recovered
+ancestry disappears again. Instead, CNA stores one prefix per root in
+\texttt{SkeletonRootPrefix} and composes
+
+\[
+  W_{root}(t) = L_{root}(t) P_{root}.
+\]
+
+An empty prefix array means identity, preserving older CNJ skeleton sidecars. This separation
+is both the D8 fix and the compatibility mechanism that lets the runtime animate roots without
+undoing it.
+
+The conformance fixture for the mesh-node term was chosen so the three possible results are
+numerically distinct: missing cancellation, cancellation exactly once, and applying the
+inverse twice. The test expects the middle case rather than merely checking that a vertex
+``moved''.
+
+\section{Clip extraction}
+
+For skeletal clips, CNA forms the union of translation, rotation, and scale key times for each
+animated bone, deduplicated at a tight tolerance. Missing channels at a time fall back to the
+decomposed bind pose. Linear and step samplers are evaluated directly; cubic splines use the
+glTF Hermite basis with the required $\Delta t$ tangent scaling, and cubic quaternion results
+are normalized.
+
+Only channels whose target resolves through the skin's joint map enter a skeletal clip. In
+addition, both the runtime and offline front ends call skeletal clip extraction only for a
+group that has a skin. Rigid node TRS animation is thus dropped twice and without a warning.
+This is the open D6 defect. The existence of correct interpolation code must not be reported as
+general scene-animation support.
+
+Morph-weight animation follows a different, skin-independent route. It locates a weights
+channel on the node instancing the mesh, preserves cubic in/out tangents unbaked, and evaluates
+Hermite weights lazily during playback. If one mesh is instanced by several nodes, the first
+matching node wins. Morph position/normal deltas are then CPU-blended into vertex bytes and the
+buffer is uploaded again; this is not GPU morphing.
+
+\section{Scaling and capacity}
+
+The converter's \texttt{unitScale} applies to every translation-bearing quantity, including
+animation translation values and their cubic tangents. It never applies to rotation or scale
+channels. Runtime glTF import fixes it at~1.0, while the CLI can choose another unit basis.
+
+Both stock skinned effects accept at most 72 palette matrices. Each packed vertex has four
+8-bit joint indices and four weights. A legal glTF skin larger than those runtime limits must
+be split or otherwise reduced during content processing; successful container parsing does not
+promise it can be drawn in one part.
+
+\section{Practical update order}
+
+A frame using the ordinary path should perform these operations in order:
+
+\begin{enumerate}
+  \item choose and sample the active clip into local bone transforms;
+  \item compose absolute skeleton transforms, including root prefixes;
+  \item form skin matrices from worlds and inverse binds;
+  \item install the palette on every skinned effect used by the model;
+  \item evaluate and upload morph weights if they changed; and
+  \item call \texttt{Model::Draw} on the graphics thread.
+\end{enumerate}
+
+Do not concurrently draw models through \texttt{Model::Draw}: its bone-matrix scratch vector is
+process-wide and unsynchronized. This restriction is independent of which animation player
+produced the palette.

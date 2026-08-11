@@ -3,9 +3,9 @@
 
 CNA's \cnans{Microsoft::Xna::Framework::Input} namespace covers keyboard, mouse, gamepad,
 and touch --- and, layered underneath it, a set of CNA-only extensions with no XNA
-counterpart at all. Its own audit (\texttt{plan\_input.md}, 505 tasks across 13 phases) is
-fully closed: 490 done, 15 formally blocked (all real-hardware-only checks that cannot be
-automated at all), zero open.
+counterpart at all. The current source audit counts 522 input test cases and a compile-time
+strict-API freeze. That is substantial automated evidence, but it does not replace physical
+keyboard, mouse, gamepad, touchscreen, IME, and high-DPI verification.
 
 \section{Architecture: event-driven, not poll-driven}
 
@@ -28,6 +28,10 @@ single-threaded and unsynchronized --- safe only because both halves (the event 
 requirement that events be pumped on the video thread and XNA/FNA's own single-threaded
 assumption.
 
+Two keys never reach ordinary game code through this pump: \texttt{F9} and \texttt{F10} are
+hard-wired in \texttt{Game::PollEvents()} to simulate graphics-context loss and restoration.
+Treat them as framework-reserved debug controls unless that game-loop behavior is changed.
+
 Three tags recur through this namespace's own headers and documentation, and are worth
 knowing before reading further: \textbf{STRICT} (must match FNA's real surface exactly),
 \textbf{EXT} (an FNA-compatible extension, using the \texttt{...EXT} suffix convention from
@@ -43,15 +47,15 @@ FNA's own storage layout --- backed by a \texttt{std::unordered\_set<Keys>} rath
 FNA's native bitfield --- on the reasoning that the observable \emph{contract}
 (\texttt{IsKeyDown}, \texttt{GetPressedKeys()} returning ascending-sorted keys, a specific
 \texttt{GetHashCode()} formula reconstructing FNA's own eight-32-bit-word XOR layout) is what
-must match, not the internal representation producing it. \cnaclass{Keys} itself has over
-150 values, independently confirmed byte-for-byte identical to FNA's numeric values,
+must match, not the internal representation producing it. \cnaclass{Keys} itself has exactly
+160 values, independently confirmed byte-for-byte identical to FNA's numeric values,
 including several distinctly odd hexadecimal outliers (\texttt{Pause = 0x13},
 \texttt{Kana = 0x15}, \texttt{ChatPadGreen = 0xCA}) preserved exactly rather than renumbered
-for tidiness. A real, load-bearing platform limit: forty \cnaclass{Keys} values have no SDL
-scancode source at all --- IME keys, ChatPad keys, and most browser/media keys other than
-volume up/down --- and simply cannot round-trip through the \texttt{EXT} scancode-lookup
-helper, matching an identical omission in FNA's own key/scancode maps rather than being a
-CNA-specific gap.
+for tidiness. The SDL bridge has 125 scancode-to-key cases but 126 cases in the reverse
+direction, and many enum values have no SDL scancode source at all. IME keys, ChatPad keys, and
+several browser/media keys therefore cannot round-trip through the \texttt{EXT} scancode
+helpers. Typed text must go through \texttt{TextInputEXT}, not through assumptions that every
+Unicode character has a \cnaclass{Keys} value.
 
 \subsection{Full method reference: KeyboardState and Keyboard's EXT surface}
 
@@ -244,7 +248,9 @@ mistake that richer vocabulary for uniform implementation.
 
 The full XNA surface --- \texttt{GetCapabilities}, \texttt{GetState} with configurable
 \cnaclass{GamePadDeadZone} handling, \texttt{SetVibration} --- is wired to real
-\texttt{SDL\_Gamepad} hardware, not stubbed. Dead-zone constants match FNA exactly
+\texttt{SDL\_Gamepad} hardware, not stubbed. CNA exposes at most four player slots; an
+out-of-range player-index override is clamped rather than creating a fifth slot. Dead-zone
+constants match FNA exactly
 (\texttt{LeftDeadZone = 7849/32768}, \texttt{RightDeadZone = 8689/32768},
 \texttt{TriggerThreshold = 30/255}). Beyond the strict XNA surface, an extensive
 \texttt{EXT} layer exposes real hardware capability FNA itself already extends beyond stock
@@ -346,6 +352,9 @@ capabilities with no XNA-era precedent at all, gated the same way behind their o
 \texttt{IsReadOnly} flag is advisory, matching an identical inconsistency already present in
 FNA's own implementation. \cnaclass{GestureType} is an eleven-value bit-flag enum (Tap,
 DoubleTap, Hold, Drag, Flick, Pinch, and their variants).
+One value is \texttt{None}; all ten actual gesture types are implemented by
+\texttt{GestureDetector}, including both completion events. There is no declared gesture that
+silently lacks a detector.
 
 Several real bugs were found and fixed here too. \texttt{SDL\_EVENT\_FINGER\_CANCELED} was
 simply unhandled, leaving a canceled touch stuck as if still active --- fixed to release it
@@ -452,8 +461,9 @@ engines' conventions it followed.
 \texttt{TextInputEXT} is not itself a CNA invention --- FNA ships this same extension beyond
 the strict XNA~4.0 surface, and CNA ports it directly: \texttt{TextInput} / \texttt{TextEditing}
 events, \texttt{StartTextInput} / \texttt{StopTextInput}, on-screen-keyboard visibility, and
-input-rectangle placement. CNA layers three further, genuinely new members on top with no FNA
-analog at all: IME composition-candidate lists (an SDL3-only capability), and an explicit
+input-rectangle placement. The implementation has three event channels: committed
+\texttt{TextInput}, in-progress \texttt{TextEditing}, and the CNA-only
+\texttt{TextEditingCandidatesEXT} candidate-list event. CNA also adds an explicit
 on-screen-keyboard/IME type hint.
 
 Beyond input in the strict XNA sense, the \texttt{CNA::Input} namespace hosts several wholly
@@ -465,6 +475,11 @@ device accelerometer/gyroscope, distinct from a gamepad's own motion sensors cov
 \cnaclass{Power} (battery state); and \cnaclass{Haptics} (SDL3's own force-feedback API, with
 a full effect-building lifecycle --- real actuation requires genuinely FFB-capable hardware,
 since most ordinary gamepads only support simple rumble, not full force feedback).
+This entire \texttt{CNA::Input} extension layer is compiled unconditionally, even when
+\texttt{CNA\_DEVICES} and \texttt{CNA\_CNAEXT} are off. \cnaclass{Clipboard} and
+\cnaclass{Power} overlap the optional \texttt{CNA::Devices} surface; because
+\texttt{CNA\_DEVICES} defaults off, the input versions are the only clipboard and host-power
+APIs present in a default build.
 
 \subsection{Full method reference: TextInputEXT}
 
@@ -524,7 +539,10 @@ abstraction. \cnaclass{Sensors} (\texttt{GetSensorsEXT()},
 \texttt{GetAccelerometerEXT} / \texttt{GetGyroscopeEXT}) reads the \emph{host device}'s own
 motion sensors --- a laptop's built-in accelerometer, a Steam Deck's gyro --- distinct from a
 gamepad controller's own motion sensors already covered under \texttt{GamePad}'s
-\texttt{EXT} surface above. \cnaclass{Power} is a single method,
+\texttt{EXT} surface above. The current implementation never initializes
+\texttt{SDL\_INIT\_SENSOR} itself, however. Unless another subsystem has already initialized
+SDL sensors, enumeration is empty and both readers return \texttt{false}; fake-backend tests do
+not expose this latent production no-op. \cnaclass{Power} is a single method,
 \texttt{GetInfoEXT(secondsLeft\&, percent\&)}, returning a \cnaclass{PowerStateEXT} plus two
 output parameters --- the host device's own battery state, not a gamepad's (that is
 \texttt{GamePad::GetPowerInfoEXT} instead).
@@ -655,10 +673,11 @@ is the correct API for capturing that text instead.
 
 \section{Status}
 
-At the time of writing, 524 input-specific tests pass in full, run shuffled five times over
-to confirm order-independence. The fifteen formally blocked audit tasks are exclusively
+At the pinned source revision, the input module contains 522 input-specific test cases. The
+fifteen formally blocked campaign tasks are exclusively
 real-hardware-only checks (physical keyboard/mouse/gamepad/touchscreen/IME verification, and
 high-DPI display behavior) that cannot be automated at all, not gaps awaiting more
-engineering effort. One acknowledged, low-priority documentation gap remains: the
-\cnaclass{Joysticks} / \cnaclass{Sensors} / \cnaclass{Power} \texttt{CNAEXT} extensions have solid
-fake-backend unit coverage but no demo-UI or manual-hardware verification pass yet.
+engineering effort. The \cnaclass{Joysticks} / \cnaclass{Sensors} / \cnaclass{Power}
+\texttt{CNAEXT} extensions have fake-backend unit coverage but no demo-UI or manual-hardware
+verification pass; \cnaclass{Sensors} also has the concrete subsystem-initialization gap
+described above.
