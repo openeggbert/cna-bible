@@ -1,3 +1,151 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{Windows II: Wine and Engagement Gates}
 \label{ch:wine-engagement}
+
+Cross-compilation proves that a Windows-shaped program can be produced. CNA's Wine apparatus
+asks the harder question: when that program runs, did the intended DirectX implementation
+actually handle it? The answer cannot be inferred from exit code alone, because Wine can fall
+back to another DLL stack and still draw a plausible image.
+
+\section{Six prefixes isolate incompatible runtime stacks}
+
+The audited machine carries six named Wine prefixes:
+
+\begin{description}
+  \item[\texttt{\textasciitilde/.wine}] the Direct2D Wine path;
+  \item[\texttt{\textasciitilde/.wine-cna-dx1}] shared by DirectX1/2/3/5/6/7 and Wine's
+  builtin DirectDraw;
+  \item[\texttt{\textasciitilde/.wine-cna-dx8}] the D8VK path;
+  \item[\texttt{\textasciitilde/.wine-cna-d3d10}] the Direct3D~10 path;
+  \item[\texttt{\textasciitilde/.wine-cna-d3d11}] shared by D3D9 and D3D11 DXVK lanes; and
+  \item[\texttt{\textasciitilde/.wine-cna-d3d12}] the vkd3d-proton lane.
+\end{description}
+
+Direct2D's fresh-prefix suite also creates throwaway directories. Other special-purpose prefixes
+hold Microsoft's \texttt{d3dcompiler\_47.dll} and a real 32-bit XNA~4.0 installation for the
+D3D9 oracle. Counting only three because three roles are memorable would lose the actual
+runtime isolation on disk.
+
+A prefix is mutable system state: DLL overrides, bitness, registry entries, installed runtimes,
+and first-run initialization all live there. Reusing a personal prefix for an automated
+experiment can change it irreversibly. Both Proton launchers hard-refuse
+\texttt{\textasciitilde/.wine}; that guard was added after a Proton/Wine version mismatch
+half-upgraded a personal prefix and hung for 9.5 hours installing Mono. Bootstrap steps are now
+timeout-bounded.
+
+\section{Which translation runtime owns each renderer}
+
+The renderer name does not uniquely identify the runtime implementation under Linux:
+
+\begin{table}[htbp]
+  \centering
+  \caption{Windows renderer runtime paths used by the Linux verification loop.}
+  \label{tab:wine-runtime-map}
+  \begin{tabular}{@{}p{0.28\textwidth}p{0.61\textwidth}@{}}
+    \toprule
+    Renderer & Runtime path \\
+    \midrule
+    DIRECTX1/2/3/5/6/7 & Wine builtin \texttt{ddraw.dll}; DXVK does not translate DirectDraw. \\
+    DIRECTX8 & D8VK \texttt{d3d8}; \texttt{dxgi} deliberately remains builtin. \\
+    DIRECTX9 & DXVK \texttt{d3d9}. \\
+    DIRECTX10 & Wine \texttt{d3d10}/\texttt{d3d10\_1} front, DXVK \texttt{d3d10core}+\texttt{dxgi}. \\
+    DIRECTX11 & DXVK \texttt{d3d11}+\texttt{dxgi}. \\
+    DIRECTX12 & vkd3d-proton \texttt{d3d12}/\texttt{d3d12core}. \\
+    DIRECT2D & Wine builtin \texttt{d2d1}; WineD3D or a Proton/DXVK experiment below it. \\
+    GDI & Wine's \texttt{gdi32}; no dedicated wrapper script. \\
+    GLIDE & External x86 \texttt{glide3x.dll}, loaded dynamically. \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The same CNA test executable may therefore traverse Wine builtin code, a DXVK component,
+vkd3d-proton, or an external compatibility DLL. A generic ``ran under Wine'' label hides the
+very implementation the test is meant to validate.
+
+\section{An engagement gate turns logs into a verdict}
+
+Each DirectDraw launcher greps its captured output for a \texttt{:ddraw:} trace. DX8/9/10/11
+launchers require a \texttt{DXVK:} marker. D3D12 requires
+\texttt{vkd3d-proton - applicationVersion:}. If the expected marker is absent, the wrapper exits
+with status 3 and names the likely silent fallback.
+
+\begin{lstlisting}[style=cnashell]
+scripts/run-wine-dxvk.sh build-windows/CnaD3D11Tests.exe
+
+# Device-free discovery cannot emit a marker, so it uses an explicit,
+# narrowly named bypass. Normal smoke/pixel runs must not set this.
+CNA_D3D11_SKIP_DXVK_GATE=1 \
+  scripts/run-wine-dxvk.sh build-windows/CnaD3D11Tests.exe \
+  --gtest_list_tests
+\end{lstlisting}
+
+Some wrappers also expose an allow-WineD3D diagnostic switch. That is a requested change of
+oracle, not an equivalent passing configuration. The log gate's transferable design is simple:
+identify an implementation-specific positive marker, capture the entire child run, and fail
+closed when the marker is absent.
+
+Direct2D is the important exception. Its launcher has no \texttt{d2d1} engagement marker, and
+Direct2D CTest registrations disable an inherited DXVK gate. A mis-provisioned prefix could
+therefore produce a result without proving which Direct2D path ran. GDI has no wrapper at all.
+The engagement method is strong where implemented, not a universal property of every Windows
+identity.
+
+\section{Environment-specific workarounds are part of the evidence}
+
+The DX8 lane can force \texttt{DXVK\_FILTER\_DEVICE\_NAME=llvmpipe} because the RADV path lost
+its surface on a second \texttt{Present}. Direct3D~10 needs the real \texttt{DISPLAY=:0}; its
+DXGI EDID path crashes under Xvfb. Direct2D has an isolated-Xvfb runner and a fresh-prefix suite.
+These controls describe the environment in which a result holds. They should not be silently
+generalized into renderer behavior on genuine Windows.
+
+The hardware-backed DXVK/vkd3d results use an AMD Radeon 780M with Mesa RADV. Logs explicitly
+skip llvmpipe unless a lane deliberately selects it. Naming the adapter prevents a Vulkan
+software implementation from being mistaken for hardware proof.
+
+\section{D3D12 and Proton require matched ownership}
+\label{sec:proton-wrinkle}
+
+Plain Wine's DXGI and a separately overridden vkd3d-proton \texttt{d3d12.dll} did not share the
+command-queue ABI needed by swap-chain creation. The successful lane launches end-to-end through
+Proton, keeping its Wine, DXGI, and vkd3d pieces matched. It reached a real
+\texttt{CreateSwapChainForHwnd} success on 2026-07-14.
+
+The two Proton scripts do not yet share the same version discipline. Direct2D consults a pin
+file preferring Proton 9.0 Beta then 8.0 and rejects Experimental unless allowed; the D3D12
+script still defaults to \texttt{Proton - Experimental}. That moving target is an unresolved
+reproducibility asymmetry. The Direct2D Proton result also used a fabricated Steam tree and has
+no surviving prefix, whereas the D3D12 prefix remains.
+
+\section{The D3D9 oracle controls both sides}
+\label{sec:d3d9-oracle}
+
+One tool runs Microsoft's unmodified stock-effect \texttt{.fx} sources through genuine
+\texttt{d3dcompiler\_47.dll} under Wine. Sixty-one of 66 resulting variants match FNA's shipped
+Microsoft bytecode exactly; the five PixelLighting vertex differences were narrowed to compiler
+version rather than optimization flags. Wine's builtin compiler is not an adequate substitute:
+it fails a real alpha-test ternary and once expanded a roughly 2{,}160-byte skinning shader to
+about 1.4 MiB because relative addressing was unavailable.
+
+The pixel oracle renders one declarative scene through two independent programs: real XNA~4.0
+inside its dedicated 32-bit prefix and CNA's MinGW D3D9 renderer. Both run through the same
+DXVK-verified path so the comparison does not accidentally measure two driver stacks. A
+mutation-tested image comparator proves that changed pixels are actually detected at the
+configured tolerance.
+
+This loop also exposed a genuine D3D9 restriction. \texttt{A8B8G8R8} is legal for textures but
+not for a primary swap-chain back buffer. CNA substitutes \texttt{A8R8G8B8} only at back-buffer
+creation and retains the natural format for ordinary textures; readback handles both byte
+orders.
+
+\section{What translated execution cannot prove}
+
+DXVK synthesizes legacy \texttt{D3DCAPS9} fields from a modern Vulkan device. CNA's logic can be
+proven to query and interpret those fields correctly, and its output can match XNA through the
+same DXVK path, but the returned capability numbers are not observations from period Windows
+drivers. D3D11 and D3D12 query modern surfaces closer to what native applications use, yet they
+still execute through translation rather than genuine Windows.
+
+The remaining high-value check requires human hardware: native Windows, authentic device-loss
+events, fullscreen transitions, real XNA~4.0, and a rerun of the oracle outside Wine. Until then,
+the strongest precise claim is ``pixel-verified against XNA through the same engaged DXVK path on
+this recorded GPU,'' not ``validated on Windows hardware.'' The engagement gates make the first
+claim unusually strong by ensuring it is not secretly a result from the wrong runtime.

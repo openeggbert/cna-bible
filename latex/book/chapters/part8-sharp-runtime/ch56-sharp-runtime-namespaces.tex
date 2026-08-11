@@ -1,10 +1,86 @@
 \chapter{Namespaces, Types, and Include Paths}
 \label{ch:sharp-runtime-namespaces}
 
-This chapter covers two smaller, practical corners of \texttt{sharp-runtime}'s API --- its
-text and stream types --- and then the part of its history most worth learning from: what
-happened when the project's own completed task tracker was deliberately \emph{not} trusted as
-proof of correctness, and independent audits went looking for what it might have missed.
+Sharp-runtime makes a source-porting promise visible in the filesystem: if a developer knows
+the .NET fully-qualified type name, the public include spelling should be predictable. The
+module graph adds a second question that a header alone cannot answer: which component owns
+that include and which dependencies follow transitively? This chapter establishes both rules,
+then applies them to representative text, stream, encoding, and task types.
+
+\section{Two public roots, no umbrella}
+
+Approximately 1{,}037 public headers are reachable below two roots. \texttt{System/} contains
+the literal .NET namespace tree; \texttt{SharpRuntime/} contains project-specific aliases and
+source-porting helpers. There is no catch-all header. Private headers below a module's
+\texttt{src/} directory are not added to consumer include paths.
+
+The transliteration rule is mechanical:
+
+\begin{lstlisting}
+System.IO.FileStream
+    -> #include "System/IO/FileStream.hpp"
+
+System.Threading.Tasks.Task
+    -> #include "System/Threading/Tasks/Task.hpp"
+
+SharpRuntime::intcs
+    -> #include "SharpRuntime/SharpRuntimeHelper.hpp"
+\end{lstlisting}
+
+One public type per like-named header is the norm. The rule makes a port review tractable: an
+include that cannot be derived from the type name deserves inspection, and an accidental
+include from another module's private tree cannot be hidden behind a universal umbrella.
+
+\section{Namespaces do not equal components one-for-one}
+
+The C++ namespace hierarchy describes API identity; the 44 CMake components describe build
+ownership. Several namespace families split across components to keep link surfaces narrow.
+Table~\ref{tab:sharp-namespace-components} gives representative mappings used by CNA.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Representative namespace/include/component mappings.}
+  \label{tab:sharp-namespace-components}
+  \begin{tabular}{@{}p{0.23\textwidth}p{0.43\textwidth}p{0.22\textwidth}@{}}
+    \toprule
+    API family & Include example & Direct component \\
+    \midrule
+    \texttt{System} core & \texttt{System/TimeSpan.hpp} & \texttt{Core.Base} \\
+    Collections & \texttt{System/Collections/}\newline\texttt{Generic/List.hpp} & \texttt{Collections.Core} \\
+    Object model & \texttt{System/Collections/}\newline\texttt{ObjectModel/Collection.hpp} & \texttt{Collections.}\newline\texttt{ObjectModel} \\
+    Streams & \texttt{System/IO/MemoryStream.hpp} & \texttt{IO} \\
+    Text & \texttt{System/Text/UTF8Encoding.hpp} & \texttt{Text} \\
+    Tasks & \texttt{System/Threading/Tasks/Task.hpp} & \texttt{Threading.Tasks} \\
+    Cryptographic hashes & \texttt{System/Security/}\newline\texttt{Cryptography/SHA256.hpp} & \texttt{Security.}\newline\texttt{Cryptography} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The direct component is not the full closure. Its public dependencies carry lower-level
+requirements, just as a C++ header's own includes do. This is why CNA names
+\texttt{SharpRuntime::IO} rather than copying IO's current dependency list into its own CMake
+files. Chapter~\ref{ch:sharp-components-consumption} covers the adapter and its legacy
+monolith fallback.
+
+\section{What CNA actually includes}
+
+CNA directly names 54 distinct runtime headers. Fifty-two use the \texttt{System/} root. The
+two \texttt{SharpRuntime/} spellings are \texttt{SharpRuntimeHelper.hpp}, which defines the
+C\#-fidelity primitives and limits, and \texttt{Prop.hpp}, which exports property-declaration
+macros for downstream code. Counting only the latter prefix and concluding that CNA consumes
+two runtime headers mistakes a namespace prefix for a repository boundary.
+
+\texttt{SharpRuntimeHelper.hpp} is unusually load-bearing: hundreds of public runtime headers
+include it, and CNA uses aliases such as \texttt{intcs}, \texttt{bytecs}, and
+\texttt{Single} throughout its public surface. It also exports two unnamespaced macros,
+\texttt{CONTAINS} and \texttt{INTERNAL}; consumers must treat those as global preprocessor
+names, not members protected by the \texttt{SharpRuntime} namespace.
+
+\texttt{Prop.hpp} is the opposite kind of seam. The runtime's own property methods are
+hand-written, and its modules do not include this macro header. CNA does. The file is therefore
+an exported downstream facility even though a search limited to the library's implementation
+would misleadingly classify it as unused.
 
 \section{String and StringBuilder: a static-only utility versus a real mutable buffer}
 
@@ -278,252 +354,17 @@ that receives the completed \texttt{TaskT<TResult>} object. That boundary is pre
 plausible-looking method which silently executes on the wrong lifetime or scheduler model; it
 should remain documented as open until its generic continuation semantics and tests land.
 
-\section{The post-stabilization audit: distrusting a complete-looking task list on purpose}
+\section{Reading a dependency from source}
 
-\texttt{sharp-runtime}'s own ticket backlog --- 1{,}709 tickets across sixteen categories ---
-reached 100\% \texttt{done} at one point in the project's history. What happened next is the
-single most instructive episode in this project's own story, and worth recounting in full,
-because it is the same discipline Chapter~\ref{ch:project-practice} named as this whole
-ecosystem's most distinctive trait, applied at real scale: rather than treating a fully
-checked-off ticket table as proof the runtime was correct, the project commissioned a fresh,
-independent audit specifically built to distrust that conclusion. Seven parallel, read-only
-audit agents were dispatched across eight risk categories --- API inconsistencies,
-undocumented deviations from real .NET, remaining \texttt{NotImplementedException}s, partial
-or stub classes, platform-specific issues, exception-type mismatches, silently-wrong
-behavior, and missing high-risk test coverage --- each one required to verify every finding
-directly against real .NET source and against the project's own documented, accepted
-deviations list before it could be reported at all, specifically to filter out
-plausible-sounding but wrong findings before they ever reached a human.
+A reliable dependency review uses three layers in order. First derive the public include from
+the type's fully-qualified name. Then locate the module whose public include directory owns the
+file. Finally inspect that component's declared public dependencies rather than inferring a
+closure from nested namespaces. Namespace depth, directory depth, and link depth often align,
+but the component registry --- particularly compatibility umbrellas and the \texttt{Xml.XPath}
+alias --- is the authority when they do not.
 
-The result was twenty concrete findings --- nine high-severity, eight medium, three low ---
-filed as new tickets and subsequently fixed. One is worth naming in full, because of how
-quietly it could have shipped: \texttt{Convert::ToXxx(double/float)} was implemented as a
-bare \texttt{static\_cast<T>()}, meaning simple truncation rather than round-half-to-even
-rounding. A direct repro confirmed \texttt{Convert::ToInt32(2.9)} returned \texttt{2} where
-real .NET returns \texttt{3}, and \texttt{Convert::ToInt32(3.5)} returned \texttt{3} where real
-.NET returns \texttt{4} --- and, more strikingly, \texttt{ToUInt32(double)}'s own doc comment
-already said \texttt{"(truncates)"}, as though the wrong behavior had been documented as
-intentional rather than caught as a bug.
-
-\begin{lstlisting}
-// Worked example: the exact repro that caught this bug, and what
-// Convert::ToInt32(double) returns now that it implements real
-// round-half-to-even rounding instead of a bare static_cast<int>().
-assert(System::Convert::ToInt32(2.9) == 3);  // was 2 before the fix
-assert(System::Convert::ToInt32(3.5) == 4);  // was 3 before the fix -- .NET
-                                              // rounds 3.5 up to 4, not to
-                                              // the nearer *even* integer,
-                                              // since 4 is already even
-\end{lstlisting}
-
-\section{Two more findings from the same audit, worth their own worked examples}
-
-Two further findings from that first audit round are worth their own concrete treatment,
-because each illustrates a distinct failure shape beyond simple truncation, and this project's
-own source shows both bugs and both fixes side by side today.
-
-\cnaclass{Dictionary<TKey, TValue>}'s non-\texttt{const} indexer used to be a plain
-\texttt{TValue\&}, which could not distinguish a read access from a write access --- so reading
-a missing key silently inserted a default-constructed value, matching
-\texttt{std::unordered\_map::operator[]}'s own convention rather than real .NET's, where the
-indexer getter unconditionally throws \texttt{KeyNotFoundException} on any missing key. The
-quietly damning detail the audit surfaced: this exact bug had already been found and fixed once
-in this same codebase, in \cnaclass{Concurrent::ConcurrentDictionary}, via a dedicated
-\texttt{ValueProxy} wrapper whose own doc comment states plainly that it does \emph{not} insert
-a default --- the fix had simply never been propagated to the plain, non-concurrent
-\cnaclass{Dictionary}. It has been now:
-
-\begin{lstlisting}
-// Worked example: Dictionary's operator[] today, a ValueProxy return type
-// (not a plain TValue&) so a read and a write can be told apart, exactly
-// mirroring the precedent ConcurrentDictionary::ValueProxy already set.
-[[nodiscard]] ValueProxy operator[](const TKey& key) { return ValueProxy(this, key); }
-
-[[nodiscard]] const TValue& operator[](const TKey& key) const
-{
-    auto it = map_.find(key);
-    if (it == map_.end())
-        throw KeyNotFoundException("The given key was not present in the dictionary.");
-    return it->second;
-}
-\end{lstlisting}
-
-\cnaclass{Concurrent::ConcurrentDictionary::GetOrAdd} / \texttt{AddOrUpdate} had a second, more
-subtle problem the audit also caught: both held their internal \texttt{std::mutex} for the
-\emph{entire} call, including the user-supplied factory callback's own invocation. Since
-\texttt{std::mutex} is non-recursive, a factory that reentrantly called back into the very same
-dictionary instance --- a realistic memoization pattern, not a contrived edge case --- would
-deadlock the calling thread against itself. The fix moves the factory call outside the lock
-entirely, matching real .NET's own documented contract for this method precisely (the factory
-may run without the lock held and, under real contention, may even be invoked more than once,
-with the loser's result discarded):
-
-\begin{lstlisting}
-// Worked example: GetOrAdd today -- the factory call is genuinely outside
-// both lock_guard scopes, so a reentrant factory can no longer self-deadlock.
-TValue GetOrAdd(const TKey& key, std::function<TValue(const TKey&)> factory)
-{
-    {
-        std::lock_guard<std::mutex> lk(mutex_);
-        auto it = map_.find(key);
-        if (it != map_.end()) return it->second;
-    }
-    TValue v = factory(key);   // deliberately unlocked -- see the note above
-    std::lock_guard<std::mutex> lk(mutex_);
-    auto [it, inserted] = map_.emplace(key, std::move(v));
-    return it->second;
-}
-\end{lstlisting}
-
-\section{A systemic finding revisited: fail-fast enumeration, fixed in ten of eleven collections}
-
-One finding from the same first audit round deserves its own treatment separately from the two
-above, because of its scope: \texttt{POST\_STABILIZATION\_AUDIT.md} flagged that \emph{every}
-\cnans{System.Collections.Generic} mutable collection --- eleven files,
-\cnaclass{List}\allowbreak{}\texttt{<T>} through \cnaclass{PriorityQueue} --- lacked the
-version-counter fail-fast check real .NET's own generic collections all share: mutate a
-collection while an enumerator from it is still live, and the very next \texttt{MoveNext()}
-should throw \texttt{InvalidOperationException} (``Collection was modified; enumeration
-operation may not execute'') rather than silently skipping elements or, worse, dereferencing a
-dangling iterator into a reallocated buffer. The audit noted the fix pattern already existed
-elsewhere in this same codebase (the legacy, non-generic \texttt{Hashtable} / \texttt{ArrayList}
-/ \texttt{Queue} / \texttt{Stack} types all had it) --- it had simply never been extended to the
-far more heavily used generic collections, and its own scope note predicted a real fix would
-need per-type application across all eleven files.
-
-Reading the current headers directly rather than trusting either the audit's own snapshot or a
-completion claim shows the fix landed, and landed almost completely: \cnaclass{List}\allowbreak{}
-\texttt{<T>}'s own \texttt{Enumerator} now captures \texttt{version\_} at construction and checks
-it on every \texttt{MoveNext()} / \texttt{Reset()}, throwing exactly the real .NET message:
-
-\begin{lstlisting}
-class Enumerator : public IEnumerator<T>
-{
-    const List<T>* list_;
-    intcs version_;
-    intcs index_ = -1;
-public:
-    explicit Enumerator(const List<T>* list) : list_(list), version_(list->version_) {}
-    bool MoveNext() override {
-        if (version_ != list_->version_)
-            throw System::InvalidOperationException(
-                "Collection was modified; enumeration operation may not execute.");
-        return ++index_ < static_cast<intcs>(list_->items_.size());
-    }
-    // ...
-};
-\end{lstlisting}
-
-Grepping every one of the audit's own eleven named files for a real \texttt{version\_} field
-confirms the same pattern is now present in ten of them ---
-\cnaclass{List}\allowbreak{}\texttt{<T>}, \cnaclass{Dictionary}\allowbreak{}\texttt{<K,V>},
-\cnaclass{HashSet}\allowbreak{}\texttt{<T>}, \cnaclass{LinkedList}\allowbreak{}\texttt{<T>},
-\cnaclass{Queue}\allowbreak{}\texttt{<T>}, \cnaclass{Stack}\allowbreak{}\texttt{<T>},
-\cnaclass{SortedDictionary}\allowbreak{}\texttt{<K,V>},
-\cnaclass{SortedList}\allowbreak{}\texttt{<K,V>}, \cnaclass{SortedSet}\allowbreak{}\texttt{<T>},
-and \cnaclass{OrderedDictionary} --- not a partial or cosmetic fix, a real, independently
-verified per-type application matching exactly what the audit's own scope note anticipated
-would be needed.
-
-\cnaclass{List}\allowbreak{}\texttt{<T>}'s own class doc-comment is honest about one narrow gap
-the fix does \emph{not} close, worth quoting directly rather than glossing over: real .NET's
-index-assignment setter (\texttt{list[i] = value}) also bumps its internal version, but this
-port's \texttt{operator[]} returns a plain \texttt{T\&} for C++ ergonomics, so there is no hook
-point to intercept a later \texttt{list[i] = value;} assignment made through that reference ---
-value-only index writes do not trigger fail-fast detection here. The comment explicitly weighs
-and rejects the fix (widening \texttt{operator[]} into a proxy-object return, the same technique
-already used to fix \cnaclass{Dictionary}\allowbreak{}\texttt{<K,V>}'s own indexer bug earlier in
-this chapter) as too large and risky a change to the single most call-site-heavy method in the
-codebase to make unilaterally --- a deliberately deferred, not overlooked, gap.
-
-\cnaclass{PriorityQueue}\allowbreak{}\texttt{<TElement,TPriority>} is the one file of the eleven
-with zero \texttt{version\_} occurrences, and it is worth checking \emph{why} before assuming the
-fix was simply skipped there too. Reading the header directly shows a different, more fundamental
-reason: this port's \cnaclass{PriorityQueue} does not implement any enumerable interface at all
---- no \texttt{GetEnumerator()}, no \texttt{begin()} / \texttt{end()}, and no equivalent of real
-.NET's own \texttt{UnorderedItems} property, which is exactly what \texttt{PriorityQueue<TElement,
-TPriority>} in real .NET exposes for enumeration. There is no enumerator here for a mutation to
-invalidate, so the fail-fast pattern genuinely does not apply --- not a missed eleventh
-application of finding \#4, but a separate, real gap of its own (no enumeration support at all),
-one this chapter's own source-grounding discipline requires stating precisely rather than folding
-into the version-tracking story just because both would show up in the same file-by-file grep.
-
-Two smaller items from the identical audit round are worth a one-line confirmation each, both
-independently re-verified against current source: \cnaclass{MemoryStream}\allowbreak{}
-\texttt{::Write} previously validated only \texttt{buffer == nullptr} and \texttt{count <= 0},
-letting a negative \texttt{offset} reach an unchecked \texttt{std::copy} and read one byte before
-the caller's own array --- confirmed via a real ASan repro, per the fix's own code comment, and
-now closed with explicit \texttt{ArgumentNullException} / \texttt{ArgumentOutOfRangeException}
-checks matching \texttt{Read()}'s own validation in the same class. And
-\cnaclass{List}\allowbreak{}\texttt{<T>}'s doc-comment claim of ``full \texttt{IList<T>}
-compliance'' while \texttt{CopyTo} was entirely missing --- also fixed, with the exact two
-overloads real .NET's own \texttt{ICollection<T>} contract specifies.
-
-\section[A second audit, and what sanitizers found that reasoning alone did not]{A second, independent audit, and what sanitizers found that reasoning alone did not}
-
-A further, separate audit produced seven more findings, six fixed in the same session ---
-among them a stream-backed ZIP archive implementation that never actually wrote its output
-back to the underlying stream in create or update mode, and five of this project's own
-destructors (spanning compression streams and XML writing) that could call
-\texttt{std::terminate()} if an I/O failure occurred during RAII cleanup, since a
-C\texttt{++} destructor that lets an exception escape terminates the program outright rather
-than propagating the failure the way a .NET \texttt{Dispose()} call safely could.
-
-A third of that same round's findings deserves its own worked treatment, because it is a real
-race between two things that individually look correct: \cnaclass{TaskCompletionSource<TResult>}%
-\texttt{::TrySetResult} first atomically claims completion (\texttt{completed\_.%
-compare\_exchange\_strong}), \emph{then} calls \texttt{promise\_.set\_value(result)} to actually
-publish the result. If \texttt{TResult}'s own copy constructor throws --- a real possibility for
-any non-trivial result type, not a contrived one --- that throw happens \emph{after} completion
-was already claimed but \emph{before} the underlying \texttt{std::promise}'s shared state ever
-becomes ready. Before the fix, nothing caught that exception at this layer, so it propagated
-straight out of \texttt{TrySetResult} with the promise left permanently unset: every current and
-future waiter on \texttt{GetResult()} or the bridging \cnaclass{Task} blocked forever, and no
-later \texttt{TrySetResult} / \texttt{TrySetException} / \texttt{TrySetCanceled} call could ever
-re-claim \texttt{completed\_} to unblock them, since it was already (falsely) true.
-
-\begin{lstlisting}
-bool TrySetResult(const TResult& result) {
-    bool expected = false;
-    if (!completed_.compare_exchange_strong(expected, true)) return false;
-    try {
-        promise_.set_value(result);         // TResult's copy ctor could throw here
-    } catch (...) {
-        promise_.set_exception(std::current_exception());  // settle the promise anyway
-        throw;                              // still propagates to this immediate caller
-    }
-    return true;
-}
-\end{lstlisting}
-
-The fix settles the promise with the copy failure itself inside the same \texttt{catch}, so
-every waiter still unblocks --- now with an exception to observe rather than a hang --- while
-the immediate caller of \texttt{TrySetResult} still sees the same throw it always did, keeping
-existing callers that already wrap the call in their own \texttt{try} / \texttt{catch} unaffected.
-The general shape worth remembering: an atomic ``claim the transition'' step and the actual
-state-publishing step that follows it are two separate operations, and a real exception thrown
-strictly between them is exactly the kind of failure window unit tests built around the happy
-path will never exercise on their own.
-
-A first-ever full run of the full sanitizer trio --- ThreadSanitizer, AddressSanitizer, and
-UndefinedBehaviorSanitizer --- found real bugs no amount of code review alone had caught:
-ThreadSanitizer found one genuine production deadlock (a \texttt{Channel} implementation
-missing a \texttt{notify\_all} call, a lost-wakeup bug affecting multiple blocked waiters)
-alongside three test-only races; AddressSanitizer found one confirmed heap-buffer-overflow (an
-aligned-reallocation helper copying the \emph{old}, smaller allocation's size into a newly
-enlarged buffer) plus five real memory leaks in XML document node creation; and
-UndefinedBehaviorSanitizer found one genuine undefined-behavior call reaching into vendored
-\texttt{miniz} code, from an empty vector's \texttt{.data()} pointer reaching a
-non-null-parameter-annotated function.
-
-\section{Why this history belongs in a book, not just a changelog}
-
-None of these bugs are individually remarkable --- a truncation-instead-of-rounding bug, a
-missed \texttt{notify\_all}, a leaking XML method. What is worth taking from this chapter is
-the project's own response to having a fully completed task tracker: rather than reading
-``100\% done'' as ``verified correct,'' it treated that state as precisely the moment a fresh,
-independently-skeptical audit was most valuable, and built that audit specifically to check
-claims against real .NET source rather than against the project's own prior conclusions. This
-is the same discipline \texttt{xna4-spec} auditing (Chapter~\ref{ch:xna4-spec-auditing})
-brings to CNA's own XNA surface, applied here one layer further down, to the foundation layer
-everything else in this book ultimately stands on.
+The representative types in this chapter also show why include availability is weaker than
+semantic parity. \cnaclass{UTF8Encoding} contains real malformed-input validation but lacks
+dedicated adversarial tests; \cnaclass{TaskT<TResult>} is present but has no generic
+\texttt{ContinueWith}. A mechanically correct path proves that a type can be named. It does not
+prove that every .NET behavior behind that name exists.

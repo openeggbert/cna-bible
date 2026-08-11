@@ -11,8 +11,8 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
 |---|---|
 | cna-bible branch | `next`; local commits are ahead of `origin/next` (push requires explicit external-publication approval) |
 | CNA pinned SHA | `7a64362efef4119bf880459ef1704fb2c52199e2` (`develop` == `origin/develop`, 2026-08-11) |
-| Book builds | **yes** — 683 pages, all automated checks green; Phase D batches 1–4 visually verified |
-| Phase | **A, B, and C complete. Phase D in progress:** four verified batches, Chapters 19–54, are complete. |
+| Book builds | **yes** — 691 pages, all automated checks green; Phase D batches 1–5 visually verified |
+| Phase | **A, B, and C complete. Phase D in progress:** five verified batches, Chapters 19–63, are complete. |
 
 ## What is done
 
@@ -86,14 +86,23 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     contact sheets plus a tail sheet; component tables, link closures and long include paths were
     checked at full size. That zoomed pass found and corrected two overflowing include paths in
     Chapter 54, after which the full build and affected-page render were repeated.
+16. **Phase D batch 5 is complete and verified.** Chapters 55–63 now separate sharp-runtime's
+    actual C++ object model, include/component map, permanent-deviation taxonomy and layered
+    verification apparatus; give meta-gl equal treatment with easy-gl; expand free-direct/free-api
+    around the 56/23/16 status census and `fopen` quarantine; and establish the platform evidence
+    vector, MinGW/SDL/DLL cross-build chain, i686 wall, six Wine prefixes and runtime-engagement
+    gates. The consolidated book is 691 pages. Every touched physical page 523–572 plus the
+    Chapter 64 boundary at 573 was inspected as six full contact sheets plus a tail sheet. Full-
+    size inspection found one overlapping namespace/component table on page 528; manual line
+    breaks fixed it, the full build was rerun, and pages 528–529 were re-rendered cleanly.
 
 ## Do this next
 
-**Continue Phase D with Chapters 55–63** as the next nine-chapter batch: finish the remaining
-sharp-runtime chapters (object model, namespaces, parity, verification), rebuild easy-gl/meta-gl
-and free-direct/free-api from the sibling audit, then begin the platform Part with the
-cross-platform contract and both Windows chapters. Read `audit/sibling-libraries.md` and
-`audit/platforms.md` before writing, then run one consolidated build and visual pass.
+**Continue Phase D with Chapters 64–72** as the next nine-chapter batch: the three Web chapters;
+Android/macOS/unreached platforms; then the test architecture, counting discipline, oracle
+taxonomy, hostile-environment verification and discipline-as-test chapters. Read
+`audit/platforms.md` and `audit/testing-verification.md` before writing, then run one
+consolidated build and visual pass.
 
 ## Do not do these
 
@@ -111,10 +120,10 @@ cross-platform contract and both Windows chapters. Read `audit/sibling-libraries
 
 ## Verification status
 
-Everything through Phase D batch 4 is verified:
+Everything through Phase D batch 5 is verified:
 
-- `make -C latex book` succeeds; **683 pages**.
-- makeindex: 2,400 entries accepted, 0 rejected, 0 warnings.
+- `make -C latex book` succeeds; **691 pages**.
+- makeindex: 2,396 entries accepted, 0 rejected, 0 warnings.
 - No undefined references, no undefined control sequences, no duplicate labels, no doubled-
   backslash `\ref`, no hard-coded chapter numbers.
 - `git diff --check` clean.
@@ -130,8 +139,12 @@ Everything through Phase D batch 4 is verified:
 - Phase D batch 4 rendered and reviewed every touched physical page, 456–523, as 8 contact sheets
   plus a tail sheet; high-risk component tables, link closures and include paths were inspected
   at full size, and the one detected overflow was fixed and re-rendered cleanly.
+- Phase D batch 5 rendered and reviewed every touched physical page, 523–572, as 6 contact sheets
+  plus a tail sheet through the Chapter 64 boundary at 573; high-risk namespace, status and Wine
+  runtime tables were inspected at full size, and the one detected overlap was fixed, rebuilt and
+  re-rendered cleanly.
 
-**No completed writing batch is pending PDF verification.** Continue with Chapters 55–63 and
+**No completed writing batch is pending PDF verification.** Continue with Chapters 64–72 and
 follow the normal ~8–10 chapter batch rule.
 
 ## Environment notes
@@ -146,5 +159,5 @@ follow the normal ~8–10 chapter batch rule.
 
 Ten source-audit reports and the 42-family draw-path matrix are complete against pinned CNA
 `7a64362e`. Phase B settled a 12-Part, 79-chapter, 8-appendix edition; Phase C put it on disk,
-migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–4
-rewrote Chapters 19–54 and verified the resulting 683-page book; Chapters 55–63 are next.
+migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–5
+rewrote Chapters 19–63 and verified the resulting 691-page book; Chapters 64–72 are next.

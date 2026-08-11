@@ -1,3 +1,166 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{The Object Model, Honestly}
 \label{ch:sharp-object-model}
+
+Porting C\# names into C\texttt{++} does not import the CLR with them. Sharp-runtime retains
+the APIs that help source translation, but its actual object model is standard C\texttt{++}:
+values, explicit interfaces, RAII, smart pointers where reference identity matters, and RTTI
+for the small amount of runtime type identity that survives. This chapter makes those seams
+explicit so that familiar names such as \cnaclass{Object}, \cnaclass{String}, and
+\cnaclass{Delegate} do not invite managed-runtime assumptions.
+
+\section{Object is opt-in, not universal}
+
+Real .NET gives every value an \texttt{object} ancestry. C\texttt{++} has no equivalent root,
+and sharp-runtime does not simulate one. \cnaclass{System::Object} is abstract because
+\texttt{GetTypeName()} is pure virtual. At the audited revision, exactly two runtime classes
+derive from it: \cnaclass{DateTime} and \cnaclass{DateTimeOffset}. Streams, collections,
+exceptions, strings, and almost every other public type do not.
+
+For the few opt-in classes, the surface is useful and concrete:
+
+\begin{itemize}
+  \item \texttt{Equals(const Object*)} defaults to pointer identity;
+  \item static \texttt{Equals} handles nulls and then dispatches to the first object;
+  \item \texttt{ReferenceEquals} is strictly pointer equality;
+  \item \texttt{GetHashCode()} derives a non-negative value from the object's address;
+  \item \texttt{ToString()} returns the stable name supplied by \texttt{GetTypeName()}; and
+  \item non-virtual \texttt{GetType()} uses \texttt{typeid(*this)}, so a base pointer still
+        reports its most-derived RTTI identity.
+\end{itemize}
+
+The \texttt{GetTypeNameHPP()} and \texttt{GetTypeNameCPP()} macros only remove override
+boilerplate. They are not a hidden registration system, and their existence does not make
+\cnaclass{Object} universal.
+
+\begin{lstlisting}
+// DateTime participates in the optional Object surface.
+System::DateTime now = System::DateTime::Now();
+const System::Object* object = &now;
+System::Type dynamicType = object->GetType();
+
+// Stream does not: this is ordinary C++ inheritance, not a CLR tree.
+std::shared_ptr<System::IO::Stream> bytes =
+    std::make_shared<System::IO::MemoryStream>();
+// System::Object* impossible = bytes.get();  // unrelated types
+\end{lstlisting}
+
+\section{String is an API vocabulary, not storage}
+
+\cnaclass{System::String} has a deleted constructor and destructor. It is a static utility
+class whose methods accept and return \texttt{std::string}; the actual string value type is
+\texttt{std::string}, also exposed as \texttt{SharpRuntime::String}. This keeps familiar
+method names such as \texttt{IsNullOrEmpty}, \texttt{StartsWith}, \texttt{Split}, and
+\texttt{Trim} available without wrapping every character buffer in a new heap-aware object.
+
+The adaptation changes what null means. A \texttt{std::string} value is never a null object,
+so \texttt{String::IsNullOrEmpty} can only test emptiness. Code whose behavior distinguishes
+\texttt{null} from \texttt{""} must retain that state separately, for example with
+\texttt{std::optional<std::string>}.
+
+\begin{lstlisting}
+std::string asset = "Content/Textures/player.png";
+bool isTexture = System::String::StartsWith(asset, "Content/Textures/");
+
+std::optional<std::string> absent;
+// The optional owns nullability; System::String operates on the value.
+bool missing = !absent || System::String::IsNullOrEmpty(*absent);
+\end{lstlisting}
+
+\cnaclass{System::Text::StringBuilder} is a separate, real mutable object backed by one
+\texttt{std::string}. Its chunk enumerator preserves .NET's API shape but yields one chunk,
+not the linked character chunks used by the CLR implementation. Chapter~\ref{ch:sharp-runtime-namespaces}
+follows these type families and their include paths in more detail.
+
+\section{Exceptions join the C++ hierarchy}
+
+\cnaclass{System::Exception} derives directly from \texttt{std::exception}, not from
+\cnaclass{Object}. This makes sharp-runtime exceptions catchable by ordinary C\texttt{++}
+infrastructure while preserving a .NET-shaped message, inner exception, data map, source,
+help link, and HRESULT. The base HRESULT is \texttt{0x80131500}; \texttt{what()} exposes the
+stored message.
+
+Some managed facilities have no honest representation. \texttt{StackTrace} returns an empty
+string because the runtime captures no managed stack. \texttt{GetBaseException()} is absent
+because returning a base value would slice a derived C\texttt{++} exception without a virtual
+clone protocol. Reflection-dependent \texttt{TargetSite} and serialization-dependent
+\texttt{GetObjectData} are absent for the same reason.
+
+\begin{lstlisting}
+try {
+    throw System::ArgumentOutOfRangeException("index");
+} catch (const System::Exception& ex) {
+    Log(ex.getMessageProperty());
+} catch (const std::exception& ex) {
+    // Non-sharp-runtime C++ failures remain observable too.
+    Log(ex.what());
+}
+\end{lstlisting}
+
+There is no central \texttt{ThrowHelper}; concrete methods construct and throw the appropriate
+type directly. API parity therefore includes the exception class and message at each site,
+not merely the fact that some exception escaped.
+
+\section{Lifetime is RAII first}
+
+\cnaclass{System::GC} cannot collect anything and all its operations are no-ops. Value types
+use value semantics; ownership-bearing types use destructors and standard smart pointers.
+\texttt{std::shared\_ptr} appears where managed reference identity genuinely matters, while
+\texttt{std::unique\_ptr} represents exclusive ownership. There is no project-specific smart
+pointer or tracing heap.
+
+\cnaclass{System::IDisposable} remains a one-method capability interface. Implementations are
+expected to release deterministically, avoid throwing in normal disposal, and tolerate repeated
+calls. It does not replace destructors or establish another object root. A caller either uses
+RAII or invokes \texttt{Dispose()} explicitly when the API's semantic close point matters.
+
+That split becomes important when disposal can report an error. A C\texttt{++} destructor is
+implicitly \texttt{noexcept}; allowing an I/O exception to escape during stack unwinding can
+terminate the process. Sharp-runtime audit work found and fixed several such destructor paths.
+An explicit \texttt{Dispose()} or \texttt{Close()} is therefore the place to observe failures;
+the destructor remains a best-effort safety net.
+
+\section{Delegates have three representations}
+
+Most delegate-shaped declarations are simple \texttt{std::function} aliases. They model one
+callable target and deliberately have no C\# multicast equality or late binding. Two concrete
+runtime facilities cover cases where that simplification is insufficient.
+
+\cnaclass{System::Delegate} is a real multicast base. It stores either one erased
+\texttt{void()} callable or an invocation list of shared delegates, and implements
+\texttt{Combine}, \texttt{Remove}, \texttt{RemoveAll}, ordered \texttt{Invoke}, and
+\texttt{GetInvocationList}. Equality of entries is pointer identity rather than a CLR
+method-target pair. A single-target object must already be owned by \texttt{shared\_ptr} before
+\texttt{GetInvocationList()} can return itself; otherwise \texttt{shared\_from\_this} throws
+\texttt{std::bad\_weak\_ptr}. \texttt{DynamicInvoke} always throws because C\texttt{++} has
+no reflection-driven \texttt{object[]} invocation.
+
+\cnaclass{System::MulticastAction<Args...>} is the event-field alternative. It uses subscriber
+tokens and snapshot invocation, allowing one subscription to be removed safely even when a
+callback mutates the list during dispatch. \cnaclass{EventHandler<T>} adds sender/event-argument
+shape and an optional replay hook. These specialized types solve observable event semantics;
+they do not make every \texttt{std::function} multicast.
+
+\begin{lstlisting}
+auto first = std::make_shared<System::Delegate>([] { Log("first"); });
+auto second = std::make_shared<System::Delegate>([] { Log("second"); });
+
+auto both = System::Delegate::Combine(first, second);
+both->Invoke();                         // first, then second
+auto onlyFirst = System::Delegate::Remove(both, second);
+\end{lstlisting}
+
+\section{Type is identity without reflection}
+
+\cnaclass{System::Type::From<T>()} and RTTI-backed equality provide genuine type identity.
+That is sufficient for dictionary keys, service registries, and equality tests. It is not
+enough to reconstruct CLR metadata. Predicates such as \texttt{IsClass},
+\texttt{IsValueType}, \texttt{IsAbstract}, and \texttt{IsInterface} return fixed placeholder
+values and are explicitly not mutually consistent. Ported code may compile against them but
+must not branch on them.
+
+\cnaclass{System::Activator} follows the same boundary. Its template
+\texttt{CreateInstance<T>()} can default-construct a type known at compile time; overloads
+that accept a runtime \cnaclass{Type}, assembly name, or constructor argument array are absent.
+The honest object model is therefore smaller than .NET's, but every surviving mechanism has a
+clear C\texttt{++} owner: RTTI for identity, templates for construction, smart pointers for
+shared lifetime, and explicit interfaces for capabilities.

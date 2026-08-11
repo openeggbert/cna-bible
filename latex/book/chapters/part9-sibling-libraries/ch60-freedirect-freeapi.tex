@@ -2,65 +2,158 @@
 \label{ch:freedirect-freeapi}
 \label{ch:freedirect-deep-dive}
 
-This book's FREEDIRECT renderer chapter covered how CNA fronts \texttt{free-direct}; this short
-chapter covers \texttt{free-direct} itself, kept deliberately brief --- it is a peripheral
-dependency for CNA, backing exactly one 2D-only renderer, not a project on the scale of
-\texttt{sharp-runtime} or \texttt{easy-gl}.
+CNA's \texttt{FREEDIRECT} renderer sits on two compatibility libraries. \texttt{free-direct}
+reimplements a narrow DirectX~3-era DirectDraw, DirectSound, and DirectPlay surface;
+\texttt{free-api} supplies the Win32-shaped types and services below it using SDL3. Neither is
+a general emulator, and CNA's native \texttt{DIRECTX1} through \texttt{DIRECTX7} renderers do
+not use either library.
 
-\section{A narrow subset, defined by two real games}
+\section{A game-driven boundary}
 
-\texttt{free-direct} does not aim at DirectX~3 compatibility in general. Its own scope is
-defined entirely by what two specific legacy Windows games --- \emph{Speedy Blupi} (via the
-sibling \texttt{free-eggbert} repository) and \emph{Planet Blupi} --- actually call, confirmed
-by a real, reproducible call-site audit against both games' own source at named, dated
-commits, not by guessing at what a typical DirectDraw-era game might need. Its own
-\texttt{include/dplay.h}, for instance, defines only the DirectPlay error codes, flags, and
-two interfaces (\texttt{IDirectPlay}, \texttt{IDirectPlay2A}) those two games' call sites
-actually exercise --- there is no \texttt{IDirectPlay3A} at all, no group or lobby methods,
-and even \texttt{DPID\_ALLPLAYERS}/\texttt{DPID\_SYSMSG} are absent, confirmed by direct grep
-rather than assumed missing.
+Free-direct's original scope is derived from calls made by two games: \emph{Speedy Blupi}
+through free-eggbert, and \emph{Planet Blupi}. A third game cannot assume that a familiar
+DirectX symbol exists merely because the header name does. It needs its own call-site audit and
+an explicit decision about widening the library.
 
-\section{Three subsystems, three different maturity levels}
+The audited public headers make that boundary measurable. Across \texttt{ddraw.h},
+\texttt{dplay.h}, and \texttt{dsound.h}, all 95 public methods carry a status tag:
 
-\textbf{DirectDraw} is the most complete: primary and offscreen surface creation,
-\texttt{Blt}/\texttt{BltFast} with clipping and source color-key handling, palette support,
-a minimal clipper, and \texttt{Lock}/\texttt{Unlock} for direct pixel access, all real. Some
-paths are deliberately minimal rather than incomplete by accident ---
-\texttt{SetDisplayMode}, \texttt{IsLost}, and \texttt{Restore} are thin, matching what the
-target games actually need rather than a full DirectDraw device-loss model.
+\begin{table}[htbp]
+  \centering
+  \caption{Free-direct's public-method status census.}
+  \label{tab:freedirect-status}
+  \begin{tabular}{@{}lrrr@{}}
+    \toprule
+    Header & Implemented & Partial & Stub \\
+    \midrule
+    \texttt{ddraw.h} & 24 & 12 & 7 \\
+    \texttt{dplay.h} & 12 & 7 & 7 \\
+    \texttt{dsound.h} & 20 & 4 & 2 \\
+    \midrule
+    Total & 56 & 23 & 16 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
-\textbf{DirectSound} is partially real: SDL3-backed playback of static PCM buffers, real
-volume and constant-power panning for mono sources, real lock/unlock semantics --- but
-looping is accepted and silently ignored, and a playing buffer's position is not genuinely
-seekable.
+The table is stronger than a narrative ``mostly implemented'' claim because it can be
+regenerated from the headers. A status still needs semantic reading: DirectDraw's
+\texttt{IsLost()} and \texttt{Restore()} are honest stubs returning \texttt{DD\_OK}, whereas a
+partial operation may implement the game-used path and reject other flags.
 
-\textbf{DirectPlay} is the most surprising of the three, precisely because it is more real
-than its narrow scope might suggest: genuine session hosting, joining, player management, and
-unicast/broadcast message delivery all work between two \texttt{free-direct} processes, over
-either a default loopback transport or a real, optional ENet-backed UDP transport with real
-LAN host discovery --- explicitly \emph{FreeDirect-to-FreeDirect only}, never wire-compatible
-with genuine Microsoft DirectPlay at the packet level. Seven previously-open DirectPlay design
-questions (broadcast semantics, ENet host discovery, LAN discovery, host routing, player
-names, duplicate-player detection, player-lost state) have all been asked of, and answered by,
-the project owner and are now either implemented or deliberately left unimplemented by
-explicit decision, not by default.
+\section{Three DirectX subsystems, no Direct3D}
 
-\section{A revealing implementation detail: DPID as a hazard}
+\textbf{DirectDraw} owns CPU pixel buffers, primary and offscreen surfaces, clipping, source
+color keys, palettes, \texttt{Blt}/\texttt{BltFast}, \texttt{Lock}/\texttt{Unlock}, and SDL
+texture upload on \texttt{Flip}. Surface registration allows renderer invalidation. It is the
+deepest and most directly exercised part of CNA's 2D compositor.
 
-One specific detail is worth naming as a small lesson in porting fidelity: \texttt{free-direct}
-types its \cnaclass{DPID} player-identifier as a raw \texttt{DWORD\_PTR} rather than a stable,
-opaque handle --- a genuine hazard flagged directly in the project's own call-site audit,
-since code that assumes a \texttt{DPID} is a small, stable integer can behave unexpectedly if
-that assumption is violated. This is exactly the kind of small representational choice this
-book has flagged elsewhere (Chapter~\ref{ch:networking}'s \cnaclass{PacketReader}/%
-\cnaclass{PacketWriter} \cnaclass{Color} asymmetry, for instance) as worth knowing about
-before writing code against an API, even when it does not manifest as an outright bug in
-either of the two games the library currently targets.
+\textbf{DirectSound} opens a real SDL3 audio device and stream behind a shared, mutex-protected
+device. Static PCM buffers, volume, and constant-power pan are implemented; volume uses
+$10^{cB/2000}$. The subsystem enforces a 64 MiB buffer ceiling and contains a deliberate
+\texttt{PCMWAVEFORMAT} versus \texttt{WAVEFORMATEX} layout correction. Some playback controls
+remain narrower than Microsoft's device model.
 
-\section{Non-goals, restated}
+\textbf{DirectPlay} implements sessions, players, unicast, broadcast, and host-side relay
+behind a transport interface. A default build has only in-process loopback. Real UDP peers and
+LAN discovery require \texttt{FREE\_DIRECT\_ENABLE\_ENET}, which is OFF by default and adds
+ENet privately. Its packets are FreeDirect-to-FreeDirect, not Microsoft DirectPlay wire
+compatibility.
 
-Consistent with this book's coverage: no hardware-accurate emulation, no Direct3D pipeline at
-all (matching the target games, which never used one), and no expansion of the supported API
-surface beyond what \emph{Speedy Blupi} and \emph{Planet Blupi} actually call --- a third
-game wanting to use \texttt{free-direct} would need its own call-site audit first, not an
-assumption that the existing surface is already broad enough.
+There is no Direct3D source or public interface at all. This library is ``DirectX~3'' only in
+the era-bundle sense; its graphics path is DirectDraw 2D.
+
+\section{The two libraries form a one-way dependency}
+
+Free-direct adds its sibling \texttt{../free-api} when no \texttt{free-api} target already
+exists, disables free-api's tests, and links \texttt{free-api::free-api} publicly. Free-api
+does not depend on free-direct. It supplies roughly 80 \texttt{extern "C"} \texttt{WINAPI}
+declarations across flat Win32-named headers and a real \texttt{windows.h} umbrella.
+
+The public types deliberately do not expose SDL. Internally an \texttt{HWND} represents an
+\texttt{SDL\_Window*} cast through \texttt{void*}; message translation, GDI-lite buffers,
+files and paths, timers, MCI/MIDI playback, joystick input, string resources, and diagnostics
+all translate to SDL-backed machinery. MIDI uses a shared audio stream, a mixing thread, and
+vendored TinySoundFont/TinyMidiLoader. Free-api itself links SDL3, SDL3\_image, and SDL3\_mixer,
+but neither ENet nor sharp-runtime.
+
+Only three bridge functions are explicitly designed for free-direct:
+\texttt{FreeApiCreateSurfaceDC}, \texttt{FreeApiDestroySurfaceDC}, and
+\texttt{FreeApiSetWindowFullscreen}. Keeping those in \texttt{free\_api\_bridge.h} names the
+scope exception instead of letting free-direct reach arbitrarily into private implementation.
+
+\section{CNA is the odd consumer}
+
+Free-eggbert and Planet Blupi add free-api first and then free-direct. CNA adds only free-direct
+when \texttt{CNA\_GRAPHICS\_RENDERER=FREEDIRECT}; the public link edge pulls free-api into the
+final closure transitively. CNA is therefore a real third consumer of free-api even though its
+own build file never calls \texttt{add\_subdirectory} for it.
+
+CNA's renderer is not a thin adapter. Its 1{,}374-line implementation creates DirectDraw
+surfaces, performs locked pixel write/read/clear operations, composites quads on the CPU, and
+maintains a shadow-backbuffer resize transaction with failure injection. Eight registered CNA
+test binaries exercise it under SDL's dummy video driver and inspect shadow-buffer pixels.
+
+\section{The \texttt{fopen} macro is a real containment cost}
+
+Free-api's \texttt{windows.h} defines \texttt{fopen} as \texttt{free\_api\_fopen}. Because
+free-direct's \texttt{ddraw.h} includes that umbrella, exposing \texttt{ddraw.h} from a CNA
+public header would rewrite every later \texttt{fopen(...)} token in the translation unit.
+CNA contains the hazard with pimpl: \texttt{FreeDirectRenderer.hpp} does not include
+\texttt{ddraw.h}; the implementation file owns all DirectDraw types.
+
+\begin{lstlisting}
+// Public header: no ddraw.h, no free-api windows.h, no fopen macro.
+class FreeDirectRenderer final : public IGraphicsRenderer {
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+
+// Implementation file only:
+#include <ddraw.h>
+struct FreeDirectRenderer::Impl { /* IDirectDraw state */ };
+\end{lstlisting}
+
+This is more than ``keep headers small.'' It is a preprocessor quarantine around a second-level
+dependency whose public compatibility contract intentionally includes global Win32 macros.
+
+\section{FREEDIRECT is not DIRECTX3}
+
+CNA's \texttt{DIRECTX1}, \texttt{DIRECTX2}, \texttt{DIRECTX3}, \texttt{DIRECTX5},
+\texttt{DIRECTX6}, and \texttt{DIRECTX7} renderers use the real Microsoft/MinGW/Wine DirectDraw
+SDK and link \texttt{ddraw}/\texttt{dxguid}; they deliberately do not use free-direct. The
+SDL-backed renderer was itself named \texttt{DIRECTX3} until 2026-08-04, when it became
+\texttt{FREEDIRECT} precisely to remove this ambiguity.
+
+Selector spelling therefore determines two different dependency graphs:
+
+\begin{lstlisting}
+FREEDIRECT -> CNA FreeDirectRenderer -> free-direct -> free-api -> SDL3
+DIRECTX3   -> CNA DirectX3Renderer  -> MinGW/Wine ddraw + dxguid
+\end{lstlisting}
+
+The same public \texttt{ddraw.h} spelling can resolve to different providers under those
+graphs, which is why source-path and target evidence matter more than API-name resemblance.
+
+\section{Verification boundaries}
+
+Free-direct has nine default CTest registrations, ten with ENet, using a hand-rolled
+\texttt{CHECK} mechanism. Compile-only header tests and a shell hygiene gate prevent SDL or
+ENet identifiers from leaking into public headers. Tests default OFF. The DirectPlay suite
+also records that enabling ENet makes 29 of 61 loopback-shaped checks fail by design because
+the timing model changes; a transport toggle is not a free strengthening of the same oracle.
+
+Free-api has 29 CTest registrations: 20 C\texttt{++} programs and nine CMake-level tests,
+including negative controls for string-table extraction and public-surface scans. They are ON
+standalone and OFF when embedded. The suite exercises SDL-to-\texttt{WM\_*} translation,
+message filtering, timers, GDI bounds, resource strings, MCI/MIDI, joystick, and quiet logging.
+
+Test volume did not prevent a cautionary 2026-07-18 sequence. A nine-finding re-audit was
+immediately followed by two regressions introduced by its changes: a startup abort from
+reentrant static initialization and real memory growth from bitmap pooling. Users found both,
+not the 29-test suite. The episode is a useful reminder that an audit patch changes the system
+under audit; regression risk belongs inside the review, not after it.
+
+The correct scope statement is thus precise. These libraries reproduce the calls their games
+and CNA currently need, with unusually visible status metadata and meaningful tests. They are
+not Wine, a complete Win32 SDK, hardware-accurate DirectX emulation, or a general foundation for
+arbitrary DirectX~3 software.

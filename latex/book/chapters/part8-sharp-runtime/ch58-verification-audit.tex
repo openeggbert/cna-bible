@@ -1,3 +1,189 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{Verification and Audit in sharp-runtime}
 \label{ch:sharp-verification-audit}
+
+Sharp-runtime's verification system is not one test executable and a green badge. It combines
+component-isolated GoogleTest programs, integration tests, compile boundaries, positive and
+negative consumers, Python meta-tests, sanitizer probes, and an audit record approaching one
+file per source file. The layers answer different questions, and the current result is
+deliberately not summarized as ``all passing.''
+
+\section{Three test locations have three jobs}
+
+The singular and plural directory names are semantically distinct:
+
+\begin{description}
+  \item[\texttt{modules/<module>/tests/}] holds the primary unit tests. Its 477 C\texttt{++}
+  files mirror their owning module trees.
+  \item[\texttt{tests/}] holds cross-cutting C\texttt{++} integration tests and the i686
+  compile-boundary source. These are intentionally outside any one module.
+  \item[\texttt{test/}] holds Python meta-tests and CMake consumer fixtures. Some fixtures are
+  expected to fail compilation or linking.
+\end{description}
+
+GoogleTest is vendored as a required submodule. When tests are enabled, CMake discovers test
+sources and creates one executable for each component that owns tests, plus an integration
+executable. The component name prefixes discovered cases, making failures attributable without
+reconstructing ownership from a monolithic binary.
+
+\section{The executable boundary tests the dependency boundary}
+
+Each component test executable links its component, \texttt{gtest\_main}, and only declared
+\texttt{TEST\_DEPENDENCIES}. A test that reaches across an undeclared module edge can fail to
+link. This converts a build-architecture rule into an executable check: the same test body
+linked against a universal archive would compile and conceal the leak.
+
+Source partition validation reinforces that boundary before execution. The module dependency
+allowlist is empty, so there is no standing collection of exceptions silently legitimizing
+misowned files. Test-only edges remain separate from production edges, preventing a fixture's
+helper dependency from widening the shipped component.
+
+\begin{lstlisting}
+# Conceptual shape produced by the component registry
+add_executable(SharpRuntimeTests_Core_Base ...)
+target_link_libraries(SharpRuntimeTests_Core_Base PRIVATE
+    SharpRuntime::Core.Base gtest_main)
+
+gtest_discover_tests(SharpRuntimeTests_Core_Base
+    TEST_PREFIX "Core.Base::")
+\end{lstlisting}
+
+Thirty-six components currently have such a test executable. Five module directories do not:
+\texttt{io-compression-zip}, \texttt{io-isolated-storage},
+\texttt{security-cryptography-random}, \texttt{storage}, and
+\texttt{text-regular-expressions}. The last is a 12-header interface component with neither
+implementation nor tests. Listing it explicitly is more informative than letting the global
+count imply uniform coverage.
+
+\section{The measured gate is not green}
+
+The repository continuation record reports 16{,}310 tests across 37 executables:
+16{,}303 passing, one skipped, and six failing from two recorded causes. An older baseline of
+15{,}071, or a still older claim that every test passes, describes a different revision.
+The current failures are neither converted into skips nor omitted from the denominator.
+
+This arithmetic is independently reconcilable: 36 component executables plus one integration
+executable equals 37. It also clarifies what the count excludes. Python meta-tests, individual
+consumer configure/build cases, compile-only platform probes, and audit documents are evidence,
+but they are not GoogleTest registrations and must not be added to 16{,}310.
+
+The test corpus contains 102{,}342 lines, about 30\% more than the 78{,}934 production lines.
+That ratio signals investment, not proof. Missing adversarial UTF-8 cases, untested interface
+components, and recorded failures remain visible despite the large total.
+
+\section{Negative consumers prove absence}
+
+A positive consumer answers ``can the intended dependency compile?'' A negative consumer asks
+``does a forbidden dependency fail?'' The latter is essential for component isolation. Current
+fixtures cover, among other boundaries, forbidden Text.Json-to-Collections edges, XML-to-
+Diagnostics leakage, collection setter/enumerator constraints, generic math requirements, and
+cryptographic key-material exclusions.
+
+The harness injects and configures these small consumers through CMake. For a negative fixture,
+a compiler or linker failure at the expected site is success; a clean build means the boundary
+was accidentally weakened. A generic CI wrapper that treats every non-zero child process as a
+failure would reverse the verdict, so Python meta-tests inspect the intended outcome and site.
+The continuation record tracks 13 negative-fixture files and 116 checked sites.
+
+Three top-level Python tests cover complementary build invariants:
+
+\begin{itemize}
+  \item \texttt{validate\_module\_boundaries\_test.py} checks partition and dependency rules;
+  \item \texttt{check\_negative\_consumer\_fixtures\_test.py} verifies must-fail consumers; and
+  \item \texttt{check\_version\_seam\_odr\_test.py} checks the version seam for one-definition
+        rule failures.
+\end{itemize}
+
+\section{Audit is a tracked data set}
+
+The \texttt{audit/} directory contains 1{,}748 \texttt{*.audit.md} files against 1{,}796
+tracked C/C\texttt{++} source and header files. \texttt{AUDIT\_FINDINGS\_INDEX.md} assigns
+stable \texttt{SR-AUD-\#\#\#} identifiers, severity, status, and disposition. At the audited
+handoff, numbering is frozen at 364: 161 remediated and 203 confirmed, including 53 marked
+design-complete.
+
+``Confirmed'' is not synonymous with ``forgotten.'' It can denote an observed deviation whose
+repair requires approval, unavailable evidence, a platform, or an intentional design decision.
+``Remediated'' records a landed correction. Freezing identifiers prevents later batches from
+making the denominator look better by renumbering or discarding inconvenient findings.
+
+The supporting apparatus is large in its own right: 73 design, plan, and migration documents,
+plus a tracked 7.4 MiB SQLite plan database. These artifacts are not runtime code and should not
+inflate implementation size, but they explain how a multi-thousand-file audit remains
+navigable and resumable.
+
+\section{A completed task list triggered more skepticism}
+
+Earlier stabilization work once reached a fully checked-off ticket table. The useful response
+was not to declare parity complete, but to commission fresh reviews across API consistency,
+silent behavior differences, exceptions, stubs, platforms, and high-risk missing tests. Those
+reviews found defects that ordinary happy-path tests had missed.
+
+Representative findings illustrate distinct failure modes:
+
+\begin{itemize}
+  \item floating-point \texttt{Convert::ToInt32} used \texttt{static\_cast} truncation instead
+        of .NET's round-half-to-even behavior;
+  \item a Dictionary read through non-const \texttt{operator[]} inserted a default value instead
+        of throwing \cnaclass{KeyNotFoundException};
+  \item ConcurrentDictionary factories ran under a non-recursive mutex, so reentrant factories
+        could self-deadlock;
+  \item mutable generic collections lacked fail-fast version checks during enumeration; and
+  \item \cnaclass{MemoryStream::Write} allowed a negative offset to reach an unchecked copy.
+\end{itemize}
+
+The fixes were not one generic ``audit cleanup.'' Conversion needed correct numeric semantics;
+Dictionary needed a proxy to distinguish reads from writes; concurrent factories needed an
+unlocked callback window; each enumerable collection needed its own version discipline; and
+MemoryStream needed argument validation. The finding taxonomy located the problems, while each
+repair still required a type-specific oracle.
+
+\section{Sanitizers answer a different class of question}
+
+Independent sanitizer runs exposed failures that API comparison alone was unlikely to find.
+ThreadSanitizer identified a production lost-wakeup path in a Channel missing
+\texttt{notify\_all}, along with test-only races. AddressSanitizer found an aligned-reallocation
+heap overflow and XML node leaks. UndefinedBehaviorSanitizer reached a vendored miniz call with
+an invalid empty-buffer pointer contract.
+
+One particularly instructive non-sanitizer race lived between two valid-looking operations.
+\cnaclass{TaskCompletionSource<TResult>::TrySetResult} atomically claimed completion before
+copying the result into its promise. If \texttt{TResult}'s copy constructor threw, the claim
+remained set but the promise never became ready; no later producer could settle it and all
+waiters hung. The repair catches the copy failure, stores it into the promise so waiters become
+ready with an exception, and then rethrows to the immediate producer.
+
+\begin{lstlisting}
+bool TrySetResult(const TResult& result) {
+    bool expected = false;
+    if (!completed_.compare_exchange_strong(expected, true)) return false;
+    try {
+        promise_.set_value(result);
+    } catch (...) {
+        promise_.set_exception(std::current_exception());
+        throw;
+    }
+    return true;
+}
+\end{lstlisting}
+
+The lesson is not that sanitizers prove .NET parity. They detect memory, undefined-behavior,
+and concurrency classes that semantic comparison may overlook; numerical or API deviations can
+remain in a sanitizer-clean run.
+
+\section{Reproducibility has an external seam}
+
+The porting rules refer to a .NET reference-source tree at an absolute
+\texttt{/rv/tmp/runtime/src/libraries/} path. That tree is neither vendored nor pinned in
+sharp-runtime, and the environment recorded in the current handoff did not contain it. Doxygen
+and \texttt{ccache} were absent too. Existing source comments and audits may accurately cite a
+past comparison, but a new contributor cannot reproduce every line-by-line reference check from
+the repository alone.
+
+There is a fail-fast local gate, but no tracked hosted workflow. That is a deployment decision,
+not evidence that every commit ran in an external service. Platform build claims require the
+same scope discipline: a native test pass, a successful cross-compile of libraries, and actual
+execution of cross-built tests are three separate results.
+
+Sharp-runtime's strongest verification property is therefore not a perfect green number. It is
+the ability to state what each layer proved, preserve failures and gates under stable IDs, and
+resume from a measured boundary without converting missing evidence into success.

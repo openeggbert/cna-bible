@@ -2,12 +2,13 @@
 \label{ch:easygl-metagl}
 \label{ch:easygl-deep-dive}
 
-This book introduced \texttt{easy-gl} as the OpenGL/OpenGLES wrapper behind CNA's
-EasyGL renderer family. This chapter goes one level deeper --- into its own layering, its
-capability-detection mechanism, and a real dependency this book's overview did not have room
-to mention.
+This book introduced \texttt{easy-gl} as the C\texttt{++}23 OpenGL/OpenGL ES wrapper behind
+CNA's five shared-family profiles: \texttt{OPENGLES2}, \texttt{OPENGLES3},
+\texttt{OPENGL33}, \texttt{WEBGL1}, and \texttt{WEBGL2}. The public renderer family is really
+a two-library stack. \texttt{meta-gl} owns loading, typed calls, context facts, and validation;
+\texttt{easy-gl} owns resources, object-oriented state, and RAII.
 
-\section{A layer this book did not cover: meta-gl}
+\section{The ownership split}
 
 \texttt{easy-gl}'s own README frames it as toolkit-independent, meaning independent of a
 windowing toolkit like SDL or Qt --- but it is not independent of a lower C\texttt{++} GL
@@ -22,7 +23,17 @@ directly). The layering is worth remembering precisely because it clarifies what
 ``toolkit-independent'' actually means here: independent of the host windowing/event toolkit,
 not independent of every other C\texttt{++} abstraction below it.
 
-\section{Device: initialization and the GLES-versus-desktop-GL detection mechanism}
+Neither library creates a window or GL context, pumps events, nor presents a frame. The host
+owns those operations and supplies a \texttt{GetProcAddress} callback after making its context
+current. CNA fills that host role through SDL, while the same libraries remain usable with a
+different toolkit.
+
+The size inversion is easy to miss. Easy-gl exposes 30 headers and about 3{,}606 production
+code lines; meta-gl exposes only 12 headers but roughly 8{,}856 true C/C\texttt{++} code lines.
+The lower procedural layer is about 2.5 times larger because its generated-looking surface is
+still a hand-audited typed mapping of hundreds of GL entry points.
+
+\section{Device initialization delegates context truth downward}
 
 \cnaclass{easygl::Device} is the largest single entry point, covering initialization, the
 bulk of GL state (clear, viewport/scissor, blend --- including indexed, per-attachment blend
@@ -32,20 +43,24 @@ form), the full draw-call family (instanced, indirect, ranged, base-vertex), com
 dispatch, tessellation patch configuration, and debug facilities (labeled debug groups, a
 settable debug callback).
 
-\texttt{Device::initialize()}'s own GLES-versus-desktop-GL detection is a genuinely careful
-piece of code, not a simple string check: it calls \texttt{glGetString(Version)} and looks
-for the substring \texttt{"OpenGL ES"} to decide the API kind, then reads the version number
-via the modern \texttt{glGetIntegerv(MAJOR\_VERSION/MINOR\_VERSION)} query --- falling back to
-manually parsing the version string on an older context that predates that query, and
-specifically accounting for an ES-specific ten-character prefix offset (skipping past the
-literal \texttt{"OpenGL ES "} text) that a desktop-GL version string does not have. Extension
-enumeration branches the same way: GL~3.0-and-newer contexts use the modern, indexed
-\texttt{glGetStringi(Extensions, i)} query; older contexts fall back to splitting the legacy,
-single space-delimited \texttt{glGetString(GL\_EXTENSIONS)} string. Once this detection
-completes, \texttt{initialize()} hard-requires vertex array objects, shaders, programs,
-buffers, and basic rendering support, throwing an \texttt{easygl::Exception} immediately if
-any one of them is missing --- refusing to hand back a partially-functional device rather
-than letting a caller discover a missing capability later, mid-frame.
+Older easy-gl code duplicated version-string parsing. The audited implementation calls
+\texttt{metagl::Initialize()} and then copies \texttt{GetContextInfo()} and
+\texttt{GetCapabilities()} into its higher-level model. This matters on the web: meta-gl
+classifies Emscripten contexts as \texttt{ApiKind::WebGL}, so WebGL no longer masquerades as
+ordinary OpenGL ES merely because its shading language is ES-shaped.
+
+Meta-gl also computes a \texttt{DesktopEsTier}: the OpenGL ES tier whose mandatory functions
+a desktop OpenGL context can supply. That mapping is what lets CNA's \texttt{OPENGL33}
+identity share one implementation with native ES and WebGL profiles without pretending that
+their version numbers have identical meanings.
+
+Once detection completes, easy-gl requires vertex arrays, shaders, programs, buffers, and
+basic rendering. A missing baseline throws during initialization. Optional entry points ---
+queries, samplers, transform feedback, syncs, program pipelines, and texture-level queries ---
+are checked through \texttt{metagl::IsFunctionAvailable()} and fail with
+\cnaclass{easygl::UnsupportedFeatureException} instead of calling a null function pointer.
+WebGL~1 may obtain vertex arrays through \texttt{GL\_OES\_vertex\_array\_object}; separable
+program pipelines have no WebGL equivalent, including WebGL~2.
 
 \section{Capability gating: a real per-feature table, not a version-number heuristic}
 
@@ -80,6 +95,42 @@ else
 // not mid-frame" posture for its hard-required baseline capabilities.
 device.require(easygl::Feature::FramebufferObject);
 \end{lstlisting}
+
+\section{Meta-gl's typed call surface and invalid-input contract}
+
+Meta-gl exports 358 numbered \texttt{metagl::gl*} wrappers. A Python verifier requires the
+markers to form one contiguous 1--358 sequence with unique names and cross-checks the mandatory
+OpenGL ES 3.0, 3.1, and 3.2 sets (104, 68, and 44 additions) against the vendored Khronos
+header. The public type vocabulary contains 105 enum classes in \texttt{Enums.hpp} and 16
+struct declarations in \texttt{Types.hpp}: typed object handles, locations, indices, an image
+unit, and a bitfield-traits helper. Older continuation counts of 99 enums and 15 structs are
+stale.
+
+These handles are intentionally ownership-free:
+
+\begin{lstlisting}
+metagl::TextureId texture{rawName};
+metagl::glBindTexture(metagl::TextureTarget::Texture2D, texture);
+
+// TextureId does not delete rawName. easygl::Texture owns that lifetime.
+\end{lstlisting}
+
+The two layers also choose different failure semantics. Easy-gl reports unsupported features
+with C\texttt{++} exceptions. Meta-gl's invalid-input contract calls
+\texttt{std::terminate()} even in Release for conditions such as a \texttt{size\_t} that
+cannot fit in \texttt{GLsizei}, incomplete matrix data, or an unsupported bitfield. Those are
+treated as caller contract violations, not recoverable driver capabilities.
+
+This difference has a build consequence on Emscripten. Easy-gl enables
+\texttt{-fwasm-exceptions} globally before adding meta-gl so every object in the combined stack
+agrees on the Wasm exception model. A failure-policy choice at the OOP layer therefore affects
+how the lower procedural layer must be compiled even though meta-gl itself does not throw for
+its input contract.
+
+Meta-gl's small header count also hides unusually strict binary discipline: hidden visibility,
+a public export macro, a GNU/Clang version script, SONAME and exported-symbol policy tests, and
+an installed-package consumer. It can be found as \texttt{meta-gl 0.3}; an uncommitted
+\texttt{0.4.0-snapshot} file in the local worktree is not a released or pinned version.
 
 \section{Real design fixes, and one genuine breaking change worth knowing}
 
@@ -270,9 +321,11 @@ the sibling library CNA's own EasyGL implementation is built on.
 
 \section{Testing without a GPU}
 
-\texttt{easy-gl}'s own test suite is three small, hand-rolled (not GoogleTest-based)
-\texttt{assert()}-driven executables, and the mechanism making them useful without any real
-GPU or display is worth describing directly: a fake \texttt{GLGetProcAddressFn} loader
+Easy-gl's suite has four hand-rolled, mock-loader binaries:
+\texttt{easy-gl-smoke-tests}, \texttt{easy-gl-resource-smoke-tests},
+\texttt{easy-gl-context-lifecycle-tests}, and \texttt{easy-gl-webgl-tests}. The mechanism
+making them useful without any real GPU or display is worth describing directly: a fake
+\texttt{GLGetProcAddressFn} loader
 returns hand-written function pointers only for the handful of GL entry points
 \texttt{Device::initialize()} actually calls, returning literal hardcoded strings (for
 instance, \texttt{"OpenGL ES 3.0"}) and literal hardcoded enum values in place of real driver
@@ -280,6 +333,25 @@ responses. This lets the entire \cnaclass{ContextInfo} / \cnaclass{Capabilities}
 pipeline run and be asserted against genuinely, entirely off-GPU --- every other GL function
 pointer the loader might be asked for resolves to a non-null but non-callable sentinel, so a
 test can exercise detection logic without ever risking an actual GPU call.
+
+The lifecycle suite drives context loss and restoration; the WebGL suite checks explicit
+classification, ES2/ES3 tiers, OES vertex-array gating, and exception-not-crash behavior for
+unavailable entry points. The desktop-shaped initialization and resource smoke tests are
+skipped under Emscripten because their invented version strings cannot occur in a real WebGL
+host. This is an honest test-model boundary, not proof that the corresponding browser behavior
+was executed.
+
+Nested build defaults are asymmetric. Easy-gl defaults both tests and examples ON, and CNA does
+not override those options, so each of CNA's five GL-profile builds also compiles the four test
+binaries. Its SDL hello-triangle example may configure too because CNA already supplies SDL.
+Meta-gl defaults all tests, GPU tests, examples, documentation, sanitizers, and debug options
+OFF when nested. CNA therefore inherits extra work from the upper library but not the lower
+one. This is a configuration fact; the read-only source audit did not build the siblings to
+measure its wall-clock cost.
+
+Meta-gl's standalone tests add compile, mock-loader, release-contract, thread, desktop-tier,
+SONAME, export-symbol, and installed-package checks. A real EGL/Mesa smoke test is separately
+opt-in, and requesting GPU tests without ordinary tests is a configure-time error.
 
 \section{Two known, honestly stated limitations}
 
@@ -293,3 +365,17 @@ implemented using the 32-bit \texttt{glGetQueryObjectuiv} internally, because th
 suitable for frame counts, but not for a high-resolution GPU timer query, despite its
 64-bit-suggesting name. Both are stated plainly in the project's own tracking rather than
 silently left for a reader to discover.
+
+\section{The public history was rewritten without changing the trees}
+
+On 2026-08-09, both libraries' public histories were replayed to remove co-author trailers.
+The current easy-gl and meta-gl tree hashes are byte-identical to the content CNA had already
+accepted, but the old commit objects are unreachable from any branch. Archive tags were
+repointed while retaining annotations that name old targets, and the rewritten commits are
+unsigned even though the pre-rewrite objects had valid signatures.
+
+For this book, the durable evidence is branch, tree hash, and audit date. The current public
+heads are easy-gl \texttt{0b46d35c} and meta-gl \texttt{571d3a62}; older SHAs from the
+integration campaign may exist only as dangling local objects and should not be offered as
+reader-resolvable citations. The rewrite changed provenance objects, not the implementation
+described in this chapter.

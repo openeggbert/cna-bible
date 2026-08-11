@@ -2,10 +2,29 @@
 \label{ch:parity-philosophy}
 
 Every project this book has covered draws a line between what it will faithfully reproduce
-and what it will not. \texttt{sharp-runtime}'s own line is the most explicitly reasoned of
-any in this ecosystem --- its \texttt{CLAUDE.md} states not just which .NET features are
-permanently out of scope, but why, in enough detail that this chapter can quote the reasoning
-directly rather than paraphrase it.
+and what it will not. Sharp-runtime states its target as \emph{maximum practical parity}:
+public API, semantics, defaults, error messages, and algorithms should match .NET as closely
+as C\texttt{++} allows. That target is stronger than name compatibility and narrower than
+reimplementing the CLR. Its permanent deviations are part of the contract, not embarrassing
+footnotes.
+
+\section{Three outcomes, not one generic stub}
+
+An implementable operation should behave like .NET. An operation whose mechanism cannot be
+represented should throw \cnaclass{NotImplementedException} with an explanation rather than
+return a plausible but wrong value. A meaningful operation that the current host cannot
+provide should instead throw \cnaclass{PlatformNotSupportedException}. These outcomes answer
+different questions:
+
+\begin{description}
+  \item[Parity] the operation is implemented and its observable behavior is the verification
+  target;
+  \item[Permanent deviation] the CLR-dependent capability is outside the runtime's design;
+  \item[Platform limitation] the abstraction is valid, but this platform lacks its mechanism.
+\end{description}
+
+A silent success value is not a fourth acceptable category. This taxonomy lets callers and
+tests distinguish a design boundary from an environment boundary.
 
 \section{Reflection: correctly a stub, not a gap}
 
@@ -87,11 +106,11 @@ deviations in this chapter --- not ``this feature has no meaning here'' (reflect
 not ``this is out of scope for capacity reasons'' (serialization), but an explicit refusal to
 carry the security liability of a hand-rolled cryptographic implementation, or the dependency
 weight of a real one, for a class of application that does not need transport security built
-into its own runtime layer. Non-cryptographic hashing (MD5, the SHA family, HMAC, PBKDF2) is
-explicitly kept in scope and unaffected by this decision, on the reasoning that ``no key
-material, no confidentiality guarantees to get wrong'' --- a hash function used for checksums
-or content addressing carries none of the security risk a real encryption implementation
-would.
+into its own runtime layer. Digest and derivation APIs --- MD5, SHA, HMAC, and PBKDF2 ---
+remain in scope. That does not make them ``non-cryptographic,'' nor does it imply that HMAC or
+PBKDF2 has no key or password material. The narrower project distinction is that these APIs
+do not implement reversible confidentiality, certificate validation, or a TLS channel.
+Callers still own algorithm choice, parameter strength, and security review.
 
 \section{IDisposable and the exception hierarchy: parity by pattern, not by mechanism}
 
@@ -154,8 +173,8 @@ try {
 }
 \end{lstlisting}
 
-The exception hierarchy this last block leans on is itself worth a precise count rather than a
-vague gesture at ``lots of exception types'': a project-wide search finds 109 distinct
+The exception hierarchy this last block leans on is itself worth a concrete scale rather than a
+vague gesture at ``lots of exception types'': a project-wide search finds roughly 111
 exception classes across the \texttt{include/System} tree, the overwhelming majority deriving
 not directly from \cnaclass{System::Exception} but through the intermediate
 \cnaclass{System::SystemException} base --- matching real .NET's own two-level shape, where
@@ -173,6 +192,26 @@ deviations covered earlier in this chapter. Nothing here is a new decision --- i
 two decisions, now traceable to the one root class every exception in the ecosystem inherits
 from.
 
+\section{Naming is a compatibility surface}
+
+Sharp-runtime uses PascalCase .NET names, but C\texttt{++} cannot expose C\# properties
+directly. The binding convention is \texttt{getXxxProperty()} and
+\texttt{setXxxProperty()}; indexers are the systematic exception and use
+\texttt{getItem()} / \texttt{setItem()}. Public headers contain thousands of these accessors,
+so a cosmetic refactor would be an ecosystem break rather than a local cleanup.
+
+The project's own rules name CNA as the reason broad header renaming is frozen. That is strong
+evidence of co-evolution: the runtime is a separate repository, yet its source conventions
+are constrained by CNA's compiled public surface. Porting rules similarly require the
+\texttt{intcs}/\texttt{bytecs} family and direct nested namespace syntax, while LINQ-shaped
+work should use \texttt{std::ranges} rather than growing a second query runtime.
+
+When a naming correction is nevertheless intentional, the project does not preserve a stale
+alias indefinitely. The \texttt{getCurrent()} to \texttt{getCurrentProperty()} migration
+changed 61 call sites across 23 files in one commit and required downstream repair. The lesson
+is not that names may churn casually; it is that a deliberate convention repair should be
+atomic, auditable, and free of permanent compatibility debris.
+
 \section{Two further, narrower accepted gaps}
 
 Two smaller, explicitly accepted limitations round out this chapter. A fixed list of
@@ -184,31 +223,12 @@ and \texttt{UInt128} are unsupported specifically on MSVC, since real 128-bit in
 requires GCC or Clang's \texttt{\_\_int128} extension --- a deliberate, dated decision not to
 hand-roll 128-bit arithmetic purely to cover one compiler, rather than an oversight.
 
-\section{A renaming story worth knowing, as a model of how this project handles a breaking change}
+\section{A documented deviation still needs verification}
 
-One small, concrete episode illustrates how this project treats an intentional breaking API
-change, and is worth contrasting directly with Chapter~\ref{ch:design-philosophy}'s ``no
-backward-compatibility hacks'' rule earlier in this book: a \texttt{getCurrent()} accessor was renamed
-to \texttt{getCurrentProperty()}, project-wide, across 23 files and 61 call sites, in one
-single commit, with no backward-compatible alias left behind at all. The reasoning recorded
-for this choice is direct: downstream consumers are expected to fix their own call sites, not
-be shielded from a naming-convention correction by a compatibility shim that would itself
-become permanent debt. This is the same principle Chapter~\ref{ch:design-philosophy}
-described for CNA's own \cnaclass{Color::CornflowerBlue} example, applied here at a larger
-scale.
-
-\section{CI: an honest, offered, and declined gap}
-
-One further fact is worth stating for the same reason this book has stated CNA's own CI scope
-honestly (Chapter~\ref{ch:building-cna}): \texttt{sharp-runtime} has no tracked,
-automated CI pipeline at all. This was itself a specific finding in the post-stabilization
-audit from Chapter~\ref{ch:sharp-runtime-namespaces}, explicitly offered to the project owner
-as something to address, and explicitly declined --- a local pre-push script
-(\texttt{scripts/local\_ci\_check.sh}) serves as the equivalent gate instead, configuring,
-building with a zero-warnings-and-errors requirement, and running the full test suite before
-every push. Cross-compilation to Windows (MinGW-w64) and to Emscripten is claimed working, per
-earlier stabilization work, but the test binary itself has never actually been cross-compiled
-for either target in this project's own history --- GoogleTest is not cross-compiled for
-either wasm or MinGW here --- so ``the library cross-compiles'' and ``the test suite passes
-under cross-compilation'' remain two distinct, only-partially-verified claims, stated as such
-rather than conflated.
+Calling a gap permanent does not exempt its boundary from tests. \cnaclass{GC} no-ops should
+remain callable; \cnaclass{Type}'s identity operations must work even though its classification
+predicates are placeholders; \cnaclass{Delegate::DynamicInvoke} must fail explicitly; and
+unsupported platform operations must throw the promised exception rather than silently
+degrade. Chapter~\ref{ch:sharp-verification-audit} shows how component tests, negative
+consumers, sanitizer runs, and the repository's large audit ledger test both implemented
+behavior and the honesty of these boundaries.
