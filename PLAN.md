@@ -72,8 +72,8 @@ current, not stale.
 | **B — new Table of Contents** | **Complete.** The 12-Part / 79-chapter structure, appendices and old-to-new disposition map are settled in §4. |
 | **C — structural migration** | **Complete.** The 12-Part / 79-chapter / 8-appendix migration, context-sensitive terminology pass, current selector/identifier migration, and module-owned source-path sweep are complete and PDF-verified clean at 645 pages. |
 | **D — chapter writing** | **Complete.** Seven verified batches rewrote Chapters 19–79 against the pinned source and sibling evidence. |
-| **E — appendices** | **Next.** Audit and reconcile Appendices A–H as one bounded batch. |
-| **F — whole-book consistency** | Not started. |
+| **E — appendices** | **Complete.** Appendices A–H were rebuilt against pinned source and the completed chapter text, then verified as one bounded batch. |
+| **F — whole-book consistency** | **Next.** Run the edition-wide factual, terminology, cross-reference, duplication, and visual consistency sweep. |
 | **G — final verification** | Not started. |
 
 ### 3.1 Phase A research areas — all delivered
@@ -343,6 +343,7 @@ log grep replaces.
 | 2026-08-12 | Phase D batch 5, Chapters 55–63 | **691 pages**, build clean; makeindex 2,396 / 0 / 0; sharp-runtime object model and audit layers, sibling foundation libraries, platform contract, MinGW cross-build and Wine engagement completed; physical pages 523–573 rendered and reviewed; one table overlap fixed and re-rendered cleanly |
 | 2026-08-12 | Phase D batch 6, Chapters 64–72 | **689 pages**, build clean; makeindex 2,369 / 0 / 0; Web build/main-loop/evidence split, Android/macOS evidence boundary, CnaTests architecture, reproducible counting, oracle taxonomy, hostile-host verification and discipline gates completed; physical pages 573–607 rendered and reviewed as 9 contact sheets, with tables and long literals inspected full-size; all automated and visual checks green |
 | 2026-08-12 | Phase D batch 7, Chapters 73–79 | **685 pages**, build clean; makeindex 2,289 / 0 / 0; current CI execution boundary, migration procedure, Blupi case study, critical xna4-spec use, samples/examples catalogs, durable project practice and source-grounded roadmap completed; physical pages 607–640 rendered and reviewed as 4 contact sheets through the Appendix A boundary, with the performance table, long headings, lists and query literals inspected full-size; all automated and visual checks green |
+| 2026-08-12 | Phase E, Appendices A–H | **685 pages**, build clean; makeindex 2,096 / 0 / 0; stale exhaustive catalogs replaced by source-oriented API, renderer, repository, CNAEXT, ecosystem, verification and glTF evidence references; physical pages 641–678 rendered and reviewed as 5 contact sheets, high-risk tables inspected full-size, five identifier/factor collisions corrected and re-rendered clean; final index page 685 also inspected |
 
 ---
 
@@ -530,3 +531,23 @@ mid-session at the owner's direction, so the build and visual passes are availab
   automated checks green. Rendered physical pages 607–640 and reviewed all 34 as four contact
   sheets; inspected the performance table, long headings, lists and database query at full size.
   No clipping, overlap, unreadable table, broken heading or other visual defect remains.
+
+### 2026-08-12 — Phase E: Appendices A–H
+
+- Rebuilt Appendix A as a bounded source-oriented core API map and Appendix B as the canonical
+  **46-identity / 42-family** renderer registry and capability/evidence matrix. Reconciled the
+  glossary, then replaced Appendix D's speculative organization catalog with the pinned
+  repository graph, fourteen physical CNA modules, and the renderer-family directory map.
+- Reframed Appendix E around the three distinct CNAEXT mechanisms: declaration marker,
+  project-owned `CNA::*` namespaces, and the `CNA_CNAEXT` option / `CNA::CnaExt` target pair.
+  Rebuilt Appendix F as a concise ecosystem and platform API reference with explicit host and
+  evidence boundaries instead of inferred support.
+- Replaced the placeholder Appendices G and H with operational references: twelve evidence forms,
+  oracle authority and claim-vector rules in G; importer/runtime/evidence axes, the L1–L7 glTF
+  oracle ladder, and D1–D8 known defect matrix in H.
+- Ran `tools/verify-book.sh`: 685 pages, makeindex 2,096 accepted / 0 rejected / 0 warnings, every
+  automated check green. Rendered physical pages 641–678 and reviewed the whole appendix range as
+  five contact sheets, then inspected the dense renderer, repository, CNAEXT, ecosystem,
+  verification and glTF tables at full size. The zoomed pass found five tight identifier/factor
+  collisions; each was corrected, the full build repeated, and the affected pages re-rendered
+  clean. Physical page 685 was also rendered to close the previously unchecked index tail.

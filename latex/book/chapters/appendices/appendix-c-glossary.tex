@@ -12,9 +12,9 @@
   Chapter~\ref{ch:canvas-ascii-backends}.
 \item[CNA] The project this book is about: a C\texttt{++}23 reimplementation of the XNA~4.0
   programming model, built on SDL3 with a pluggable graphics-renderer layer.
-\item[ContentManager] The central XNA class resolving an asset name to real loaded content,
-  through a three-way resolution order this book returns to repeatedly: a real, compiled
-  \texttt{.xnb} file first, then a \texttt{.cnj} sidecar, then a direct native-format load. See
+\item[ContentManager] The central XNA class resolving an asset name to loaded content. A same-
+  named \texttt{.xnb} is checked first; otherwise the registered loose reader can prefer a
+  \texttt{.cnj} sidecar before its declared native formats. See
   Chapter~\ref{ch:content-and-assets}.
 \item[DIRECTX9 / D3D9] \texttt{DIRECTX9} is CNA's public selector for its Direct3D~9
   renderer, and Direct3D~9 is the API this book's own zero-tolerance
@@ -42,17 +42,15 @@
 \item[Effect] The XNA base class for a shader program bound to a \cnaclass{GraphicsDevice}.
   CNA ships five stock effects and renderer-specific runtime-compiled custom
   \texttt{ShaderEffect} path --- see the shader/.fx gap chapter, Chapter~\ref{ch:shader-fx-gap}.
-\item[ENet] The third-party, vendored UDP networking library backing CNA's real Networking
+\item[ENet] The third-party UDP networking library backing CNA's real Networking
   namespace implementation, wrapped by an internal \texttt{ENetBackend}. The same library
   \texttt{free-direct}'s own optional DirectPlay transport is built on. See Chapter~\ref{ch:networking}.
-\item[\texttt{EXT} suffix] CNA's naming convention for a method or property bolted onto an
-  otherwise faithfully-XNA-shaped class, kept visually distinct from the real XNA members
-  around it --- for example \cnaclass{GraphicsDevice}'s parameterless, headless-friendly
-  constructor, or \texttt{MinimizeEXT()} / \texttt{RestoreEXT()} on \cnaclass{GameWindow}, which
-  XNA has no minimize/restore API for at all. A sibling of \texttt{CNAEXT}: both mark non-XNA
-  additions, but \texttt{EXT} specifically marks an addition to an otherwise-real XNA class,
-  where \texttt{CNAEXT} marks a whole declaration with no XNA counterpart. See Chapter~\ref{ch:game-loop}.
-\item[FNA] An open-source, C\#, SDL2-based reimplementation of the XNA~4.0 API, maintained
+\item[\texttt{EXT} suffix] A visible naming convention used by many non-XNA methods and types,
+  such as \texttt{MinimizeEXT()} / \texttt{RestoreEXT()} on \cnaclass{GameWindow}. It is not the
+  enforcement mechanism: the empty \texttt{CNAEXT} declaration macro supplies that marker, and
+  an extension can use either naming style only as the source declares it. See
+  Chapter~\ref{ch:language-conventions-cnaext}.
+\item[FNA] An open-source C\# reimplementation of the XNA~4.0 API, maintained
   independently of CNA. FNA is CNA's primary behavioral reference and the subject of CNA's
   own differential-testing infrastructure --- not the same thing as the real Microsoft
   XNA~4.0 specification, a distinction this book returns to repeatedly (most sharply in the
@@ -65,12 +63,10 @@
 \item[GamerServices] The XNA namespace covering Xbox-Live-era player profile, achievement,
   leaderboard, and system-UI concepts. CNA implements it with real local persistence where
   FNA does not implement it at all. See Chapter~\ref{ch:gamerservices}.
-\item[Golden-image test] CNA's own visual-regression testing pattern: a real rendered frame,
-  captured via \texttt{SaveBackBufferScreenshotEXT} / \cnaclass{Texture2D}\texttt{::SaveAsPng}, is
-  compared pixel-for-pixel against a checked-in reference (``golden'') PNG, with a
-  \texttt{CNA\_UPDATE\_GOLDEN} escape hatch to intentionally regenerate the reference when a
-  change is deliberate. This book's own real \texttt{SOFTWARE}-renderer screenshots are built on
-  the same infrastructure. See Chapter~\ref{ch:graphicsdevice}.
+\item[Golden-image test] A captured frame compared with a retained reference image under an
+  explicit tolerance and environment. CNA has renderer-specific golden tests; the reference's
+  provenance and the fact that the capture reached real pixels remain part of the claim. See
+  Chapters~\ref{ch:oracles} and~\ref{ch:discipline-as-test}.
 \item[HEADLESS] A CNA graphics renderer that never rasterizes a real pixel at all --- it only
   tracks and reports the last \texttt{Clear()} color and similar logic-only state. Used for
   fast unit testing and unable to produce a real screenshot for that reason. See
@@ -79,39 +75,42 @@
   letting game code ask whether the active renderer supports a feature (3D rendering,
   occlusion queries, and so on) before attempting it, rather than attempting it and catching
   the resulting exception. Not every value is yet wired to answer honestly on every renderer:
-  \cnaclass{MultipleRenderTargets}, \cnaclass{DepthStencilBuffer}, and
-  \cnaclass{CustomEffects} have confirmed false positives, and several device-dependent limits
+  MRT and occlusion-query false positives are confirmed, and several device-dependent limits
   cannot be represented by one Boolean. See Chapter~\ref{ch:renderer-contract} and
   Appendix~\ref{ch:feature-matrix} for the qualified matrices.
 \item[GraphicsDevice] The central class every rendering operation in CNA passes through;
   covered in Chapter~\ref{ch:graphicsdevice}.
-\item[.cnj] CNA's own permanent, JSON-based content sidecar format --- ``CNA content JSON,''
-  originally and confusingly named \texttt{.cnb}. Tried after \texttt{.xnb} and a direct
-  native-format load in \cnaclass{ContentManager}'s resolution order. See Chapter~\ref{ch:content-and-assets}.
-\item[.xnb] Real XNA's compiled binary content-pipeline output format. CNA has a real, growing
-  binary \texttt{.xnb} reader --- covering \cnaclass{Texture2D}, \cnaclass{SpriteFont}, the
-  five stock effects, \cnaclass{SoundEffect}, \cnaclass{Song}, and \cnaclass{Model} at the
-  time of writing --- checked first in \cnaclass{ContentManager}'s resolution order, ahead of
-  both a direct native-format load and \texttt{.cnj}. See Chapter~\ref{ch:content-and-assets}, and this book's migration
+\item[.cnj] CNA's own JSON-based content envelope. For a registered loose reader it is considered
+  after the same-name \texttt{.xnb} route and before that reader's direct native formats. It is a
+  typed envelope with per-loader payload rules, not one universal object schema. See
+  Chapter~\ref{ch:cnj-format}.
+\item[.xnb] Real XNA's compiled binary content-pipeline output format. CNA has a substantial,
+  explicit reader registry for XNB containers and object graphs; a same-named XNB is checked
+  before loose CNJ/native routes. Reader coverage is finite and unsupported reader names or
+  versions must remain explicit. See Chapters~\ref{ch:xnb-container} and~\ref{ch:xnb-type-readers}, and this book's migration
   guide, Chapter~\ref{ch:migration-guide}.
-\item[MojoShader] The bytecode-to-GLSL cross-compiler FNA uses to run compiled Direct3D~9
-  shader bytecode. CNA has no equivalent, which is the root cause of the shader/.fx bytecode
-  gap covered in Chapter~\ref{ch:shader-fx-gap}.
+\item[MojoShader] A translator used by the FNA/FNA3D stack for compiled Direct3D~9 effect
+  bytecode. CNA's \texttt{FNA3D} family executes vendored stock \texttt{.fxb} blobs through that
+  path, but CNA's general public compiled-effect constructor and XNB \cnaclass{EffectReader}
+  remain refusals. See Chapters~\ref{ch:shader-fx-gap} and~\ref{ch:abstraction-layers-two}.
 \item[MemoryStream] sharp-runtime's in-memory \cnaclass{IO::Stream} implementation, used where
   a real file path is unavailable (for example content loaded from Android assets). Closing it
   makes I/O operations throw \cnaclass{ObjectDisposedException}, but deliberately preserves the
   bytes for post-close \texttt{ToArray()} / \texttt{GetBuffer()} extraction. Its raw-buffer
   constructor is a known divergence: it creates a read-only stream where real .NET defaults to
   writable. See Chapter~\ref{ch:sharp-runtime-namespaces}.
-\item[CNAEXT] CNA's marker convention (a macro, and a matching compile-time build option) for
-  any declaration inside the XNA namespace tree that is not part of the real XNA~4.0 API. See
-  Chapter~\ref{ch:design-philosophy}.
+\item[CNAEXT] An empty declaration marker for non-XNA surface inside the XNA namespace tree. In
+  strict harnesses it becomes a deprecation attribute and deliberate use fails under
+  warnings-as-errors. The \texttt{CNA\_CNAEXT} CMake option instead enables selected extension
+  products; \texttt{CNA::CnaExt} is a link umbrella. These three mechanisms share a name fragment
+  but are not interchangeable. See Chapter~\ref{ch:language-conventions-cnaext}.
 \item[Oracle (D3D9)] The pixel-for-pixel verification methodology comparing CNA's
   \texttt{DIRECTX9} renderer against a genuinely running XNA~4.0 runtime under Wine, at zero tolerance. See
   Chapter~\ref{ch:direct3d-backends}, and this book's Windows/Wine chapter, Chapter~\ref{ch:windows-wine}.
-\item[PbrEffect] A \texttt{CNAEXT} glTF~2.0-style metallic-roughness PBR material effect ---
-  unlike the five stock effects, it has no real-XNA counterpart at all, since real XNA~4.0
-  predates the glTF PBR model. Available on the WebGPU renderer. See Chapter~\ref{ch:webgpu-backend}.
+\item[PbrEffect] A \texttt{CNAEXT} glTF~2.0-style metallic-roughness material effect with no
+  real-XNA counterpart. Several implementation families carry PBR routes with different evidence;
+  WebGPU is one of them and lacks the skinned sibling. See Chapters~\ref{ch:stock-effects},
+  \ref{ch:gltf-import-core}, and~\ref{ch:native-modern-gpu}.
 \item[ReflectiveReader<T>] Real .NET's reflection-based automatic content-reader generation
   mechanism. CNA has no equivalent by permanent, explicit scope decision: only manually
   registered, explicit C\texttt{++} \cnaclass{ContentTypeReader}s are supported, so content
@@ -159,7 +158,9 @@
 \item[XACT] Microsoft's Cross-platform Audio Creation Tool format/engine, the format CNA's own
   Audio namespace parses and plays back through SDL3\_mixer rather than a FAudio-equivalent
   engine. See Chapter~\ref{ch:audio-system}.
-\item[xna4-spec] The sibling repository providing a complete, machine-readable XML
-  transcription of the real XNA~4.0 API documentation, used to audit CNA's coverage against a
-  ground truth rather than against FNA's own source. See Chapter~\ref{ch:xna4-spec-auditing}.
+\item[xna4-spec] A sibling repository containing 544 indexed, machine-readable XML type files
+  converted from XNA~4.0 documentation across 19 documented namespaces. CNA does not reference it
+  in source or CI at the pin, and converted rows contain defects; use it as searchable inventory
+  with normalization and independent oracles, not as a live or infallible ground truth. See
+  Chapter~\ref{ch:xna4-spec-auditing}.
 \end{description}

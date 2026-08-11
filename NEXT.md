@@ -11,8 +11,8 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
 |---|---|
 | cna-bible branch | `next`; local commits are ahead of `origin/next` (push requires explicit external-publication approval) |
 | CNA pinned SHA | `7a64362efef4119bf880459ef1704fb2c52199e2` (`develop` == `origin/develop`, 2026-08-11) |
-| Book builds | **yes** — 685 pages, all automated checks green; all seven Phase D batches visually verified |
-| Phase | **A, B, C, and D complete:** Chapters 19–79 have been rewritten and verified. Phase E appendices are next. |
+| Book builds | **yes** — 685 pages, all automated checks green; all seven Phase D batches and Phase E appendices visually verified |
+| Phase | **A–E complete:** Chapters 19–79 and Appendices A–H have been rewritten and verified. Phase F whole-book consistency is next. |
 
 ## What is done
 
@@ -51,9 +51,9 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
    chapter distinct from CNA's `FREEDIRECT` renderer treatment.
 9. **Phase C is complete and verified.** The filesystem and `main.tex` now
    contain exactly 12 Parts, Ch.01–79 and Appendices A–H. Every old label survived; every new
-   chapter has a semantic label; all old prose remains compiled. Chapters not yet reached by
-   Phase D remain honest structural placeholders. The old Vulkan/WebGPU/SDL GPU material was
-   preserved together under the native-modern chapter and was integrated in Phase D batch 1.
+   chapter has a semantic label; all old prose remained compiled at the migration checkpoint.
+   The old Vulkan/WebGPU/SDL GPU material was preserved together under the native-modern chapter
+   and was integrated in Phase D batch 1.
 10. **The edition-wide terminology and path migration is complete.** The live manuscript uses
     current renderer/CNAEXT identifiers and selectors, distinguishes `FREEDIRECT` from
     `DIRECTX3`, leads with the authoritative **46 identities / 42 implementation families**
@@ -112,18 +112,27 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     touched physical page 607–640 through the Appendix A boundary was rendered and inspected;
     the performance table, long headings, lists and database query were checked at full size.
     No visual correction was required.
+19. **Phase E is complete and verified.** Appendices A–F are now bounded lookup surfaces derived
+    from pinned code and the completed chapters rather than stale exhaustive catalogs. Appendix B
+    carries the 46-identity / 42-family registry and evidence matrix; D maps the pinned repository,
+    module and renderer-family graph; E separates all three CNAEXT mechanisms. Former placeholder
+    Appendices G/H now define the evidence hierarchy and the importer/runtime/oracle glTF matrix.
+    The consolidated book remains 685 pages. Physical pages 641–678 were inspected as five contact
+    sheets, dense tables were read at full size, five visual collisions were fixed and re-rendered,
+    and the final index tail on physical page 685 was also checked.
 
 ## Do this next
 
-**Begin Phase E with Appendices A–H.** Audit every quick-reference table and checklist against
-the pinned source and the now-complete chapter text. Preserve useful lookup density, remove stale
-API/count/status claims, and verify the appendix range as one bounded batch before starting the
-whole-book consistency sweep.
+**Begin Phase F with the whole-book consistency sweep.** Search all compiled chapters and
+appendices for factual drift, duplicate or contradictory explanations, inconsistent evidence
+language, stale counts and pins, weak transitions, glossary/index gaps, and cross-reference
+problems. Resolve findings against pinned source rather than archived prose. Rebuild after each
+bounded correction batch; finish with an edition-wide visual and automated pass before Phase G.
 
 ## Do not do these
 
 - **Do not reopen Phase C casually.** Structural, label, terminology, selector, and path migration
-  is complete; Phase D owns substantive prose changes.
+  is complete; Phase F owns only consistency corrections that are justified by current evidence.
 - **Do not modify CNA or any sibling repository.** Defects found are recorded in `cnabugs.md` and
   `AUDIT.md` §5.1 for upstream reporting, never patched from here.
 - **Do not trust the old `PLAN-ARCHIVE`/`NEXT-ARCHIVE` per-chapter page targets or their
@@ -136,10 +145,10 @@ whole-book consistency sweep.
 
 ## Verification status
 
-Everything through Phase D batch 7 is verified:
+Everything through Phase E is verified:
 
 - `make -C latex book` succeeds; **685 pages**.
-- makeindex: 2,289 entries accepted, 0 rejected, 0 warnings.
+- makeindex: 2,096 entries accepted, 0 rejected, 0 warnings.
 - No undefined references, no undefined control sequences, no duplicate labels, no doubled-
   backslash `\ref`, no hard-coded chapter numbers.
 - `git diff --check` clean.
@@ -165,9 +174,12 @@ Everything through Phase D batch 7 is verified:
 - Phase D batch 7 rendered and reviewed every touched physical page, 607–640, as 4 contact sheets
   through the Appendix A boundary at 641; the performance table, long headings, lists and query
   literals were inspected at full size and were clean on the first visual pass.
+- Phase E rendered and reviewed physical pages 641–678 as 5 contact sheets; high-risk renderer,
+  repository, CNAEXT, ecosystem, verification and glTF tables were inspected full-size. Five
+  collisions were fixed, rebuilt and re-rendered cleanly. Physical page 685 closed the index tail.
 
-**No completed writing batch is pending PDF verification.** Continue with Appendices A–H as
-Phase E, then perform the whole-book consistency sweep.
+**No completed writing batch is pending PDF verification.** Continue with the Phase F whole-book
+consistency sweep, then perform Phase G final verification.
 
 ## Environment notes
 
@@ -182,4 +194,5 @@ Phase E, then perform the whole-book consistency sweep.
 Ten source-audit reports and the 42-family draw-path matrix are complete against pinned CNA
 `7a64362e`. Phase B settled a 12-Part, 79-chapter, 8-appendix edition; Phase C put it on disk,
 migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–7
-rewrote Chapters 19–79 and verified the resulting 685-page book; Appendices A–H are next.
+rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. The resulting 685-page book is verified
+through every completed writing batch, and Phase F whole-book consistency is next.

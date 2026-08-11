@@ -1,413 +1,227 @@
 \chapter{Core Framework and Graphics API Reference}
 \label{ch:api-quick-reference}
 
-Every class in this appendix already has a narrative home somewhere in Parts~II and~III ---
-this is not new material, but a lookup companion to it: a fast, tabular answer to ``what does
-this type actually expose'' without paging back through a whole chapter. Every entry below was
-read directly from the corresponding header in \repolink{cna}'s module-owned \texttt{include/} trees at the
-time of writing, the same sourcing discipline the rest of this book holds itself to. Where a
-class's full method list runs to dozens of overloads (the math types especially), this appendix
-groups them by shape rather than reproducing every signature --- the pattern is almost always
-more informative than any single instance of it.
+This appendix is an orientation map to the public core and graphics surface at the pinned CNA
+revision.  It intentionally groups overload families instead of reproducing declarations: the
+module-owned headers remain the signature authority, while the cited chapters own behavioral and
+renderer-specific qualifications.  A listed method proves API presence only; it does not imply
+that every one of the 42 implementation families renders it with the same semantics.
 
 \section{Math and Geometry Types}
 \label{sec:api-math}
 
-\cnaclass{Vector2}, \cnaclass{Vector3}, and \cnaclass{Vector4} share one shape almost perfectly:
-public float components (\texttt{X} / \texttt{Y}, plus \texttt{Z} and \texttt{W} as the type
-grows), a handful of static constants (\texttt{Zero}, \texttt{One}, \texttt{UnitX}, \dots), and
-then roughly thirty operations that each appear \emph{twice} --- once as a value-returning
-static overload (\texttt{Vector3::Lerp(a, b, t)}) and once as an output-parameter overload of
-the same name (\texttt{Vector3::Lerp(a, b, t, result)}) --- a doubled-signature convention that
-is not a CNA invention but a faithful mirror of real XNA's own API shape. The operation set
-itself is the same across all three: \texttt{Add} / \texttt{Subtract} / \texttt{Multiply}/%
-\texttt{Divide} / \texttt{Negate}, \texttt{Distance} / \texttt{DistanceSquared} / \texttt{Dot},
-\texttt{Min} / \texttt{Max} / \texttt{Clamp}, \texttt{Lerp} / \texttt{SmoothStep} / \texttt{Hermite}/%
-\texttt{CatmullRom}, \texttt{Normalize} / \texttt{Reflect}, and \texttt{Transform} (by
-\cnaclass{Matrix} or \cnaclass{Quaternion}, including whole-array overloads with an optional
-start-index/length range). \cnaclass{Vector3} adds \texttt{Cross}; \cnaclass{Vector4}'s
-\texttt{Transform} additionally accepts a \cnaclass{Vector2} or \cnaclass{Vector3} input,
-widening it to four components.
+\begin{small}
+\begin{longtable}{>{\raggedright\arraybackslash}p{3cm}>{\raggedright\arraybackslash}p{5.25cm}>{\raggedright\arraybackslash}p{3.25cm}}
+\toprule
+\textbf{Type group} & \textbf{Public shape} & \textbf{Boundary to remember} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Type group} & \textbf{Public shape} & \textbf{Boundary to remember} \\
+\midrule
+\endhead
+\cnaclass{Vector2}, \cnaclass{Vector3}, \cnaclass{Vector4} & Public components, constants,
+  arithmetic, distance/dot, interpolation, normalization, reflection, and matrix/quaternion
+  transforms; \cnaclass{Vector3} adds cross product. & Value-returning and output-reference
+  overloads are independent API rows and need independent tests. \\
+\cnaclass{Matrix} & Sixteen public elements, direction/translation properties, decomposition,
+  arithmetic, inversion/transposition, and the XNA creation families. & CNA uses row-vector
+  conventions; \texttt{ToColumnMajor} is a marked bridge for shader upload, not a change of the
+  public convention. \\
+\cnaclass{Quaternion} & Construction from axis/matrix/yaw-pitch-roll, arithmetic,
+  concatenate, conjugate, inverse, lerp and slerp. & Quaternion multiplication order and
+  normalization are behavioral contracts, not naming details. \\
+\cnaclass{Point}, \cnaclass{Rectangle} & Integer screen-space coordinates, containment,
+  intersection/union, offset and inflation. & Rectangle edges and empty/intersection cases use
+  exact XNA/FNA boundary rules. \\
+\cnaclass{Color} & Packed RGBA value, named colours, vector/float/integer constructors,
+  interpolation and premultiplication helpers. & Packed storage is \texttt{AABBGGRR}; constructor
+  type changes can alter overload and clamping behavior. \\
+\cnaclass{Plane}, \cnaclass{Ray}, \cnaclass{BoundingBox}, \cnaclass{BoundingSphere},
+\cnaclass{BoundingFrustum} & Shape construction, containment, intersection, corners and
+  transform-related queries. & C\texttt{++} optionals/output references translate nullable and
+  \texttt{out} forms; compare semantics, not signature strings alone. \\
+\bottomrule
+\end{longtable}
+\end{small}
 
-\cnaclass{Matrix} stores its sixteen fields (\texttt{M11}\dots\texttt{M44}) directly as public
-floats, with paired get/set accessors for the direction and translation rows
-(\texttt{Forward} / \texttt{Backward} / \texttt{Up} / \texttt{Down} / \texttt{Left} / \texttt{Right}/%
-\texttt{Translation}), a \texttt{Decompose} into scale/rotation/translation, and a large family
-of \texttt{CreateXxx} factories: \texttt{CreateBillboard}, \texttt{CreateConstrainedBillboard},
-\texttt{CreateFromAxisAngle}, \texttt{CreateFromQuaternion}, \texttt{CreateFromYawPitchRoll},
-\texttt{CreateLookAt}, \texttt{CreateOrthographic}(\texttt{OffCenter}),
-\texttt{CreatePerspective}(\texttt{FieldOfView} / \texttt{OffCenter}), \texttt{CreateRotationX/Y/Z},
-four \texttt{CreateScale} overloads, \texttt{CreateShadow}, \texttt{CreateReflection},
-\texttt{CreateTranslation}, and \texttt{CreateWorld}. The same doubled value/output-parameter
-convention as the vector types covers \texttt{Add} / \texttt{Subtract} / \texttt{Multiply}/%
-\texttt{Divide} / \texttt{Negate} / \texttt{Lerp} / \texttt{Invert} / \texttt{Transpose}. One
-\texttt{CNAEXT} addition stands out: \texttt{ToColumnMajor(float out[16])}, which exists purely
-because every non-D3D9 renderer's shader-uniform upload wants column-major data and XNA's own
-row-major \cnaclass{Matrix} has no such conversion built in.
-
-\cnaclass{Quaternion} follows the same doubled-static pattern for \texttt{Add} / \texttt{Subtract}/%
-\texttt{Multiply} / \texttt{Divide} / \texttt{Negate} / \texttt{Lerp}, and adds the rotation-specific
-operations: \texttt{Concatenate} (composing two rotations), \texttt{Slerp}, \texttt{Inverse},
-\texttt{Conjugate}, and three \texttt{CreateFromXxx} factories (axis-angle, rotation matrix,
-yaw/pitch/roll).
-
-\cnaclass{Point} and \cnaclass{Rectangle} use \texttt{intcs} (CNA/SharpRuntime's C\# \texttt{int}
-alias) rather than \texttt{float} for their fields, marking them as XNA's screen-space integer
-types rather than world-space math types. \cnaclass{Point} is the simplest type in this section
-by a wide margin --- two fields and four arithmetic operators, no static helper family at all.
-\cnaclass{Rectangle} adds \texttt{Left} / \texttt{Right} / \texttt{Top} / \texttt{Bottom}/%
-\texttt{Location} / \texttt{Center} / \texttt{IsEmpty} properties, three \texttt{Contains} overloads
-(point coordinates, a \cnaclass{Point}, or a whole \cnaclass{Rectangle}), \texttt{Offset}/%
-\texttt{Inflate}, and \texttt{Intersects} / \texttt{Intersect} / \texttt{Union}.
-
-\cnaclass{Color} is the largest type in this section purely by static-constant count: it packs
-an RGBA value into a single \texttt{UInt32} (\texttt{AABBGGRR} byte order) via
-\cnaclass{IPackedVectorT<UInt32>}, and ships roughly 140 named X11/CSS colors as \texttt{static
-const Color} constants (\texttt{AliceBlue} through \texttt{YellowGreen}) alongside five
-constructor families covering \cnaclass{Vector4} / \cnaclass{Vector3} input, \texttt{float}
-0--1 components, \texttt{int} 0--255 components, and two \texttt{CNAEXT} \texttt{bytecs}-component
-convenience overloads absent from real XNA. \texttt{Lerp}, \texttt{FromNonPremultiplied}, and
-\texttt{Multiply} round out its static surface.
-
-\cnaclass{Plane}, \cnaclass{Ray}, \cnaclass{BoundingBox}, \cnaclass{BoundingSphere}, and
-\cnaclass{BoundingFrustum} form XNA's intersection-test family, and CNA's C\texttt{++} rendering
-of it is a small but telling idiom worth naming once here: everywhere real XNA returns a
-nullable \texttt{float?} for an intersection distance (``did the ray hit this shape, and if so
-how far along it''), CNA returns \texttt{std::optional<float>} --- \cnaclass{Ray::Intersects}
-against a \cnaclass{BoundingBox}, \cnaclass{BoundingSphere}, \cnaclass{Plane}, or
-\cnaclass{BoundingFrustum} all follow this shape, each with a matching output-parameter overload
-for the allocation-free call path. \cnaclass{Plane} itself is built from a \texttt{Normal} vector
-and a scalar \texttt{D}, with \texttt{Dot} / \texttt{DotCoordinate} / \texttt{DotNormal} and
-\texttt{Intersects} returning a \cnaclass{PlaneIntersectionType} rather than a boolean.
-\cnaclass{BoundingBox} (\texttt{Min} / \texttt{Max}) and \cnaclass{BoundingSphere}
-(\texttt{Center} / \texttt{Radius}) both expose the same \texttt{Contains} (returning a
-\cnaclass{ContainmentType}: disjoint, intersects, or fully contains) and \texttt{Intersects}
-family against every other shape in the group, plus their own \texttt{CreateFromXxx}/%
-\texttt{CreateMerged} constructors. \cnaclass{BoundingFrustum} is built from a single combined
-view-projection \cnaclass{Matrix} and derives its six clipping planes
-(\texttt{Near} / \texttt{Far} / \texttt{Left} / \texttt{Right} / \texttt{Top} / \texttt{Bottom}, each a
-read-only \cnaclass{Plane} property) and eight corners from it lazily, exposing the same
-\texttt{Contains} / \texttt{Intersects} surface as the other two shapes.
+Chapter~\ref{ch:math-core-types} covers value semantics and Chapter~\ref{ch:math-conventions}
+covers coordinate, matrix, viewport and vertex-layout conventions.  The xna4-spec comparison in
+Chapter~\ref{ch:xna4-spec-auditing} shows why generated XML is useful inventory but requires
+language normalization and behavioral oracles.
 
 \section{Game Framework and Content}
 \label{sec:api-game-content}
 
-\cnaclass{Game} is the class every CNA application derives from. Four events cover its
-lifecycle (\texttt{Activated}, \texttt{Deactivated}, \texttt{Disposed}, \texttt{Exiting});
-properties expose the \texttt{Components} collection, \texttt{Content} manager,
-\texttt{GraphicsDevice}, \texttt{Window}, service container, and launch parameters, plus
-\texttt{IsActive} / \texttt{IsFixedTimeStep} / \texttt{IsMouseVisible} / \texttt{InactiveSleepTime}/%
-\texttt{TargetElapsedTime}. \texttt{Run} / \texttt{RunOneFrame} / \texttt{Tick} / \texttt{Exit}/%
-\texttt{ResetElapsedTime} / \texttt{SuppressDraw} drive the loop from outside; the protected
-virtuals a subclass actually overrides are \texttt{Initialize}, \texttt{LoadContent}/%
-\texttt{UnloadContent}, \texttt{Update(GameTime\&)}, \texttt{Draw(const GameTime\&)}, and the
-less commonly touched \texttt{BeginRun} / \texttt{EndRun} / \texttt{BeginDraw} / \texttt{EndDraw} pair
-(Chapter~\ref{ch:game-loop} covers the loop itself in full). \cnaclass{GameTime} is a small,
-mostly-read-only companion --- \texttt{TotalGameTime}, \texttt{ElapsedGameTime}, and
-\texttt{IsRunningSlowly}, with setters kept \texttt{private} and reachable only via a
-\texttt{friend} grant to \cnaclass{Game} itself, since nothing else is meant to construct game
-timing state.
+\begin{small}
+\begin{longtable}{>{\raggedright\arraybackslash}p{2.8cm}>{\raggedright\arraybackslash}p{5.45cm}>{\raggedright\arraybackslash}p{3.25cm}}
+\toprule
+\textbf{Type} & \textbf{Primary surface} & \textbf{Current qualification} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Type} & \textbf{Primary surface} & \textbf{Current qualification} \\
+\midrule
+\endhead
+\cnaclass{Game} & Lifecycle events; components, content, services, window and device; fixed/variable
+  timing; \texttt{Run}, \texttt{Tick}, \texttt{Exit}, and the initialize/load/update/draw hooks. &
+  Host ownership differs on native, Emscripten and mobile paths; the call order is the contract,
+  not merely the presence of virtual methods. \\
+\cnaclass{GameTime} & Total and elapsed time plus the slow-frame flag. & Mutable by the framework;
+  user code consumes the snapshot. \\
+\cnaclass{GameWindow} & Bounds, title, resize/orientation/display events and screen-device-change
+  protocol, plus marked SDL/native-window conveniences. & CNA uses one SDL3-backed concrete
+  class; lifecycle/platform behavior remains host-specific. \\
+\cnaclass{GraphicsDeviceManager} & Preferred backbuffer/depth/profile/fullscreen settings,
+  \texttt{ApplyChanges}, device creation/preparation events, and presentation-mode extensions. &
+  Stored presentation values are requested state, not proof the driver/window accepted them. \\
+\cnaclass{ContentManager} & Root directory, service provider, generic \texttt{Load<T>},
+  \texttt{Unload}, reader/CNJ registration, manifest and reader-usage extensions. & Resolution is
+  XNB first, then a registered loose reader that may select CNJ or a native format; cache and
+  ownership vary by asset type. \\
+\bottomrule
+\end{longtable}
+\end{small}
 
-\cnaclass{GameWindow} is where CNA visibly diverges from FNA's own class shape rather than just
-its implementation: FNA defines \cnaclass{GameWindow} as an abstract base with a per-platform
-concrete subclass; CNA collapses that entire hierarchy into one concrete, SDL3-window-backed
-class. Its property surface --- \texttt{ClientBounds}, \texttt{Title},
-\texttt{AllowUserResizing}, \texttt{CurrentOrientation}, \texttt{ScreenDeviceName} --- and three
-events (\texttt{ClientSizeChanged}, \texttt{OrientationChanged},
-\texttt{Screen\allowbreak{}Device\allowbreak{}Name\allowbreak{}Changed}) match XNA's own;
-\texttt{BeginScreenDeviceChange} / \texttt{EndScreenDeviceChange} implement the
-fullscreen-toggle protocol. Three \texttt{CNAEXT} extensions fill gaps XNA's own desktop-window
-model never needed: \texttt{MinimizeEXT} / \texttt{RestoreEXT} (XNA has no minimize/restore API at
-all) and \texttt{GetNativeSdlWindowEXT()}, an explicit escape hatch for code that needs raw SDL3
-window/display state this class does not itself expose as a property.
+The exact game-loop order is in Chapter~\ref{ch:game-loop}.  Chapters~\ref{ch:content-and-assets}
+through~\ref{ch:cnj-format} separate path resolution, XNB container/object graph, and CNJ; a
+successful lookup in one route is not evidence for the others.
 
-\cnaclass{ContentManager}'s header is where Chapter~\ref{ch:content-and-assets}'s three-way
-asset resolution order is literally implemented, not just described: \texttt{Load<T>()} checks
-for a same-named \texttt{.xnb} file first (real compiled content always wins outright), then
-falls through to a registered \cnaclass{LooseFileContentTypeReader<T>}, whose own
-\texttt{ResolveAssetPath} tries a \texttt{.cnj} sidecar before any native-format extension the
-reader declares. \texttt{RegisterTypeReader<T>()} and \texttt{RegisterCnjLoader<T>()} are the two
-extensibility points a game itself can call into; three \texttt{CNAEXT} methods ---
-\texttt{RefreshContentManifest}, \texttt{GetContentManifest}, \texttt{GetXnbReaderUsageSummary}
---- exist purely as build-time content-auditing tools, letting a game (or this book's own
-research) enumerate every asset under a content root and which \texttt{.xnb} reader names it
-actually exercises. \texttt{Texture2D}, \texttt{SoundEffect}, and \texttt{TextureCube} each get
-an explicit \texttt{Load<T>()} template specialization rather than sharing the generic
-\texttt{std::any}-keyed cache: \cnaclass{Texture2D} uses a \emph{weak} cache so its GPU renderer
-frees itself the moment the last external copy is dropped (the same \texttt{cpuPixels\_}
-CPU-shadow mechanism the repository map appendix's \texttt{RAM.md} note describes, in
-this book), while \cnaclass{SoundEffect} and \cnaclass{TextureCube} are move-only types that
-cannot be cached at all --- every \texttt{Load} call for either produces its own independent
-instance.
-
-\section{Graphics Core: Textures, Render Targets, and Sprite Batching}
+\section{Graphics Core: Resources and Batching}
 \label{sec:api-graphics-core}
 
-\cnaclass{Texture2D} (a full narrative treatment lives in
-Chapter~\ref{ch:textures-rendertargets}) exposes \texttt{Width} / \texttt{Height} / \texttt{Bounds},
-paired \texttt{SetData} / \texttt{GetData} families (a simple whole-texture overload and a
-level/rectangle-scoped overload, each further overloaded with an explicit start index), two
-\texttt{FromStream} factories (plain decode, and a resize-or-crop variant controlled by a
-\texttt{zoom} flag), and \texttt{SaveAsPng} / \texttt{SaveAsJpeg}. Underneath, every
-\cnaclass{Texture2D} keeps an optional CPU-side pixel shadow (\texttt{cpuPixels\_}) that exists
-solely so \texttt{GetData()} and by-value \texttt{ContentManager::Load<Texture2D>()} copies work
-without a GPU readback; \texttt{CNAEXT} methods \texttt{SetDataRGBA}, \texttt{CreateFromPixels},
-and \texttt{HasRenderer} are CNA-only conveniences layered on top. This also means an ordinary
-\texttt{SetData(level,...)} / \texttt{GetData(level,...)} round trip proves the shadow, not
-sampled GPU content. Higher-level uploads are real on EasyGL, Vulkan, BGFX, WebGPU, and
-D3D9/11/12; SDL GPU silently discards them while reporting the public mip count, Software
-and Headless retain only the public/trace illusion, and the four 2D-only renderers throw. See
-\S\ref{sec:texture2d-update-matrix} for the exact matrix.
-\cnaclass{RenderTarget2D} extends \cnaclass{Texture2D} and adds \cnaclass{IRenderTarget}, with two constructors (a
-simple width/height form, and a full form specifying mip-mapping, surface and depth-stencil
-format, multisample count, and \cnaclass{RenderTargetUsage}) plus a \texttt{ContentLost} event
-that XNA's own console-era API defines but CNA never actually raises. Usage is not uniform:
-Discard versus Preserve has strong non-MSAA 2D color proof only on SDL Renderer, EasyGL, and
-Vulkan; Platform splits by renderer, backbuffer presentation usage is ignored, redundant CNA
-binds repeat state/clear work, and discard never requests stencil in the shared 2D path. See
-\S\ref{sec:backend-rendertarget-usage-matrix}.
+\begin{small}
+\begin{longtable}{>{\raggedright\arraybackslash}p{3cm}>{\raggedright\arraybackslash}p{5.15cm}>{\raggedright\arraybackslash}p{3.35cm}}
+\toprule
+\textbf{Type group} & \textbf{Public shape} & \textbf{Evidence boundary} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Type group} & \textbf{Public shape} & \textbf{Evidence boundary} \\
+\midrule
+\endhead
+\cnaclass{Texture2D} & Dimensions/bounds, whole and rectangular \texttt{SetData}/\texttt{GetData},
+  stream decode, PNG/JPEG save, and marked pixel helpers. & A round trip can observe CNA's CPU
+  shadow rather than sampled GPU memory; mip/subregion behavior is renderer-specific. \\
+\cnaclass{Texture3D}, \cnaclass{TextureCube} & Volume or face dimensions and level/subregion
+  upload/readback families. & Construction, format, mip, upload and readback support are separate
+  capabilities; no CPU shadow provides a universal fallback. \\
+\cnaclass{RenderTarget2D}, \cnaclass{RenderTargetCube} & Texture surface plus depth/stencil,
+  multisample and usage metadata; cube adds face selection. & Bind, preserve/discard, plural
+  targets, cube unbind and readback have independent renderer paths. \\
+\cnaclass{VertexBuffer}, \cnaclass{IndexBuffer} & Counts/usage/declaration plus typed and sliced
+  upload/readback; dynamic subclasses add \texttt{SetDataOptions}. & The constructor's dynamic
+  intent, upload hint, CPU shadow and renderer buffer are four distinct layers. \\
+\cnaclass{SpriteBatch} & \texttt{Begin}/\texttt{End}, texture \texttt{Draw} overloads and
+  \texttt{DrawString} for strings/StringBuilder. & Sort mode, state objects, custom effect,
+  transform and clipping must reach the selected renderer; a visible sprite alone does not prove
+  every argument. \\
+\cnaclass{SpriteFont} & Atlas, glyph/cropping/character/kerning arrays, spacing/default character,
+  and measurement. & XNB, CNJ and hand-built fonts enter through different reader/ownership
+  routes. \\
+\bottomrule
+\end{longtable}
+\end{small}
 
-\cnaclass{Texture3D} adds \texttt{Width} / \texttt{Height} / \texttt{Depth};
-\cnaclass{TextureCube} adds one square-face \texttt{Size}. Both are move-only, accept only
-\cnaclass{SurfaceFormat::Color}, expose whole-resource and level/subregion
-\texttt{SetData}/\texttt{GetData} overloads, and keep no CPU pixel shadow. Their ordinary
-GPU readback is real on EasyGL, Vulkan, BGFX, WebGPU, SDL GPU, and D3D9/11/12; Software
-implements only a level-0 CPU cube. \cnaclass{RenderTargetCube} extends
-\cnaclass{TextureCube} and \cnaclass{IRenderTarget}, but its CPU readback is a separate,
-narrower capability: only WebGPU and SDL GPU override it today. The exact null-factory,
-placeholder, and mip boundaries are tabulated in
-Chapter~\ref{ch:backend-architecture}, \S\ref{sec:texture-volume-readback-matrix}.
-Its inherited \texttt{SetData} surface is narrower again: only EasyGL changes the target;
-every other constructed renderer silently discards a valid upload. Cube-target switching has
-independent renderer-specific finalization gaps --- notably missing public unbind routing on
-D3D11/12 --- tabulated in
-\S\ref{sec:rendertargetcube-default-contracts}. Use only the singular cube-target overload:
-although \cnaclass{RenderTargetBinding} accepts a cube/face, CNA's plural conversion turns it
-into a null renderer pointer, and the singular route does not retain it for
-\texttt{GetRenderTargets()} or usage handling.
+Chapters~\ref{ch:textures-rendertargets} and~\ref{ch:spritebatch} own the detailed behavior.
+Appendix~\ref{ch:feature-matrix} gives the implementation-family matrix; do not infer a
+cross-renderer guarantee from the common C\texttt{++} type alone.
 
-\cnaclass{SpriteBatch} is the class Chapter~\ref{ch:spritebatch} covers end to end; this table
-is purely a shape reminder. Five \texttt{Begin} overloads escalate from a zero-argument default
-(\texttt{AlphaBlend}, linear-clamp sampling, no depth test) up to the full XNA signature
-(sort mode, blend state, sampler/depth-stencil/rasterizer state, a custom \cnaclass{Effect}, and
-a transform \cnaclass{Matrix}). The \texttt{Draw} family covers a \texttt{CNAEXT}
-position-only convenience, a destination-plus-source-rectangle overload, the full
-rotation/origin/effects/depth signature, and three \cnaclass{Vector2}-position overloads
-(with an optional source rectangle, then with uniform or non-uniform scale added). Three
-\texttt{DrawString} overloads exist twice over --- once accepting a \texttt{std::string}, once
-a \cnaclass{System::Text::StringBuilder} --- mirroring real XNA's own string/\texttt{StringBuilder}
-overload duplication exactly.
-
-\cnaclass{SpriteFont} is the class \texttt{DrawString} above actually draws through, and it is
-narrower than its central role suggests: a glyph atlas \cnaclass{Texture2D} plus four
-same-length parallel arrays --- per-glyph \texttt{glyphBounds} (source rectangle within the
-atlas), \texttt{cropping} (per-glyph offset/trim rectangle), the sorted \texttt{characters}
-list itself, and \texttt{kerningData} (a \cnaclass{Vector3} per glyph: left bearing, width,
-right bearing) --- plus two scalar layout properties, \texttt{LineSpacing} and \texttt{Spacing}
-(extra inter-character horizontal padding), and an optional \texttt{DefaultCharacter}
-(\texttt{std::nullopt} means an unmapped character throws rather than silently substituting).
-Two \texttt{MeasureString} overloads (\texttt{std::string} and
-\cnaclass{System::Text::StringBuilder}, mirroring \texttt{DrawString}'s own duplication) return
-a \cnaclass{Vector2} of the rendered text's pixel width/height without drawing it. The
-constructor itself is \texttt{CNAEXT}: real XNA only ever builds a \cnaclass{SpriteFont} through
-the content pipeline's internal \texttt{SpriteFontReader}, never as public application code, so
-CNA exposing it directly is a genuine capability addition for any code (a content reader, or a
-game) that wants to assemble a glyph atlas at runtime rather than through \texttt{.xnb} / \texttt{.cnj}
-loading.
-
-\section{Model: Model, ModelMesh, ModelBone, and the Five Stock Effects}
+\section{Model and Stock Effects}
 \label{sec:api-model-effects}
 
-\cnaclass{Model} owns a \cnaclass{ModelBoneCollection} and \cnaclass{ModelMeshCollection}, a
-\texttt{Root} bone pointer, and a \texttt{Tag} for game-attached data; its three
-\texttt{CopyXxxBoneTransformsXx} methods move transform data in and out in bulk, and its single
-\texttt{Draw(world, view, projection)} simply asks every \cnaclass{ModelMesh} to draw itself in
-turn. \cnaclass{ModelMesh} carries a (mutable, per XNB-39) \texttt{BoundingSphere}, its own
-\cnaclass{ModelEffectCollection}, \cnaclass{ModelMeshPartCollection}, a \texttt{ParentBone}
-pointer, and \texttt{Name} / \texttt{Tag}. \cnaclass{ModelBone} is the simplest of the three:
-\texttt{Name} / \texttt{Index} / \texttt{Transform} / \texttt{Parent} / \texttt{Children}, plus a
-\texttt{CNAEXT AddChild} used only by the content-pipeline reader that assembles a model's bone
-hierarchy in the first place.
+\begin{small}
+\begin{longtable}{>{\raggedright\arraybackslash}p{3cm}>{\raggedright\arraybackslash}p{5.2cm}>{\raggedright\arraybackslash}p{3.3cm}}
+\toprule
+\textbf{Type group} & \textbf{Public shape} & \textbf{Boundary} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Type group} & \textbf{Public shape} & \textbf{Boundary} \\
+\midrule
+\endhead
+\cnaclass{Model}, \cnaclass{ModelBone}, \cnaclass{ModelMesh}, \cnaclass{ModelMeshPart} & Bone and
+  mesh collections, root/parent hierarchy, transform-copy helpers, part buffers/declaration,
+  effects and draw. & Four loading routes have different provenance; \texttt{Model::Draw}
+  requires matrix-capable effects and uses serial shared scratch state. \\
+\cnaclass{BasicEffect} & Matrices, texture/vertex colour, material colours, fog and three
+  directional lights. & Renderer-owned shader/fixed-function mapping decides which fields are
+  consumed. \\
+\cnaclass{AlphaTestEffect} & Texture, vertex colour, fog, alpha comparison and reference value. &
+  A draw can succeed while a fallback loses alpha-test semantics. \\
+\cnaclass{DualTextureEffect} & Two texture layers, matrices, vertex colour and fog. & The second
+  layer needs a renderer route and compatible packed layout. \\
+\cnaclass{EnvironmentMapEffect} & Diffuse texture, cube environment map, amount/specular/fresnel,
+  matrices, fog and lights. & Cube construction/sampling and effect dispatch are separate gates. \\
+\cnaclass{SkinnedEffect} & Matrices/material/texture/fog/lights plus bone palette and 1/2/4
+  weights per vertex. & Maximum palette/layout and animation binding are runtime contracts; CNA's
+  vertex-colour addition is marked \texttt{CNAEXT}. \\
+\bottomrule
+\end{longtable}
+\end{small}
 
-The five stock effects (Chapter~\ref{ch:stock-effects} is their full narrative treatment) share
-one structural shape worth stating once rather than five times: each is an \cnaclass{Effect}
-implementing \cnaclass{IEffectMatrices} (\texttt{World} / \texttt{View} / \texttt{Projection}), each
-caches its own \cnaclass{EffectParameter} pointers in a private \texttt{CacheEffectParameters()}
-and pushes them to the active renderer from \texttt{OnApply()} via a \texttt{CNAEXT
-FillGpuDrawParams()} override, and each texture property comes in a non-owning
-\texttt{setTextureProperty(Texture2D*)} form alongside a \texttt{CNAEXT SetOwnedTexture(shared\_ptr<Texture2D>)}
-form --- the non-owning form for a \cnaclass{Model}-owned texture pool shared across many mesh
-parts, the owning form for a standalone effect a game loaded on its own via
-\texttt{ContentManager::Load<BasicEffect>()} with no other owner to keep its texture alive. What
-distinguishes each effect is narrower than it first appears:
+Chapter~\ref{ch:models-meshes} covers runtime ownership, Chapters~\ref{ch:gltf-import-core}--
+\ref{ch:gltf-conformance} cover glTF/CNJ, and Appendix~\ref{ch:gltf-evidence-matrix} keeps
+importer, runtime and test evidence separate.
+
+\section{GraphicsDevice and State Objects}
+\label{sec:api-graphicsdevice}
+
+\cnaclass{GraphicsDevice} is the renderer-independent dispatch facade.  Its public groups are:
+
+\begin{itemize}
+  \item adapter/display/profile/status/presentation identity and disposal state;
+  \item texture, sampler, vertex-buffer, index-buffer and render-target binding;
+  \item blend, depth/stencil, rasterizer, viewport, scissor and related scalar state;
+  \item clear, present, backbuffer readback and screenshot helpers;
+  \item bound-buffer, user-array, indexed and instanced draw families;
+  \item capability queries, unsupported-3D policy, and marked diagnostic/recovery helpers.
+\end{itemize}
+
+The facade stores and returns state even where an implementation family does not consume it.
+The pin also contains concrete asymmetries in singular/plural bindings, offsets/frequencies,
+readback source, clear masks, presentation interval/format and capability truth.  Therefore use
+the operation-level matrices in Chapters~\ref{ch:graphicsdevice} and~\ref{ch:renderer-contract};
+\texttt{SupportsCapability(true)} is a preflight hint, not an execution artifact.
+
+The four state objects remain distinct:
 
 \begin{center}
-\small
-\begin{tabular}{lp{2.4cm}p{7.6cm}}
+\begin{tabular}{p{3.2cm}p{8cm}}
 \toprule
-\textbf{Effect} & \textbf{Also implements} & \textbf{Distinctive members} \\
+\textbf{Type} & \textbf{State represented} \\
 \midrule
-\cnaclass{BasicEffect} & \cnaclass{IEffectFog}, \cnaclass{IEffectLights} & \texttt{VertexColorEnabled},
-  \texttt{PreferPerPixelLighting}, diffuse/emissive/specular color \& power, one \texttt{Texture},
-  three \texttt{DirectionalLight}s, \texttt{EnableDefaultLighting()} \\
-\cnaclass{AlphaTestEffect} & \cnaclass{IEffectFog} & \texttt{AlphaFunction} (a
-  \cnaclass{CompareFunction}) plus \texttt{ReferenceAlpha} (0--255) driving a discard-based
-  alpha test; \texttt{VertexColorEnabled}; one \texttt{Texture} \\
-\cnaclass{DualTextureEffect} & \cnaclass{IEffectFog} & Two independent texture layers,
-  \texttt{Texture} and \texttt{Texture2}; \texttt{VertexColorEnabled} \\
-\cnaclass{EnvironmentMapEffect} & \cnaclass{IEffectFog}, \cnaclass{IEffectLights} & A diffuse
-  \texttt{Texture} plus a cube-map \texttt{EnvironmentMap} (\cnaclass{TextureCube});
-  \texttt{EnvironmentMapAmount} / \texttt{Specular} / \texttt{FresnelFactor} blend controls \\
-\cnaclass{SkinnedEffect} & \cnaclass{IEffectFog}, \cnaclass{IEffectLights} & \texttt{MaxBones}~=~72;
-  \texttt{SetBoneTransforms} / \texttt{GetBoneTransforms}; \texttt{WeightsPerVertex} (1, 2, or 4);
-  \texttt{CNAEXT VertexColorEnabled} (a CNA addition absent from real XNA's SkinnedEffect, added
-  for glTF-imported meshes carrying a \texttt{COLOR\_0} vertex attribute) \\
+\cnaclass{BlendState} & colour/alpha factors and equations, write masks, blend factor and presets \\
+\cnaclass{DepthStencilState} & depth enable/write/compare and front/back stencil operations \\
+\cnaclass{RasterizerState} & cull/fill, bias, multisampling and scissor-enable intent \\
+\cnaclass{SamplerState} & addressing, filtering, anisotropy, mip limit and LOD bias \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-\section{GraphicsDevice and the State Objects}
-\label{sec:api-graphicsdevice}
+CNA copies assigned state objects by value.  Later mutation of the original object does not
+retroactively modify the device copy.  Whether each copied field reaches native state still
+depends on the renderer family.
 
-\cnaclass{GraphicsDevice} (a full narrative treatment lives in Chapter~\ref{ch:graphicsdevice})
-is the one class every other type in this appendix ultimately talks through, and its property
-surface groups cleanly into three shapes: device-identity/mode properties that are read-only
-after construction (\texttt{Adapter}, \texttt{DisplayMode}, \texttt{GraphicsProfile},
-\texttt{GraphicsDeviceStatus}, \texttt{PresentationParameters}, \texttt{IsDisposed}); per-slot
-resource-binding arrays (\texttt{Textures}, \texttt{VertexTextures}, \texttt{SamplerStates},
-\texttt{VertexSamplerStates}, \texttt{Indices}); and mutable pipeline state
-(\texttt{BlendState}, \texttt{DepthStencilState}, \texttt{RasterizerState}, \texttt{Viewport},
-\texttt{ScissorRectangle}, \texttt{BlendFactor}, \texttt{MultiSampleMask},
-\texttt{ReferenceStencil}). Frame control is two calls, \texttt{Clear} (four overloads,
-escalating from a bare color to a full \texttt{ClearOptions}/depth/stencil form) and
-\texttt{Present()}; render-target binding is \texttt{SetRenderTarget} / \texttt{SetRenderTargets}
-(single 2D target, a single cube face, or a full multi-target array via
-\cnaclass{RenderTargetBinding}); vertex/index binding is
-\texttt{SetVertexBuffer} / \texttt{SetVertexBuffers} and the \texttt{Indices} property; the
-full 3D draw dispatch is \texttt{DrawPrimitives} / \texttt{DrawIndexedPrimitives} /
-\texttt{DrawInstancedPrimitives} (bound-buffer forms) alongside the
-\texttt{DrawUserPrimitives} / \texttt{Draw\allowbreak{}User\allowbreak{}Indexed\allowbreak{}Primitives}
-family Chapter~\ref{ch:graphicsdevice} covers for CPU-side vertex arrays.
-\textbf{Current binding warning:} the singular setter ignores its offset and is not
-synchronized with the plural binding vector; instancing forwards only the first
-positive-frequency buffer, not its frequency/offset or any later stream. SDL GPU and Software
-then throw from the shared instancing default. See
-\S\ref{sec:drawex-instancing-matrix} for the full matrix.
-\textbf{Readback warning:} \texttt{GetBackBufferData()} is not uniform in the inherited audit
-cohort either. Six products
-read a currently bound target, five always read the real backbuffer, Headless synthesizes its
-last clear, and SDL GPU/D3D12 throw. The pointer API also does not validate negative
-\texttt{startIndex}, capacity after the offset, rectangle bounds, or multiplication overflow;
-the caller must do so. See \S\ref{sec:backend-readback-matrix} for the exact source-image,
-coordinate-space, and test-evidence matrix.
-
-\textbf{Viewport/scissor warning:} both properties always round-trip, but only seven products
-in that audit cohort
-provide a real custom viewport and/or correctly enable-gated scissor, with different 3D,
-SpriteBatch, target, and deferred-pass scopes. SDL Renderer/the former ASCII renderer clip from a non-empty
-rectangle even when \texttt{ScissorTestEnable} is false; D3D12/Software/Canvas/FREEDIRECT do not apply
-either custom state. CNA also starts with a zero scissor and its same-size \texttt{Reset()}
-preserves both values, unlike FNA. Passing a rasterizer into \texttt{SpriteBatch::Begin()}
-currently does not reach any renderer. See
-\S\ref{sec:backend-viewport-scissor-matrix}.
-
-\textbf{Clear warning:} \texttt{Clear(Color)} requests colour, current
-\texttt{Viewport.MaxDepth}, and zero stencil; the raw-float overload bypasses that contract.
-FNA silently removes unavailable attachments, but CNA's binary mask cannot distinguish
-\texttt{Depth16}/\texttt{Depth24} from \texttt{Depth24Stencil8} and cannot see a singular
-cube's format. EasyGL, Vulkan, and BGFX do not preserve strict per-option semantics; deferred
-products can also move/collapse calls to pass start. See \S\ref{sec:backend-clear-matrix}.
-
-\textbf{Present-interval warning:} a stored
-\texttt{PresentationParameters.\allowbreak PresentationInterval} is requested state, not a query of the
-driver. The manager's VSync Boolean selects only One/Immediate; five products including
-Vulkan inherit the empty runtime hook, and BGFX/WebGPU/SDL GPU/D3D11/D3D12 collapse Two to
-ordinary VSync. SDL Renderer attempts~2 only on the runtime path, EasyGL
-submits it without checking driver acceptance, and D3D9's literal mapping is invalid in
-windowed mode. See \S\ref{sec:backend-swap-interval-matrix}.
-
-\textbf{Presentation-format warning:} the stored backbuffer, depth/stencil, and fullscreen
-fields are requested state too. Only D3D9 overrides the runtime format/fullscreen hook. The
-shared code separately attempts the SDL window transition, so an empty hook does not imply
-``fullscreen never changes''; however, that SDL failure is swallowed and the stored Boolean
-is still not proof of actual fullscreen. Several 3D renderers always allocate fixed
-depth/stencil even when the public value is \texttt{None}; WebGPU may choose an sRGB surface
-while reporting \texttt{Color}. See
-\S\ref{sec:backend-presentation-format-matrix}.
-
-\texttt{SupportsCapability\allowbreak{}(GraphicsCapability)} (Chapter~\ref{ch:backend-architecture}) is the
-one method worth remembering is a query, not a
-guarantee --- it answers honestly for most values but is not yet wired for every one of them.
-
-The four state-object classes (Chapter~\ref{ch:state-objects}) share one architectural fact
-worth restating here since it affects how every property above actually behaves: CNA stores
-each by \emph{value} once assigned to \cnaclass{GraphicsDevice}, not by FNA's reference-type
-aliasing, so mutating a state object after assignment never retroactively changes the device.
-\cnaclass{BlendState} covers per-channel color/alpha \texttt{Blend} / \texttt{BlendFunction}
-pairs plus \texttt{ColorWriteChannels} (four presets: \texttt{Opaque}, \texttt{AlphaBlend},
-\texttt{NonPremultiplied}, \texttt{Additive}); \cnaclass{DepthStencilState} covers depth
-enable/write/\texttt{CompareFunction} plus a full two-sided stencil configuration (three
-presets: \texttt{Default}, \texttt{DepthRead}, \texttt{None}); \cnaclass{RasterizerState}
-covers \texttt{CullMode} / \texttt{FillMode} / \texttt{DepthBias} / \texttt{SlopeScaleDepthBias}/%
-\texttt{MultiSampleAntiAlias} / \texttt{ScissorTestEnable} (three presets:
-\texttt{CullClockwise}, \texttt{CullCounterClockwise}, \texttt{CullNone}); and
-\cnaclass{SamplerState} covers \texttt{AddressU} / \texttt{V} / \texttt{W},
-\texttt{Filter} / \texttt{MaxAnisotropy} / \texttt{MaxMipLevel} / \texttt{MipMapLevelOfDetailBias}
-(six presets spanning point/linear/anisotropic filtering crossed with clamp/wrap addressing).
-
-\section{Buffers, the Effect Base Class, and OcclusionQuery}
+\section{Effect Base, Parameters, and Queries}
 \label{sec:api-buffers-effect-base}
 
-Three classes underpin almost everything above without having their own entry yet.
-\cnaclass{VertexBuffer} and \cnaclass{IndexBuffer} (Chapter~\ref{ch:textures-rendertargets})
-both share the same doubled \texttt{SetData} / \texttt{GetData} shape as the math types above,
-but doubled along a different axis: not value-versus-output-parameter, but a full-array
-overload versus a \texttt{startIndex}-plus-\texttt{elementCount} slice overload, repeated once
-per concrete vertex struct \cnaclass{VertexBuffer} supports: \cnaclass{VertexPositionColor},
-\cnaclass{VertexPositionColorTexture}, \cnaclass{VertexPositionNormalTexture}, and
-\cnaclass{VertexPositionTexture} from real XNA, plus one \texttt{CNAEXT} skinned variant
-(position, normal, texture, and skinning weights combined in a single struct) --- ten
-\texttt{SetData} / \texttt{GetData} pairs in total, plus a \texttt{CNAEXT
-SetDataRaw(data, count, stride)} escape hatch for a layout with no dedicated struct. \cnaclass{IndexBuffer} is narrower: the same
-doubled shape, but split only by index width, \texttt{std::uint16\_t} or
-\texttt{std::uint32\_t}. Both expose \texttt{BufferUsage} / \texttt{VertexDeclaration}
-(vertex only) / \texttt{VertexCount} or \texttt{IndexCount} as read-only properties.
-\cnaclass{DynamicVertexBuffer} and \cnaclass{DynamicIndexBuffer} add only
-\texttt{IsContentLost} (always \texttt{false} in CNA) and a \texttt{SetDataOptions}-taking
-overload of every \texttt{SetData} above. The class-level \texttt{dynamic} constructor flag is
-still ignored, but upload hints are real on EasyGL, SDL GPU, D3D9, and D3D11; the other
-constructible renderers discard them. The options-taking wrappers currently fail to update the
-shared CPU readback shadow, so inherited \texttt{GetData} is broken after such an upload on a
-non-\texttt{WriteOnly} dynamic buffer. Chapter~\ref{ch:textures-rendertargets} has the full
-matrix and exact exception behavior.
+\cnaclass{Effect} owns parameter and technique collections, a current technique, cloning, and
+the CNA-added convenience that applies the current pass.  \cnaclass{EffectParameter} exposes
+typed scalar/vector/matrix/string/texture setters and getters plus class/type/dimension metadata
+and nested collections.  CNA's public arbitrary compiled-effect constructor remains a refusal;
+\cnaclass{ShaderEffect} is a distinct renderer-specific source/program route.  The existence of a
+stock effect or parameter setter therefore does not prove arbitrary XNA \texttt{.fxb} execution.
 
-\cnaclass{Effect} itself (Chapter~\ref{ch:stock-effects}) is deliberately thin: a
-\texttt{CurrentTechnique} property, \texttt{Parameters} / \texttt{Techniques} collections, a
-pure-virtual \texttt{Clone()} (returning an owning raw pointer rather than FNA's
-garbage-collected reference, since C\texttt{++} has no GC to hand a shared reference back to),
-and a \texttt{CNAEXT Apply()} that exists only because real FNA has no public
-\texttt{Effect.Apply()} at all --- only \texttt{EffectPass.Apply()}, which CNA's own
-\texttt{Apply()} forwards to via the current technique's current pass. Every concrete stock
-effect works through \cnaclass{EffectParameter}, whose \texttt{GetValueXxx} /
-\texttt{SetValueXxx} family (Chapter~\ref{ch:stock-effects} covers the mechanism; this is the
-full surface) covers every scalar and array combination XNA effects support ---
-\texttt{Boolean}, \texttt{Int32}, \texttt{Single}, \texttt{String}, \texttt{Matrix} (plus a
-transposed variant), \texttt{Quaternion}, \texttt{Vector2/3/4} --- each with a matching array
-overload taking an explicit count, alongside \texttt{Name} / \texttt{Semantic} /
-\texttt{RowCount} / \texttt{ColumnCount} / \texttt{ParameterClass} / \texttt{ParameterType}
-metadata and nested \texttt{Elements} / \texttt{StructureMembers} / \texttt{Annotations}
-collections for compound parameter types.
-
-\cnaclass{OcclusionQuery} (used throughout Part~IV's renderer chapters) is the smallest class
-in this entire appendix: \texttt{Begin()} / \texttt{End()} bracket the draw calls to be
-counted, and \texttt{IsComplete} / \texttt{PixelCount} read the result back once the GPU has
-actually finished --- the complete public surface, four members in total.
+\cnaclass{OcclusionQuery} exposes \texttt{Begin}, \texttt{End}, completion, and pixel count.
+Appendix~\ref{ch:feature-matrix} identifies families with real, conditional, trace-only, null, or
+misreported query paths.  A non-null public wrapper and a true capability bit are insufficient
+without a usable renderer object and a discriminating sample-count test.
 
 \section{Reading this appendix safely}
 
-The same caution this book's renderer feature matrix states applies here: this is a snapshot of
-one point in the project's history, read directly from the headers cited above, not a live
-mirror of them. A method added, renamed, or given a new overload after this book was written
-will not appear here; the header itself is always the final authority, and every class name in
-this appendix is exactly the name to search for in \repolink{cna}'s own
-\texttt{modules/<owner>/include/} trees.
+For exact declarations, search the selected type under
+\path{modules/<owner>/include/Microsoft/Xna/Framework/} at CNA
+\texttt{7a64362efef4119bf880459ef1704fb2c52199e2}.  Then pair the header with its implementation,
+renderer route, tests and host evidence.  This appendix answers ``where is the surface?''; the
+book's chapters and retained audit reports answer ``what does this revision actually do?''

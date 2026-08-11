@@ -1,175 +1,155 @@
 \chapter{Renderer Registry, Capabilities, and Evidence}
 \label{ch:feature-matrix}
 
-This appendix begins with the canonical public registry at the pinned source snapshot, then
-retains a narrower capability grid from an earlier executed audit. The two cardinalities are
-deliberately different: CNA exposes 46 public identities, while the five EasyGL profiles share
-one factory, yielding 42 concrete implementation factories. An identity absent from the older
-grid is simply unaudited by that grid; absence is not an unsupported-feature claim.
+CNA exposes \textbf{46 public renderer identities / 42 implementation families} at the pinned
+revision.  The four-count difference is exact: five EasyGL profiles share one implementation
+family, while every other identity has its own family.  This appendix derives the registry from
+\path{docs/renderer-registry.md} and the source-owned factory paths, then reports a narrow set of
+capabilities from reachable implementation behavior.  It does not copy the older central feature
+matrix, whose names and cells predate the current registry.
+
+\section{Canonical public identities}
 
 \begin{small}
-\begin{longtable}{>{\raggedright\arraybackslash}p{3.3cm}>{\raggedright\arraybackslash}p{8.1cm}@{\hspace{0.6cm}}r}
+\begin{longtable}{>{\raggedright\arraybackslash}p{3.15cm}>{\raggedright\arraybackslash}p{8.35cm}r}
 \toprule
-\textbf{Family / chapter} & \textbf{Canonical public selectors} & \textbf{Count} \\
+\textbf{Cluster} & \textbf{Accepted \texttt{CNA\_GRAPHICS\_RENDERER} values} & \textbf{Count} \\
 \midrule
 \endfirsthead
 \toprule
-\textbf{Family / chapter} & \textbf{Canonical public selectors} & \textbf{Count} \\
+\textbf{Cluster} & \textbf{Accepted \texttt{CNA\_GRAPHICS\_RENDERER} values} & \textbf{Count} \\
 \midrule
 \endhead
 OpenGL fixed function & \texttt{OPENGLES1}, \texttt{OPENGL1} & 2 \\
-OpenGL programmable and portable & \texttt{OPENGLES2}, \texttt{OPENGLES3},
+OpenGL programmable / portable & \texttt{OPENGLES2}, \texttt{OPENGLES3},
   \texttt{OPENGL33}, \texttt{WEBGL1}, \texttt{WEBGL2}, \texttt{OPENGL2},
   \texttt{OPENGL4}, \texttt{PORTABLEGL} & 8 \\
-Native modern GPU APIs & \texttt{VULKAN}, \texttt{WEBGPU}, \texttt{SDL\_GPU},
-  \texttt{METAL} & 4 \\
-Abstraction layers I & \texttt{BGFX}, \texttt{MAGNUM}, \texttt{LLGL},\newline
-  \texttt{DILIGENT} & 4 \\
-Abstraction layers II & \texttt{SOKOL}, \texttt{WICKED}, \texttt{FNA3D} & 3 \\
-DirectX 1--3 and free-direct & \texttt{DIRECTX1}, \texttt{DIRECTX2},
-  \texttt{DIRECTX3}, \texttt{FREEDIRECT} & 4 \\
+Native modern GPU & \texttt{VULKAN}, \texttt{WEBGPU}, \texttt{SDL\_GPU}, \texttt{METAL} & 4 \\
+Abstraction layers & \texttt{BGFX}, \texttt{MAGNUM}, \texttt{LLGL}, \texttt{DILIGENT},
+  \texttt{SOKOL}, \texttt{WICKED}, \texttt{FNA3D} & 7 \\
+DirectX 1--3 / free-direct & \texttt{DIRECTX1}, \texttt{DIRECTX2}, \texttt{DIRECTX3},
+  \texttt{FREEDIRECT} & 4 \\
 Retro ladder & \texttt{DIRECTX5}, \texttt{DIRECTX6}, \texttt{DIRECTX7},
   \texttt{DIRECTX8}, \texttt{GLIDE} & 5 \\
 Modern Direct3D & \texttt{DIRECTX9}, \texttt{DIRECTX10}, \texttt{DIRECTX11},
   \texttt{DIRECTX12} & 4 \\
 Windows 2D & \texttt{DIRECT2D}, \texttt{GDI} & 2 \\
-2D and vector rasterizers & \texttt{SDL\_RENDERER}, \texttt{SKIA},
-  \texttt{BLEND2D}, \texttt{OPENVG} & 4 \\
-Web and DOM & \texttt{CANVAS}, \texttt{HTML\_DOM},\newline \texttt{SVG\_DOM} & 3 \\
-Non-GPU and diagnostic & \texttt{HEADLESS}, \texttt{SOFTWARE}, \texttt{STUB} & 3 \\
+2D / vector rasterizers & \texttt{SDL\_RENDERER}, \texttt{SKIA}, \texttt{BLEND2D},
+  \texttt{OPENVG} & 4 \\
+Web / DOM & \texttt{CANVAS}, \texttt{HTML\_DOM}, \texttt{SVG\_DOM} & 3 \\
+Diagnostic / non-GPU & \texttt{HEADLESS}, \texttt{SOFTWARE}, \texttt{STUB} & 3 \\
 \midrule
-\textbf{Total} & \textbf{46 public identities / 42 implementation factories} & \textbf{46} \\
+\textbf{Total} & \textbf{46 identities / 42 families} & \textbf{46} \\
 \bottomrule
 \end{longtable}
 \end{small}
 
-\texttt{ASCII} is not a current identity; its reusable logic moved to
-\cnaclass{CNA::Graphics::AsciiPostProcessEffect}. \texttt{EASYGL}, \texttt{DX3},
-\texttt{D3D9}, \texttt{D3D11}, and \texttt{D3D12} are not accepted selectors. The defaults
-are \texttt{OPENGLES3} on Linux, \texttt{WEBGL2} under Emscripten, and
-\texttt{SDL\_RENDERER} elsewhere. Chapter~\ref{ch:renderer-selection-identity} explains the
-identity/factory distinction; \texttt{docs/renderer-registry.md} is the primary source.
+\texttt{ASCII} is no longer a renderer identity; its reusable work lives in
+\cnaclass{CNA::Graphics::AsciiPostProcessEffect}.  \texttt{EASYGL}, \texttt{DX3},
+\texttt{D3D9}, \texttt{D3D11}, and \texttt{D3D12} are not accepted selectors.
+\texttt{FREEDIRECT} selects the free-direct-backed family; \texttt{DIRECTX3} selects the genuine
+DirectX~3 family.  Defaults are \texttt{WEBGL2} under Emscripten, \texttt{OPENGLES3} on Linux,
+and \texttt{SDL\_RENDERER} elsewhere.
 
-\section{A capability grid, condensed from the project's own master matrix}
+\section{Four implementation questions across all 42 families}
 
-The registry above tells the current identity story; this section preserves the
-complementary, narrower view from the earlier seven-renderer executed audit recorded in
-\texttt{docs/graphics-renderer-\allowbreak{}feature-matrix.md}:
-(\texttt{SDL\_RENDERER}, the EasyGL implementation, \texttt{VULKAN}, \texttt{BGFX}, and
-the Direct3D~9/11/12 implementations). The historical D9/D11/D12 column labels below name
-native APIs, not accepted current selectors. \texttt{WEBGPU} and \texttt{SDL\_GPU} were
-excluded from that source document's own comparison, the former by its own documented choice
-pending a broader feature surface, the latter because it postdates the document; see
-Chapter~\ref{ch:webgpu-backend} and Chapter~\ref{ch:sdlgpu-backend} for their own coverage
-instead. Status symbols match the source document's own legend, spelled out as plain text
-rather than a symbol font this project's preamble doesn't load: \textbf{OK} correct and
-verified, \texttt{X} known gap not fixed, \texttt{BLK} formally BLOCKED (needs a
-project-owner architecture decision), \texttt{P} the compact table form of the source's
-\texttt{PARTIAL} (implemented but not independently pixel-verified or only partially covered),
-\texttt{N/A} not applicable to this renderer's own scope, \texttt{---} not attempted. Every cell
-below is a condensed transcription of a real row
-in the source document --- read that document directly (or the renderer's own chapter, cited in
-the per-renderer table above) for the full evidence and task numbers behind each symbol; this
-grid answers ``does it work'' at a glance, not ``how do we know.''
+The next matrix deliberately asks only four questions that can be answered uniformly from the
+pinned source.  ``Native'' means the family owns both ordinary effect-aware \texttt{Draw*Ex}
+routes; it does not promise complete stock-effect fidelity.  ``Fallback--reject'' means the
+shared parameter-dropping fallback reaches an explicit 3D refusal.  ``Hybrid'' means a
+renderer-owned route still has a bounded coloured fallback.  ``Conditional'' names a real
+profile/device/extension dependency.  ``Claims yes'' exposes a public capability answer that
+contradicts the reachable factory or operation.
 
 \begin{center}
-\footnotesize
-\setlength{\tabcolsep}{3pt}
-\begin{longtable}{p{3.5cm}*{7}{p{1.35cm}}}
+\scriptsize
+\setlength{\tabcolsep}{2.5pt}
+\begin{longtable}{>{\raggedright\arraybackslash}p{1.75cm}>{\raggedright\arraybackslash}p{3.1cm}>{\raggedright\arraybackslash}p{2.25cm}>{\raggedright\arraybackslash}p{1.55cm}>{\raggedright\arraybackslash}p{1.55cm}>{\raggedright\arraybackslash}p{1.8cm}}
 \toprule
-\textbf{Feature} & \textbf{EGL} & \textbf{VK} & \textbf{BGFX} & \textbf{SDLR} & \textbf{D9} & \textbf{D11} & \textbf{D12} \\
+\textbf{Family} & \textbf{Public identity / identities} & \textbf{Effect-aware draw} &
+\textbf{RT2D} & \textbf{MRT} & \textbf{Occlusion query} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Family} & \textbf{Public identity / identities} & \textbf{Effect-aware draw} &
+\textbf{RT2D} & \textbf{MRT} & \textbf{Occlusion query} \\
 \midrule
 \endhead
-\multicolumn{8}{l}{\textit{2D SpriteBatch / SpriteFont}} \\
-All \texttt{Draw} overloads, sort modes, rotation/flip/scale/crop & OK & --- & --- &
-  OK & OK & OK & OK \\
-Custom \texttt{Effect} via \texttt{Begin(effect)} & OK & OK &
-  X\textsuperscript{a} & N/A\textsuperscript{b} & OK & OK & OK \\
-\texttt{SpriteFont} glyph placement/spacing/newline/fallback/flip & OK & --- & --- &
-  OK & --- & OK & OK \\
-\texttt{TextureAddressMode::}\allowbreak\texttt{Wrap} / \texttt{Mirror} via
-  \texttt{SpriteBatch} & OK & OK & OK & BLK & OK & OK & OK \\
-\midrule
-\multicolumn{8}{l}{\textit{GraphicsDevice state objects}} \\
-\texttt{BlendState} (all presets + custom factors/equations) & OK & OK &
-  OK & OK & OK & OK & OK \\
-\texttt{DepthStencilState} (compare func + full stencil ops) & OK & OK &
-  P & OK & OK & OK & OK \\
-\texttt{RasterizerState} aggregate\textsuperscript{d} & OK & P & P & OK & OK &
-  OK & OK \\
-Per-slot \texttt{SamplerState} (16 slots) & OK & OK & OK & OK &
-  P & OK & OK \\
-\texttt{GraphicsDevice.}\allowbreak\texttt{ReferenceStencil} & X & OK & X & N/A & --- & OK & N/A \\
-\texttt{RenderTargetUsage} 2D color, Discard/P only\textsuperscript{e} &
-  OK & OK & P & OK & P & P & P \\
-\texttt{Clear} honors \texttt{ClearOptions::}\allowbreak\texttt{Stencil} &
-  OK\textsuperscript{c} & P\textsuperscript{c} & P\textsuperscript{c} &
-  N/A\textsuperscript{c} & P\textsuperscript{c} & OK\textsuperscript{c} &
-  OK\textsuperscript{c} \\
+bgfx & \texttt{BGFX} & native & yes & yes & conditional \\
+blend2d & \texttt{BLEND2D} & fallback--reject & yes & no & no \\
+canvas & \texttt{CANVAS} & fallback--reject & yes & no & no \\
+diligent & \texttt{DILIGENT} & native & yes & yes & conditional \\
+direct2d & \texttt{DIRECT2D} & fallback--reject & yes & no & no \\
+directx1 & \texttt{DIRECTX1} & fallback--reject & yes & no & no \\
+directx2 & \texttt{DIRECTX2} & native fixed & yes & no & no \\
+directx3 & \texttt{DIRECTX3} & native fixed & yes & no & no \\
+directx5 & \texttt{DIRECTX5} & native fixed & yes & no & no \\
+directx6 & \texttt{DIRECTX6} & native fixed & yes & no & no \\
+directx7 & \texttt{DIRECTX7} & native fixed & yes & no & no \\
+directx8 & \texttt{DIRECTX8} & native fixed & yes & no & no \\
+directx9 & \texttt{DIRECTX9} & native & yes & yes & yes \\
+directx10 & \texttt{DIRECTX10} & fallback--coloured & yes & yes & no \\
+directx11 & \texttt{DIRECTX11} & native & yes & yes & yes \\
+directx12 & \texttt{DIRECTX12} & native & yes & yes & yes \\
+easygl & \texttt{OPENGLES2}, \texttt{OPENGLES3}, \texttt{OPENGL33},
+  \texttt{WEBGL1}, \texttt{WEBGL2} & native & yes & profile & profile \\
+fna3d & \texttt{FNA3D} & native & yes & yes & yes \\
+freedirect & \texttt{FREEDIRECT} & fallback--reject & yes & no & no \\
+gdi & \texttt{GDI} & reject & yes & no & no \\
+glide & \texttt{GLIDE} & native fixed & throws & no & no \\
+headless & \texttt{HEADLESS} & trace & trace & no; claims yes & trace; claims yes \\
+html-dom & \texttt{HTML\_DOM} & fallback--reject & yes & no & no \\
+llgl & \texttt{LLGL} & native & yes & yes & yes \\
+magnum & \texttt{MAGNUM} & native & yes & conditional & yes \\
+metal & \texttt{METAL} & native & yes & no & no \\
+opengl1 & \texttt{OPENGL1} & native fixed & conditional & no & conditional \\
+opengl2 & \texttt{OPENGL2} & native & yes & conditional & conditional \\
+opengl4 & \texttt{OPENGL4} & hybrid & yes & yes & yes \\
+opengles1 & \texttt{OPENGLES1} & hybrid fixed & yes & no & no \\
+openvg & \texttt{OPENVG} & fallback--reject & no & no & no \\
+portablegl & \texttt{PORTABLEGL} & native CPU & no & no & no \\
+sdl-gpu & \texttt{SDL\_GPU} & hybrid & yes & yes & no; claims yes \\
+sdl-renderer & \texttt{SDL\_RENDERER} & fallback--reject & yes & no & no \\
+skia & \texttt{SKIA} & reject & yes & no & no \\
+software & \texttt{SOFTWARE} & native CPU & yes & no; claims yes & no; claims yes \\
+sokol & \texttt{SOKOL} & native & yes & yes & GL build only \\
+stub & \texttt{STUB} & fallback--no-op & no & no & no \\
+svg-dom & \texttt{SVG\_DOM} & fallback--reject & yes & no & no \\
+vulkan & \texttt{VULKAN} & native & yes & yes & yes \\
+webgpu & \texttt{WEBGPU} & hybrid & yes & no; claims yes & no; claims yes \\
+wicked & \texttt{WICKED} & native & yes & yes & yes \\
 \bottomrule
 \end{longtable}
 \end{center}
 
-\begin{footnotesize}
-\noindent\textsuperscript{a}\textbf{This cell deliberately corrects the source document.}
-\path{docs/graphics-renderer-feature-matrix.md} still marks BGFX \textbf{OK}, but the live
-renderer's \texttt{CompileProgram()} always fails and \cnaclass{ShaderEffect} exposes no
-binary-loading route. Chapter~\ref{ch:shader-fx-gap} records the complete source audit.
+The table is a routing audit, not runtime certification.  It was mechanically checked to contain
+42 families; EasyGL contributes the remaining four public identities.  Thirty-one families own
+both ordinary effect-aware methods and eleven inherit both shared defaults.  Of the inheritors,
+nine refuse 3D, \texttt{STUB} intentionally does nothing, and \texttt{DIRECTX10} alone produces
+a real coloured draw after silently losing the effect parameters.  Four owner routes---OpenGL
+ES~1, OpenGL~4, SDL GPU, and WebGPU---retain narrower coloured tails.
 
-\noindent\textsuperscript{b}\texttt{SDL\_RENDERER} rejects a non-null custom effect by design --- a
-2D-only renderer with no programmable shader stage has no place for it to run. This is
-\texttt{N/A}, not the source document's \texttt{BLK}: no unresolved project-owner architecture
-decision is involved. See Chapter~\ref{ch:sdl-renderer}.
+\section{Capability answers require operation-level proof}
 
-\noindent\textsuperscript{c}\textbf{This grid deliberately corrects the source document.}
-\path{docs/graphics-renderer-feature-matrix.md} still marks this row \texttt{X} ``ignored, all
-3 (Task~871, open)'' for \texttt{EasyGL} / \texttt{VULKAN} / \texttt{BGFX} --- stale as of this
-book's own independent re-verification. Public stencil dispatch now exists. EasyGL has
-selective D24S8 pixel proof. Vulkan/BGFX have cross-frame value proof but unconditionally clear
-all view/pass attachments, hence \texttt{P}, not \textbf{OK}. SDL\_Renderer has no stencil
-attachment and public masking makes the operation a no-op, hence \texttt{N/A}. D3D9's public
-test proves colour preservation but not stencil bytes and gates target clears with the
-backbuffer format, hence \texttt{P}; D3D11/D3D12 have direct GPU stencil-plane readback plus
-the public dispatch route. Even their \textbf{OK} assumes \texttt{Depth24Stencil8}: CNA's shared
-format mask wrongly retains stencil for depth-only target formats. The complete qualification
-is \S\ref{sec:backend-clear-matrix}.
+\cnaclass{GraphicsDevice::SupportsCapability} is a useful preflight query, but its shared default
+is permissive.  At the pin, \texttt{HEADLESS}, \texttt{SOFTWARE}, and \texttt{WEBGPU} report MRT
+while rejecting every multi-target set.  \texttt{SDL\_GPU}, \texttt{WEBGPU}, and
+\texttt{SOFTWARE} report occlusion-query support while inheriting a null factory; \texttt{HEADLESS}
+returns a bookkeeping object with a constant pseudo-count rather than a real GPU query.  These are
+tracked defects, not support.
 
-\noindent\textsuperscript{d}\textbf{Do not read this aggregate cell field-by-field.}
-The source document collapses culling, fill, bias, multisampling, and scissor enable into one
-status. The live audit found that SDL\_Renderer ignores the whole rasterizer object while
-applying a non-empty scissor rectangle unconditionally, and D3D12's otherwise-real rasterizer
-PSOs still force a full-target native scissor. Section
-\ref{sec:backend-viewport-scissor-matrix} supersedes this row for viewport/scissor decisions.
+Conversely, a false or absent high-level bit can hide a narrower usable path.  Profile-gated GL
+queries, driver-gated wrapper capabilities, fixed-function rendering, CPU rasterization, and
+trace validation all need their own labels.  The safe decision sequence is:
 
-\noindent\textsuperscript{e}\textbf{This row is deliberately narrow.}
-It compares only non-MSAA \cnaclass{RenderTarget2D} color across separate
-\texttt{DiscardContents}/\texttt{PreserveContents} bind cycles. SDL Renderer, EasyGL, and
-Vulkan have discriminating pixels; BGFX has smoke only; D3D9/11/12 are source-proven here.
-It says nothing about Platform, depth/stencil, cube targets, presentation/backbuffer usage,
-redundant binds, or plural cube bindings. Those cases diverge materially; see
-\S\ref{sec:backend-rendertarget-usage-matrix}.
-\end{footnotesize}
+\begin{enumerate}
+  \item filter by platform/dependency admissibility and the exact public selector;
+  \item inspect the factory/resource operation and the draw route for the required feature;
+  \item require renderer-owned tests or a retained host artifact at the needed evidence tier;
+  \item use a second structurally independent family as a localization control;
+  \item retain skips, refusals, and capability/reporting contradictions in the result.
+\end{enumerate}
 
-This grid omits the source document's own Texture2D/Texture3D/TextureCube,
-Model/OcclusionQuery, and remaining-genuine-limitations tables entirely --- not because they are
-less real, but because condensing all six original tables into one appendix would defeat the
-``quick reference, not replacement'' purpose this appendix states for itself; the two grids
-above were chosen as the ones a reader deciding which renderer to target for a specific game
-mechanic (2D-only? relies on device state objects for a real gameplay effect like an outline
-shader via a custom \texttt{DepthStencilState}?) is most likely to need first. The full six-table
-original remains the primary source for everything else, subject to the explicitly documented
-stale cells this appendix has independently re-audited.
-
-\section{Reading this table safely}
-
-Two cautions from this book apply to every row above. First, ``verified'' means something
-different for different renderers --- Chapter~\ref{ch:direct3d-backends}'s own D3D9 column is
-explicitly the strictest bar in the project (pixel-for-pixel against a real running XNA~4.0
-runtime), while a BGFX or CANVAS row's own verification is scoped more narrowly, and each
-renderer chapter says so directly rather than leaving the reader to assume equivalence.
-Second, this table is a snapshot. This book's own source material carried dated corrections in
-both directions --- the Direct3D~9 renderer's own documentation and the project's cross-renderer
-feature matrix genuinely disagreed about the render-target-as-texture fix's timing at one
-point, and the feature matrix's own account was the more current one. Treat this appendix the
-same way: a starting map, not a final word, to be checked against the project's own current
-\path{docs/graphics-renderer-feature-matrix.md} before relying on any single row.
+Appendix~\ref{ch:verification-tiers} defines the evidence vocabulary.  The renderer chapters own
+the narrower state, shader, texture, readback, and platform qualifications that cannot fit in
+this compact matrix.

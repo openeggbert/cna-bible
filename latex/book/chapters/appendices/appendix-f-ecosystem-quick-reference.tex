@@ -1,254 +1,225 @@
-\chapter{API Quick Reference: Ecosystem and Platforms}
+\chapter{Ecosystem and Platform Quick Reference}
 \label{ch:api-quick-reference-vol2}
 
-Appendix~\ref{ch:api-quick-reference} did the same job for the core framework and graphics
-classes; this appendix extends that lookup companion to the namespaces covered in
-Parts~V--IX --- Input, Audio, Media, Devices and Sensors, Networking, GamerServices, and a
-handful of \repolink{sharp-runtime} core types every other chapter in those parts leans on. As in
-Appendix~\ref{ch:api-quick-reference}, every entry here was read directly from the
-corresponding header at the time of writing, and this is a summary of classes already given
-full narrative treatment elsewhere in this book, not a substitute for reading that treatment.
+This companion to Appendix~\ref{ch:api-quick-reference} maps the framework-service and
+sharp-runtime surface used throughout Parts~VII--X. It groups stable API roles and puts the
+current implementation boundary beside each one. Exact signatures belong to the pinned headers;
+platform delivery, ownership, hostile-input behavior and test evidence belong to the cited
+chapters.
 
 \section{Input: Keyboard, Mouse, GamePad, and Touch}
 \label{sec:api-input}
 
-\cnaclass{Keyboard} and \cnaclass{Mouse} are both non-instantiable static classes exposing a
-single \texttt{GetState()} that returns an immutable snapshot --- \cnaclass{KeyboardState} (an
-\texttt{IsKeyDown} / \texttt{IsKeyUp} / \texttt{GetPressedKeys()} query surface plus an indexer
-returning a \cnaclass{KeyState}) and \cnaclass{MouseState} (\texttt{X} / \texttt{Y},
-\texttt{LeftButton} / \texttt{MiddleButton} / \texttt{RightButton} / \texttt{XButton1} / \texttt{XButton2},
-and \texttt{ScrollWheelValue}) respectively. Both classes carry a cluster of \texttt{CNAEXT/EXT}
-extensions that fill gaps a desktop port genuinely needs: \cnaclass{Keyboard}'s
-\texttt{GetModStateEXT} / \texttt{GetScancodeNameEXT} / \texttt{GetKeyNameEXT} (and their inverses)
-expose layout-independent versus layout-dependent key naming that XNA's console-era API never
-needed to distinguish; \cnaclass{Mouse}'s \texttt{SetCaptureEXT} / \texttt{GetGlobalPositionEXT}/%
-\texttt{WarpGlobalEXT} and relative-mouse-mode property support desktop window-manager
-interactions with no Xbox~360 equivalent at all. \cnaclass{MouseState} additionally carries a
-\texttt{CNAEXT GetHorizontalScrollWheelValueEXT} property --- deliberately excluded from
-\texttt{Equals} / \texttt{GetHashCode} so those two stay byte-identical to FNA's own, vertical-only
-comparison, even though the field itself is real and populated from SDL's horizontal wheel axis.
+\begin{small}
+\begin{longtable}{>{\raggedright\arraybackslash}p{3cm}>{\raggedright\arraybackslash}p{5.15cm}>{\raggedright\arraybackslash}p{3.35cm}}
+\toprule
+\textbf{Type group} & \textbf{Public shape} & \textbf{Current boundary} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Type group} & \textbf{Public shape} & \textbf{Current boundary} \\
+\midrule
+\endhead
+\cnaclass{Keyboard}, \cnaclass{KeyboardState} & Static state snapshots, key up/down and pressed-key
+  enumeration; marked scancode, modifier and naming helpers. & SDL delivery is real; layout name,
+  physical scancode and XNA key identity must not be collapsed. \\
+\cnaclass{Mouse}, \cnaclass{MouseState} & Position, buttons, vertical wheel and desktop capture,
+  relative/global helpers. & Logical-presentation, window, physical-pixel and post-present
+  coordinates diverge by renderer and host. \\
+\cnaclass{GamePad}, capabilities and state & Player-indexed state, dead-zone modes, vibration,
+  buttons/sticks/triggers; marked identity, light, trigger-rumble and sensor additions. & Device
+  open/hotplug, SDL mapping and modern-controller extensions have separate evidence. \\
+\cnaclass{TouchPanel}, collection and gesture types & Touch snapshot, display metadata, enabled
+  gestures and gesture dequeue, plus platform-injection plumbing. & Mouse/touch substitution is
+  not physical-touch proof; Web and mobile coordinate/lifecycle paths differ. \\
+\cnans{CNA::Input} services & Clipboard, joystick, haptics, sensors, power and enumerated input
+  devices outside XNA's surface. & These are CNA extensions and can have platform-specific
+  absence/refusal semantics. \\
+\bottomrule
+\end{longtable}
+\end{small}
 
-\textbf{Coordinate warning.} Absolute mouse/button/touch reads and
-\cnaclass{Mouse}::\texttt{SetPosition} do not have one uniform logical-presentation contract.
-SDL-renderer products have the complete mapping; EasyGL/Canvas cover only their default
-height-driven mode; WebGPU/SDL GPU mix window and physical-pixel spaces on high-density
-displays; Vulkan passes through after a non-1:1 resize; and FREEDIRECT changes behavior after its
-first \texttt{Present()}. See \S\ref{sec:input-logical-coordinate-routing} and the complete
-renderer matrix in \S\ref{sec:backend-input-coordinate-matrix} before treating
-\texttt{Mouse::GetState()} coordinates as rendered logical pixels.
+Chapter~\ref{ch:input-system} owns the exact SDL event/state paths and coordinate matrix. A state
+object being constructible without hardware is not evidence that a host delivered the event or
+that the selected renderer maps its coordinates back into the same logical space.
 
-\cnaclass{GamePad} follows the same static-class shape, with \texttt{GetCapabilities}/%
-\texttt{GetState} (two overloads, the second taking an explicit \cnaclass{GamePadDeadZone} mode)
-and \texttt{SetVibration}. Its \cnaclass{CNAEXT} surface is the largest of any class in this
-appendix, and reflects a real hardware gap rather than a naming inconsistency: XNA's Xbox~360
-gamepad model has no vocabulary at all for a modern controller's light bar, trigger vibration
-motors, touchpad, gyroscope, accelerometer, back paddles, or the several controller identity
-queries (\texttt{GetGUIDEXT}, \texttt{GetSerialEXT}, \texttt{GetSteamHandleEXT}, and more) that a
-2020s USB/Bluetooth controller stack makes available and an Xbox~360 pad simply didn't have.
-\cnaclass{GamePadCapabilities} mirrors this exactly: roughly twenty real-XNA
-\texttt{HasXxxButton} / \texttt{HasXxxThumbStick} / \texttt{HasXxxTrigger} flags, plus ten further
-\texttt{CNAEXT}-tagged \texttt{HasXxxEXT} flags for exactly the modern features above.
-
-\cnaclass{Touch::TouchPanel} is, like \cnaclass{Keyboard} / \cnaclass{Mouse} / \cnaclass{GamePad}, a
-static class --- \texttt{GetState()} returns a \cnaclass{Touch::TouchCollection} (an
-STL-container-shaped, technically-always-mutable collection that nonetheless reports
-\texttt{IsReadOnly} as \texttt{true}, faithfully matching FNA's own documented inconsistency
-rather than \\ "fixing" it) and \texttt{ReadGesture()} dequeues the next
-\cnaclass{Touch::GestureSample}. \texttt{DisplayWidth} / \texttt{DisplayHeight}/%
-\texttt{DisplayOrientation} and \texttt{EnabledGestures} round out the public surface; a cluster
-of \texttt{CNAEXT} methods (\texttt{SetFinger}, \texttt{INTERNAL\_onTouchEvent}, \texttt{Update})
-mark the platform-input-bridge plumbing FNA itself keeps \texttt{internal}, exposed here only
-because C\texttt{++} has no assembly-internal visibility modifier to fall back on.
-
-\section{Audio and Media: SoundEffect, Song, and MediaPlayer}
+\section{Audio and Media}
 \label{sec:api-audio-media}
 
-\cnaclass{SoundEffect} is move-only (matching FNA's own single-object instance-tracking
-contract, where disposing the source effect cascades to every \cnaclass{SoundEffectInstance} it
-created) and offers three constructor families: loading a file directly
-(\texttt{CNAEXT}, since real XNA never constructs a \cnaclass{SoundEffect} from a bare path
-outside the content pipeline), and two raw-PCM-buffer constructors --- one plain, one with
-explicit loop points --- that both require genuinely headerless, signed 16-bit PCM samples
-rather than a whole WAV file's bytes, a documented and easy mistake to make. \texttt{Play()}
-(two overloads: fire-and-forget, or with explicit volume/pitch/pan) and \texttt{CreateInstance()}
-are the two ways to actually hear it; four static properties (\texttt{MasterVolume},
-\texttt{DistanceScale}, \texttt{DopplerScale}, \texttt{SpeedOfSound}) govern process-wide 3D-audio
-approximation, since SDL3\_mixer itself has no native 3D audio model to fall back on.
-\cnaclass{SoundEffectInstance} is the mutable playback handle \texttt{CreateInstance()} returns:
-\texttt{Play} / \texttt{Stop} / \texttt{Pause} / \texttt{Resume}, \texttt{Volume} / \texttt{Pan}/%
-\texttt{Pitch} / \texttt{IsLooped} properties, and \texttt{Apply3D} (an attenuation-and-pan
-approximation over listener/emitter positions, not a real 3D mixer feature). Its subclass
-\cnaclass{DynamicSoundEffectInstance} adds a \texttt{BufferNeeded} event and
-\texttt{SubmitBuffer} (plus a \texttt{CNAEXT SubmitFloatBufferEXT} float32 variant) for
-streaming/procedural audio that has no pre-loaded \cnaclass{SoundEffect} behind it at all.
+\begin{small}
+\begin{longtable}{>{\raggedright\arraybackslash}p{3cm}>{\raggedright\arraybackslash}p{5.15cm}>{\raggedright\arraybackslash}p{3.35cm}}
+\toprule
+\textbf{Type group} & \textbf{Public shape} & \textbf{Current boundary} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Type group} & \textbf{Public shape} & \textbf{Current boundary} \\
+\midrule
+\endhead
+\cnaclass{SoundEffect},\newline
+  {\scriptsize\texttt{SoundEffectInstance}}\index{SoundEffectInstance} &
+  Loaded/raw PCM sound, fire-and-forget or
+  owned instance playback, volume/pitch/pan/loop and listener/emitter \texttt{Apply3D}. & The
+  3D model is a CNA-side approximation over SDL3\_mixer; source/instance disposal and channel
+  ownership are observable contracts. \\
+{\scriptsize\texttt{DynamicSoundEffect}}\newline\texttt{Instance}%
+  \index{DynamicSoundEffectInstance} &
+  Buffer-needed event and streamed PCM submission, plus a
+  marked float-buffer path. & Int16 and float modes cannot be mixed silently; queue timing and
+  callback thread/order need runtime evidence. \\
+XACT objects & Wave banks, sound banks, cues, categories, variables and RPC/DSP-like authored
+  behavior. & CNA parses and plays a substantial subset through its own engine; unsupported
+  fields and malformed boundaries remain explicit. \\
+\cnaclass{Song}, \cnaclass{MediaPlayer} & Song metadata and static queue/playback control,
+  shuffle/repeat/mute/volume, position and state-change events. & Ownership, callback order and
+  track metadata differ between bare files, library scans and active playback. \\
+\cnaclass{Video}, \cnaclass{VideoPlayer} & Video metadata, play/pause/resume/stop, frame texture,
+  volume/mute/loop and marked URI/track selection. & FFmpeg availability is platform-conditioned;
+  decoded CPU frame, uploaded texture and synchronized playback are distinct milestones. \\
+\bottomrule
+\end{longtable}
+\end{small}
 
-\cnaclass{Song} is a content handle rather than a playback controller --- \texttt{Name},
-\texttt{Duration}, \texttt{Album} / \texttt{Artist} / \texttt{Genre} (all \texttt{nullptr} unless the
-song came from a real \cnaclass{MediaLibrary} scan rather than a bare file path), and real,
-tag-derived \texttt{IsRated} / \texttt{Rating} / \texttt{TrackNumber} properties populated from a
-file's actual ID3v2/Vorbis metadata rather than left as permanent stubs. \cnaclass{MediaPlayer}
-is, like the input classes above, a static class: \texttt{Play} (three overloads: single song,
-a \cnaclass{SongCollection}, or a collection plus a starting index), \texttt{Pause}/%
-\texttt{Resume} / \texttt{Stop} / \texttt{MoveNext} / \texttt{MovePrevious}, and
-\texttt{IsRepeating} / \texttt{IsShuffled} / \texttt{IsMuted} / \texttt{Volume} / \texttt{PlayPosition}
-properties, plus an \texttt{ActiveSongChanged} and \texttt{MediaStateChanged} event pair.
+Chapters~\ref{ch:audio-system} and~\ref{ch:media-system} separate decode, object lifetime,
+playback and platform codecs. A reader accepting a file is not proof that a mixer/video device
+played it or that its events arrived on the intended thread.
 
-\section{Devices and Sensors: Accelerometer and Compass}
+\section{Devices and Sensors}
 \label{sec:api-devices-sensors}
 
-Chapter~\ref{ch:devices-sensors} gives this namespace's full narrative treatment, including its
-concurrency findings; this section is the lookup-companion summary. \cnaclass{Accelerometer} and
-\cnaclass{Compass} both derive from the template base \cnans{SensorBase<TSensorReading>}
-(\cnans{TSensorReading} is \cnaclass{AccelerometerReading} or \cnaclass{CompassReading}
-respectively), which supplies every sensor class's shared surface: \texttt{CurrentValue} (throws
-\texttt{System::InvalidOperationException} unless \texttt{IsSupported} is \texttt{true} ---
-callers must check \texttt{IsSupported} first, never catch the exception as a substitute),
-\texttt{IsDataValid}, \texttt{TimeBetweenUpdates} (a \cnaclass{System::TimeSpan}, real WP7 default
-2~milliseconds, re-read fresh on every incoming sample so a change while the sensor is running
-takes effect immediately without a \texttt{Stop()} / \texttt{Start()} cycle), the
-\texttt{CurrentValueChanged} event, and the pure-virtual \texttt{Start()} / \texttt{Stop()} pair
-every derived class implements against its own hardware.
+\begin{small}
+\begin{longtable}{>{\raggedright\arraybackslash}p{3cm}>{\raggedright\arraybackslash}p{5.15cm}>{\raggedright\arraybackslash}p{3.35cm}}
+\toprule
+\textbf{Type group} & \textbf{Public shape} & \textbf{Current boundary} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Type group} & \textbf{Public shape} & \textbf{Current boundary} \\
+\midrule
+\endhead
+Sensor base and readings & Support/state, update interval, current value, start/stop and change
+  events for accelerometer, compass, gyroscope and motion-shaped types. & SDL covers only part of
+  the sensor vocabulary; Android-native seams, permissions and lifecycle must be named. \\
+\cnaclass{VibrateController} & XNA/WP-shaped vibration plus marked intensity/support/device
+  helpers. & A stored request is not motor engagement; emulator and physical hardware are
+  different evidence tiers. \\
+\cnans{CNA::Devices} & Camera, display/system information, dialogs, URL launch, locale,
+  clipboard, tray and power services. & Optional \texttt{devices-ext} module and host support;
+  many services deliberately fail or return unavailable on headless/unsupported hosts. \\
+\bottomrule
+\end{longtable}
+\end{small}
 
-\cnaclass{Accelerometer} adds a static \texttt{IsSupported} and a \texttt{State} property ---
-the one strict-XNA-API member of \cnaclass{SensorState} among this namespace's four sensor
-classes, per that enum's own documentation; \cnaclass{Compass} / \cnaclass{Gyroscope} / \texttt{Motion}
-expose the identical property only as a \texttt{CNAEXT} symmetry addition, since the real WP7
-\cnaclass{Compass} class has no \texttt{State} member at all. \cnaclass{Accelerometer} also
-carries a legacy \texttt{ReadingChanged} event, deprecated on real WP7 7.1 in favor of
-\texttt{CurrentValueChanged} but still present and still raised here for API completeness with
-every real WP7 version; \texttt{CurrentValueChanged} always fires first and
-\texttt{ReadingChanged} second for the same reading, never the reverse and never interleaved.
-Each delivered \cnaclass{AccelerometerReading} carries a \texttt{Timestamp}
-(\cnaclass{System::DateTimeOffset}) and an \texttt{Acceleration} (\cnaclass{Vector3}, in
-$\text{m/s}^2$, SDL's own native unit for this axis).
-
-\cnaclass{Compass} has no SDL-backed implementation on any platform --- SDL3 exposes no
-magnetometer API anywhere --- so its real data path exists only on Android, via a dedicated
-native backend (\cnans{Detail::AndroidCompassBackend}) reading the NDK's rotation-vector and
-magnetic-field sensors directly, with no SDL involvement at all. On every other supported
-platform, \texttt{IsSupported} is permanently \texttt{false} and \texttt{Start()} always throws
-\cnaclass{SensorFailedException}. Each delivered \cnaclass{CompassReading} carries
-\texttt{HeadingAccuracy} / \texttt{MagneticHeading} / \texttt{TrueHeading} (all
-\texttt{double}, in degrees) and \texttt{MagnetometerReading} (\cnaclass{Vector3}, in
-micro-teslas). \texttt{TrueHeading} is honestly documented as currently identical to
-\texttt{MagneticHeading} on every backend in this codebase: a genuine true-north correction needs
-magnetic declination, which in turn needs geographic location data this namespace does not yet
-implement, and this project's own methodology forbids fabricating an assumed declination rather
-than reporting the most accurate value actually available. \cnaclass{Compass} additionally
-raises a \texttt{Calibrate} event (\cnaclass{CalibrationEventArgs}) when the backend detects the
-sensor needs recalibration.
-
-\cnaclass{SensorState} (\texttt{NotSupported} / \texttt{Ready} / \texttt{Initializing} /
-\texttt{NoData} / \texttt{NoPermissions} / \texttt{Disabled}) is shared across all four sensor
-classes in this namespace, but only four of its six values are ever actually produced by any of
-them today, confirmed by reading every assignment site directly: \texttt{NoData} and
-\texttt{NoPermissions} are declared and reachable in principle but currently dead code across
-this entire codebase, documented as such rather than silently left unexplained.
+Chapter~\ref{ch:devices-sensors} documents event queues, thread safety and the gap between
+synthetic injection and physical delivery. Chapter~\ref{ch:android-macos} records the
+limited Android/macOS artifacts at the pin; it does not promote source presence to mobile
+coverage.
 
 \section{Networking and GamerServices}
 \label{sec:api-net-gamerservices}
 
-\cnaclass{NetworkSession} is the largest single class in this appendix, and its size is
-representative of what it actually does: five static factory families
-(\texttt{Create} / \texttt{Find} / \texttt{Join} / \texttt{JoinInvited}, each with a synchronous form
-and a \texttt{Begin} / \texttt{End} fake-async pair, per the pattern Chapter~\ref{ch:storage} introduces for
-\cnaclass{Storage}), four gamer collections (\texttt{AllGamers}/%
-\texttt{LocalGamers} / \texttt{RemoteGamers} / \texttt{PreviousGamers}), and six events
-(\texttt{GamerJoined} / \texttt{GamerLeft} / \texttt{HostChanged} / \texttt{GameStarted}/%
-\texttt{GameEnded} / \texttt{SessionEnded}). \texttt{AllowHostMigration} and
-\texttt{SimulatedLatency} / \texttt{SimulatedPacketLoss} are worth flagging precisely because they
-invert this book's usual ``faithful shape, inert behavior'' pattern: FNA declares all three as
-plain, stored-but-unused properties with zero backing logic, while CNA's own \texttt{ENetBackend}
-gives every one of them a real implementation --- genuine deterministic host migration, and
-genuine probabilistic latency/loss injection scoped to application data only. \cnaclass{NetworkGamer}
-(\texttt{Id}, \texttt{IsHost}, \texttt{IsLocal}, \texttt{IsReady}, \texttt{RoundtripTime}) is a
-second, smaller example of the same pattern: several of its properties (\texttt{Id} always~0,
-\texttt{IsHost} always~\texttt{true}) are permanently hardcoded stubs in FNA itself, restored to
-real, wire-negotiated values here via \texttt{CNAEXT} setters FNA has no equivalent for.
+\begin{small}
+\begin{longtable}{>{\raggedright\arraybackslash}p{3cm}>{\raggedright\arraybackslash}p{5.15cm}>{\raggedright\arraybackslash}p{3.35cm}}
+\toprule
+\textbf{Type group} & \textbf{Public shape} & \textbf{Current boundary} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Type group} & \textbf{Public shape} & \textbf{Current boundary} \\
+\midrule
+\endhead
+\cnaclass{NetworkSession} & Create/find/join/invited families, local/remote/all/previous gamer
+  collections, session state/events, update, host migration and simulated network conditions. &
+  Local discovery and ENet delivery are real; they are not Xbox LIVE matchmaking and do not
+  supply arbitrary Internet traversal. \\
+{\scriptsize\texttt{LocalNetworkGamer}}\index{LocalNetworkGamer},\newline
+  \cnaclass{NetworkGamer} &
+  Identity/host/local/ready/round-trip state,
+  send/receive, voice-like and session-owned relationships. & Packet framing, peer identity,
+  ordering and leave/disconnect transitions require two-process hostile-input tests. \\
+\cnaclass{SignedInGamer} and related service types & Local identity,
+  persistence, paging/rating and selected overlay behavior. & Synthetic/local substitutes preserve
+  API shape but do not claim Xbox LIVE service equivalence. \\
+\cnaclass{AvatarRenderer} and related types & Faithful base Avatar API plus opt-in
+  \cnaclass{SkinnedModelEXT} real-rendering route. & Base existence and extension rendering are
+  deliberately separate; neither supplies Microsoft's remote avatar service/assets. \\
+\bottomrule
+\end{longtable}
+\end{small}
 
-\cnaclass{LeaderboardReader} provides paged access to a leaderboard via three static
-\texttt{Read} overloads (a plain page, a page centered on a pivot gamer, or a page restricted to
-an explicit gamer set) each with a synchronous and \texttt{Begin} / \texttt{End} form,
-\texttt{PageUp} / \texttt{PageDown}, and \texttt{CanPageUp} / \texttt{CanPageDown} / \texttt{Entries}
-properties --- real, local-store-backed behavior sorted by rating descending, where FNA's own
-equivalent is uniformly a \texttt{NotSupportedException} stub. \cnaclass{Achievement} is a small,
-immutable value type (\texttt{Key} / \texttt{Name} / \texttt{Description} / \texttt{GamerScore}/%
-\texttt{IsEarned} / \texttt{EarnedDateTime}); its one XNA method, \texttt{GetPicture()}, is a
-deliberate, documented exception to this book's ``restore what FNA stubbed out'' pattern ---
-Xbox~360 achievement artwork was streamed from Xbox LIVE at request time with no real local
-equivalent to substitute, so it stays throwing by design, the same reasoning Chapter~\ref{ch:gamerservices}'s
-\texttt{Guide} coverage already applies to its own Xbox-Live-only methods.
+Chapters~\ref{ch:networking}, \ref{ch:gamerservices}, and~\ref{ch:avatar} own the delivery,
+persistence, hostile-packet, local-substitute, and extension boundaries.
 
-\section{Storage: StorageDevice and StorageContainer}
+\section{Storage}
 \label{sec:api-storage}
 
-\cnaclass{StorageDevice} exposes \texttt{FreeSpace} / \texttt{TotalSpace} (both real values read
-from the underlying filesystem) and \texttt{IsConnected}, following the XNA~4.0 fake-async
-pattern throughout: \texttt{BeginOpenContainer} / \texttt{EndOpenContainer} open a container by
-display name; \texttt{DeleteContainer} removes one outright; and a four-overload
-\texttt{BeginShowSelector} / \texttt{EndShowSelector} pair (with or without an explicit
-\cnaclass{PlayerIndex}, with or without a required free-space/directory-count) surfaces the
-device-selection UI real XNA needed on a physical Xbox~360, even though this implementation
-only ever resolves to the local filesystem. Two \texttt{CNAEXT} static methods,
-\texttt{SetAppNameEXT} / \texttt{GetStorageRootEXT}, are the real root every other call in this
-namespace ultimately resolves against --- a game is expected to call \texttt{SetAppNameEXT}
-once, early, before any other storage call. \cnaclass{StorageContainer} provides the actual
-file/directory operations relative to that root: \texttt{CreateDirectory}/%
-\texttt{DirectoryExists} / \texttt{DeleteDirectory}, \texttt{GetDirectoryNames} (with a
-glob-pattern overload), \texttt{CreateFile} / \texttt{FileExists} / \texttt{DeleteFile},
-\texttt{GetFileNames} (same glob-pattern overload), and a three-overload \texttt{OpenFile}
-family (mode alone; mode plus access; mode plus access plus sharing), each returning a real
-\cnaclass{System::IO::Stream}. Every relative path passed to any of these methods is resolved
-by simple path concatenation with no \texttt{..}-traversal guard of any kind --- Chapter~\ref{ch:storage}
-covers this real, currently open gap in full; a filename that ultimately came from outside a
-game's own hardcoded naming scheme should be validated by the caller before it ever reaches
-this API.
+\begin{small}
+\begin{longtable}{>{\raggedright\arraybackslash}p{3cm}>{\raggedright\arraybackslash}p{5.15cm}>{\raggedright\arraybackslash}p{3.35cm}}
+\toprule
+\textbf{Type} & \textbf{Public shape} & \textbf{Current boundary} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Type} & \textbf{Public shape} & \textbf{Current boundary} \\
+\midrule
+\endhead
+\cnaclass{StorageDevice} & Fake-async selector/container open, connected/capacity state,
+  delete-container, and application-root extensions. & Five focused tests exist; selection is a
+  local-filesystem substitute for platform UI. \\
+\cnaclass{StorageContainer} & Relative directory/file create/delete/enumerate/existence and
+  stream-open operations. & Path containment is absent at the pin and this class has no focused
+  test corpus; caller-controlled paths are a security boundary. \\
+\bottomrule
+\end{longtable}
+\end{small}
+
+Chapter~\ref{ch:storage} explains the base-root/container-root asymmetry and fake-async
+ownership. Do not summarize the namespace as ``tested'' by transferring StorageDevice evidence
+to StorageContainer.
 
 \section{SharpRuntime Core Types Used Everywhere}
 \label{sec:api-sharpruntime-core}
 
-Three \repolink{sharp-runtime} types appear in nearly every class this book names, and are worth
-a quick-reference entry of their own rather than re-explaining at every use site.
-\cnaclass{System::TimeSpan} stores a tick count (100~nanoseconds each, matching .NET exactly)
-behind \texttt{Days} / \texttt{Hours} / \texttt{Minutes} / \texttt{Seconds} / \texttt{Milliseconds} and
-their \texttt{TotalXxx} fractional counterparts, \texttt{FromXxx} static factories for every
-unit, and a full arithmetic/comparison operator set --- the type Chapter~\ref{ch:game-loop}'s
-\cnaclass{GameTime} and the \cnaclass{Storage}, \cnaclass{NetworkSession}, and
-\cnaclass{SoundEffect} chapters all build on for durations and timestamps.
-\cnaclass{System::EventHandler<TEventArgs>} is a deliberate architectural departure from real
-\uppercase{.}NET worth stating plainly: in C\#, \texttt{EventHandler<T>} is only a delegate
-\emph{type}, with the \texttt{event} keyword itself supplying subscription storage and
-invocation; C\texttt{++} has no \texttt{event} keyword, so this class folds both roles into one
---- \texttt{operator+=} / \texttt{Add} (returning a removal \texttt{Token}) to subscribe,
-\texttt{Remove} / \texttt{Clear} to unsubscribe, and \texttt{Raise} / \texttt{Invoke} to fire every
-subscriber against a snapshot of the handler list (so a handler that unsubscribes itself
-mid-raise cannot corrupt the in-progress dispatch). A \texttt{CNAEXT SetReplayHook} exists
-specifically to model the handful of real XNA events --- \cnaclass{NetworkSession::GamerJoined}
-chief among them --- that are documented to replay already-happened state to a new subscriber
-immediately upon \texttt{+=}, a quirk \texttt{EventHandler<T>} cannot reproduce automatically on
-its own. \cnaclass{System::IO::Stream} is a lightweight subset of .NET's own \texttt{Stream}:
-pure-virtual \texttt{Read} / \texttt{Close} / \texttt{Length}, with \texttt{Write} / \texttt{WriteByte}/%
-\texttt{Seek} / \texttt{SetLength} defaulting to \texttt{NotSupportedException} for a read-only
-stream and available to override where writing or seeking is genuinely supported --- the base
-class every concrete stream this book names (\cnaclass{MemoryStream}, and the real filesystem
-streams \cnaclass{StorageContainer::OpenFile} in Chapter~\ref{ch:storage} returns) derives from.
+\begin{small}
+\begin{longtable}{>{\raggedright\arraybackslash}p{3cm}>{\raggedright\arraybackslash}p{5.15cm}>{\raggedright\arraybackslash}p{3.35cm}}
+\toprule
+\textbf{Type group} & \textbf{Translation role} & \textbf{C\texttt{++} reality} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Type group} & \textbf{Translation role} & \textbf{C\texttt{++} reality} \\
+\midrule
+\endhead
+\cnaclass{System::Object} and type helpers & .NET-shaped base naming, equality/hash/string and
+  selected runtime identity. & Standard C\texttt{++} objects/RTTI; no CLR object header,
+  reflection universe, universal boxing or garbage collector. \\
+Primitive aliases and \cnaclass{String} & Greppable mapping from C\# primitive vocabulary into
+  fixed-width C\texttt{++} types and \texttt{std::string}. & UTF and managed-string semantics
+  require explicit per-operation work; an alias is not a CLR. \\
+\cnaclass{TimeSpan}, date/time types & Tick-based durations and selected date/time operations. &
+  Value types with explicit arithmetic/validation; timezone/runtime breadth is bounded. \\
+\cnaclass{EventHandler<T>} & Subscription tokens, add/remove/clear and snapshot-based raise. &
+  Combines C\# delegate/event roles explicitly; lifetime and thread safety remain caller/library
+  contracts. \\
+Collections and task/thread primitives & Source-translation-friendly containers, tasks,
+  cancellation and synchronization subsets. & APIs may be implemented, ignored, or intentionally
+  out of scope; the database status is not a behavioral parity percentage. \\
+\cnaclass{System::IO::Stream}, \cnaclass{MemoryStream}, readers/writers & Abstract byte I/O,
+  in-memory storage and .NET-shaped binary/text helpers. & Ownership, closed-state behavior,
+  encodings and exception types must be checked per implementation. \\
+\bottomrule
+\end{longtable}
+\end{small}
 
-\cnaclass{MemoryStream} is the concrete in-memory \cnaclass{Stream} this ecosystem uses when
-there is no meaningful file path (notably loaded Android content). Its default constructor makes
-an empty writable byte vector. The raw-buffer constructor deliberately differs from .NET:
-it defaults to read-only, where real \texttt{MemoryStream(byte[])} defaults to writable. Calling
-\texttt{Close()} rejects subsequent normal stream operations (including \texttt{Read},
-\texttt{Write}, \texttt{Seek}, \texttt{Length}, and \texttt{Position}), but intentionally leaves
-\texttt{ToArray()} and \texttt{GetBuffer()} available for post-close extraction. The former
-returns an independent vector; the latter exposes the live backing vector and so cannot be held
-across a write that may reallocate it. Argument validation rejects null buffers and negative
-offsets/counts, while a write whose \texttt{Position + count} overflows the runtime's signed
-integer range throws \cnaclass{System::IO::IOException} rather than corrupting memory --- Ch.\ref{ch:sharp-runtime-namespaces}.
+Chapters~\ref{ch:sharp-object-model}--\ref{ch:sharp-verification-audit} separate API-shaped
+translation help from actual C\texttt{++} semantics, include closure and verification. The
+sharp-runtime database at the pin contains 16,201 task rows and 2,183 tickets, but those are
+workflow classifications with query-defined denominators, not a whole-BCL completion score.
 
 \section{Reading this appendix safely}
 
-The same caution Appendix~\ref{ch:api-quick-reference} states applies here without
-modification: every
-class name above is exactly the name to search for in the corresponding repository's own
-\texttt{include/} tree, and this table is a snapshot of one point in the project's history, not
-a live mirror of it.
+Search CNA's module-owned headers for exact framework declarations and sharp-runtime's pinned
+headers/database for foundation details. Then require the appropriate source path, runtime,
+oracle and host artifact from Appendix~\ref{ch:verification-tiers}. A common type name across
+XNA, FNA, CNA and sharp-runtime establishes lineage; it does not by itself establish identical
+ownership, exceptions, threading, encoding, platform reach, or behavior.

@@ -1,3 +1,151 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase E.
 \chapter{Verification Tiers and Oracles}
 \label{ch:verification-tiers}
+
+This appendix is a claim-decoding key for the rest of the book.  It does not rank every test on
+one line from weak to strong: a compile probe, a hostile-input test, a pixel comparison, and a
+native-host run answer different questions.  The useful record is therefore an evidence vector
+that names the subject, execution environment, observation point, oracle, result, and retained
+artifact.  Chapters~\ref{ch:cnatests-architecture}--\ref{ch:ci-reality} explain the machinery; the
+tables below make its vocabulary quick to apply.
+
+\section{Evidence forms are not interchangeable}
+
+\begin{small}
+\begin{longtable}{>{\raggedright\arraybackslash}p{2.45cm}>{\raggedright\arraybackslash}p{4.15cm}>{\raggedright\arraybackslash}p{4.3cm}}
+\toprule
+\textbf{Evidence form} & \textbf{What a green result establishes} & \textbf{What it does not establish} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Evidence form} & \textbf{What a green result establishes} & \textbf{What it does not establish} \\
+\midrule
+\endhead
+Header or compile probe & Names, signatures, templates, includes, and link closure are usable in
+  the selected build. & Runtime semantics, resource creation, rendering, or host engagement. \\
+Strict-XNA positive probe & Code restricted to the intended XNA surface compiles with
+  \texttt{CNA\_STRICT\_XNA\_API}. & That the negative guard catches a leaked extension. \\
+Strict-XNA negative probe & A deliberate \texttt{CNAEXT} call fails compilation, proving the
+  guard itself is sensitive. & Coverage of every unmarked or incorrectly classified declaration. \\
+Pure deterministic test & A value, state transition, parser result, or exception matches its
+  asserted oracle on that host. & Renderer, window system, driver, or external runtime engagement. \\
+Hostile-input test & A named malformed boundary rejects, contains, or reports the input as
+  asserted. & Correct behavior for valid data or completeness of the malformed corpus. \\
+Trace / \texttt{HEADLESS} test & Routing, validation, counters, or state order reached the trace
+  implementation. & Rasterization, GPU work, visible pixels, or real occlusion samples. \\
+Source-path audit & At the pinned revision, a reachable implementation, refusal, fallback, or
+  parameter loss is visible in source. & Successful compilation or execution on a required host. \\
+Readback / small-pixel test & The exercised renderer produced the asserted value at the selected
+  readback boundary. & Whole-scene fidelity, a different renderer, or a path bypassed by readback. \\
+Golden-image comparison & A complete captured frame matches a retained reference under the
+  recorded tolerance and environment. & That the reference itself is authoritative or portable. \\
+Differential run & CNA agrees with a named independent implementation or real XNA for the
+  exercised inputs and observation. & General parity beyond that corpus; two implementations can
+  share a defect. \\
+Native-host artifact & The requested executable, API/runtime, device or browser, and observation
+  point all engaged on the named host. & Other hosts, other identities, or long-duration behavior. \\
+CI workflow success & The workflow trigger reached every recorded step and its gates passed for
+  that matrix leg. & Jobs excluded by filters, dispatch-only workflows, dead configure legs, or
+  tests never registered in that configuration. \\
+\bottomrule
+\end{longtable}
+\end{small}
+
+``Test exists'', ``test was registered'', ``test ran'', and ``oracle discriminated'' are four
+separate statements.  A skipped test is not a pass, a dry-run mutation is not a killed mutation,
+and an uploaded log is useful only when it identifies the binary, configuration, host, and
+observation that produced it.
+
+\section{Oracle authority depends on the question}
+
+For API shape, CNA's policy names Microsoft XNA reference assemblies/XML as the target surface;
+\repolink{xna4-spec} is a searchable converted documentation corpus, not a live CNA gate and not
+an infallible substitute for the original assembly.  For behavior, CNA's checklist names FNA as
+the ordinary reference, while real XNA, a format specification, or a renderer API can outrank it
+for a narrower question.  A project-authored expected value is an oracle only when its derivation
+is reviewable and independent of the code under test.
+
+\begin{center}
+\begin{tabular}{p{3.1cm}p{8.1cm}}
+\toprule
+\textbf{Question} & \textbf{Preferred authority and control} \\
+\midrule
+Public API shape & XNA reference assembly/documentation; normalize C\texttt{\#}--C\texttt{++}
+  idioms explicitly, then compile positive and negative probes. \\
+Managed behavior & Real XNA where executable; otherwise pinned FNA plus independently chosen edge
+  cases and documented intentional deviations. \\
+File-format semantics & The owning specification and independently generated fixtures; compare
+  production output with a separate decoder or digest where practical. \\
+GPU/API behavior & The native API contract plus renderer-owned execution evidence; use another
+  renderer only as a localization control, not as the sole truth source. \\
+Project extension & A written CNA contract, negative cases, and a discriminating test; XNA/FNA
+  cannot define semantics for a CNA-only feature. \\
+Historical reconstruction & Original executable/source/data and versioned captures; decompiled
+  code is evidence to audit, not automatically a behavioral specification. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Renderer and platform claims need a complete vector}
+
+A useful renderer result records all of the following fields.  Omitting one often changes the
+meaning of the claim.
+
+\begin{center}
+\begin{tabular}{p{2.7cm}p{8.5cm}}
+\toprule
+\textbf{Field} & \textbf{Record} \\
+\midrule
+Source identity & CNA SHA, sibling SHAs, local-diff status, and generated shader/table revision. \\
+Build identity & Public renderer selector, implementation family/profile, build type, toolchain,
+  feature options, and exact configure/build command. \\
+Host identity & OS/architecture, native API or translation runtime, device/driver, display mode,
+  browser/emulator/physical-hardware identity, and relevant environment variables. \\
+Subject & Exact test, demo, asset, API operation, malformed case, or renderer route. \\
+Engagement proof & A log, marker, API/device identity, browser verdict, screenshot, readback, or
+  lifecycle trace proving the intended path rather than a substitute path ran. \\
+Oracle & Expected value/image/exception and its authority; tolerance and normalization rules. \\
+Outcome & Pass, fail, expected fail, skip, unsupported, blocked, or not attempted---never one
+  overloaded ``supported'' bit. \\
+Artifact & Retained log, image, trace, manifest, digest, or CI record with a reproducible locator. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+This vector distinguishes, for example, a MinGW binary running through Wine and DXVK from a
+native MSVC/Direct3D run; a browser page loaded from an HTTP server from one opened as a local
+file; an Android APK that installs from a frame produced by its selected renderer; and an iOS
+source path from an actual signed device build.  Those are all useful milestones, but they are
+not synonyms.
+
+\section{Automation at the pinned revision}
+
+The eight checked-in workflow files provide six automatic triggers and two dispatch-only
+routes.  Three automatic Linux/Input legs stop during configuration because they pass a retired
+internal renderer token instead of a public selector.  The manual Direct3D workflow owns five of
+the seven CI-referenced helper scripts, so those layers are not routine push evidence.  Only the
+HTML-DOM browser route exercises its two runner layers directly on an ordinary push.  Sanitizer,
+mutation, fuzz-named, and validation mechanisms exist, but their mere presence does not enlarge
+the set of workflow legs that actually reach them.  Chapter~\ref{ch:ci-reality} is the dated
+path-by-path account.
+
+The safe summary at this pin is therefore neither ``CI absent'' nor ``CI complete''.  Automatic
+browser evidence, a working Devices UBSan route, platform-specific jobs, and several narrow gates
+are real; dead configure legs, dispatch-only Windows coverage, no code-coverage measurement, no
+continuous coverage-guided fuzzer, and a Direct2D mutation dry-run remain real too.
+
+\section{A minimum claim recipe}
+
+Before writing ``works'', write a narrower sentence that answers six questions:
+
+\begin{enumerate}
+  \item What exact subject and revision were examined?
+  \item Which build, renderer, platform, and host actually engaged?
+  \item Where was behavior observed---return value, trace, readback, frame, file, or peer?
+  \item What independent authority supplied the expected result?
+  \item Which negative or perturbed case proves the check can fail?
+  \item What artifact lets the next auditor reproduce or falsify the claim?
+\end{enumerate}
+
+A claim that cannot yet answer all six can still be useful.  Label it as source-proven,
+compile-proven, smoke-tested, skipped, historical, or unattempted instead of silently promoting it
+to behavioral parity.
