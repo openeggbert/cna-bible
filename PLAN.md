@@ -389,6 +389,7 @@ log grep replaces.
 | 2026-08-12 | Post-G outline-title integrity | All 1,066 UTF-16 source bookmark records decoded from `main.out` and matched exactly by `(destination, title)` to MuPDF's PDF outline; a title-only `Preface` → `PrefacX` fixture failed with two differing pairs while destination checks remained green; verifier-only change, no PDF delta |
 | 2026-08-12 | Post-G outline-hierarchy integrity | MuPDF indentation converted to all 1,066 `(destination, parent)` pairs and matched to each explicit `main.out` parent; a `chapter.1` parent-only mutation from `part.1` to `part.2` left destination/title checks green and triggered exactly two hierarchy differences; verifier-only change, no PDF delta |
 | 2026-08-12 | Post-G TOC clickable coverage | All 1,066 visible TOC destinations proven covered by 1,129 Link rectangles on physical pages 5–29; 63 wrapped rows have two rectangles; a PDF fixture changing only `Preface` from Link to Text left other navigation checks green and triggered 1,128 rectangles / 1,065 targets / missing `chapter*.1`; verifier-only change, no release-PDF delta |
+| 2026-08-12 | Post-G TOC link/text identity | MuPDF text geometry matched every TOC link to its own printed Part/chapter/section/subsection/appendix identity or `Preface`/`Index`; a PDF fixture swapping only `chapter.1` and `chapter.2` destinations preserved target coverage, landings and prior checks, while the new guard alone reported both crossed identities; verifier-only change, no release-PDF delta |
 
 ---
 
@@ -1201,3 +1202,9 @@ build and visual passes are available again.
   from Link to Text preserved the destination, title, parent, page-landing and other geometry
   checks; the new guard alone reported 1,128 rectangles, 1,065 targets and missing `chapter*.1`.
   This verifier-only hardening has no release-PDF or visual delta.
+- Bound every TOC rectangle to the structural identity visibly printed beneath it by matching
+  MuPDF text geometry to the Part roman numeral, chapter/section/subsection number, appendix
+  letter, `Preface`, or `Index`. A decompressed-PDF fixture swapped only the `chapter.1` and
+  `chapter.2` TOC destinations; target coverage, landing pages and all prior navigation checks
+  remained green, while the new guard alone reported the two crossed identities. This verifier-
+  only hardening has no release-PDF or visual delta.

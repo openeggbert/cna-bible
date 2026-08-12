@@ -698,6 +698,121 @@ EOF
             fi
             rm -f "$toc_link_result_file"
 
+            # Coverage alone would miss two TOC annotations whose valid destinations were
+            # swapped. Independently extract visible text under every rectangle and require the
+            # destination's own printed structural token: roman Part number, chapter/section
+            # number, appendix letter, or the two unnumbered labels Preface and Index.
+            toc_text_file=$(mktemp /tmp/cna-bible-toc-text.XXXXXX.json)
+            toc_identity_result_file=$(mktemp /tmp/cna-bible-toc-identities.XXXXXX.txt)
+            if mutool draw -q -F stext.json -o "$toc_text_file" "$pdf" 5-29 \
+                >/dev/null 2>&1; then
+                perl -MJSON::PP -e '
+                    my ($objects, $pages, $text_file, $toc) = @ARGV;
+                    open P, "<", $pages or die $!;
+                    while (<P>) { $page_object{$1} = $2 if /page (\d+) = (\d+) 0 R/; }
+                    close P;
+                    open O, "<", $objects or die $!;
+                    while (<O>) { $object{$1} = $2 if /^(\d+) 0 obj (.*)$/; }
+                    close O;
+                    open J, "<", $text_file or die $!;
+                    { local $/; $json = decode_json(<J>); }
+                    close J;
+                    open T, "<", $toc or die $!;
+                    while (<T>) {
+                        if (/\\contentsline \{(?:part|chapter|section|subsection)\}\{\\numberline\s*\{[^}]+\}([0-9]).*\}\{[^{}]+\}\{([^{}]+)\}%$/) {
+                            ($first_character, $destination) = ($1, $2);
+                            $numeric_title_start{$destination} = $first_character;
+                        }
+                    }
+                    close T;
+                    for ($i = 0; $i < @{$json->{pages}}; $i++) {
+                        $physical = 5 + $i;
+                        for $block (@{$json->{pages}[$i]{blocks} // []}) {
+                            for $line (@{$block->{lines} // []}) {
+                                $box = $line->{bbox};
+                                push @{$text{$physical}}, [
+                                    $line->{text} // "", $box->{x}, $box->{y},
+                                    $box->{x} + $box->{w}, $box->{y} + $box->{h}
+                                ];
+                            }
+                        }
+                    }
+                    for $physical (5 .. 29) {
+                        $page = $object{$page_object{$physical}} // "";
+                        ($annotations) = $page =~ m{/Annots\[(.*?)\]};
+                        while (($annotations // "") =~ /(\d+) 0 R/g) {
+                            $annotation = $object{$1} // "";
+                            next unless $annotation =~ m{/Subtype/Link};
+                            next unless $annotation =~ m{/D\(([^()]*)\)};
+                            $destination = $1;
+                            next unless $annotation
+                                =~ m{/Rect\[([-.0-9]+) ([-.0-9]+) ([-.0-9]+) ([-.0-9]+)\]};
+                            ($x0, $y0, $x1, $y1) = ($1, $2, $3, $4);
+                            ($top0, $top1) = (841.89 - $y1, 841.89 - $y0);
+                            @matching = grep {
+                                $cx = ($_->[1] + $_->[3]) / 2;
+                                $cy = ($_->[2] + $_->[4]) / 2;
+                                $cx >= $x0 - 1 && $cx <= $x1 + 1
+                                    && $cy >= $top0 - 1 && $cy <= $top1 + 1;
+                            } @{$text{$physical} // []};
+                            push @{$fragments{$destination}}, map { $_->[0] } @matching;
+                        }
+                    }
+                    @roman = qw(0 I II III IV V VI VII VIII IX X XI XII);
+                    for $destination (sort keys %fragments) {
+                        $visible = join(" ", @{$fragments{$destination}});
+                        if ($destination eq "chapter*.1") {
+                            $expected = "Preface";
+                            $ok = $visible =~ /\Q$expected\E/;
+                        } elsif ($destination eq "section*.30") {
+                            $expected = "Index";
+                            $ok = $visible =~ /\Q$expected\E/;
+                        } elsif ($destination =~ /^part\.(\d+)$/) {
+                            $expected = $roman[$1] // "";
+                            $quoted = quotemeta($expected);
+                            $ok = length($expected) > 0
+                                && $visible =~ /(?<![A-Za-z])$quoted(?![A-Za-z])/;
+                        } elsif ($destination =~ /^appendix\.([A-H])$/) {
+                            $expected = $1;
+                            $quoted = quotemeta($expected);
+                            $ok = $visible =~ /(?<![A-Za-z])$quoted(?![A-Za-z])/;
+                        } elsif ($destination =~ /^(?:chapter|section|subsection)\.(.+)$/) {
+                            $expected = $1;
+                            $quoted = quotemeta($expected);
+                            if (exists $numeric_title_start{$destination}) {
+                                $following = quotemeta($numeric_title_start{$destination});
+                                $ok = $visible
+                                    =~ /(?<![0-9.])$quoted(?:(?=$following)|(?=[^0-9.]))/;
+                            } else {
+                                $ok = $visible =~ /(?<![0-9.])$quoted(?![0-9.])/;
+                            }
+                        } else {
+                            $expected = "";
+                            $ok = 0;
+                        }
+                        $checked++;
+                        unless ($ok) {
+                            $bad++;
+                            print "destination=$destination expected=$expected text=$visible\n";
+                        }
+                    }
+                    print "SUMMARY " . ($checked + 0) . " " . ($bad + 0) . "\n";
+                ' "$objects_file" "$page_objects_file" "$toc_text_file" "$book_dir/main.toc" \
+                    > "$toc_identity_result_file"
+                read -r _ toc_identity_count bad_toc_identity_count <<EOF
+$(tail -1 "$toc_identity_result_file")
+EOF
+                if [ "$toc_identity_count" -eq 1066 ] && [ "$bad_toc_identity_count" -eq 0 ]; then
+                    pass "all 1066 TOC links cover their own printed structural identities"
+                else
+                    fail "TOC link/text identity audit failed ($bad_toc_identity_count wrong of $toc_identity_count targets)"
+                    grep -v '^SUMMARY ' "$toc_identity_result_file" | head -10 | sed 's/^/        /'
+                fi
+            else
+                fail "MuPDF could not extract the 25 TOC pages for link/text verification"
+            fi
+            rm -f "$toc_text_file" "$toc_identity_result_file"
+
             perl -e '
                 my ($objects, $pages, $toc) = @ARGV;
                 open P, "<", $pages or die $!;

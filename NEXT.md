@@ -462,6 +462,13 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     `Text` left every destination, title, parent, page landing and remaining link geometry green,
     while the new guard alone reported 1,128 rectangles / 1,065 targets and missing
     `chapter*.1`. This is verifier-only hardening and does not change the release PDF.
+59. **Every TOC rectangle is bound to its own printed entry, not merely some valid target.**
+    MuPDF text geometry now matches all 1,066 linked destinations to the structural identity
+    printed under their 1,129 rectangles: Part roman numeral, chapter/section/subsection number,
+    appendix letter, `Preface`, or `Index`. A decompressed-PDF fixture swapped only the two TOC
+    destinations `chapter.1` and `chapter.2`; target coverage, landings and all prior navigation
+    checks stayed green, while the new guard alone reported the two crossed printed identities.
+    This verifier-only hardening does not change the release PDF.
 
 ## Do this next
 
