@@ -23,7 +23,11 @@ case "$#:${1:-}" in
         ;;
 esac
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+system_dirname=$(command -v dirname) || {
+    printf 'ERROR: missing required sealed-pipeline command: dirname\n' >&2
+    exit 1
+}
+repo_root="$(cd "$("$system_dirname" "${BASH_SOURCE[0]}")/.." && pwd)"
 book_dir="$repo_root/latex/book"
 pdf="$book_dir/main.pdf"
 lock_helper="$repo_root/tools/book-lock.sh"
@@ -39,8 +43,9 @@ expected_pdf_date=D:20260812100654Z
 # Otherwise an absent PDF parser can waste a full fixed-date rebuild and fail only at the final
 # verification handoff.
 missing_commands=""
-for required_command in git latexmk mutool sha256sum stat make perl pdfinfo pdftotext pdffonts \
-    pdfimages pngtopnm cmp gs mktemp cp rm flock mkdir; do
+for required_command in git latexmk pdflatex makeindex mutool sha256sum stat perl pdfinfo pdftotext pdffonts \
+    pdfimages pngtopnm cmp gs mktemp cp rm flock mkdir grep sed awk find sort uniq wc head tail \
+    comm diff paste xargs cat rmdir env; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         missing_commands="$missing_commands $required_command"
     fi

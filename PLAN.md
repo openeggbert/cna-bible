@@ -1452,3 +1452,5 @@ build and visual passes are available again.
   header after the clean-input preflight, making archived release logs independently traceable.
 - Made failed visual-run cleanup exhaustive inside the freshly allocated private child, completed
   the renderer's validation/cleanup dependency preflight and corrected its output-order contract.
+- Closed verification dependency preflight over every external parser, text utility, filesystem
+  helper and build command, before scratch allocation; the sealed workflow carries the same union.

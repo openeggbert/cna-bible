@@ -14,7 +14,11 @@
 
 set -u
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+system_dirname=$(command -v dirname) || {
+    printf 'ERROR: missing required verification command: dirname\n' >&2
+    exit 1
+}
+repo_root="$(cd "$("$system_dirname" "${BASH_SOURCE[0]}")/.." && pwd)"
 book_dir="$repo_root/latex/book"
 log="$book_dir/main.log"
 pdf="$book_dir/main.pdf"
@@ -39,6 +43,26 @@ case "$#:${1:-}" in
         exit 2
         ;;
 esac
+
+# A partial artifact audit can look deceptively green when an optional-looking PDF or text tool
+# is absent. Resolve the complete external command set before allocating scratch state or starting
+# a build, so the run fails once with an actionable diagnostic and cannot silently reduce coverage.
+missing_commands=""
+required_commands="git perl pdfinfo pdftotext pdffonts pdfimages pngtopnm cmp \
+    mutool gs mktemp flock mkdir stat sha256sum grep sed awk find sort uniq wc head tail comm diff \
+    paste xargs cat rm rmdir"
+if [ "$do_build" -eq 1 ]; then
+    required_commands="make latexmk pdflatex makeindex $required_commands"
+fi
+for required_command in $required_commands; do
+    if ! command -v "$required_command" >/dev/null 2>&1; then
+        missing_commands="$missing_commands $required_command"
+    fi
+done
+if [ -n "$missing_commands" ]; then
+    printf 'ERROR: missing required verification command(s):%s\n' "$missing_commands" >&2
+    exit 1
+fi
 
 # Keep every scratch output in one private session directory. Besides preventing concurrent runs
 # from colliding, this lets one EXIT trap remove text, JSON, PDF and decoded-image intermediates
@@ -75,21 +99,6 @@ fail() { printf '  \033[31mFAIL\033[0m  %s\n' "$1"; failures=$((failures + 1)); 
 info() { printf '  ----  %s\n' "$1"; }
 
 echo "== The CNA Bible: verification pass =="
-
-# A partial artifact audit can look deceptively green when an optional-looking PDF tool is
-# absent. Release verification therefore requires every independent parser used below and fails
-# early with one actionable diagnostic instead of silently reducing coverage.
-missing_commands=""
-for required_command in make git perl pdfinfo pdftotext pdffonts pdfimages pngtopnm cmp mutool gs \
-    flock mkdir stat sha256sum; do
-    if ! command -v "$required_command" >/dev/null 2>&1; then
-        missing_commands="$missing_commands $required_command"
-    fi
-done
-if [ -n "$missing_commands" ]; then
-    fail "missing required verification command(s):${missing_commands}"
-    exit 1
-fi
 
 if [ "$do_build" -eq 1 ]; then
     acquire_book_lock exclusive || exit 1

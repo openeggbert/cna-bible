@@ -802,6 +802,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      preflights every utility used by its validation and cleanup path, recursively empties its own
      freshly allocated run child on failure or signal, and documents that successful paths are
      printed in physical-page order rather than by filesystem timestamp.
+119. **Verification dependency checks cover the complete executable path.** The verifier now
+     resolves every parser, text utility, filesystem helper and build command it invokes before
+     allocating scratch state or building. The sealed release preflight uses the same complete
+     downstream union, so a missing `paste`, `xargs`, `comm` or similar utility cannot surface only
+     after TeX or silently narrow the audit.
 
 ## Do this next
 
