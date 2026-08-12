@@ -546,6 +546,12 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     old label predicate and fails the new combined invariant. The current
     `pdftotext -layout` layer contains 302,448 words; the 302,443 count remains the accurate
     historical Phase-G checkpoint before the later prose corrections.
+70. **Release cardinalities can no longer regress silently.** The verifier now requires exactly
+    2,389 accepted / zero rejected / zero-warning makeindex entries and exactly 3,653 targeted,
+    in-bounds link rectangles, rather than accepting any clean non-empty populations. It also
+    extracts the full searchable layer in Poppler layout mode, requires the corrected 302,448-word
+    inventory and rejects NUL bytes or UTF-8 U+FFFD replacement characters. Reduced-count
+    predicates fail directly; the complete verifier remains green on the fixed-date release PDF.
 
 ## Do this next
 

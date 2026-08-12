@@ -103,10 +103,11 @@ if [ -f "$ilg" ]; then
     rejected=$(sed -n 's/.*entries accepted, \([0-9]*\) rejected.*/\1/p' "$ilg" | tail -1)
     warns=$(sed -n 's/.*lines written, \([0-9]*\) warnings.*/\1/p' "$ilg" | tail -1)
     info "makeindex accepted ${entries:-?} entries, ${rejected:-?} rejected, ${warns:-?} warnings"
-    if [ "${rejected:-1}" != "0" ] || [ "${warns:-1}" != "0" ]; then
-        fail "makeindex reported rejected entries or warnings"
+    if [ "${entries:-0}" != "2389" ] || [ "${rejected:-1}" != "0" ] \
+       || [ "${warns:-1}" != "0" ]; then
+        fail "makeindex inventory changed or reported rejected entries/warnings"
     else
-        pass "makeindex clean"
+        pass "makeindex accepted the complete 2389-entry inventory cleanly"
     fi
 else
     fail "no main.ilg -- index was not generated"
@@ -435,6 +436,30 @@ else
 fi
 rm -f "$bbox_file"
 
+# Bind the searchable layer to the reviewed corrected release. Besides catching an unexpectedly
+# missing prose block, reject byte-level extraction corruption that a simple non-empty check would
+# overlook. The word count deliberately uses the same Poppler layout mode recorded in the plan.
+text_layer_file=$(mktemp /tmp/cna-bible-text-layer.XXXXXX.txt)
+if pdftotext -layout "$pdf" "$text_layer_file" 2>/dev/null; then
+    text_layer_words=$(wc -w < "$text_layer_file")
+    read -r text_layer_nuls text_layer_replacements <<EOF
+$(perl -0777 -ne '
+    $nul += () = /\x00/g;
+    $replacement += () = /\xEF\xBF\xBD/g;
+    END { print (($nul + 0) . " " . ($replacement + 0)); }
+' "$text_layer_file")
+EOF
+    if [ "$text_layer_words" -eq 302448 ] && [ "$text_layer_nuls" -eq 0 ] \
+       && [ "$text_layer_replacements" -eq 0 ]; then
+        pass "searchable text layer has 302448 words and no NUL/U+FFFD corruption"
+    else
+        fail "unexpected searchable text layer ($text_layer_words words, $text_layer_nuls NUL, $text_layer_replacements U+FFFD)"
+    fi
+else
+    fail "pdftotext could not extract the searchable text layer"
+fi
+rm -f "$text_layer_file"
+
 # A standalone technical book must not depend on workstation fonts, and its searchable text
 # needs ToUnicode maps. Read columns from the right because the font type can contain a space
 # (for example, "Type 1").
@@ -735,9 +760,9 @@ EOF
         read -r link_count targeted_link_count rect_link_count bad_link_count <<EOF
 $link_geometry
 EOF
-        if [ "$link_count" -gt 0 ] && [ "$targeted_link_count" -eq "$link_count" ] \
+        if [ "$link_count" -eq 3653 ] && [ "$targeted_link_count" -eq "$link_count" ] \
            && [ "$rect_link_count" -eq "$link_count" ] && [ "$bad_link_count" -eq 0 ]; then
-            pass "all $link_count PDF link annotations have valid A4 geometry and targets"
+            pass "all 3653 PDF link annotations have valid A4 geometry and targets"
         else
             fail "PDF link annotation audit failed ($link_count links, $targeted_link_count targets, $rect_link_count rectangles, $bad_link_count invalid)"
         fi

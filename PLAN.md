@@ -400,6 +400,7 @@ log grep replaces.
 | 2026-08-12 | Post-G broad numeric-claim closure | Direct recounts confirmed CNA test/source/example/registration, Color, renderer, oracle and CNAEXT inventories; xna4-spec 544/19, cna-samples 63+23+67=153, cna-examples 13/79/249, easy-gl/meta-gl line/API counts, free-direct/free-api registrations, and sharp-runtime 41 modules / 44 components / 92 edges plus exact SQLite populations; no further correction or PDF delta |
 | 2026-08-12 | Post-G final-release reproducibility | Two clean archives of corrected checkpoint `3db9edc`, built concurrently in separate paths with `SOURCE_DATE_EPOCH=1786529214`, produced byte-identical 709-page / 3,314,744-byte PDFs, SHA-256 `7c877ef20bdb20042bdd32483b2e79cb07e81dec7a8d86dc24f6d29d4a04b2af`; one clean output passed the complete current verifier, superseding `b62f064...` as the current release fingerprint while retaining the earlier hash historically |
 | 2026-08-12 | Post-G complete page-label tree | Replaced the transition-only predicate with exact equality on the complete PDF label number tree plus the fixed 709-page extent, proving labels `i`--`xxx` followed by `1`--`679`; a simulated 710-page artifact retaining the same transition passed the old label predicate and fails the combined invariant; current corrected text layer recounted at 302,448 `pdftotext -layout` words versus the historical Phase-G 302,443 |
+| 2026-08-12 | Post-G release-cardinality guards | Bound makeindex to exactly 2,389 accepted / 0 rejected / 0 warning entries and the PDF to exactly 3,653 targeted in-A4 link rectangles; added full Poppler layout-mode text extraction requiring 302,448 words and zero NUL or U+FFFD corruption; reduced-population predicates fail and the fixed-date release PDF passes the complete expanded verifier |
 
 ---
 
@@ -1276,3 +1277,8 @@ build and visual passes are available again.
   `i`--`xxx` and 31--709 as `1`--`679`. A simulated 710-page artifact retaining the same transition
   passed the old label predicate and fails the combined invariant. Recounted the searchable layer at 302,448
   `pdftotext -layout` words; 302,443 remains the historical Phase-G count.
+- Bound release populations that had previously been checked only for cleanliness or internal
+  consistency: makeindex must accept exactly 2,389 entries with no rejection/warning, and the PDF
+  must contain exactly 3,653 targeted in-A4 Link rectangles. Added a complete Poppler layout-mode
+  extraction requiring 302,448 words and no NUL or U+FFFD bytes. Reduced-count predicates fail;
+  the fixed-date release artifact passes the expanded verifier without a PDF delta.
