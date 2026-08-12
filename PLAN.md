@@ -390,6 +390,7 @@ log grep replaces.
 | 2026-08-12 | Post-G outline-hierarchy integrity | MuPDF indentation converted to all 1,066 `(destination, parent)` pairs and matched to each explicit `main.out` parent; a `chapter.1` parent-only mutation from `part.1` to `part.2` left destination/title checks green and triggered exactly two hierarchy differences; verifier-only change, no PDF delta |
 | 2026-08-12 | Post-G TOC clickable coverage | All 1,066 visible TOC destinations proven covered by 1,129 Link rectangles on physical pages 5–29; 63 wrapped rows have two rectangles; a PDF fixture changing only `Preface` from Link to Text left other navigation checks green and triggered 1,128 rectangles / 1,065 targets / missing `chapter*.1`; verifier-only change, no release-PDF delta |
 | 2026-08-12 | Post-G TOC link/text identity | MuPDF text geometry matched every TOC link to its own printed Part/chapter/section/subsection/appendix identity or `Preface`/`Index`; a PDF fixture swapping only `chapter.1` and `chapter.2` destinations preserved target coverage, landings and prior checks, while the new guard alone reported both crossed identities; verifier-only change, no release-PDF delta |
+| 2026-08-12 | Post-G all-link visible-text overlap | One MuPDF structured-text pass over all 709 pages proved positive-area visible-text overlap for all 3,652 Link rectangles; a PDF fixture moved only preface object 4302 to in-bounds blank rectangle `[10 10 20 20]`, leaving target/geometry checks green while the new guard alone found one empty hotspot on physical page 3; verifier-only change, no PDF delta |
 
 ---
 
@@ -1208,3 +1209,8 @@ build and visual passes are available again.
   `chapter.2` TOC destinations; target coverage, landing pages and all prior navigation checks
   remained green, while the new guard alone reported the two crossed identities. This verifier-
   only hardening has no release-PDF or visual delta.
+- Audited all 3,652 Link rectangles against a single MuPDF structured-text extraction of all 709
+  pages and proved that each has positive-area overlap with visible text. A decompressed-PDF
+  fixture moved only preface link object 4302 to the still-in-bounds blank rectangle
+  `[10 10 20 20]`; target and geometry checks remained green, while the new guard alone reported
+  one empty hotspot on physical page 3. This verifier-only hardening has no PDF or visual delta.

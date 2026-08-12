@@ -469,6 +469,13 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     destinations `chapter.1` and `chapter.2`; target coverage, landings and all prior navigation
     checks stayed green, while the new guard alone reported the two crossed printed identities.
     This verifier-only hardening does not change the release PDF.
+60. **The PDF contains no invisible or blank-paper link hotspots.** A single MuPDF structured-
+    text pass across all 709 pages now requires every one of 3,652 Link rectangles to have
+    positive-area overlap with visible text. A decompressed-PDF fixture moved only preface link
+    object 4302 to an in-bounds blank rectangle at `[10 10 20 20]`; target and geometry checks
+    remained green, while the new guard alone reported one empty rectangle on physical page 3.
+    The release artifact has zero empty link rectangle. This verifier-only hardening does not
+    change the PDF.
 
 ## Do this next
 

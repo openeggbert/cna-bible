@@ -636,12 +636,91 @@ EOF
             fail "PDF link annotation audit failed ($link_count links, $targeted_link_count targets, $rect_link_count rectangles, $bad_link_count invalid)"
         fi
 
+        page_objects_file=$(mktemp /tmp/cna-bible-page-objects.XXXXXX.txt)
+        toc_target_result_file=$(mktemp /tmp/cna-bible-toc-targets.XXXXXX.txt)
+        mutool show "$pdf" pages > "$page_objects_file" 2>/dev/null || true
+
+        # A rectangle can be valid yet float over blank paper, producing an invisible hotspot.
+        # Independently extract text geometry for every physical page and require positive-area
+        # overlap between each Link rectangle and at least one visible text line.
+        all_link_text_file=$(mktemp /tmp/cna-bible-all-link-text.XXXXXX.json)
+        all_link_text_result_file=$(mktemp /tmp/cna-bible-all-link-text-result.XXXXXX.txt)
+        if mutool draw -q -F stext.json -o "$all_link_text_file" "$pdf" 1-709 \
+            >/dev/null 2>&1; then
+            perl -MJSON::PP -e '
+                my ($objects, $pages, $text_file) = @ARGV;
+                open P, "<", $pages or die $!;
+                while (<P>) { $page_object{$1} = $2 if /page (\d+) = (\d+) 0 R/; }
+                close P;
+                open O, "<", $objects or die $!;
+                while (<O>) { $object{$1} = $2 if /^(\d+) 0 obj (.*)$/; }
+                close O;
+                open J, "<", $text_file or die $!;
+                { local $/; $json = decode_json(<J>); }
+                close J;
+                for ($i = 0; $i < @{$json->{pages}}; $i++) {
+                    $physical = $i + 1;
+                    for $block (@{$json->{pages}[$i]{blocks} // []}) {
+                        for $line (@{$block->{lines} // []}) {
+                            $box = $line->{bbox};
+                            push @{$text{$physical}}, [
+                                $box->{x}, $box->{y},
+                                $box->{x} + $box->{w}, $box->{y} + $box->{h}
+                            ];
+                        }
+                    }
+                }
+                for $physical (1 .. 709) {
+                    $page = $object{$page_object{$physical}} // "";
+                    ($annotations) = $page =~ m{/Annots\[(.*?)\]};
+                    while (($annotations // "") =~ /(\d+) 0 R/g) {
+                        $object_number = $1;
+                        $annotation = $object{$object_number} // "";
+                        next unless $annotation =~ m{/Subtype/Link};
+                        next unless $annotation
+                            =~ m{/Rect\[([-.0-9]+) ([-.0-9]+) ([-.0-9]+) ([-.0-9]+)\]};
+                        ($x0, $y0, $x1, $y1) = ($1, $2, $3, $4);
+                        ($top0, $top1) = (841.89 - $y1, 841.89 - $y0);
+                        $covered = 0;
+                        for $line (@{$text{$physical} // []}) {
+                            $intersection_x0 = $line->[0] > $x0 ? $line->[0] : $x0;
+                            $intersection_y0 = $line->[1] > $top0 ? $line->[1] : $top0;
+                            $intersection_x1 = $line->[2] < $x1 ? $line->[2] : $x1;
+                            $intersection_y1 = $line->[3] < $top1 ? $line->[3] : $top1;
+                            if ($intersection_x1 > $intersection_x0
+                                && $intersection_y1 > $intersection_y0) {
+                                $covered = 1;
+                                last;
+                            }
+                        }
+                        $checked++;
+                        unless ($covered) {
+                            $bad++;
+                            print "page=$physical object=$object_number rectangle=$x0,$top0,$x1,$top1\n";
+                        }
+                    }
+                }
+                print "SUMMARY " . ($checked + 0) . " " . ($bad + 0) . "\n";
+            ' "$objects_file" "$page_objects_file" "$all_link_text_file" \
+                > "$all_link_text_result_file"
+            read -r _ visible_link_count empty_link_count <<EOF
+$(tail -1 "$all_link_text_result_file")
+EOF
+            if [ "$visible_link_count" -eq "$link_count" ] && [ "$empty_link_count" -eq 0 ]; then
+                pass "all $visible_link_count PDF link rectangles overlap visible text"
+            else
+                fail "PDF link/text-overlap audit failed ($empty_link_count empty of $visible_link_count checked, $link_count expected)"
+                grep -v '^SUMMARY ' "$all_link_text_result_file" | head -10 | sed 's/^/        /'
+            fi
+        else
+            fail "MuPDF could not extract all 709 pages for link/text-overlap verification"
+        fi
+        rm -f "$all_link_text_file" "$all_link_text_result_file"
+
         # Existence is not enough: a TOC destination can be valid yet land on the wrong page.
         # Resolve each numbered TOC target through the name tree and destination object to its
         # physical page. Main matter starts after 30 front-matter pages, so printed N must land on
         # physical N+30. Appendices and the index continue that same arabic sequence.
-        page_objects_file=$(mktemp /tmp/cna-bible-page-objects.XXXXXX.txt)
-        toc_target_result_file=$(mktemp /tmp/cna-bible-toc-targets.XXXXXX.txt)
         if mutool show "$pdf" pages > "$page_objects_file" 2>/dev/null; then
             # The visible TOC occupies physical pages 5--29; page 30 is its intentional blank
             # verso. A valid destination elsewhere in the PDF does not prove the printed TOC row
