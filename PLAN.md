@@ -399,6 +399,7 @@ log grep replaces.
 | 2026-08-12 | Post-G free-direct status-census definition | Reproduced all 95 explicit `Status:` annotation lines exactly: ddraw 24/12/7, dplay 12/7/7, dsound 20/4/2; clarified that dsound's opening twelve bare status words are an untagged summary and must not be counted a second time; no numeric table change; complete build green and physical page 577 read full-size, clean |
 | 2026-08-12 | Post-G broad numeric-claim closure | Direct recounts confirmed CNA test/source/example/registration, Color, renderer, oracle and CNAEXT inventories; xna4-spec 544/19, cna-samples 63+23+67=153, cna-examples 13/79/249, easy-gl/meta-gl line/API counts, free-direct/free-api registrations, and sharp-runtime 41 modules / 44 components / 92 edges plus exact SQLite populations; no further correction or PDF delta |
 | 2026-08-12 | Post-G final-release reproducibility | Two clean archives of corrected checkpoint `3db9edc`, built concurrently in separate paths with `SOURCE_DATE_EPOCH=1786529214`, produced byte-identical 709-page / 3,314,744-byte PDFs, SHA-256 `7c877ef20bdb20042bdd32483b2e79cb07e81dec7a8d86dc24f6d29d4a04b2af`; one clean output passed the complete current verifier, superseding `b62f064...` as the current release fingerprint while retaining the earlier hash historically |
+| 2026-08-12 | Post-G complete page-label tree | Replaced the transition-only predicate with exact equality on the complete PDF label number tree plus the fixed 709-page extent, proving labels `i`--`xxx` followed by `1`--`679`; a simulated 710-page artifact retaining the same transition passed the old label predicate and fails the combined invariant; current corrected text layer recounted at 302,448 `pdftotext -layout` words versus the historical Phase-G 302,443 |
 
 ---
 
@@ -1270,3 +1271,8 @@ build and visual passes are available again.
   `7c877ef20bdb20042bdd32483b2e79cb07e81dec7a8d86dc24f6d29d4a04b2af`; one passed the complete
   current verifier. This is the current release fingerprint; the earlier `b62f064...` result is
   retained as the historical interactive-index checkpoint.
+- Tightened the page-label audit from a transition-only predicate to exact equality on the entire
+  number tree plus the 709-page extent. The artifact therefore labels physical pages 1--30 as
+  `i`--`xxx` and 31--709 as `1`--`679`. A simulated 710-page artifact retaining the same transition
+  passed the old label predicate and fails the combined invariant. Recounted the searchable layer at 302,448
+  `pdftotext -layout` words; 302,443 remains the historical Phase-G count.

@@ -460,11 +460,12 @@ fi
 # Hyperref names ordinary chapters chapter.N and appendices appendix.A, while Parts use part.N.
 if command -v mutool >/dev/null 2>&1; then
     page_labels=$(mutool show -g "$pdf" trailer/Root/PageLabels 2>/dev/null || true)
-    if printf '%s\n' "$page_labels" \
-        | grep -q '/Nums\[0<</S/r>>30<</S/D>>\]'; then
-        pass "PDF page labels switch from roman front matter to arabic body at page 31"
+    # Match the complete number tree, not a substring: any unnoticed later entry would relabel
+    # the rest of the document while preserving the expected transition at physical page 31.
+    if [ "$page_labels" = '<</Nums[0<</S/r>>30<</S/D>>]>>' ] && [ "$pages" -eq 709 ]; then
+        pass "all 709 page labels run i--xxx, then 1--679"
     else
-        fail "unexpected or missing PDF page-label transition"
+        fail "unexpected PDF page-label number tree ('${page_labels:-?}')"
     fi
 
     document_language=$(mutool show -g "$pdf" trailer/Root/Lang 2>/dev/null || true)

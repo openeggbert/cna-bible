@@ -324,7 +324,8 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     bounded 2.5em emergency stretch and targeted semantic breakpoints eliminated every crossing
     without increasing the 709-page extent. The running-head allocation was corrected without
     moving the body block. All 709 pages were then rendered and read a second time, clean.
-41. **Phase G is complete and verified.** The final artifact is a readable, unencrypted A4 PDF
+41. **Phase G is complete and verified.** At that checkpoint the artifact was a readable,
+    unencrypted A4 PDF
     with all 27 fonts embedded, subsetted and Unicode-mapped; its outline contains 12 Parts, 79
     chapters and 8 appendices; its 302,443-word searchable text layer stays inside every page.
     The complete verifier and a MuPDF parse/rewrite round trip are green.
@@ -538,6 +539,13 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     1,066 exact outline/TOC identities and parents, and twelve derived blank versos. This
     supersedes the interactive-index checkpoint's `b62f064...` hash as the current release
     fingerprint while retaining that earlier result as historical evidence.
+69. **The final navigation and searchable-text summaries match the corrected artifact.** Exact
+    comparison of the complete PDF page-label number tree, bound to the fixed page count, proves
+    the full 709-label sequence `i`--`xxx`, then `1`--`679`, rather than recording only the
+    physical-page-31 boundary. A simulated 710-page artifact with the same transition passed the
+    old label predicate and fails the new combined invariant. The current
+    `pdftotext -layout` layer contains 302,448 words; the 302,443 count remains the accurate
+    historical Phase-G checkpoint before the later prose corrections.
 
 ## Do this next
 
