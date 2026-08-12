@@ -1499,3 +1499,7 @@ build and visual passes are available again.
   with no snapshot residue. Removed the isolated fixture afterward.
 - Enabled `pipefail` in the sealed release and visual renderer, aligning all public artifact tools
   so a failed pipeline producer cannot be masked by a successful text/count consumer.
+- Re-ran the committed `pipefail` tool set from a fresh local no-hardlink clone of HEAD `a9b2b6d`.
+  The clone carried no workspace auxiliary or ignored artifact, reproduced the exact 3,314,744-byte
+  / `7c877ef...` PDF with the reviewed dates, and passed the complete current verifier before the
+  isolated fixture was removed.

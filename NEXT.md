@@ -893,6 +893,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      renderer now join the verifier in enabling Bash `pipefail`. A failed hash/parser/filesystem
      producer cannot be hidden by a successful trailing `awk`, `sort`, `wc` or `sed` consumer in
      their command substitutions and validation pipelines.
+138. **The committed `pipefail` tool set passes from a new local clone.** A local no-hardlink clone
+     of HEAD `a9b2b6d` contained no workspace auxiliaries or ignored PDF. Its sealed transaction
+     rebuilt the exact 3,314,744-byte `7c877ef...` artifact with the reviewed dates, then passed
+     the complete verifier: 709 pages, all 27 fonts, five source/image pairs, 3,653 links, 5,054
+     named destinations and the twelve Part-derived blank versos. The clone was removed afterward.
 
 ## Do this next
 
