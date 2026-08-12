@@ -401,6 +401,7 @@ log grep replaces.
 | 2026-08-12 | Post-G final-release reproducibility | Two clean archives of corrected checkpoint `3db9edc`, built concurrently in separate paths with `SOURCE_DATE_EPOCH=1786529214`, produced byte-identical 709-page / 3,314,744-byte PDFs, SHA-256 `7c877ef20bdb20042bdd32483b2e79cb07e81dec7a8d86dc24f6d29d4a04b2af`; one clean output passed the complete current verifier, superseding `b62f064...` as the current release fingerprint while retaining the earlier hash historically |
 | 2026-08-12 | Post-G complete page-label tree | Replaced the transition-only predicate with exact equality on the complete PDF label number tree plus the fixed 709-page extent, proving labels `i`--`xxx` followed by `1`--`679`; a simulated 710-page artifact retaining the same transition passed the old label predicate and fails the combined invariant; current corrected text layer recounted at 302,448 `pdftotext -layout` words versus the historical Phase-G 302,443 |
 | 2026-08-12 | Post-G release-cardinality guards | Bound makeindex to exactly 2,389 accepted / 0 rejected / 0 warning entries and the PDF to exactly 3,653 targeted in-A4 link rectangles; added full Poppler layout-mode text extraction requiring 302,448 words and zero NUL or U+FFFD corruption; reduced-population predicates fail and the fixed-date release PDF passes the complete expanded verifier |
+| 2026-08-12 | Post-G annotation/action allowlist | Complete object census proves all 3,653 annotations are Link actions: 3,650 internal GoTo plus exactly three reviewed HTTPS URI actions, with no direct-destination or unclassified annotation; verifier now requires this positive distribution as well as the existing unsafe-action blacklist and exact URI allowlist, preventing unknown media/widget/attachment action types from passing by omission; no PDF delta |
 
 ---
 
@@ -1282,3 +1283,7 @@ build and visual passes are available again.
   must contain exactly 3,653 targeted in-A4 Link rectangles. Added a complete Poppler layout-mode
   extraction requiring 302,448 words and no NUL or U+FFFD bytes. Reduced-count predicates fail;
   the fixed-date release artifact passes the expanded verifier without a PDF delta.
+- Converted annotation safety from blacklist-only to a positive full-object census. Every one of
+  3,653 annotations must be `/Link`; 3,650 must carry an internal `/GoTo` action and exactly three
+  must carry the reviewed `/URI` actions, with no direct-destination or unknown remainder. The
+  pre-existing blacklist and exact HTTPS allowlist remain defense in depth; no PDF delta.

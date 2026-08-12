@@ -552,6 +552,12 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     extracts the full searchable layer in Poppler layout mode, requires the corrected 302,448-word
     inventory and rejects NUL bytes or UTF-8 U+FFFD replacement characters. Reduced-count
     predicates fail directly; the complete verifier remains green on the fixed-date release PDF.
+71. **PDF annotations and actions are positively allowlisted.** A complete object census proves
+    that all 3,653 annotations are `/Link`: 3,650 use internal `/GoTo`, and exactly three use the
+    reviewed HTTPS `/URI` actions. There are no direct-destination or unclassified annotations.
+    The verifier now requires that exact distribution in addition to its existing blacklist and
+    URI allowlist, so an unfamiliar media, attachment, widget or action subtype cannot pass merely
+    because its spelling was absent from the blacklist. The release PDF remains unchanged.
 
 ## Do this next
 

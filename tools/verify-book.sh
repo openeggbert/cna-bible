@@ -633,14 +633,34 @@ if command -v mutool >/dev/null 2>&1; then
         comm -23 "$external_uris_file" "$expected_uris_file" > "$unexpected_uris_file"
         comm -13 "$external_uris_file" "$expected_uris_file" > "$missing_uris_file"
         unsafe_action_count=$(grep -Ec '/S/(JavaScript|JS|Launch|GoToR|SubmitForm|ImportData)([^A-Za-z]|$)|/EmbeddedFiles([^A-Za-z]|$)' "$objects_file" || true)
+        annotation_action_census=$(
+            perl -ne '
+                next unless m{/Type/Annot};
+                $annotations++;
+                $links++ if m{/Subtype/Link(?:[^A-Za-z]|$)};
+                if (m{/A<<.*?/S/GoTo(?:[^A-Za-z]|$)}) { $goto++; }
+                elsif (m{/A<<.*?/S/URI(?:[^A-Za-z]|$)}) { $uri++; }
+                elsif (m{/Dest[\[(]}) { $direct++; }
+                else { $other++; }
+                END { print join(" ", map { $_ + 0 }
+                    ($annotations, $links, $goto, $uri, $direct, $other)); }
+            ' "$objects_file"
+        )
+        read -r annotation_count link_subtype_count goto_action_count uri_action_count \
+            direct_destination_count other_annotation_count <<EOF
+$annotation_action_census
+EOF
         external_uri_count=$(wc -l < "$external_uris_file")
         unexpected_uri_count=$(wc -l < "$unexpected_uris_file")
         missing_uri_count=$(wc -l < "$missing_uris_file")
         if [ "$unsafe_action_count" -eq 0 ] && [ "$external_uri_count" -eq 3 ] \
+           && [ "$annotation_count" -eq 3653 ] && [ "$link_subtype_count" -eq 3653 ] \
+           && [ "$goto_action_count" -eq 3650 ] && [ "$uri_action_count" -eq 3 ] \
+           && [ "$direct_destination_count" -eq 0 ] && [ "$other_annotation_count" -eq 0 ] \
            && [ "$unexpected_uri_count" -eq 0 ] && [ "$missing_uri_count" -eq 0 ]; then
-            pass "PDF has only the three reviewed HTTPS links and no unsafe actions or attachments"
+            pass "all annotations are 3650 internal GoTo + 3 reviewed HTTPS Link actions"
         else
-            fail "PDF external-action audit failed ($external_uri_count URIs, $unexpected_uri_count unexpected, $missing_uri_count missing, $unsafe_action_count unsafe action(s))"
+            fail "PDF action audit failed ($annotation_count annotations, $link_subtype_count Link, $goto_action_count GoTo, $uri_action_count URI, $direct_destination_count direct, $other_annotation_count other, $unsafe_action_count blacklisted)"
             sed 's/^/        unexpected: /' "$unexpected_uris_file" | head -10
             sed 's/^/        missing: /' "$missing_uris_file" | head -10
         fi
