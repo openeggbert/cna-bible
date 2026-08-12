@@ -455,6 +455,13 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     moving its parent from `part.1` to `part.2` left the destination/title checks green and made
     only the new hierarchy guard fail with two differing pairs. The current artifact has zero
     parent mismatch. This verifier-only hardening does not change any PDF page.
+58. **Every visible table-of-contents entry is demonstrably clickable.** Physical TOC pages
+    5--29 contain 1,129 link rectangles covering exactly all 1,066 visible Part-through-
+    subsection destinations; 63 long titles legitimately use a second rectangle. In a
+    decompressed PDF fixture, changing only the `Preface` annotation subtype from `Link` to
+    `Text` left every destination, title, parent, page landing and remaining link geometry green,
+    while the new guard alone reported 1,128 rectangles / 1,065 targets and missing
+    `chapter*.1`. This is verifier-only hardening and does not change the release PDF.
 
 ## Do this next
 

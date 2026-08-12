@@ -388,6 +388,7 @@ log grep replaces.
 | 2026-08-12 | Post-G filename-citation provenance audit | 295 filename-like occurrences / 194 distinct spellings classified against pinned trees and explicit external, negative, wildcard or historical cases; two stale pre-normalization `dx3_*` test basenames corrected to their registered `freedirect_*` files; untracked supplemental `free-eggbert/cna.md` distinguished from immutable Git pins by size and SHA-256; verifier guard added; complete build green with 3,652 links; whole-PDF comparison isolated physical pages 318, 319 and 645, all visually clean |
 | 2026-08-12 | Post-G outline-title integrity | All 1,066 UTF-16 source bookmark records decoded from `main.out` and matched exactly by `(destination, title)` to MuPDF's PDF outline; a title-only `Preface` → `PrefacX` fixture failed with two differing pairs while destination checks remained green; verifier-only change, no PDF delta |
 | 2026-08-12 | Post-G outline-hierarchy integrity | MuPDF indentation converted to all 1,066 `(destination, parent)` pairs and matched to each explicit `main.out` parent; a `chapter.1` parent-only mutation from `part.1` to `part.2` left destination/title checks green and triggered exactly two hierarchy differences; verifier-only change, no PDF delta |
+| 2026-08-12 | Post-G TOC clickable coverage | All 1,066 visible TOC destinations proven covered by 1,129 Link rectangles on physical pages 5–29; 63 wrapped rows have two rectangles; a PDF fixture changing only `Preface` from Link to Text left other navigation checks green and triggered 1,128 rectangles / 1,065 targets / missing `chapter*.1`; verifier-only change, no release-PDF delta |
 
 ---
 
@@ -1194,3 +1195,9 @@ build and visual passes are available again.
   the prior guards remained green and the new hierarchy check alone reported the expected two
   set differences. The current artifact has zero mismatch; this verifier-only change has no PDF
   or visual delta.
+- Proved that every one of the 1,066 visible TOC rows is clickable, not merely that its destination
+  exists: physical pages 5--29 contain 1,129 Link rectangles, with the extra 63 belonging to
+  wrapped titles. In a decompressed PDF fixture, changing only the `Preface` annotation subtype
+  from Link to Text preserved the destination, title, parent, page-landing and other geometry
+  checks; the new guard alone reported 1,128 rectangles, 1,065 targets and missing `chapter*.1`.
+  This verifier-only hardening has no release-PDF or visual delta.

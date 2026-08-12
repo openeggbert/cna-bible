@@ -643,6 +643,61 @@ EOF
         page_objects_file=$(mktemp /tmp/cna-bible-page-objects.XXXXXX.txt)
         toc_target_result_file=$(mktemp /tmp/cna-bible-toc-targets.XXXXXX.txt)
         if mutool show "$pdf" pages > "$page_objects_file" 2>/dev/null; then
+            # The visible TOC occupies physical pages 5--29; page 30 is its intentional blank
+            # verso. A valid destination elsewhere in the PDF does not prove the printed TOC row
+            # is clickable, so collect every Link target on those pages and require the exact
+            # 1,066-entry visible TOC set. Long rows may legitimately use two rectangles.
+            toc_link_result_file=$(mktemp /tmp/cna-bible-toc-links.XXXXXX.txt)
+            perl -e '
+                my ($objects, $pages, $toc) = @ARGV;
+                open P, "<", $pages or die $!;
+                while (<P>) { $page_object{$1} = $2 if /page (\d+) = (\d+) 0 R/; }
+                close P;
+                open O, "<", $objects or die $!;
+                while (<O>) { $object{$1} = $2 if /^(\d+) 0 obj (.*)$/; }
+                close O;
+                open T, "<", $toc or die $!;
+                while (<T>) {
+                    $expected{$1} = 1
+                        if /\\contentsline \{(?:part|chapter|section|subsection)\}.*\{([^{}]+)\}%$/;
+                }
+                close T;
+                for $physical (5 .. 29) {
+                    $page = $object{$page_object{$physical}} // "";
+                    ($annotations) = $page =~ m{/Annots\[(.*?)\]};
+                    while (($annotations // "") =~ /(\d+) 0 R/g) {
+                        $annotation = $object{$1} // "";
+                        next unless $annotation =~ m{/Subtype/Link};
+                        next unless $annotation =~ m{/D\(([^()]*)\)};
+                        $actual{$1}++;
+                        $links++;
+                    }
+                }
+                for $destination (sort keys %expected) {
+                    print "missing $destination\n" unless exists $actual{$destination};
+                }
+                for $destination (sort keys %actual) {
+                    print "unexpected $destination\n" unless exists $expected{$destination};
+                }
+                $differences = 0;
+                for $destination (keys %expected) { $differences++ unless exists $actual{$destination}; }
+                for $destination (keys %actual) { $differences++ unless exists $expected{$destination}; }
+                print "SUMMARY " . ($links + 0) . " " . scalar(keys %actual) . " "
+                    . scalar(keys %expected) . " " . $differences . "\n";
+            ' "$objects_file" "$page_objects_file" "$book_dir/main.toc" > "$toc_link_result_file"
+            read -r _ toc_link_count toc_link_target_count toc_expected_target_count bad_toc_link_count <<EOF
+$(tail -1 "$toc_link_result_file")
+EOF
+            if [ "$toc_link_count" -eq 1129 ] && [ "$toc_link_target_count" -eq 1066 ] \
+               && [ "$toc_expected_target_count" -eq 1066 ] \
+               && [ "$bad_toc_link_count" -eq 0 ]; then
+                pass "all 1066 visible TOC entries are covered by 1129 link rectangles"
+            else
+                fail "TOC clickable-coverage audit failed ($toc_link_count links, $toc_link_target_count actual targets, $toc_expected_target_count expected targets, $bad_toc_link_count differing)"
+                grep -v '^SUMMARY ' "$toc_link_result_file" | head -10 | sed 's/^/        /'
+            fi
+            rm -f "$toc_link_result_file"
+
             perl -e '
                 my ($objects, $pages, $toc) = @ARGV;
                 open P, "<", $pages or die $!;
