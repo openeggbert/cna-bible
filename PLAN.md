@@ -1494,3 +1494,6 @@ build and visual passes are available again.
   catalog allowlist rather than trusting plausible text emitted before a filter error.
 - Reconciled README/CLAUDE with the final clean-tools, exact provenance, final recheck/rollback and
   physical-repository lock-key contract; reflowed the dependency paragraph without scope change.
+- Rebuilt final HEAD from a fresh tracked archive with exact `latex`/`tools` trees `406104d...` /
+  `db45ed9...`; the sealed artifact passed all checks and matched the workspace PDF byte-for-byte,
+  with no snapshot residue. Removed the isolated fixture afterward.

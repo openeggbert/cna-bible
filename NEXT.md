@@ -884,6 +884,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      `tools/` requirement, exact provenance header/final recheck, physical-repository lock identity
      and provenance-triggered rollback; CLAUDE records `pwd -P` as the required lock-key basis for
      future artifact tools. The long dependency paragraph was reflowed without changing scope.
+136. **The final tool set passes from a clean tracked archive.** A fresh export of HEAD was
+     initialized as an isolated Git worktree with exact `latex` tree `406104d...` and `tools` tree
+     `db45ed9...`; no ignored workspace PDF or auxiliary entered it. The full sealed transaction
+     rebuilt and verified the exact 3,314,744-byte `7c877ef...` artifact, byte-identical to the
+     reviewed workspace PDF, with zero snapshot residue; the fixture was then removed.
 
 ## Do this next
 
