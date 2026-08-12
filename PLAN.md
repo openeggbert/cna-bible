@@ -398,6 +398,7 @@ log grep replaces.
 | 2026-08-12 | Post-G easy-gl/meta-gl consumer recount | Exact include-directive scan at easy-gl pin `0b46d35` finds 18 direct meta-gl consumers, not 19: three public headers plus fifteen implementation files; Chapter 59 corrected and stale-count guard added; complete build green and physical page 569 read full-size, clean |
 | 2026-08-12 | Post-G free-direct status-census definition | Reproduced all 95 explicit `Status:` annotation lines exactly: ddraw 24/12/7, dplay 12/7/7, dsound 20/4/2; clarified that dsound's opening twelve bare status words are an untagged summary and must not be counted a second time; no numeric table change; complete build green and physical page 577 read full-size, clean |
 | 2026-08-12 | Post-G broad numeric-claim closure | Direct recounts confirmed CNA test/source/example/registration, Color, renderer, oracle and CNAEXT inventories; xna4-spec 544/19, cna-samples 63+23+67=153, cna-examples 13/79/249, easy-gl/meta-gl line/API counts, free-direct/free-api registrations, and sharp-runtime 41 modules / 44 components / 92 edges plus exact SQLite populations; no further correction or PDF delta |
+| 2026-08-12 | Post-G final-release reproducibility | Two clean archives of corrected checkpoint `3db9edc`, built concurrently in separate paths with `SOURCE_DATE_EPOCH=1786529214`, produced byte-identical 709-page / 3,314,744-byte PDFs, SHA-256 `7c877ef20bdb20042bdd32483b2e79cb07e81dec7a8d86dc24f6d29d4a04b2af`; one clean output passed the complete current verifier, superseding `b62f064...` as the current release fingerprint while retaining the earlier hash historically |
 
 ---
 
@@ -1264,3 +1265,8 @@ build and visual passes are available again.
   easy-gl/meta-gl code/API counts, free-direct/free-api registration counts, and sharp-runtime's
   41-module / 44-component / 92-edge graph plus exact 16,201-task / 2,183-ticket SQLite totals.
   No additional manuscript correction was warranted and this checkpoint has no PDF delta.
+- Rebuilt corrected checkpoint `3db9edc` from two independent clean archives in different paths
+  under `SOURCE_DATE_EPOCH=1786529214`. Both 709-page, 3,314,744-byte outputs have SHA-256
+  `7c877ef20bdb20042bdd32483b2e79cb07e81dec7a8d86dc24f6d29d4a04b2af`; one passed the complete
+  current verifier. This is the current release fingerprint; the earlier `b62f064...` result is
+  retained as the historical interactive-index checkpoint.

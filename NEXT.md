@@ -529,6 +529,15 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     catalog, easy-gl/meta-gl's line and API inventories, free-direct/free-api's test registrations,
     and sharp-runtime's 41 modules / 44 components / 92 edges plus its exact SQLite task/ticket
     totals. No further manuscript correction was warranted; this checkpoint has no PDF delta.
+68. **The corrected release is independently reproducible.** Two clean archives of commit
+    `3db9edc`, built concurrently in different paths with `SOURCE_DATE_EPOCH=1786529214`, produced
+    byte-identical 709-page PDFs (3,314,744 bytes) with SHA-256
+    `7c877ef20bdb20042bdd32483b2e79cb07e81dec7a8d86dc24f6d29d4a04b2af`. One clean output passed
+    the complete current verifier: 2,389 accepted index entries, 1,850 clickable index numbers,
+    3,653 visible-text-backed links, 1,542 unique link targets, 5,054 valid named destinations,
+    1,066 exact outline/TOC identities and parents, and twelve derived blank versos. This
+    supersedes the interactive-index checkpoint's `b62f064...` hash as the current release
+    fingerprint while retaining that earlier result as historical evidence.
 
 ## Do this next
 
@@ -720,9 +729,10 @@ Everything through Phase G is verified:
   must find exactly the twelve blank versos derived from the Part-page entries in `main.toc`; the
   current physical pages are 32, 50, 130, 216, 366, 420, 454, 532, 568, 582, 610 and 636. This
   verifier-only change did not alter the PDF.
-- Two clean builds of the interactive-index checkpoint in different paths are byte-identical at
-  SHA-256 `b62f0644740a28fc05c8a5cb76320c563c49a55461e6503c5b48054ed13fd010`; one clean artifact
-  passed the complete current verifier. This is the current release hash.
+- Two clean builds of the final corrected checkpoint in different paths are byte-identical at
+  SHA-256 `7c877ef20bdb20042bdd32483b2e79cb07e81dec7a8d86dc24f6d29d4a04b2af`; one clean artifact
+  passed the complete current verifier. The earlier `b62f064...` interactive-index hash remains
+  a historical checkpoint; `7c877e...` is the current release fingerprint.
 - All sixteen commit-like spellings in the compiled manuscript resolve uniquely to fourteen
   intended commit objects in CNA or the eleven sibling repositories, and sampled role/content
   claims match those objects. Hex-like numeric constants were excluded explicitly. No correction
