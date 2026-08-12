@@ -391,6 +391,7 @@ log grep replaces.
 | 2026-08-12 | Post-G TOC clickable coverage | All 1,066 visible TOC destinations proven covered by 1,129 Link rectangles on physical pages 5–29; 63 wrapped rows have two rectangles; a PDF fixture changing only `Preface` from Link to Text left other navigation checks green and triggered 1,128 rectangles / 1,065 targets / missing `chapter*.1`; verifier-only change, no release-PDF delta |
 | 2026-08-12 | Post-G TOC link/text identity | MuPDF text geometry matched every TOC link to its own printed Part/chapter/section/subsection/appendix identity or `Preface`/`Index`; a PDF fixture swapping only `chapter.1` and `chapter.2` destinations preserved target coverage, landings and prior checks, while the new guard alone reported both crossed identities; verifier-only change, no release-PDF delta |
 | 2026-08-12 | Post-G all-link visible-text overlap | One MuPDF structured-text pass over all 709 pages proved positive-area visible-text overlap for all 3,652 Link rectangles; a PDF fixture moved only preface object 4302 to in-bounds blank rectangle `[10 10 20 20]`, leaving target/geometry checks green while the new guard alone found one empty hotspot on physical page 3; verifier-only change, no PDF delta |
+| 2026-08-12 | Post-G complete named-destination geometry | All 5,054 names map one-to-one to 5,054 destination objects on the 709 actual page objects, with in-A4 numeric XYZ positions and inherited zoom; a PDF fixture changed only `part.1` Y from 558.81 to 900, leaving link/landing/outline checks green while the new guard alone found the invalid target on page object 5587; verifier-only change, no PDF delta |
 
 ---
 
@@ -1214,3 +1215,9 @@ build and visual passes are available again.
   fixture moved only preface link object 4302 to the still-in-bounds blank rectangle
   `[10 10 20 20]`; target and geometry checks remained green, while the new guard alone reported
   one empty hotspot on physical page 3. This verifier-only hardening has no PDF or visual delta.
+- Closed the entire named-destination tree rather than only currently linked names: all 5,054
+  names map one-to-one to 5,054 destination objects, each using an actual one of 709 page objects,
+  an in-A4 numeric XYZ coordinate and inherited zoom. A decompressed-PDF fixture changed only
+  `part.1`'s Y coordinate from 558.81 to 900; all link, landing, outline and page checks remained
+  green, while the new guard alone identified the invalid target on page object 5587. This
+  verifier-only hardening has no PDF or visual delta.

@@ -610,6 +610,83 @@ if command -v mutool >/dev/null 2>&1; then
             head -10 "$missing_dests_file" | sed 's/^/        /'
         fi
 
+        # Validate the complete named-destination tree, not only names reached by current links.
+        # Every name must map one-to-one to an XYZ destination on a real page object, with finite
+        # in-page coordinates and inherited zoom. This catches dormant corrupt destinations that
+        # would otherwise surface only when a future link begins using them.
+        named_destination_result_file=$(mktemp /tmp/cna-bible-named-destinations.XXXXXX.txt)
+        complete_pages_file=$(mktemp /tmp/cna-bible-complete-pages.XXXXXX.txt)
+        if mutool show "$pdf" pages > "$complete_pages_file" 2>/dev/null; then
+            perl -e '
+                my ($objects, $pages) = @ARGV;
+                open P, "<", $pages or die $!;
+                while (<P>) { $page_object{$1} = 1 if /page \d+ = (\d+) 0 R/; }
+                close P;
+                open O, "<", $objects or die $!;
+                while (<O>) {
+                    if (/^(\d+) 0 obj .*\/D\[(\d+) 0 R\/XYZ ([^ ]+) ([^ ]+) ([^\]]+)\]/) {
+                        $destination{$1} = [$2, $3, $4, $5];
+                    }
+                    if (/\/Names\[/) {
+                        while (/\(([^()]*)\)(\d+) 0 R/g) {
+                            $name{$1} = $2;
+                            $name_pairs++;
+                        }
+                    }
+                }
+                close O;
+                for $name (sort keys %name) {
+                    $record = $destination{$name{$name}};
+                    unless (defined $record) {
+                        $bad++;
+                        print "name=$name missing-destination-object=$name{$name}\n";
+                        next;
+                    }
+                    ($page, $x, $y, $zoom) = @$record;
+                    $invalid = !$page_object{$page}
+                        || $x eq "null" || $y eq "null"
+                        || $x !~ /^-?(?:\d+(?:\.\d*)?|\.\d+)$/
+                        || $y !~ /^-?(?:\d+(?:\.\d*)?|\.\d+)$/
+                        || $x < 0 || $x > 595.276 || $y < 0 || $y > 841.89
+                        || $zoom ne "null";
+                    if ($invalid) {
+                        $bad++;
+                        print "name=$name page-object=$page xyz=$x,$y,$zoom\n";
+                    }
+                    $used_destination{$name{$name}}++;
+                }
+                for $object (sort { $a <=> $b } keys %destination) {
+                    unless (exists $used_destination{$object}) {
+                        $bad++;
+                        print "orphan-destination-object=$object\n";
+                    }
+                }
+                $duplicate_names = $name_pairs - scalar(keys %name);
+                $duplicate_objects = 0;
+                for $object (keys %used_destination) {
+                    $duplicate_objects += $used_destination{$object} - 1
+                        if $used_destination{$object} > 1;
+                }
+                $bad += $duplicate_names + $duplicate_objects;
+                print "SUMMARY " . scalar(keys %name) . " " . scalar(keys %destination)
+                    . " " . ($bad + 0) . "\n";
+            ' "$objects_file" "$complete_pages_file" > "$named_destination_result_file"
+            read -r _ named_destination_count destination_object_count bad_named_destination_count <<EOF
+$(tail -1 "$named_destination_result_file")
+EOF
+            if [ "$named_destination_count" -eq 5054 ] \
+               && [ "$destination_object_count" -eq "$named_destination_count" ] \
+               && [ "$bad_named_destination_count" -eq 0 ]; then
+                pass "all 5054 named destinations map one-to-one to valid in-page XYZ targets"
+            else
+                fail "PDF named-destination audit failed ($named_destination_count names, $destination_object_count objects, $bad_named_destination_count invalid/duplicate/orphan records)"
+                grep -v '^SUMMARY ' "$named_destination_result_file" | head -10 | sed 's/^/        /'
+            fi
+        else
+            fail "MuPDF could not map pages for the complete named-destination audit"
+        fi
+        rm -f "$named_destination_result_file" "$complete_pages_file"
+
         # Every clickable annotation also needs a non-inverted rectangle inside A4 and either an
         # action or a direct destination. Broken geometry can make a valid target unclickable.
         link_geometry=$(

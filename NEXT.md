@@ -476,6 +476,13 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     remained green, while the new guard alone reported one empty rectangle on physical page 3.
     The release artifact has zero empty link rectangle. This verifier-only hardening does not
     change the PDF.
+61. **The complete PDF named-destination tree is geometrically valid.** All 5,054 names map
+    one-to-one to 5,054 destination objects; every object uses an actual one of 709 page objects,
+    an in-A4 numeric XYZ position, and inherited (`null`) zoom. A decompressed-PDF fixture changed
+    only `part.1`'s Y coordinate from 558.81 to 900; every existing link, landing, outline and
+    page check stayed green, while the new guard alone reported the out-of-page target on page
+    object 5587. The release artifact has no invalid, duplicate or orphan destination record.
+    This verifier-only hardening does not change the PDF.
 
 ## Do this next
 
