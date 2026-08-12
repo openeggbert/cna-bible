@@ -431,6 +431,17 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     name the same two rewritten public heads, and the cna-template pin/drift pair names the intended
     ancestor and later descendant. No manuscript correction was required; this read-only audit did
     not alter the PDF.
+55. **Filename citations have a bounded provenance audit.** A sweep of 295 filename-like
+    occurrences (194 distinct spellings) classified pinned-tree paths, wildcards, external
+    dependency headers, intentionally absent interface examples and historical labels. It found
+    two real pre-normalization basenames in Chapter 26: the registered FreeDirect tests are
+    `freedirect_texture_rendertarget_test.cpp` and `freedirect_no3d_test.cpp`, not `dx3_*`.
+    Chapter 75 now also identifies `free-eggbert/cna.md` accurately as an untracked supplemental
+    working-tree document and records the exact inspected copy's size and SHA-256 instead of
+    implying membership in an immutable Git pin. The verifier rejects both stale test basenames;
+    the complete build is green with 3,652 valid link annotations, and a whole-artifact pixel
+    comparison isolated only physical pages 318, 319 and 645; all three were rendered and read
+    full-size, clean.
 
 ## Do this next
 
@@ -603,9 +614,9 @@ Everything through Phase G is verified:
   1,066 outline entries for non-empty titles and unique destinations.
 - The preface's Part map now keeps 3D models in Part VI and describes Part III's actual geometry/
   vertex-stream remit. Its evidence note binds the complete audit to the 2026-08-11 repository
-  pins via Appendix D. The later interactive-index repair brings the current artifact to 3,651
-  valid link annotations and 1,541 unique targets. Physical pages 3–4 were read full-size and are
-  clean.
+  pins via Appendix D. The later interactive-index repair and current supplemental-evidence link
+  bring the current artifact to 3,652 valid link annotations and 1,541 unique targets. Physical
+  pages 3–4 were read full-size and are clean.
 - All 92 compiled lines containing “Task” were checked against the relevant pinned CNA/easy-gl
   evidence. Chapter 30's sole count mismatch now separates the 65 technical Tasks 666–730 from
   Task 731's closing document; a verifier guard prevents the off-by-one wording from returning.

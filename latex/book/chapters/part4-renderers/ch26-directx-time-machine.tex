@@ -175,7 +175,7 @@ currently bound, while \texttt{Present()} always targets the real shadow backbuf
 asymmetry, since only the
 shadow backbuffer is ever the thing actually \texttt{Blt()}'d onto the real primary surface.
 
-\texttt{dx3\_texture\_rendertarget\_test.cpp} verifies this bind-redirect concretely rather than
+\texttt{freedirect\_texture\_rendertarget\_test.cpp} verifies this bind-redirect concretely rather than
 by code inspection alone, using two distinct, deliberately different clear colors so a
 readback that returned either the wrong surface's color or a stale value would fail visibly:
 
@@ -221,7 +221,7 @@ channels, and target-redirection tests prove that ``active'' changes between the
 backbuffer and a \cnaclass{RenderTarget2D}. Depth and stencil follow two different layers.
 \cnaclass{GraphicsDevice} sees \texttt{SupportsDepthStencil()==false}, strips both flags, and
 returns silently when no target bit remains --- the same depthless-target rule current FNA
-uses. \texttt{dx3\_no3d\_test.cpp} separately invokes all six renderer combination hooks and
+uses. \texttt{freedirect\_no3d\_test.cpp} separately invokes all six renderer combination hooks and
 proves their \texttt{ThrowNo3D} errors precisely because those hooks are unreachable through
 the public mask. Treating either result as evidence for the other would conflate shared and
 renderer contracts; \S\ref{sec:backend-clear-matrix} keeps them separate.

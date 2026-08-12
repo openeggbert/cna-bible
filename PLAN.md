@@ -385,6 +385,7 @@ log grep replaces.
 | 2026-08-12 | Post-G print-geometry/blank-page audit | **709 pages unchanged**, all Media/Crop/Bleed/Trim/Art boxes resolve to identical A4 rectangles on every page; Ghostscript ink coverage identifies exactly twelve even open-right versos, with expected positions derived from the twelve Part entries in `main.toc`; verifier-only change, no visual delta |
 | 2026-08-12 | Post-G interactive-index reproducibility | Two clean builds of commit `4b217a1` in different paths under the same fixed source date are byte-identical, SHA-256 `b62f0644740a28fc05c8a5cb76320c563c49a55461e6503c5b48054ed13fd010`; one clean output passed the complete current verifier, superseding the retained pre-hyperindex artifact hash |
 | 2026-08-12 | Post-G Git-citation provenance audit | Sixteen compiled commit-like spellings representing fourteen distinct objects checked across CNA and all eleven sibling repositories; every prefix is unique in its owner and resolves to a commit; Emscripten repair, sharp-runtime database, rewritten easy-gl/meta-gl heads and cna-template pin/drift roles confirmed; numeric hex-like literals excluded; no correction or PDF delta |
+| 2026-08-12 | Post-G filename-citation provenance audit | 295 filename-like occurrences / 194 distinct spellings classified against pinned trees and explicit external, negative, wildcard or historical cases; two stale pre-normalization `dx3_*` test basenames corrected to their registered `freedirect_*` files; untracked supplemental `free-eggbert/cna.md` distinguished from immutable Git pins by size and SHA-256; verifier guard added; complete build green with 3,652 links; whole-PDF comparison isolated physical pages 318, 319 and 645, all visually clean |
 
 ---
 
@@ -1171,3 +1172,11 @@ build and visual passes are available again.
   CNA/sibling repository, and targeted content checks confirm the Emscripten repair, tracked
   sharp-runtime database, rewritten easy-gl/meta-gl heads and cna-template drift account. No text
   or PDF correction was needed.
+- Classified 295 filename-like manuscript occurrences representing 194 distinct spellings against
+  the pinned trees and their context. Corrected Chapter 26's two obsolete `dx3_*` test basenames to
+  the current, CTest-registered `freedirect_*` sources. Clarified that Chapter 75's 2026-07-16
+  `free-eggbert/cna.md` feasibility analysis is an untracked supplemental working-tree document,
+  not part of an immutable Git pin; recorded its 30,145-byte size and exact SHA-256. The verifier
+  rejects both stale test names, the complete build is green with 3,652 valid link annotations,
+  and a whole-PDF pixel comparison isolated only physical pages 318, 319 and 645; all three were
+  rendered and read full-size, clean.
