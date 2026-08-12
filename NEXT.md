@@ -807,6 +807,10 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      allocating scratch state or building. The sealed release preflight uses the same complete
      downstream union, so a missing `paste`, `xargs`, `comm` or similar utility cannot surface only
      after TeX or silently narrow the audit.
+120. **Pipeline producers cannot fail behind successful text consumers.** The verifier retains
+     deliberate failure accumulation instead of `errexit`, but now enables Bash `pipefail` and
+     explicitly consumes the status of critical `pdfinfo`/`pdffonts` assignments. A stub that
+     emitted the expected 27 font rows and then exited 29 passed before this guard and now fails.
 
 ## Do this next
 

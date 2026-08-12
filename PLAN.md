@@ -1454,3 +1454,6 @@ build and visual passes are available again.
   the renderer's validation/cleanup dependency preflight and corrected its output-order contract.
 - Closed verification dependency preflight over every external parser, text utility, filesystem
   helper and build command, before scratch allocation; the sealed workflow carries the same union.
+- Enabled pipeline-wide status propagation while retaining deliberate failure accumulation, and
+  made critical Poppler assignments consume parser status. A correct-output/exit-29 font stub that
+  previously passed now produces a verifier failure.

@@ -12,7 +12,10 @@
 #
 # Exit status is 0 only when every check passes.
 
-set -u
+# Do not use `set -e`: this verifier intentionally accumulates independent failures. Pipe status
+# must still include every producer, otherwise a failed parser can be hidden by a successful awk,
+# sort or sed consumer and make an empty diagnostic look authoritative.
+set -u -o pipefail
 
 system_dirname=$(command -v dirname) || {
     printf 'ERROR: missing required verification command: dirname\n' >&2
@@ -527,7 +530,10 @@ fi
 
 # ---------------------------------------------------------------- PDF output
 echo "-- output"
-pdf_info=$(pdfinfo "$pdf" 2>/dev/null)
+if ! pdf_info=$(pdfinfo "$pdf" 2>/dev/null); then
+    fail "pdfinfo could not parse main.pdf"
+    exit 1
+fi
 pages=$(printf '%s\n' "$pdf_info" | awk '/^Pages:/ {print $2}')
 case "$pages" in
     ''|*[!0-9]*)
@@ -558,7 +564,11 @@ keywords=$(printf '%s\n' "$pdf_info" | awk -F: '/^Keywords:/ {sub(/^[[:space:]]+
 creator=$(printf '%s\n' "$pdf_info" | awk -F: '/^Creator:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
 trapped=$(mutool show -g "$pdf" trailer/Info 2>/dev/null \
     | sed -n 's/.*\/Trapped\/\([^/>]*\).*/\1/p')
-page_boxes=$(pdfinfo -f 1 -l "$pages" -box "$pdf" 2>/dev/null)
+page_boxes_ok=1
+if ! page_boxes=$(pdfinfo -f 1 -l "$pages" -box "$pdf" 2>/dev/null); then
+    page_boxes=""
+    page_boxes_ok=0
+fi
 a4_pages=$(printf '%s\n' "$page_boxes" \
     | grep -cE '^Page +[0-9]+ size:  +595\.276 x 841\.89 pts \(A4\)$' || true)
 unrotated_pages=$(printf '%s\n' "$page_boxes" \
@@ -571,7 +581,7 @@ for box_name in MediaBox CropBox BleedBox TrimBox ArtBox; do
 done
 if [ "$pages" -eq 709 ] && [ "$pdf_version" = "1.7" ] && [ "$encrypted" = "no" ] \
    && [ "$tagged" = "no" ] && [ "$suspects" = "no" ] && [ "$user_properties" = "no" ] \
-   && [ "$a4_pages" -eq "$pages" ] \
+   && [ "$page_boxes_ok" -eq 1 ] && [ "$a4_pages" -eq "$pages" ] \
    && [ "$unrotated_pages" -eq "$pages" ] && [ "$complete_page_boxes" -eq 1 ]; then
     pass "PDF 1.7 has 709 untagged, unencrypted, unsuspect A4 pages with matching boxes"
 else
@@ -646,7 +656,8 @@ rm -f "$text_layer_file"
 # A standalone technical book must not depend on workstation fonts, and its searchable text
 # needs ToUnicode maps. Read columns from the right because the font type can contain a space
 # (for example, "Type 1").
-font_summary=$(
+font_parser_ok=1
+if ! font_summary=$(
     pdffonts "$pdf" 2>/dev/null | awk '
         NR > 2 && NF >= 8 {
             total++;
@@ -654,11 +665,14 @@ font_summary=$(
         }
         END { print total + 0, bad + 0; }
     '
-)
+); then
+    font_summary="0 0"
+    font_parser_ok=0
+fi
 read -r font_total font_bad <<EOF
 $font_summary
 EOF
-if [ "$font_total" -eq 27 ] && [ "$font_bad" -eq 0 ]; then
+if [ "$font_parser_ok" -eq 1 ] && [ "$font_total" -eq 27 ] && [ "$font_bad" -eq 0 ]; then
     pass "all 27 fonts are embedded, subsetted, and Unicode-mapped"
 else
     fail "font portability check failed ($font_bad of $font_total font rows incomplete)"
