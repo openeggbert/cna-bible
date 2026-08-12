@@ -1,3 +1,184 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{The Module Monorepo}
 \label{ch:module-monorepo}
+
+CNA is one repository, but it is not one library with global \texttt{src/} and
+\texttt{include/} trees.  Its physical ownership unit is the module.  This matters to an
+application author because include spelling, link closure, optional features, and even which tests
+compile are all derived from those module boundaries.
+
+\section{Location is ownership}
+
+The normal framework layout is:
+
+\begin{verbatim}
+modules/<owner>/
+  CMakeLists.txt
+  include/
+  src/
+  tests/
+  examples/
+\end{verbatim}
+
+The repository root deliberately has no legacy production \texttt{src/} or \texttt{include/}
+directory.  A configure-time guard fails if either returns.  A second source-partition validator
+recursively inventories \texttt{*.cpp} and Objective-C\texttt{++} \texttt{*.mm} files and accepts a
+translation unit only below a declared framework module or renderer family's
+\texttt{src}, \texttt{tests}, or \texttt{examples} area.
+
+The rule is stronger than tidiness.  Moving an implementation file changes the component that owns
+its symbols, dependency declarations, test registration, and include reachability.  The validator
+turns a physical move into an architectural change that must be reconciled explicitly.
+
+\section{Fourteen framework modules}
+
+The declared framework set contains fourteen physical modules.  Their responsibilities can be
+read in four clusters:
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{lX}
+\toprule
+Cluster & Modules and ownership \\
+\midrule
+Foundation & \texttt{core} owns CNA project vocabulary and leaf infrastructure;
+  \texttt{math} owns the \cnans{Microsoft::Xna::Framework} value and geometry types. \\
+Runtime and graphics & \texttt{runtime}, \texttt{graphics}, \texttt{input}, \texttt{audio}, and
+  \texttt{media} own the game loop, renderer-independent graphics surface, device state, mixer,
+  and media playback. \\
+Assets and persistence & \texttt{content} owns native, CNJ, XNB, and glTF loading;
+  \texttt{storage} owns \cnans{Microsoft::Xna::Framework::Storage}. \\
+Optional/service surface & \texttt{devices}, \texttt{devices-ext}, \texttt{graphics-ext},
+  \texttt{gamer-services}, and \texttt{net} separate faithful APIs, project extensions, local
+  services, and ENet-backed networking. \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+The concrete aliases are correspondingly narrow.  Foundation and runtime code use
+\texttt{CNA::Core}, \texttt{CNA::Math}, and \texttt{CNA::Runtime}.  Framework services use
+\texttt{CNA::GraphicsCore}, \texttt{CNA::Input}, \texttt{CNA::Audio}, \texttt{CNA::Media},
+\texttt{CNA::Content}, and \texttt{CNA::Storage}.  Device and extension code uses
+\texttt{CNA::Devices}, \texttt{CNA::DevicesExt}, and \texttt{CNA::GraphicsExt}.  Finally,
+\texttt{CNA::GamerServices} and \texttt{CNA::Net} are added only when networking is enabled.
+Appendix~\ref{ch:repo-map}
+maps every module to its pinned role without turning that inventory into an inferred dependency
+graph.
+
+\section{The module factory and one public include root}
+
+Most framework modules are created by a small root-level CMake function:
+
+\begin{lstlisting}
+function(cna_add_module target alias)
+    add_library(${target} STATIC ${ARGN})
+    add_library(CNA::${alias} ALIAS ${target})
+    target_link_libraries(${target} PUBLIC cna_build_flags)
+    target_include_directories(${target} PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include)
+endfunction()
+\end{lstlisting}
+
+Every module exports exactly its own \texttt{include/} directory.  No module exports
+\texttt{src/}.  A header required across modules must therefore live under a public include root,
+usually beneath \path{CNA/Internal/} when it is an engine seam rather than application API.
+Renderer-local shader headers are the narrow exception: they remain in their own source directory
+and are included only relative to files in that same renderer.
+
+Consumer spelling remains stable because the module root is removed by the include path.  A game
+still writes, for example:
+
+\begin{lstlisting}[language=C++]
+#include <Microsoft/Xna/Framework/Game.hpp>
+#include <Microsoft/Xna/Framework/Graphics/Texture2D.hpp>
+#include <CNA/GraphicsRendererType.hpp>
+\end{lstlisting}
+
+It should not embed \texttt{modules/runtime/include/} or any other repository-relative prefix.
+That physical path identifies the owner for auditors; it is not the public include spelling.
+
+\section{Two deliberate construction exceptions}
+
+\texttt{gamer-services} and \texttt{net} hand-build targets named
+\texttt{CNA\_GamerServices} and \texttt{CNA\_Net} instead of going through
+\texttt{cna\_add\_module()}.  Their aliases remain regular, but the concrete target naming differs
+from the twelve \texttt{cna\_<name>} targets.  Build tooling that guesses concrete names from
+directory names will therefore be wrong; use exported aliases or read the module's own CMake file.
+
+The second exception is headers-only access to the core include tree.  \texttt{cna\_core\_headers}
+ / \texttt{CNA::CoreHeaders} exposes leaf declarations without linking \texttt{cna\_core}.  Math
+and Storage use it for items such as the CNAEXT marker, \cnaclass{PlayerIndex}, and path-containment
+helpers.  This keeps their link closures small while preserving the same include spelling.
+
+\section{Renderer families are physical modules too}
+
+\path{modules/renderers/} declares 42 implementation families plus shared infrastructure.  Only
+the selected family is normally entered, and each family receives a concrete target named
+\texttt{cna\_renderer\_<family>}.  One family may carry more than one public identity: EasyGL owns
+five GL-profile identities, which is why the public registry contains 46 identities but the source
+partition contains 42 families.
+
+The common setup function gives a renderer its own include root, build flags, sharp-runtime
+closure, and reverse links to graphics/core/math.  The renderer's source glob is deliberately
+non-recursive.  A nested translation unit does not silently join the target merely because it was
+created on disk.
+
+There are explicit composition exceptions:
+
+\begin{itemize}
+  \item Metal and Glide expose header-interface targets even when another renderer is selected,
+        because their policy suites compile as part of the shared tests.
+  \item \path{renderers/common/d3d} is entered only for Direct3D~11 and~12; Direct3D~9 and~10 have
+        independent implementations.
+  \item GDI reuses eight software-renderer 2D translation units and a software header target.
+        Physical ownership remains with \texttt{software}; GDI lists the borrowed source set
+        explicitly.
+\end{itemize}
+
+These are declared source relationships, not permission for arbitrary cross-family includes.
+Chapter~\ref{ch:renderer-selection-identity} explains how one public identity reaches this physical
+target.
+
+\section{Examples moved to their owners}
+
+Framework examples live beside the subsystem they demonstrate; renderer-specific examples live
+beside the family they exercise; CNAEXT examples live under \texttt{graphics-ext}.  The graphics
+module owns shared renderer-agnostic fixtures such as the 2D demo and common pixel-test helpers.
+The selected renderer reaches them through \texttt{CNA\_GRAPHICS\_EXAMPLES\_DIR}.
+
+The repository-level \texttt{examples/} directory now retains only \texttt{examples/golden/}, the
+cross-renderer image-oracle corpus.  That exception is intentional: a golden image compared by many
+families has no single renderer owner.  Executables are still emitted at the build root for
+compatibility, so output location is not evidence of source ownership.
+
+\section{The migration was checked as a no-loss transformation}
+
+The physical-module campaign moved 1,776 files in seven pure-rename commits before rewriting the
+build.  Its reconciliation classified 1,357 production translation units before and after: 1,287
+were byte-identical moves, 70 changed only ownership/build directives, and none disappeared.  It
+also compared CTest names for representative HEADLESS and OPENGLES configurations and recorded no
+removals or renames.
+
+Two later changes are easy to conflate with that move.  Module-local example registration removed
+the old central example manifests, and renderer terminology later replaced backend-named build
+files.  A path from before those follow-up changes may therefore be historically real yet wrong at
+the pinned revision.
+
+\section{How to read a source path in this book}
+
+A path such as
+\path{modules/content/src/Xna/ContentManager.cpp} carries three claims: Content owns the
+translation unit, its implementation is private to the module, and consumers reach declarations
+through Content's public include root.  It does not by itself prove which umbrella links the
+module, which features compiled that source, or which runtime path called it.
+
+For any architecture claim, read four artifacts together:
+
+\begin{enumerate}
+  \item the file's physical module;
+  \item that module's \texttt{CMakeLists.txt};
+  \item the root module registry and source-partition rules;
+  \item a link or execution artifact for the selected configuration.
+\end{enumerate}
+
+The next chapter applies that method to cycles, umbrellas, and the gates intended to keep module
+boundaries honest.

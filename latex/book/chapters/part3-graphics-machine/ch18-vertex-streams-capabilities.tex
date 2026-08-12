@@ -1,3 +1,217 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{Vertex Streams and Capabilities}
 \label{ch:vertex-streams-capabilities}
+
+This chapter is the handoff from renderer-independent graphics objects to the per-renderer Part.
+It follows a draw from public vertex values through declarations and bindings, then explains what a
+capability answer does---and does not---guarantee.  The distinction is essential in CNA because the
+shared renderer interface contains useful defaults, explicit refusals, silent no-ops, and one
+effect-discarding draw fallback.
+
+\section{Public vertex objects are not upload layouts}
+
+The built-in public types preserve XNA-shaped fields and \cnaclass{IVertexType} behavior, but their
+C\texttt{++} object representation is not necessarily the GPU byte representation.  In particular,
+\cnaclass{Color} and the vertex interfaces are polymorphic.  Chapter~\ref{ch:geometry-color-layout}
+documents the plain internal stream structs and their asserted 16/20/24/32/48/52/68-byte layouts.
+
+Typed \cnaclass{VertexBuffer::SetData} and \cnaclass{GraphicsDevice::DrawUserPrimitives} routes
+therefore pack supported public values into those stream forms.  Raw-pointer routes are a different
+contract: the caller supplies already-packed bytes and, where required, an explicit
+\cnaclass{VertexDeclaration}.  Passing an array of public objects through \texttt{void*} does not
+turn their vptr-bearing C\texttt{++} layout into the XNA stride.
+
+\section{VertexDeclaration is the byte contract}
+
+A \cnaclass{VertexDeclaration} is immutable after construction.  Each element stores an offset,
+usage, and usage index.  Its \cnaclass{VertexElementFormat} describes the byte shape; the
+declaration's stride is either explicit or
+computed as the largest \(\text{offset}+\text{format size}\).  Empty element lists throw
+\cnaclass{ArgumentNullException}.  Non-positive explicit strides throw the out-of-range exception.
+
+The declaration reaches every renderer through a mandatory call.  The vertex-buffer renderer
+interface method is \texttt{SetVertexDeclaration}.%
+\index{IVertexBufferRenderer!SetVertexDeclaration} An old description that says CNA
+selects layouts from stride alone is obsolete.  Stride is still visible because several renderer
+implementations optimize known built-in layouts, but a faithful path must also validate and bind
+the declared elements.
+
+\cnaclass{VertexElement} itself is mutable and its hash currently returns zero, following the
+corresponding FNA limitation.  Do not use the hash as a declaration identity; compare the complete
+element sequence and stride when building a cache key.
+
+\section{Buffers, index widths, and dynamic updates}
+
+\cnaclass{VertexBuffer} stores a declaration, vertex count, usage, and renderer-owned resource.
+Its typed transfer families cover CNA's seven built-in stream shapes; the CNAEXT raw route accepts
+a pointer, element count, and stride.  Copy is deleted and move is explicit/noexcept, which avoids
+duplicating a native buffer handle.
+
+\cnaclass{IndexBuffer} exposes 16-bit and 32-bit transfer forms selected by
+\cnaclass{IndexElementSize}.  The semantic choice is not the enum's ordinal.  Content and oracle
+tools must compare the 16/32 meaning rather than assuming an underlying 0/1 value, a mismatch that
+has produced real cross-implementation disagreements.
+
+\cnaclass{DynamicVertexBuffer} and \cnaclass{DynamicIndexBuffer} add a content-lost surface and
+\texttt{SetData(..., SetDataOptions)}.  At the pin, the dynamic update destination always begins at
+offset zero; the options influence native update strategy, not an arbitrary destination offset.
+In normal CNA operation, their content-lost property remains false.
+
+\section{Bindings carry offset and input rate}
+
+\cnaclass{VertexBufferBinding} combines a buffer, \texttt{VertexOffset}, and
+\texttt{InstanceFrequency}.  Frequency zero is per-vertex input; a positive frequency is
+per-instance input.  \cnaclass{GraphicsDevice} accepts up to sixteen binding slots through
+\texttt{SetVertexBuffers}.\index{GraphicsDevice!SetVertexBuffers} It permits null buffers as
+unused slots.  The public ceiling is not proof that the selected
+renderer can consume sixteen active streams.
+
+The classic shapes need no multi-stream capability:
+
+\begin{itemize}
+  \item one per-vertex binding;
+  \item one per-vertex binding plus one per-instance binding.
+\end{itemize}
+
+More than one per-vertex stream, more than one per-instance stream, or a binding count beyond the
+renderer-reported native ceiling invokes the \texttt{MultiStreamVertexInput} gate.  A false answer
+causes \cnaclass{NotSupportedException} before native submission instead of letting the renderer
+silently read only stream zero.
+
+\subsection{The minimum-offset fold}
+
+For multiple per-vertex bindings, CNA finds the smallest \texttt{VertexOffset} and folds it into the
+draw's \texttt{vertexStart} or \texttt{baseVertex}.  Each binding carries only its non-negative
+remainder.  Renderers already multiply the shared element-unit base by each stream's own stride,
+so this scheme applies the common portion exactly once without requiring equal strides.
+
+With one stream, the transformation is byte-identical to the older behavior.  With several streams,
+folding each full offset independently into one global base would be wrong; dropping the remainder
+would align only the earliest stream.  This normalization belongs to the shared layer so every
+renderer sees the same binding geometry.
+
+\section{Draw validation has a deliberate order}
+
+Every buffer-backed 3D draw first asks the renderer to enforce its 3D policy, then requires the
+necessary vertex/index buffers and a currently applied \cnaclass{Effect}.  Missing effect state is a
+plain \texttt{std::runtime\_error}, not an XNA-shaped exception.
+
+Range validation occurs before renderer capability validation.  An index span leaving the index
+buffer or a declared vertex range leaving the vertex buffer is invalid on every renderer and must
+produce the same public argument failure even on a 2D-only product.  Only after those universal
+invariants are established does CNA reject an unsupported stream shape or instancing path.
+
+The user-draw overloads follow the same conceptual stages: establish a declaration, pack typed
+objects when necessary, validate counts and ranges, construct transient upload data, fill
+\cnaclass{GpuDrawParams} from the applied effect, and enter the renderer contract.
+
+\section{Thirteen capability questions}
+
+\cnaclass{GraphicsCapability} contains thirteen entries at the pinned revision:
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{lX}
+\toprule
+Capability & Exact question \\
+\midrule
+\texttt{ThreeD} & Is the vertex/index/effect 3D pipeline supported? \\
+\texttt{DepthStencilBuffer} & Is a complete real depth/stencil attachment available? \\
+\texttt{MultiSampleAntiAliasing} & Can a sample count above one be applied? \\
+\texttt{MultipleRenderTargets} & Can more than one target be bound simultaneously? \\
+\texttt{AnisotropicFiltering} & Does the current device/driver honor anisotropic filtering? \\
+\texttt{WireFrame} & Is \texttt{RasterizerState.FillMode=WireFrame} real? \\
+\texttt{OcclusionQuery} & Is there a real query with Begin/End/completion/pixel result? \\
+\texttt{CustomEffects} & Can a non-stock effect enter the documented custom-effect path? \\
+\texttt{Texture3D} & Does real volume texture storage and transfer exist (not necessarily shader sampling)? \\
+\texttt{MultiStreamVertexInput} & Can repeated input rates be represented across several bindings? \\
+\texttt{Instancing} & Can \texttt{DrawInstancedPrimitives} submit distinct instance records? \\
+\texttt{StencilBuffer} & Is a real stencil plane available independently of a depth/3D claim? \\
+\texttt{AdditiveBlending} & Does additive compositing avoid silent source-over degradation? \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+These are CNA contract questions, not a dump of native API feature bits.  For example, Skia can
+report bounded \texttt{Texture3D} CPU storage while its general 3D pipeline remains false.  GDI can
+offer a 2D stencil mask without claiming a depth attachment.  HTML DOM additive support depends on
+whether the browser honors CSS \texttt{plus-lighter}.
+
+\section{The default polarity is permissive}
+
+\texttt{IGraphicsRenderer::SupportsCapability} returns true by default for every entry except
+\texttt{MultiStreamVertexInput}; \texttt{StencilBuffer} delegates to the older stencil query.
+This opt-out design protects mature renderers from boilerplate, but a new or narrow renderer that
+forgets an override overclaims.
+
+The implementation is the authority.  At the pin, HEADLESS and SOFTWARE report MRT through the
+default even though their bind paths do not provide simultaneous target rendering.  WEBGPU reports
+MRT and occlusion queries while rejecting a second target and returning no real query object;
+SDL\_GPU similarly inherits a positive query answer without a query implementation.  Appendix
+\ref{ch:feature-matrix} records those contradictions rather than copying the Boolean as support.
+
+A capability check is therefore necessary but, for known contradictory entries, not sufficient.
+Pair it with a resource/draw path and an observable oracle until the upstream report becomes
+truthful.
+
+\section{Unsupported 3D policy is separate from capability}
+
+Each \cnaclass{GraphicsDevice} carries
+\cnaclass{Unsupported3DGraphicsCallBehavior}, with two values:
+
+\begin{description}
+  \item[\texttt{Throw}] The default.  A deliberately unsupported 3D call follows the renderer's
+        established refusal path.
+  \item[\texttt{WarnAndStub}] The renderer logs once per method name and returns a safe no-op or
+        null-object resource where the contract defines one.
+\end{description}
+
+Changing the policy clears the warn-once history.  It does not change capability answers and does
+not suppress invalid arguments, disposed resources, driver failures, or unfinished work on a
+renderer that otherwise claims 3D.  There is no environment variable for it; applications opt in
+through the device API.
+
+Six deliberately 2D-focused families override the early \texttt{Ensure3DSupported} hook:
+Blend2D, Direct2D, HTML DOM, OpenVG, Skia, and SVG DOM.  Other 2D/refusal behavior can live in
+individual factory or draw methods, which is why an absent override is not itself proof of 3D.
+
+\section{Four interface-default failure shapes}
+
+The shared renderer contract is over two thousand lines and not every default has the same
+semantics:
+
+\begin{enumerate}
+  \item \textbf{Effect-discarding fallback.}\par
+        The ordinary effect-aware draw defaults discard the \cnaclass{GpuDrawParams} block, then
+        call coloured primitive submission.  Texture, lighting, fog,
+        skinning, and custom effect state can disappear without an exception.
+  \item \textbf{Hard refusal.} Instancing and backbuffer readback defaults throw unless a narrowly
+        defined unsupported-3D policy path intercepts the operation.
+  \item \textbf{Silent no-op.} Several state/debug hooks have empty defaults; a public cache may
+        update even when no native state changes unless the shared setter guards that path.
+  \item \textbf{Null factory.} Optional resource/effect factories may return null, leaving the
+        wrapper to refuse, degrade, or expose an inert object.
+\end{enumerate}
+
+Part~IV's renderer chapters classify the actual destination of each family instead of inferring it
+from override presence.  Thirty-one families own both ordinary extended draw methods; eleven
+inherit both.  Of the inherited group, DIRECTX10 alone reaches a real coloured draw after effect
+state is discarded, while refusal/no-op/trace families terminate differently.  Four additional
+override families retain a conditional coloured tail.
+
+\section{A portable draw claim}
+
+“The triangle rendered” is incomplete.  A durable vertex-path claim names:
+
+\begin{itemize}
+  \item the public identity and implementation family;
+  \item the vertex declaration, packed stride, index width, and binding rates;
+  \item the capability answers and any known report/path contradiction;
+  \item the applied effect and whether the renderer consumed its \cnaclass{GpuDrawParams};
+  \item the native driver/host that engaged;
+  \item the pixel, query, or structured oracle that distinguished the expected route from a
+        coloured fallback or no-op.
+\end{itemize}
+
+With those nouns present, a failure can be localized to packing, binding normalization, capability
+reporting, effect dispatch, or native rendering instead of being summarized as “this renderer does
+not work.”

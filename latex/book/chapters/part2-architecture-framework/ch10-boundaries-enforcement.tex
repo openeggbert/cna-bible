@@ -1,3 +1,179 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{Cycles, Umbrellas, Boundaries, and Enforcement}
 \label{ch:boundaries-enforcement}
+
+A dependency cycle can be an architecture defect, a static-linking fact, or a faithful expression
+of the framework's semantics.  CNA contains all three kinds of pressure, so a flat graph with every
+edge removed is not the goal.  The useful goal is narrower: declare each required edge, keep public
+closures no wider than necessary, and make accidental edges fail mechanically.
+
+\section{Three deliberate archive cycles}
+
+CNA declares three cycles on both sides so CMake can repeat static archives on the final link line.
+Each has a concrete runtime reason:
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+Cycle & Forward responsibility & Reverse responsibility \\
+\midrule
+Graphics--Input & \cnaclass{GraphicsDevice} updates TouchPanel display metrics and binds
+  Mouse/TextInput to a window. & \cnaclass{MouseCursor} is built from a
+  \cnaclass{Texture2D}. \\
+Audio--Media & \cnaclass{FrameworkDispatcher} pumps \cnaclass{MediaPlayer}. & Media playback
+  submits songs through the audio mixer. \\
+Graphics--selected renderer & Graphics constructs and invokes the one selected renderer factory. &
+  Every renderer implements the graphics-owned contract and its header-inlined defaults call back
+  into core logging/validation. \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+The first two arise from XNA-shaped ownership.  Moving \cnaclass{MouseCursor} or the dispatcher
+could trade the cycle for a new abstraction, but deleting one edge without relocating the semantic
+owner merely creates unresolved symbols or a missing update path.  The renderer cycle is a
+compile-time composition seam: CNA does not load a renderer plug-in after startup.
+
+When diagnosing a static link failure, inspect the generated final link line before adding a new
+PUBLIC dependency.  Repeating the two intended archives is different from making every module link
+the full framework umbrella.
+
+\section{The three umbrella targets}
+
+The root module file exposes three different compositions:
+
+\begin{description}
+  \item[\texttt{CNA}] The historical full-framework INTERFACE target.  It carries runtime,
+        framework modules, optional extension modules present in the build, build flags, and the
+        selected renderer.  Existing games can continue to link \texttt{CNA}.
+  \item[\texttt{cna\_cnaext} / \texttt{CNA::CnaExt}] \mbox{}\par
+        The extension composition links \texttt{CNA::GraphicsExt} with
+        \texttt{CNA::DevicesExt}.  It is not the declaration marker
+        and it is not a renderer.
+  \item[\texttt{cna\_build\_flags} / \texttt{CNA::BuildFlags}] A definitions-only INTERFACE
+        target.  It carries the selected \texttt{CNA\_RENDERER\_*} define plus feature markers such
+        as \texttt{CNA\_CNAEXT}, \texttt{CNA\_DEVICES}, Draco, and FFmpeg availability.  It exports
+        no include directory.
+\end{description}
+
+The last point closes a subtle loophole.  Older layouts could obtain declarations accidentally
+through a global include root attached to common flags.  At the pinned revision, an include works
+only when the declaring module is actually reachable.
+
+\section{Narrow aliases are the architectural surface}
+
+A subsystem test or reusable library should link the narrowest CNA alias whose public surface it
+uses.  That makes an undeclared reach visible.  A game executable may reasonably use the
+\texttt{CNA} umbrella; a math-only helper library should prefer \texttt{CNA::Math}, and a content
+tool should state whether it needs \texttt{CNA::Content}, graphics, or the whole runtime.
+
+PUBLIC and PRIVATE still mean CMake propagation, not conceptual importance.  Content's public
+headers expose graphics/audio/media types, so those CNA edges are PUBLIC.  Its cgltf, stb, SDL, and
+optional Draco implementation needs are private.  A consumer that happens to compile because a
+private third-party include leaked from its environment has no supported contract.
+
+\section{Fourteen module probes}
+
+On supported native test configurations, CNA registers one small consumer for each framework
+composition boundary.  The probe fleet covers Math, Core, Graphics, Content, Runtime, Input, Audio,
+Media, Storage, Devices, DevicesExt, GraphicsExt, CnaExt, and Net.  Each probe produces two CTest
+concepts:
+
+\begin{enumerate}
+  \item \texttt{ModuleProbe\_<name>} builds/runs a minimal consumer to show that the intended alias
+        is sufficient;
+  \item \texttt{ModuleLinkClosure\_<name>} inspects the emitted link line for required and forbidden
+        libraries.
+\end{enumerate}
+
+The probes are excluded on Emscripten and Android.  That is a host boundary, not evidence that the
+module graph changes there.  A platform claim must say whether it is source-validated,
+cross-compiled, or link-inspected on the target.
+
+\subsection{Two high-value negative contracts}
+
+Storage links only its own implementation plus header-level dependencies.  Its closure expression
+forbids any \texttt{libcna\_} archive that is not \texttt{libcna\_storage}; even
+\texttt{libcna\_core} must remain absent.  \cnaclass{PlayerIndex}, the CNAEXT marker, and path
+containment are obtained through \texttt{CNA::}\allowbreak\texttt{CoreHeaders}, not by widening
+the binary closure.
+
+DevicesExt encodes the opposite separation: project-owned \cnans{CNA::Devices} services must never
+depend on the XNA-shaped \cnans{Microsoft::Devices} sensor module.  Its regex escapes the dot after
+\texttt{libcna\_devices} so that it rejects the base archive without accidentally matching
+the extension archive itself.  These negative assertions are more informative than a full
+umbrella consumer that would succeed regardless of accidental edges.
+
+Additional closure gates require ENet for Net, require both extension libraries for CnaExt, isolate
+the Vulkan SDK from other renderer SDKs, and prove that HEADLESS configurations remain free of
+native graphics SDKs.
+
+\section{The Ninja caveat: registered does not mean executed}
+
+The closure checker reads
+\path{CMakeFiles/<target>.dir/link.txt}.  Makefiles generators emit that file, but Ninja normally
+does not.  When the file is missing the script exits with code 77, which CTest records as skipped.
+CNA's test preset and hosted workflows use Ninja; therefore the \texttt{ModuleLinkClosure\_*}
+entries are registered there but do not inspect a link command.
+
+The minimal consumer can still compile, and other validators can still pass.  Neither result closes
+the negative-link claim.  A report should distinguish:
+
+\begin{itemize}
+  \item probe source compiled and ran;
+  \item closure test was registered;
+  \item closure test inspected a real link line under a compatible generator;
+  \item forbidden-library mutation was demonstrated to fail.
+\end{itemize}
+
+This is a concrete example of the evidence vocabulary developed in
+Appendix~\ref{ch:verification-tiers}: test presence, execution, and oracle engagement are separate
+coordinates.
+
+\section{Include reachability and header self-containment}
+
+The modularization tools add two source-oriented views.  Include reachability resolves public CNA
+and Microsoft headers through the declared module graph and
+attributes renderer-gated includes to the selected family.  Header self-containment asks whether a
+public header can be compiled with only its documented prerequisites rather than relying on
+include order.
+
+These checks answer different questions from the linker probes.  A declaration can be reachable
+while its implementation library is absent; a link can succeed through an overly broad umbrella
+while a public header still requires an unrelated include to come first.  A healthy boundary needs
+both compile and link evidence.
+
+\section{Source partition and legacy-root guards}
+
+Chapter~\ref{ch:module-monorepo} introduced the physical partition validator.  Its complement is a
+simple root guard that fails configuration if production \texttt{src/} or \texttt{include/}
+directories reappear.  Together they prevent two regression shapes:
+
+\begin{itemize}
+  \item a new translation unit lands outside every owner and is picked up by an ad hoc glob;
+  \item a global include root quietly restores reachability that module dependencies were meant to
+        control.
+\end{itemize}
+
+The renderer identity validator adds a different invariant: CMake's accepted strings and the
+C\texttt{++} enum must remain the same set.  It cannot prove behavior, but it prevents an identity
+from existing on only one side of the configuration/runtime boundary.
+
+\section{How to change a boundary safely}
+
+A module move or new public dependency is complete only when all affected evidence changes
+together:
+
+\begin{enumerate}
+  \item move the source/header under its real owner;
+  \item update the module's PUBLIC/PRIVATE dependency declarations;
+  \item update include reachability and header-isolation expectations;
+  \item add or narrow a consumer probe;
+  \item inspect the real link artifact with a generator the checker understands;
+  \item run a negative mutation that demonstrates the gate can fail;
+  \item update examples, tests, and source citations that encoded the old owner.
+\end{enumerate}
+
+An umbrella build going green is the beginning of that argument, not its conclusion.  Chapters
+\ref{ch:cnatests-architecture} and~\ref{ch:ci-reality} show the same distinction at test-suite and
+hosted-workflow scale.

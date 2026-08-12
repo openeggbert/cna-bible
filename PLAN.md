@@ -73,7 +73,7 @@ current, not stale.
 | **C — structural migration** | **Complete.** The 12-Part / 79-chapter / 8-appendix migration, context-sensitive terminology pass, current selector/identifier migration, and module-owned source-path sweep are complete and PDF-verified clean at 645 pages. |
 | **D — chapter writing** | **Complete.** Seven verified batches rewrote Chapters 19–79 against the pinned source and sibling evidence. |
 | **E — appendices** | **Complete.** Appendices A–H were rebuilt against pinned source and the completed chapter text, then verified as one bounded batch. |
-| **F — whole-book consistency** | **Next.** Run the edition-wide factual, terminology, cross-reference, duplication, and visual consistency sweep. |
+| **F — whole-book consistency** | **In progress.** The first corrective batch removed stale universal test totals and renderer terminology, then filled five structurally present but unwritten chapters (8–11 and 18) against pinned evidence. Continue the edition-wide factual, cross-reference, duplication, index and visual sweep. |
 | **G — final verification** | Not started. |
 
 ### 3.1 Phase A research areas — all delivered
@@ -344,6 +344,7 @@ log grep replaces.
 | 2026-08-12 | Phase D batch 6, Chapters 64–72 | **689 pages**, build clean; makeindex 2,369 / 0 / 0; Web build/main-loop/evidence split, Android/macOS evidence boundary, CnaTests architecture, reproducible counting, oracle taxonomy, hostile-host verification and discipline gates completed; physical pages 573–607 rendered and reviewed as 9 contact sheets, with tables and long literals inspected full-size; all automated and visual checks green |
 | 2026-08-12 | Phase D batch 7, Chapters 73–79 | **685 pages**, build clean; makeindex 2,289 / 0 / 0; current CI execution boundary, migration procedure, Blupi case study, critical xna4-spec use, samples/examples catalogs, durable project practice and source-grounded roadmap completed; physical pages 607–640 rendered and reviewed as 4 contact sheets through the Appendix A boundary, with the performance table, long headings, lists and query literals inspected full-size; all automated and visual checks green |
 | 2026-08-12 | Phase E, Appendices A–H | **685 pages**, build clean; makeindex 2,096 / 0 / 0; stale exhaustive catalogs replaced by source-oriented API, renderer, repository, CNAEXT, ecosystem, verification and glTF evidence references; physical pages 641–678 rendered and reviewed as 5 contact sheets, high-risk tables inspected full-size, five identifier/factor collisions corrected and re-rendered clean; final index page 685 also inspected |
+| 2026-08-12 | Phase F corrective batch 1 | **699 pages**, build clean; makeindex 2,179 / 0 / 0; stale context-free 6,171-test claims removed, residual graphics uses of “backend” corrected, and previously title-only Chapters 8–11 and 18 written from pinned source evidence; physical pages 107–126 and 203–210 plus 13 isolated terminology/count pages rendered and read, with the Chapter 8 layout table and Chapter 18 interface names inspected full-size; all detected overflows corrected and re-rendered clean |
 
 ---
 
@@ -551,3 +552,19 @@ mid-session at the owner's direction, so the build and visual passes are availab
   verification and glTF tables at full size. The zoomed pass found five tight identifier/factor
   collisions; each was corrected, the full build repeated, and the affected pages re-rendered
   clean. Physical page 685 was also rendered to close the previously unchecked index tail.
+
+### 2026-08-12 — Phase F corrective batch 1: omitted structural chapters and stale totals
+
+- The whole-book sweep found that Chapters 8–11 and 18 had survived the structural migration as
+  labels and titles only. Wrote all five from the pinned framework/math, architecture/build and
+  graphics evidence: C++ value-layout boundaries, the fourteen-module monorepo, cycle/umbrella
+  enforcement, dependency and tooling semantics, and vertex-stream/capability failure modes.
+- Removed two stale claims that treated 6,171 as a universal current test count. Chapters 46 and
+  51 now distinguish local statically counted definitions from configuration, registration and
+  runtime populations and defer the counting model to Chapter~69. Corrected the remaining clear
+  graphics uses of “backend” to renderer/route and removed obsolete Phase C placeholder comments.
+- Ran `tools/verify-book.sh`: 699 pages, makeindex 2,179 accepted / 0 rejected / 0 warnings, all
+  automated checks green. Rendered and read physical pages 107–126 and 203–210 plus pages 46,
+  309, 349, 432, 444, 473, 514, 562, 591–592, 617–618 and 628. Full-size inspection exposed
+  overflowing table cells and long identifiers in Chapters 8 and 18; after correction, the
+  rebuild, log-range check and affected-page render were clean.

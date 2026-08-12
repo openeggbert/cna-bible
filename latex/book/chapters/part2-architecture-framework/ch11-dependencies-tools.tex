@@ -1,3 +1,204 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{Dependencies, Tests, Examples, and Developer Tools}
 \label{ch:dependencies-tools}
+
+A successful CNA configure can involve checked-out submodules, sibling repositories, system
+packages, downloaded source, prebuilt binary releases, and renderer-specific SDKs.  Treating all of
+them as “vendored dependencies” hides the most common reproducibility failures.  This chapter maps
+the acquisition mechanisms and the developer surfaces that consume them; Chapter~\ref{ch:configuring-building}
+owns the command-line configuration details.
+
+\section{Five acquisition mechanisms}
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+Mechanism & Representative inputs & Reproducibility boundary \\
+\midrule
+Git submodules & GoogleTest, SDL3, SDL3\_image, SDL3\_mixer & A source archive may omit them;
+  initialize the recorded submodule commits before configuring. \\
+In-tree sources & cgltf, stb, ENet, and a wgpu-native vendor area & Present in the CNA tree, but
+  build/features still depend on the selected module and host. \\
+Sibling checkouts & sharp-runtime, easy-gl/meta-gl, free-direct/free-api & Separate repositories
+  with their own pins and sometimes fixed sibling-relative paths. \\
+Fetch/download or external artifact & bgfx, Blend2D, Diligent, FNA3D, LLGL, Magnum, OpenVG,
+  PortableGL, sokol, WebGPU, Wicked, Skia & Each renderer has a distinct pin, offline override,
+  patch, or prebuilt-root contract. \\
+System packages & FFmpeg, optional Draco, Vulkan/OpenGL/GLES libraries, Threads & Host package
+  discovery can change which files compile or whether configure is admissible. \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+The categories can compose.  FNA3D is fetched from a pin and carries MojoShader through its own
+submodules.  EasyGL is a sibling checkout that itself expects meta-gl as a sibling.  Free-direct is
+a sibling that PUBLIC-links the second-level free-api sibling.  A lockfile for only CNA's own git
+tree is therefore not a complete build identity.
+
+\section{Submodules: initialize, do not guess}
+
+CNA's considered instruction is \texttt{git submodule update --init}, not a recursive update.
+The optional codec trees beneath SDL are disabled by CNA's vendored-SDL configuration, so recursive
+initialization adds time without contributing compiled inputs.  The configure guards explain when
+the four required submodule directories are missing and explicitly note that a plain source archive
+cannot manufacture their content.
+
+For a distributable source snapshot, either include those exact submodule trees or select a
+supported system-SDL path and provide GoogleTest another documented way.  Silently building against
+whatever SDL happens to be installed changes the dependency claim.
+
+\section{The unusual SDL configure-time build}
+
+The controlling option is \texttt{CNA\_USE\_SYSTEM\_SDL}.  With the default vendored path, CMake
+configures, builds, and installs SDL3, SDL3\_image, and SDL3\_mixer during CNA's
+\emph{configure} step.  The install prefix is persistent
+and outside the individual build directory, then consumed through the packages' exported CMake
+configs.
+
+This has three operational consequences:
+
+\begin{itemize}
+  \item deleting or cleaning a CNA build directory does not necessarily rebuild SDL;
+  \item the prefix is keyed by target system and processor so a cross-build does not overwrite a
+        native installation;
+  \item a configure failure may actually be a nested dependency compile/install failure, not a
+        CNA CMake-language error.
+\end{itemize}
+
+The default parallelism ceiling is intentionally small.  Image and mixer codec options are pruned:
+for example, the vendored SDL\_mixer build does not enable the optional MP3, Opus, FluidSynth,
+WavPack, or FLAC dependency families.  CNA's higher-level Audio and Media behavior must be read
+against that concrete mixer build, not against every feature SDL\_mixer can support in principle.
+
+\section{System-package gates can change source composition}
+
+FFmpeg illustrates why “dependency found” is not merely a link flag.  CNA computes the
+\texttt{CNA\_FFMPEG\_AVAILABLE} flag.  On Windows/MinGW, Emscripten, and Android it is forced off
+so a
+cross-configure cannot accidentally import the host's native pkg-config headers and libraries.
+When off, the Media module drops its video decoder/player translation units, Content drops the XNB
+video reader, and the unit-test source set excludes matching cases.
+
+Draco is optional in a different way.  Its absence does not remove the glTF importer; a
+Draco-compressed primitive reaches a named unsupported-format failure.  Vulkan and several GL-based
+renderers, by contrast, require their native SDK/package at configure time.  These are three
+different states: feature source omitted, format rejected at runtime, and configuration refused.
+
+\section{Sibling repositories are part of the workspace contract}
+
+sharp-runtime is always required.  \texttt{CNA\_SHARP\_RUNTIME\_ROOT} defaults to
+\texttt{../sharp-runtime}, and CNA emits a fatal diagnostic explaining that it is not a submodule.
+The consumption adapter detects the current component-target shape and links each CNA module to a
+declared sharp-runtime component closure; it can also recognize the older monolithic target shape.
+For this edition, only the revisions in Appendix~\ref{ch:repo-map} are authoritative.
+
+EasyGL's five public identities expect \texttt{../easy-gl}; easy-gl then expects
+\texttt{../meta-gl}.  CNA exposes no override for those two relative paths.  FREEDIRECT similarly
+expects the free-direct sibling checkout, which resolves free-api itself and reuses CNA's
+already-created SDL
+targets.  A CI checkout that clones only CNA can therefore configure some renderer identities but
+not others.
+
+Do not paper over this by copying sibling sources into CNA's build tree.  Their independent commit,
+tests, public targets, and consumer evidence are part of the claim.
+
+\section{Renderer dependencies are intentionally asymmetric}
+
+Some renderer integrations fetch a pinned source tree automatically; some prefer a supplied root;
+some require a prebuilt external product.  Examples at the pin include:
+
+\begin{itemize}
+  \item WEBGPU auto-downloads a pinned wgpu-native binary release unless an explicit root is given;
+  \item WICKED has a pinned commit and patch set but auto-fetch is off by default;
+  \item SKIA is never fetched and requires caller-supplied prebuilt directories;
+  \item MAGNUM first tries system Corrade/Magnum packages, then falls back to pinned source;
+  \item BGFX applies an in-tree patch during its fetched-source preparation;
+  \item OPENVG and several Sokol modes still require a real OpenGL system package.
+\end{itemize}
+
+Accordingly, “all renderer identities accepted by CMake” is not “all renderer dependencies are
+available on this host.”  Chapter~\ref{ch:renderer-selection-identity} separates identity,
+family, internal native sub-selector, and platform admission.
+
+\section{What CNA builds, and what it does not package}
+
+CNA provides build-tree targets.  At the pinned revision it has no install rules, exported package
+configuration, or supported \texttt{find\_package(CNA)} consumer flow.  A parent project normally
+adds the checkout as a subdirectory or follows a sibling template that does so.  Inventing an
+installation step produces an untested include/library layout and loses the sibling-resolution
+contract.
+
+Likewise, \texttt{CNA} is a CMake target, while \texttt{CNA::Math} and other namespaced aliases are
+module targets.  Neither spelling implies a file named \texttt{libCNA.so}; most framework pieces are
+static archives composed into the final consumer.
+
+\section{The CnaTests corpus}
+
+The main GoogleTest executable is assembled from module-owned test sources plus the selected
+renderer configuration.  Feature gates, platform exclusions, renderer selection, and optional
+FFmpeg/Net inputs change its compiled definition population.  There is no configuration-free
+“number of CNA tests.”  Chapter~\ref{ch:cnatests-architecture} explains composition, and
+Chapter~\ref{ch:counting-discipline} derives the pinned static populations without exchanging files,
+macros, CTest registrations, and executed cases.
+
+The native \texttt{tests} preset deliberately says to run \texttt{CnaTests} directly.  CTest's
+GoogleTest discovery can launch each case as a short-lived process, while this repository includes
+display-dependent binaries and fixtures sharing fixed temporary paths.  CTest remains useful for
+named standalone gates and renderer executables; it is not automatically the authoritative runner
+for the monolithic corpus.
+
+\section{Examples are executable documentation, not one evidence tier}
+
+Module-local examples range from tutorial programs to GPU readback tests, golden-image comparisons,
+host/browser harnesses, and policy-only probes.  The filename or registration directory does not
+tell which one it is.  For each example record:
+
+\begin{itemize}
+  \item whether it is compiled by the selected configuration;
+  \item whether it runs automatically or only by explicit dispatch;
+  \item which renderer/native driver/host actually engaged;
+  \item whether its oracle is exit status, structured values, pixels, or human inspection;
+  \item which unavailable-host outcome is skip, refusal, or failure.
+\end{itemize}
+
+Shared golden images remain at repository level because many renderer modules consume the same
+oracle.  A renderer-owned test executable plus a shared image is still two artifacts whose
+provenance and update rules must travel together.
+
+\section{Presets are named environments, not universal promises}
+
+The pinned presets cover a Web build, three Devices sanitizer builds, and a native Ninja test
+build.  The sanitizer presets pass raw compiler/linker flags even though CNA also exposes the
+\texttt{CNA\_SANITIZE} option; this is redundant but observable.  They explicitly enable
+\texttt{CNA\_DEVICES}, preventing a sanitizer job named for Devices from silently compiling the
+feature out.
+
+A preset proves only its declared target and commands.  The Web preset builds the house demo with
+tests off; it is not a browser conformance run.  The native test preset builds \texttt{CnaTests}; it
+does not make every standalone CTest executable.  Hosted workflow reality is audited separately in
+Chapter~\ref{ch:ci-reality}.
+
+\section{Developer tools and what they decide}
+
+CNA's mechanical tools fall into distinct authority classes:
+
+\begin{description}
+  \item[Structural validators] Compare finite source-owned sets, paths, and identity
+        spellings.  They are strong for structural equality and silent about behavior.
+  \item[Module probes and closure checkers] Compile a minimal consumer or inspect a link artifact.
+        Their verdict depends on generator and host engagement, as Chapter~\ref{ch:boundaries-enforcement}
+        shows.
+  \item[Content and catalog checkers] Validate CNJ/glTF fixtures, examples, or documented catalogs.
+        Their parser and denominator define the result.
+  \item[Renderer/golden harnesses] Exercise a chosen native path and compare pixels or structured
+        output.  They require identity and driver evidence in addition to a green comparison.
+  \item[Cross/toolchain launchers] Stage DLLs, select Wine prefixes, start browsers, or prepare
+        target files.  Successful process creation is not yet proof that the intended runtime did
+        the work.
+\end{description}
+
+The durable rule is to keep acquisition, build, registration, execution, and oracle engagement as
+separate facts.  A dependency pin enables reproducibility; it does not establish that a test used
+the dependency.  A built example establishes reachability; it does not establish correct pixels.
+Appendix~\ref{ch:verification-tiers} provides the compact claim vocabulary used throughout the rest
+of the book.

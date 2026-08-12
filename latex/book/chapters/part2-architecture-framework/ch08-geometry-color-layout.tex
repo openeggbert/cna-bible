@@ -1,3 +1,209 @@
-% Phase C structural placeholder; source-grounded prose is scheduled for Phase D.
 \chapter{Geometry, Color, Curves, and C\texttt{++} Value Layout}
 \label{ch:geometry-color-layout}
+
+Chapter~\ref{ch:math-conventions} gives the method-level reference for CNA's math types.  This
+chapter takes the complementary view: which geometric conventions cross subsystem boundaries,
+which C\texttt{++} object layouts differ from XNA value types, and which apparently harmless casts
+or degeneracies become observable defects.
+
+\section{The value-type resemblance has a hard limit}
+
+XNA presents vectors, colours, planes, bounds, and curve keys as compact managed value types.
+CNA preserves their names and most operations, but it cannot preserve that representation merely
+by spelling the same fields in C\texttt{++}.  Several public types inherit polymorphic interfaces:
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{3.1cm}>{\raggedright\arraybackslash}p{4.1cm}X}
+\toprule
+Type family & Why it is polymorphic & Practical consequence \\
+\midrule
+\cnaclass{Color} & Implements \texttt{IPackedVectorT<}\newline\texttt{UInt32>}%
+  \index{IPackedVectorT<UInt32>}, whose base has virtual
+  operations and a virtual destructor. & The object has a vptr; it is not four raw RGBA bytes. \\
+Built-in vertex types & Implement \cnaclass{IVertexType}. & A public vertex object cannot be
+  uploaded by copying \texttt{sizeof(T)} bytes. \\
+\cnaclass{BoundingBox}, \cnaclass{BoundingSphere},\newline
+\cnaclass{BoundingFrustum}, \cnaclass{CurveKey} & Implement \cnaclass{IEquatable<T>}. &
+  Their field list is not their complete
+  object representation. \\
+Plain math types & \cnaclass{Vector2}, \cnaclass{Vector3}, \cnaclass{Vector4}, \cnaclass{Matrix},
+  \cnaclass{Quaternion}, \cnaclass{Plane}, \cnaclass{Ray}, \cnaclass{Point}, and
+  \cnaclass{Rectangle} have no base class. & Their layout is simpler, but padding and C\texttt{++}
+  object rules still belong to the ABI, not to the XNA contract. \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+At the pinned revision, \texttt{sizeof(Color) == 24}.  The single packed value is still
+\texttt{AABBGGRR} on a little-endian machine, yet the object begins with a vptr.  Reinterpreting a
+\texttt{Color*} as pixel bytes would overwrite or read the virtual-table pointer.  CNA's own
+\texttt{GetBackBufferData<Color>} path therefore reads native bytes into a temporary byte vector
+and constructs each result as \texttt{Color(r,g,b,a)}.  \cnaclass{Texture3D} and
+\cnaclass{TextureCube} use the same conversion rule.
+
+This is not theoretical portability advice.  A regression test explicitly rejects the old raw
+cast, and the graphics module documents the exact 24-byte size where it converts texture data.
+Application code should use component access, \texttt{PackedValue}, or the typed texture APIs; it
+should never serialize a public math object with \texttt{memcpy(sizeof(T))} unless the file format
+is deliberately CNA-ABI-specific.
+
+\section{GPU streams are a second, plain-data representation}
+
+The graphics core solves the polymorphic-vertex problem with a parallel internal stream layer in
+\path{modules/graphics/include/CNA/Internal/Graphics/BuiltInVertexStreams.hpp}.  These structs have
+no virtual base, and both their total sizes and member offsets are compile-time assertions:
+
+\begin{center}
+\small
+\begin{tabular}{lr}
+\toprule
+Stream representation & Bytes \\
+\midrule
+\texttt{PositionColorStream} & 16 \\
+\texttt{PositionTextureStream} & 20 \\
+\texttt{PositionColorTextureStream} & 24 \\
+\texttt{PositionNormalTextureStream} & 32 \\
+\texttt{PositionNormalTangentTextureStream} & 48 \\
+\texttt{PositionNormalTextureSkinnedStream} & 52 \\
+\texttt{PositionNormalTangentTextureSkinnedStream} & 68 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Every built-in \cnaclass{VertexDeclaration} takes its stride from the matching stream struct, not
+from the public vertex class.  Conversion is therefore an explicit semantic operation: positions
+and texture coordinates are copied as floats, while \cnaclass{Color} contributes only its packed
+four-byte payload.  Chapter~\ref{ch:vertex-streams-capabilities} follows these bytes through binding,
+multi-stream normalization, and renderer capability gates.
+
+\section{Planes and half-spaces}
+
+CNA uses the plane equation
+
+\[
+  \mathbf{n}\cdot\mathbf{x} + D = 0.
+\]
+
+The three-point constructor is the only constructor that normalizes automatically and computes
+\(D=-\mathbf{n}\cdot\mathbf{a}\).  \texttt{DotCoordinate} returns the signed expression above.
+Operationally, \cnaclass{PlaneIntersectionType::Front} is the positive-normal side and
+\texttt{Back} is the negative side; the enum's own prose comments reverse those meanings, while
+\cnaclass{Plane}, \cnaclass{BoundingBox}, and \cnaclass{BoundingSphere} consistently implement the
+positive-side interpretation.
+
+\subsection{The inverse-transpose path is presently wrong}
+
+Transforming a plane should multiply it by the inverse transpose of the point transform.  CNA's
+\texttt{Plane::}\allowbreak\texttt{Transform}\index{Plane::Transform} intends to do that, but calls
+the out-parameter transpose as
+\texttt{Matrix::}\allowbreak\texttt{Transpose(m, m)}.  That overload writes fields while it is
+still reading the same
+object, so it is not alias-safe.  For a non-symmetric inverse it progressively mixes old and new
+fields and produces a symmetrization rather than a transpose.
+
+A minimal counterexample is the plane \(y=1\) transformed by a pure translation along X.  The
+correct plane is unchanged.  The aliased implementation instead produces a normal proportional to
+\((1,1,0)\), silently rotating it.  Both existing transform tests use the identity matrix, whose
+inverse is symmetric, so they cannot expose the error.  This is recorded as CNA-BUG-001; portable
+application code should avoid \cnaclass{Plane::Transform} for nontrivial matrices until the source
+uses a separate transpose destination.
+
+\section{Bounds encode several non-obvious conventions}
+
+\cnaclass{BoundingFrustum} independently confirms CNA's Direct3D clip volume.  Its extracted planes
+describe \(-w\le x,y\le w\) and \(0\le z\le w\), and their normals point outward.  Consequently a
+point on the positive side of any plane is outside.  This agrees with the projection builders in
+Chapter~\ref{ch:math-conventions}; it is a second derivation, not a repeated assertion.
+
+The three bounding types do not share one quality level:
+
+\begin{itemize}
+  \item \cnaclass{BoundingBox::GetCorners} preserves XNA's fixed eight-corner order.  Its
+        containment tests use half-space and min/max logic, but
+        \texttt{Contains(BoundingFrustum)} retains legacy reversed-question behavior.
+  \item \cnaclass{BoundingSphere} builds point sets with \texttt{CreateFromPoints}, using a
+        Ritter-style expansion.\index{BoundingSphere::CreateFromPoints} Under a non-uniform
+        transform, the radius is multiplied by the largest row-vector scale.  Its frustum
+        \texttt{Contains} path never returns \texttt{Disjoint} because the
+        required minimum-distance accumulator is never populated.
+  \item \cnaclass{BoundingFrustum} caches six planes and eight corners.  Its
+        \texttt{Intersects(Ray)} main case throws \cnaclass{NotImplementedException}; source and
+        test absence must not be mistaken for a completed geometric query.
+\end{itemize}
+
+Those gaps contain no \texttt{TODO} marker.  They are a useful reminder that marker searches find
+intent labels, not semantic incompleteness.
+
+\section{Rectangle, Point, and edge ownership}
+
+\cnaclass{Rectangle::Contains} is half-open: the left and top edges belong to the rectangle, while
+the right and bottom edges do not.  \texttt{Intersects} requires positive overlap, so rectangles
+that merely touch at an edge are not intersecting.  \texttt{Center} uses integer arithmetic, and
+\texttt{IsEmpty} is true only when all four fields are zero; a zero-width rectangle at a nonzero
+position is not the singleton \texttt{Empty} value.
+
+\cnaclass{Point} is simply two 32-bit integers.  It deliberately has no implicit
+\cnaclass{Vector2} bridge.  Make rounding policy visible when converting a continuous coordinate to
+a pixel or cell: truncation, floor, and nearest are different behaviors for negative values.
+
+\section{Color is packed, named, and polymorphic}
+
+The public surface contains 141 named colours: 140 opaque values plus \texttt{Transparent}.  There
+are 139 distinct packed values because \texttt{Aqua}/\texttt{Cyan} and
+\texttt{Fuchsia}/\texttt{Magenta} are aliases.  Three counts can therefore all appear plausible;
+only a count that names declarations, opacity, or distinct packed values is meaningful.
+
+Construction from float vectors clamps components to \([0,1]\), scales to \([0,255]\), and packs
+the four bytes.  Integer constructors clamp to \([0,255]\).  Multiplication scales alpha as well as
+RGB.  These behavioral facts are independent of the 24-byte C\texttt{++} object layout: packing
+defines the value, not permission to treat the entire object as packed storage.
+
+\section{Curves: ordered keys and explicit extrapolation}
+
+\cnaclass{Curve} evaluates cubic Hermite segments between sorted \cnaclass{CurveKey} entries.
+Duplicate positions are allowed; insertion and \texttt{setItemProperty} preserve sorted order and
+can reposition a key.  \cnaclass{CurveContinuity::Step} selects the left value until the segment
+endpoint, while smooth keys use their incoming and outgoing tangents.
+
+Five loop modes govern positions outside the key range.  \texttt{Constant} and \texttt{Linear}
+hold or extrapolate an endpoint; \texttt{Cycle}, \texttt{CycleOffset}, and \texttt{Oscillate}
+repeat a span.  The repeating modes depend on a stable cycle count and on a nonzero range.  CNA
+guards some degenerate spans, but its tangent computation
+uses different near-zero tests for incoming and outgoing sides.  Treat a duplicate-position curve
+as an authored edge case and test it with the same evaluator that will ship.
+
+Curves also cross the content boundary.  CNJ can carry a self-contained Curve payload, and the XNB
+reader has a concrete \texttt{CurveReader}; a successful parse proves field recovery, while the
+runtime evaluator and loop behavior remain separate claims.
+
+\section{Exceptions are part of the port}
+
+Sibling operations do not consistently choose the same exception family.  With empty input,
+\texttt{CreateFromPoints}\index{BoundingBox::CreateFromPoints}%
+\index{BoundingSphere::CreateFromPoints} throws different exceptions.  \cnaclass{BoundingBox}
+uses \cnaclass{ArgumentException}; \cnaclass{BoundingSphere} uses the standard invalid-argument
+exception.
+
+An undersized corner destination
+throws \cnaclass{ArgumentOutOfRangeException} for the box and \texttt{std::out\_of\_range} for the
+frustum.  Existing tests encode these differences, so a catch block written for one type is not a
+generic geometry policy.
+
+Degenerate numeric inputs are usually quieter: normalizing a zero vector or quaternion and
+inverting a singular matrix can yield NaN or infinity.  The module's strong argument checks are
+concentrated in projection factories.  Validate user-authored axes, scales, planes, and key spans at
+the application boundary rather than expecting every math primitive to reject them.
+
+\section{What the math tests prove}
+
+The pinned math module contains 818 statically counted GoogleTest definitions.  They use
+\texttt{EXPECT\_FLOAT\_EQ} or explicit tolerances of \(10^{-4}\), \(10^{-5}\), and \(10^{-6}\);
+none uses captured XNA or MonoGame numeric oracle values.  The suite is strong on API wiring and
+many analytic identities, but it does not independently pin matrix/quaternion composition order,
+the \([0,1]\) depth mapping, corner order, singular inputs, or the non-identity plane transform.
+
+For a port, pair these types with tests derived from the original game's observable behavior:
+screen-space points, collision classifications, curve samples, or captured reference values.  A
+familiar type name establishes lineage.  It does not erase C\texttt{++} layout, exception, and
+evidence boundaries.
