@@ -22,11 +22,14 @@ turn their vptr-bearing C\texttt{++} layout into the XNA stride.
 
 \section{VertexDeclaration is the byte contract}
 
-A \cnaclass{VertexDeclaration} is immutable after construction.  Each element stores an offset,
+A \cnaclass{VertexDeclaration}'s layout is immutable after construction. Each element stores an offset,
 usage, and usage index.  Its \cnaclass{VertexElementFormat} describes the byte shape; the
 declaration's stride is either explicit or
-computed as the largest \(\text{offset}+\text{format size}\).  Empty element lists throw
-\cnaclass{ArgumentNullException}.  Non-positive explicit strides throw the out-of-range exception.
+computed as the largest \(\text{offset}+\text{format size}\). The public default constructor is a
+deliberate exception: it creates an empty, zero-stride declaration used by the legacy
+\cnaclass{VertexBuffer}(device, count) convenience path. The constructors that explicitly receive
+an element list reject an empty list with \cnaclass{ArgumentNullException}; explicit non-positive
+strides throw the out-of-range exception.
 
 The declaration reaches every renderer through a mandatory call.  The vertex-buffer renderer
 interface method is \texttt{SetVertexDeclaration}.%
@@ -76,6 +79,13 @@ More than one per-vertex stream, more than one per-instance stream, or a binding
 renderer-reported native ceiling invokes the \texttt{MultiStreamVertexInput} gate.  A false answer
 causes \cnaclass{NotSupportedException} before native submission instead of letting the renderer
 silently read only stream zero.
+
+Streams compose by \((\text{VertexElementUsage},\text{UsageIndex})\), not merely by slot order. The
+shared layer claims each semantic pair while walking bindings. A later stream whose declaration is
+entirely duplicated contributes nothing, matching the FNA3D driver rule that such a stream is not in
+use. A declaration that repeats only some earlier semantics is rejected: CNA's combined-stride
+description cannot express a record whose fields are partly suppressed. Split declarations should
+therefore use distinct semantic/index pairs deliberately.
 
 \subsection{The minimum-offset fold}
 
@@ -146,8 +156,13 @@ forgets an override overclaims.
 The implementation is the authority.  At the pin, HEADLESS and SOFTWARE report MRT through the
 default even though their bind paths do not provide simultaneous target rendering.  WEBGPU reports
 MRT and occlusion queries while rejecting a second target and returning no real query object;
-SDL\_GPU similarly inherits a positive query answer without a query implementation.  Appendix
-\ref{ch:feature-matrix} records those contradictions rather than copying the Boolean as support.
+SDL\_GPU similarly inherits a positive query answer without a query implementation. Custom effects
+add two direct false positives: WEBGPU inherits true while retaining the null effect factory, and
+BGFX reports true on a real renderer even though its returned effect object's
+\texttt{CompileProgram()} always returns false. FNA3D is the useful opposite example: it executes
+six closed stock bytecode programs but truthfully reports custom effects false
+(Chapter~\ref{ch:shader-fx-gap}). Appendix \ref{ch:feature-matrix} records such contradictions
+rather than copying the Boolean as support.
 
 A capability check is therefore necessary but, for known contradictory entries, not sufficient.
 Pair it with a resource/draw path and an observable oracle until the upstream report becomes

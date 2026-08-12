@@ -11,7 +11,7 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
 |---|---|
 | cna-bible branch | `next`; local commits are ahead of `origin/next` (push requires explicit external-publication approval) |
 | CNA pinned SHA | `7a64362efef4119bf880459ef1704fb2c52199e2` (`develop` == `origin/develop`, 2026-08-11) |
-| Book builds | **yes** — 707 pages, all automated checks green; all completed Phase D/E writing and four Phase F corrective batches are visually verified |
+| Book builds | **yes** — 707 pages, all automated checks green; all completed Phase D/E writing and five Phase F corrective batches are visually verified |
 | Phase | **A–E complete; F in progress:** Chapters 19–79 and Appendices A–H are complete. Phase F has filled omitted Chapters 8–11 and 18, corrected early graphics/lifecycle drift, and continues the whole-book consistency sweep. |
 
 ## What is done
@@ -155,6 +155,17 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     its dated-evidence warning. The consolidated book is 707 pages; physical page 42 and every
     Chapter 17 page 200–208 were rendered and read, including full-size checks of the new section
     sequence and long identifiers, with no visual defect.
+24. **Phase F corrective batch 5 is complete and verified.** Chapters 16 and 18 now match the live
+    state/stream bridge: `BlendWriteState` forwards four color masks plus the state-object sample
+    mask; the separate device sample mask and rasterizer MSAA switch remain CPU-only; sampler mip
+    controls have a four-renderer override matrix rather than being universally absent;
+    `SpriteBatch::Begin` submits rasterizer state again; and DepthStencilState has three real
+    presets with only five of eight comparison modes covered by the named selection test. Vertex
+    declarations now document the zero-stride default-constructor exception and semantic-pair
+    composition across streams. Capability prose adds WebGPU/BGFX custom-effect false positives
+    and the truthful closed-stock FNA3D contrast. The book remains 707 pages; every physical page
+    191–200 and 209–216 was rendered and read. A full-size pass found one overflowing
+    `DepthBuffer*` run on page 195; it was rebroken, rebuilt, and re-rendered cleanly.
 
 ## Do this next
 
@@ -180,7 +191,7 @@ bounded correction batch; finish with an edition-wide visual and automated pass 
 
 ## Verification status
 
-Everything through Phase E and Phase F corrective batch 4 is verified:
+Everything through Phase E and Phase F corrective batch 5 is verified:
 
 - `make -C latex book` succeeds; **707 pages**.
 - makeindex: 2,176 entries accepted, 0 rejected, 0 warnings.
@@ -228,6 +239,10 @@ Everything through Phase E and Phase F corrective batch 4 is verified:
   200–208. The revised catalog paragraph, four-answer sequence, renderer matrix, listings and
   honest summary were read in contact sheets, with high-risk headings and identifiers inspected
   full-size; all were visually clean.
+- Phase F corrective batch 5 rendered and reviewed every Chapter 16 and Chapter 18 page, physical
+  191–200 and 209–216. State-object lists, worked examples, the capability table, long hook names
+  and the Part IV boundary were read at full size. One `DepthBuffer*` overflow was corrected and
+  the full verification plus affected-page render repeated cleanly.
 
 **No completed writing batch is pending PDF verification.** Continue with the Phase F whole-book
 consistency sweep, then perform Phase G final verification.
@@ -245,8 +260,9 @@ consistency sweep, then perform Phase G final verification.
 Ten source-audit reports and the 42-family draw-path matrix are complete against pinned CNA
 `7a64362e`. Phase B settled a 12-Part, 79-chapter, 8-appendix edition; Phase C put it on disk,
 migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–7
-rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: four verified
+rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: five verified
 batches filled omitted Chapters 8–11 and 18, removed stale totals/terminology, reconciled the
 early graphics, lifecycle and math narrative, and separated the four current shader strategies
-from the still-missing arbitrary-effect path. The book is 707 pages; continue the remaining
-whole-book consistency sweep.
+from the still-missing arbitrary-effect path. State, stream and capability bridges now also match
+the pinned renderer interface. The book is 707 pages; continue the remaining whole-book
+consistency sweep.

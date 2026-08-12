@@ -347,6 +347,7 @@ log grep replaces.
 | 2026-08-12 | Phase F corrective batch 1 | **699 pages**, build clean; makeindex 2,179 / 0 / 0; stale context-free 6,171-test claims removed, residual graphics uses of “backend” corrected, and previously title-only Chapters 8–11 and 18 written from pinned source evidence; physical pages 107–126 and 203–210 plus 13 isolated terminology/count pages rendered and read, with the Chapter 8 layout table and Chapter 18 interface names inspected full-size; all detected overflows corrected and re-rendered clean |
 | 2026-08-12 | Phase F corrective batch 2 | **703 pages**, build clean; makeindex 2,176 / 0 / 0; early identity/build/graphics/effects and service-lifecycle drift reconciled, recorded test campaigns separated from universal totals, verifier manual terms made whole-word exact; 31 touched physical pages rendered and read as six contact sheets, all visually clean |
 | 2026-08-12 | Phase F corrective batch 4 | **707 pages**, build clean; makeindex 2,176 / 0 / 0; Chapter 17 separated stock reimplementation, D3D9 source recompilation, FNA3D/MojoShader stock-bytecode execution and renderer-specific ShaderEffect, while Chapters 2/17 dropped the stale 23-of-86 current-sample claim; physical page 42 and Chapter 17 pages 200–208 rendered and read, all visually clean |
+| 2026-08-12 | Phase F corrective batch 5 | **707 pages**, build clean; makeindex 2,178 / 0 / 0; Chapters 16/18 reconciled to BlendWriteState, sampler-mip hooks, live SpriteBatch rasterizer routing, declaration exceptions, stream semantic composition and current capability contradictions; physical pages 191–200 and 209–216 rendered and read; one full-size overflow fixed and re-rendered clean |
 
 ---
 
@@ -633,3 +634,23 @@ mid-session at the owner's direction, so the build and visual passes are availab
 - Ran `tools/verify-book.sh`: 707 pages, makeindex 2,176 accepted / 0 rejected / 0 warnings, all
   automated checks green. Rendered and read physical page 42 plus every Chapter 17 page 200–208;
   the new headings, long identifiers, renderer matrix, listings and summary were visually clean.
+
+### 2026-08-12 — Phase F corrective batch 5: state submission and vertex capability contracts
+
+- Reconciled Chapter 16's binding bridge to current source. `BlendWriteState` now carries all four
+  per-MRT color masks and the state-object sample mask, while the separate device sample mask and
+  `RasterizerState.MultiSampleAntiAlias` remain CPU shadows. Max mip level and LOD bias reach a
+  separate hook whose real support is limited to four explicit renderer decisions; AddressW and
+  the vertex texture/sampler collections remain unforwarded.
+- Corrected the three real depth-stencil presets, bounded the named comparison test to five of the
+  eight enum values, and replaced the stale claim that `SpriteBatch::Begin` discards rasterizer
+  state with its current copied/defaulted device submission. Kept EasyGL's plain-filter mip rule
+  renderer-specific rather than presenting it as a universal CNA contract.
+- Refined Chapter 18 around the intentional empty/zero-stride default declaration, semantic-pair
+  composition and partial-duplicate rejection across streams. Added the current WebGPU and BGFX
+  custom-effect false positives and contrasted them with FNA3D's truthful `false` despite its
+  closed stock-bytecode path.
+- Ran `tools/verify-book.sh`: 707 pages, makeindex 2,178 accepted / 0 rejected / 0 warnings, all
+  automated checks green. Rendered and read physical pages 191–200 and 209–216. Full-size review
+  found one overflowing run of `DepthBuffer*` identifiers on page 195; after a legal line-break
+  rewrite, the full build and affected-page render were repeated cleanly.

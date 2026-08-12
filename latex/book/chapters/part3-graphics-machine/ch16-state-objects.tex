@@ -57,17 +57,18 @@ misleading by showing a value the renderer was never asked to use.
 \section{The value surface is broader than the binding bridge}
 \label{sec:state-object-binding-boundary}
 
-Every public property round-trips in the small C\texttt{++} value objects, but the common renderer
-interface is narrower. This is a structural limitation above any individual renderer mapping:
-the three whole-state setters make one immediate call with the fields present in that interface;
-there is no later generic reconciliation of omitted fields. The current routes are:
+Every public property round-trips in the small C\texttt{++} value objects, but not every property
+has the same submission route or renderer coverage. The three whole-state setters submit first
+and copy into the public device cache only after the renderer calls succeed; a native rejection
+therefore cannot leave the cache claiming the rejected state. Samplers are instead resubmitted
+for all sixteen pixel slots immediately before each draw. The current bridges are:
 
 \begin{itemize}
-  \item \cnaclass{BlendState} forwards its six source/destination/function values. Its
-    \texttt{BlendFactor} is then sent through the separate device property. Each color-write
-    mask and \texttt{MultiSampleMask} is absent from the renderer call. The device's own
-    \texttt{MultiSampleMask} is only a C\texttt{++} integer shadow; unlike FNA's native setter,
-    it makes no renderer call.
+  \item \cnaclass{BlendState} forwards its six source/destination/function values plus one
+    \texttt{BlendWriteState} containing all four per-MRT color-write masks and the state's
+    \texttt{MultiSampleMask}. Its \texttt{BlendFactor} is then sent through a separate renderer
+    hook. The similarly named \emph{device} \texttt{MultiSampleMask} property remains only a
+    C\texttt{++} integer shadow and makes no renderer call; use the state-object property.
   \item \cnaclass{DepthStencilState} forwards all of its depth/stencil fields on whole-state
     assignment. Its \texttt{ReferenceStencil} is also sent through the distinct device setter,
     whose renderer default is a no-op; Chapter~\ref{ch:state-objects}'s EasyGL caveat therefore
@@ -75,20 +76,24 @@ there is no later generic reconciliation of omitted fields. The current routes a
   \item \cnaclass{RasterizerState} forwards cull mode, fill mode, scissor enable, and both bias
     values, but not \texttt{MultiSampleAntiAlias}. The property is a retained CPU value rather
     than a generic rasterization command.
-  \item On every CNA draw, the device visits all sixteen \emph{pixel} sampler slots and forwards
-    only filter, AddressU, AddressV, and maximum anisotropy. AddressW, MaxMipLevel, and
-    MipMapLevelOfDetailBias are never read by that bridge. The public vertex texture and vertex
+  \item On every CNA draw, the device visits all sixteen \emph{pixel} sampler slots. One hook
+    carries filter, AddressU, AddressV, and maximum anisotropy; a second carries MaxMipLevel and
+    MipMapLevelOfDetailBias. AddressW is still absent. The public vertex texture and vertex
     sampler collections are retained (and cleared when a texture is disposed), but no draw path
     forwards either collection to the renderer at all.
 \end{itemize}
 
-The sampler loop is intentionally different from the three whole-state setters: changing a
-pixel sampler collection entry is seen at the next draw because every slot is reapplied then.
-That does not rescue its omitted fields or the vertex collections. Current CPU tests exercise
-defaults, names, round trips, and bounds, while renderer examples exercise selected supported
-pixel-sampler and state fields. No located test asks whether a getter mutation reaches a renderer,
-or distinguishes ColorWriteChannels, either multisample property, AddressW, MaxMipLevel, LOD
-bias, or a vertex sampler/texture from its default behavior.
+The presence of a common hook is not a promise that every implementation consumes it. All
+\texttt{ApplyBlendState} overrides had to make an explicit decision about
+\texttt{BlendWriteState}, but historical and 2D families may reject or ignore unsupported masks.
+The shared differential 3D oracle exercises color masks on SDL GPU, WebGPU, and LLGL; its optional
+4x-MSAA leg is enabled only where a functional native sample mask exists. The newer sampler-mip
+hook has only four overrides: FNA3D stores both values, Glide accepts LOD bias but rejects a
+non-default maximum level, Metal rejects either non-default, and PortableGL deliberately ignores
+both because its textures have one level. All other families inherit the no-op default. Thus a
+pixel sampler entry is submitted at the next draw, but support for its mip controls remains a
+renderer claim to verify. No located draw test distinguishes AddressW or either vertex collection
+from its default behavior.
 
 \section{BlendState}
 
@@ -104,22 +109,29 @@ and \texttt{SourceAlphaSaturation}); \cnaclass{BlendFunction} has five (\texttt{
 set already seen on \cnaclass{DisplayOrientation} (Chapter~\ref{ch:game-loop}) and
 \cnaclass{ClearOptions} (Chapter~\ref{ch:graphicsdevice}).
 
-For the six source/destination/function values that the common bridge actually carries, the
-current cross-renderer status in \texttt{docs/graphics-renderer-feature-matrix.md} is fully
-correct on EasyGL, BGFX, SDL\_Renderer, and all three Direct3D renderers. Vulkan is the one
-renderer with a real, historically serious bug in that forwarded subset --- for a long time its
+The common bridge now carries the entire value surface: the six blend ordinals, the four write
+masks, the state-object sample mask, and the separately submitted blend factor. Native support is
+still narrower on some families; eleven renderer overrides explicitly ignore the appended write
+state, and some single-target APIs can honor only slot zero. The generic differential test is
+therefore stronger evidence than a round-trip property test: with blending disabled it proves
+that masked channels preserve the destination, enabled channels take the source, and an A--B--A
+sequence does not reuse stale pipeline state. Its optional MSAA case separately compares
+all-samples with mask zero.
+
+Vulkan also has a historically serious bug in the six blend ordinals --- for a long time its
 blend implementation was, in the project's own words, ``almost entirely fake'': one hardcoded
 blend equation applied regardless of what was actually requested, confirmed failing across five
 separate pixel tests before the fix replaced it with a genuine per-\cnaclass{Blend}/%
-\cnaclass{BlendFunction} mapping across all nine of the renderer's pipeline-creation sites. That
-evidence does not make the unforwarded color-write masks or multisample mask work.
+\cnaclass{BlendFunction} mapping across all nine of the renderer's pipeline-creation sites. The
+later \texttt{BlendWriteState} work is a distinct contract and must not be inferred from that
+earlier factor/function campaign.
 
 \section{DepthStencilState}
 
-Three presets (\texttt{Default} --- depth test and write on, \texttt{LessEqual} ---,
+Three presets (\texttt{Default} --- depth test and write on ---,
 \texttt{DepthRead} --- test on, write off ---, and \texttt{None} --- both off) sit atop a
-sixteen-property surface: \texttt{DepthBufferEnable} / \texttt{DepthBufferWriteEnable}/%
-\texttt{DepthBufferFunction}, and a full stencil-test configuration
+sixteen-property surface: \texttt{DepthBufferEnable}, \texttt{DepthBufferWriteEnable}, and
+\texttt{DepthBufferFunction}; plus a full stencil-test configuration
 (\texttt{StencilEnable}, \texttt{StencilFunction}, \texttt{StencilMask}/%
 \texttt{StencilWriteMask}, \texttt{ReferenceStencil}, the three stencil-operation slots for
 pass/fail/depth-fail, \texttt{TwoSidedStencilMode}, and four separate counter-clockwise-face
@@ -127,8 +139,9 @@ variants of the same operations). \cnaclass{CompareFunction} has eight values;
 \cnaclass{StencilOperation} has eight (\texttt{Keep}, \texttt{Zero}, \texttt{Replace},
 \texttt{Increment} / \texttt{Decrement} and their saturating variants, \texttt{Invert}).
 
-Depth testing itself is solid: \texttt{DepthBufferWriteEnable} and the full five-value
-\texttt{DepthBufferFunction} sweep both verify correctly on EasyGL and (as of a fix) Vulkan.
+Depth testing itself is solid on the measured paths: \texttt{DepthBufferWriteEnable} and a
+five-case \texttt{DepthBufferFunction} selection test (Always, Never, Less, LessEqual, Greater)
+verify correctly on EasyGL and, as of a fix, Vulkan. That is not a sweep of all eight enum values.
 Stencil testing is where this state object's real history lives. At one point, Vulkan's
 apply-state entry point accepted fifteen parameters but genuinely stored only two --- every
 stencil-related parameter passed through was simply discarded, and \texttt{stencilTestEnable}
@@ -224,9 +237,10 @@ Vulkan, BGFX, WebGPU, SDL GPU, D3D9, and D3D11 retain an independent Boolean and
 The SDL renderer and ASCII instead apply the rectangle as an always-active clip and ignore the
 Boolean. D3D12, Software, Canvas, and FREEDIRECT never turn the pair into a custom raster clip at all;
 Headless only validates and traces it. The full scope and evidence matrix is
-\S\ref{sec:backend-viewport-scissor-matrix}. Also note the shared
-\cnaclass{SpriteBatch} routing gap from Chapter~\ref{ch:spritebatch}: passing this state to
-\texttt{SpriteBatch::Begin()} currently discards it before any renderer sees it.
+\S\ref{sec:backend-viewport-scissor-matrix}. \cnaclass{SpriteBatch} no longer creates a second
+routing gap here: \texttt{Begin()} resolves a null argument to
+\texttt{RasterizerState::CullCounterClockwise} and otherwise submits the caller's copied state
+through this same \cnaclass{GraphicsDevice} setter.
 
 All three cull modes verify correctly on both EasyGL and Vulkan via a genuine
 opposite-winding-order pixel test, and a small architectural detail worth noting: Vulkan
@@ -321,11 +335,12 @@ above~0 was a \emph{total, silent no-op} on both Vulkan and BGFX --- the same hi
 failure shape their \cnaclass{Texture3D} / \cnaclass{TextureCube} readback paths once had
 (Chapter~\ref{ch:textures-rendertargets} now records the corrected live matrix). Mip-level
 \texttt{SetData} is now a real GPU upload on all three hardware renderers, but that upload fix
-must not be mistaken for full \cnaclass{SamplerState} mip control: the common binding bridge has
-no AddressW, MaxMipLevel, or LOD-bias argument. Renderer caches consequently use their own
-defaults for those missing values (for example, the Direct3D sampler caches set AddressW from
-AddressV, LOD bias to zero, and allow the full mip range). No game-set value of those three
-properties can reach them through this API today.
+must not be mistaken for universal \cnaclass{SamplerState} mip control. AddressW still has no
+common argument. MaxMipLevel and LOD bias now reach the separate
+\texttt{ApplySamplerMipState} hook, but only FNA3D consumes both without rejecting a non-default;
+Glide consumes only bias, Metal explicitly refuses non-default values, PortableGL has a documented
+one-level no-op, and every other renderer inherits the interface no-op. The API surface is wired,
+but the implementation matrix is deliberately sparse.
 Anisotropic filtering itself: correct on Vulkan (queries the real device capability and
 clamps the requested level); EasyGL was silently falling back to plain trilinear filtering
 regardless of the requested anisotropy level until a fix wired real
@@ -357,14 +372,10 @@ spriteBatch_->Begin(SpriteSortMode::Deferred, BlendState::AlphaBlend,
                      &pointClamp, nullptr, nullptr); // crisp texel edges, no mip chain to worry about
 \end{lstlisting}
 
-A distant, minified 3D floor texture with a real mipmap chain is the case where plain
-\texttt{TextureFilter::Point} is the wrong choice in CNA specifically, precisely because of this
-chapter's own already-stated deviation: \texttt{Point} and \texttt{Linear} both always sample mip
-level~0 here, regardless of minification, so a floor texture with mips generated but sampled via
-plain \texttt{Point} would show the same aliased, moir\'e-prone level~0 detail at any distance ---
-mip selection never engages at all. Getting real mip-aware minification with a point-filtered
-look (retro, blocky, but not shimmering into the distance) needs one of the explicitly
-\texttt{Mip}-qualified filter values instead:
+A distant, minified 3D floor texture with a real mipmap chain exposes an
+\textbf{EasyGL-specific} choice. On that renderer, plain \texttt{TextureFilter::Point} and
+\texttt{Linear} sample level~0 regardless of minification; selecting a mip-qualified value is
+therefore required for a blocky but distance-stable result:
 
 \begin{lstlisting}
 SamplerState blockyButMipAware;
@@ -375,12 +386,11 @@ blockyButMipAware.setAddressVProperty(TextureAddressMode::Wrap);
 device.getSamplerStatesProperty()[0] = blockyButMipAware;
 \end{lstlisting}
 
-This is a deliberate CNA deviation from FNA (which is mip-aware for plain \texttt{Point}/
-\texttt{Linear} too), not an oversight left unfixed --- the chapter's own account of why explains
-the alternative would be worse: unconditionally engaging mip selection for the common
-non-mipmapped 2D case would render as GL-incomplete (solid black) rather than simply ignoring
-mips, so the plain filters were deliberately kept mip-\emph{unaware} and the \texttt{Mip}-qualified
-values are the one correct way to opt in for an asset that actually has mips.
+This is EasyGL's deliberate deviation from FNA (which is mip-aware for plain \texttt{Point}/
+\texttt{Linear} too), not an edition-wide promise about every CNA renderer. EasyGL keeps the plain
+filters mip-unaware because unconditionally enabling mip selection on the common one-level texture
+would make it GL-incomplete and black. Other renderers map the same enum through their own native
+sampler contracts; carry this choice across only after a renderer-specific pixel test.
 
 \section{One recurring, small bug worth naming on its own}
 
