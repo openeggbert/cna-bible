@@ -255,6 +255,16 @@ else
     pass "no removed renderer selectors in live CMake assignments"
 fi
 
+# Phase 70 contains 65 technical tasks (666--730); Task 731 is its closing documentation task.
+# The old wording paired the inclusive 666--731 range with a 65-task total, an off-by-one claim.
+if grep -rEn 'Tasks(~|[[:space:]])+666--731,? 65 tasks' "$chapters" "$front" \
+    > /tmp/cna-bible-phase70-count.txt 2>/dev/null; then
+    fail "Phase 70 task range is paired with the obsolete off-by-one total"
+    head -10 /tmp/cna-bible-phase70-count.txt | sed 's/^/        /'
+else
+    pass "Phase 70 separates 65 technical tasks from its closing documentation task"
+fi
+
 for term in NOXNA "both volumes" "this volume" "Volume I" "Volume II"; do
     if [ "$term" = "NOXNA" ]; then
         # Three compatibility labels intentionally retain the old spelling so incoming links

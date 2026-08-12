@@ -380,6 +380,14 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     repository-pin audit on 2026-08-11. The stable Appendix D reference raises the current link-
     annotation total to 1,803; every target and rectangle remains valid. The complete verifier is
     green, and both physical preface pages 3–4 were rendered and read full-size, clean.
+49. **Every compiled Task citation has been re-audited against its owning pin.** The sweep
+    covered all 92 manuscript lines containing “Task,” including 46 distinct CNA numeric IDs,
+    range and slash endpoints, four decimal/avatar IDs, easy-gl's `U2`, and the three `WEBGPU-*`
+    IDs. One arithmetic ambiguity was real: Tasks 666–731 are 66 entries, not 65. Chapter 30 now
+    accurately identifies Tasks 666–730 as the 65-task technical audit and Task 731 as its closing
+    document, matching the pinned Phase 70 plan and completion report. A verifier rule rejects the
+    former off-by-one wording. The complete verifier is green; physical page 349 was rendered and
+    read full-size, clean.
 
 ## Do this next
 
@@ -554,6 +562,10 @@ Everything through Phase G is verified:
   vertex-stream remit. Its evidence note binds the complete audit to the 2026-08-11 repository
   pins via Appendix D; all 1,803 current link annotations validate. Physical pages 3–4 were read
   full-size and are clean.
+- All 92 compiled lines containing “Task” were checked against the relevant pinned CNA/easy-gl
+  evidence. Chapter 30's sole count mismatch now separates the 65 technical Tasks 666–730 from
+  Task 731's closing document; a verifier guard prevents the off-by-one wording from returning.
+  Physical page 349 was rendered and read full-size, clean.
 
 **No known writing, correction or PDF-verification defect is pending.**
 

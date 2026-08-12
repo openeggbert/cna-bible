@@ -379,6 +379,7 @@ log grep replaces.
 | 2026-08-12 | Post-G release hardening | **709 pages**, independent clean-tree build and complete verifier green; two duplicated function words and two awkward constructions corrected, with all four affected pages rendered and read clean; all 89 compiled content sources, 709 page boxes/rotations, page-label transition, 1,076 unique internal targets, 1,802 link rectangles, three reviewed HTTPS links and 1,065 numbered TOC landings validated; all pages independently interpreted by Ghostscript; fixed-date clean builds byte-identical; negative tests proved repeated-word, displaced-TOC and unreviewed-URI failure paths |
 | 2026-08-12 | Post-G licensing/outline clarification | **709 pages**, CNA's Ms-PL software-license section distinguished from the book's undecided publication license; D3D9 vendored Stock Effects corrected from bytecode to the six `.fx` sources plus four `.fxh` includes present at the pin; all 1,066 outline entries checked for non-empty titles and unique destinations; complete verifier green; physical pages 5 and 37 rendered and read clean |
 | 2026-08-12 | Post-G preface reconciliation | **709 pages**, Part III overview corrected from 3D models to draw geometry/vertex streams, preserving Part VI's model-runtime remit; edition-wide audit dated to the recorded 2026-08-11 pins rather than conflated with July-dated source snapshots; new stable Appendix D link brings the current artifact to 1,803 valid link annotations; complete verifier green; physical pages 3–4 rendered and read clean |
+| 2026-08-12 | Post-G Task-citation audit | **709 pages**, all 92 compiled Task-bearing lines checked against their owning pinned plans, including 46 distinct numeric CNA IDs plus range/slash endpoints, decimal/avatar IDs, easy-gl U2 and three WEBGPU IDs; corrected Phase 70's off-by-one wording to 65 technical Tasks 666–730 plus closing document Task 731; verifier guard added; complete verifier green; physical page 349 rendered and read clean |
 
 ---
 
@@ -1138,3 +1139,8 @@ build and visual passes are available again.
   CNA documentation from the edition-wide audit at the 2026-08-11 repository pins and linked the
   recorded map in Appendix D. The added internal reference produces 1,803 valid link annotations;
   the complete verifier is green and physical pages 3–4 were read full-size without defect.
+- Re-audited every compiled Task citation against its owning pinned evidence: 92 source lines,
+  46 distinct numeric CNA identifiers plus all range/slash endpoints, four decimal/avatar IDs,
+  easy-gl U2 and three WEBGPU-prefixed IDs. Corrected the one real mismatch: Phase 70's technical
+  work is Tasks 666–730 (65 tasks), with Task 731 as its closing document. Added a regression guard;
+  the complete verifier is green and physical page 349 was read full-size without defect.
