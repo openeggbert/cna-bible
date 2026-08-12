@@ -139,7 +139,21 @@ if ! (
 fi
 
 actual_bytes=$(stat -c '%s' "$pdf")
-actual_sha256=$(sha256sum "$pdf" | awk '{print $1}')
+if ! actual_sha256_line=$(sha256sum "$pdf"); then
+    printf 'ERROR: could not hash the rebuilt release artifact\n' >&2
+    exit 1
+fi
+actual_sha256=${actual_sha256_line%% *}
+case "$actual_sha256" in
+    *[!0-9a-f]*|'')
+        printf 'ERROR: invalid SHA-256 returned for the rebuilt release artifact\n' >&2
+        exit 1
+        ;;
+esac
+if [ "${#actual_sha256}" -ne 64 ]; then
+    printf 'ERROR: invalid SHA-256 length for the rebuilt release artifact\n' >&2
+    exit 1
+fi
 if ! pdf_info_object=$(mutool show -g "$pdf" trailer/Info 2>/dev/null); then
     printf 'ERROR: MuPDF could not read release metadata\n' >&2
     exit 1
