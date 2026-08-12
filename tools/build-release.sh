@@ -140,7 +140,10 @@ fi
 
 actual_bytes=$(stat -c '%s' "$pdf")
 actual_sha256=$(sha256sum "$pdf" | awk '{print $1}')
-pdf_info_object=$(mutool show -g "$pdf" trailer/Info 2>/dev/null || true)
+if ! pdf_info_object=$(mutool show -g "$pdf" trailer/Info 2>/dev/null); then
+    printf 'ERROR: MuPDF could not read release metadata\n' >&2
+    exit 1
+fi
 creation_date=$(printf '%s\n' "$pdf_info_object" \
     | sed -n 's/.*\/CreationDate(\([^)]*\)).*/\1/p')
 modification_date=$(printf '%s\n' "$pdf_info_object" \
@@ -159,5 +162,25 @@ if [ "$actual_bytes" -ne "$expected_bytes" ] || [ "$actual_sha256" != "$expected
 fi
 
 CNA_BIBLE_LOCK_FD="$book_lock_fd" "$repo_root/tools/verify-book.sh" --no-build
+
+# The artifact lock serializes this project's PDF tools, not Git or arbitrary editors. Re-read the
+# exact provenance immediately before committing the transaction so a concurrent checkout/commit
+# or source/tool edit cannot leave a successful log describing a different repository state.
+final_head=$(git -C "$repo_root" rev-parse HEAD)
+final_latex_tree=$(git -C "$repo_root" rev-parse HEAD:latex 2>/dev/null || true)
+final_tools_tree=$(git -C "$repo_root" rev-parse HEAD:tools)
+final_latex_status=$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all -- latex)
+final_tools_status=$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all -- tools)
+if [ "$final_head" != "$actual_head" ] || [ "$final_latex_tree" != "$actual_latex_tree" ] \
+   || [ "$final_tools_tree" != "$actual_tools_tree" ] || [ -n "$final_latex_status" ] \
+   || [ -n "$final_tools_status" ]; then
+    printf 'ERROR: repository source/tool provenance changed during sealed build\n' >&2
+    printf 'HEAD:  %s -> %s\nlatex: %s -> %s\ntools: %s -> %s\n' \
+        "$actual_head" "$final_head" "$actual_latex_tree" "$final_latex_tree" \
+        "$actual_tools_tree" "$final_tools_tree" >&2
+    [ -n "$final_latex_status" ] && printf '%s\n' "$final_latex_status" >&2
+    [ -n "$final_tools_status" ] && printf '%s\n' "$final_tools_status" >&2
+    exit 1
+fi
 release_succeeded=1
 trap - HUP INT TERM

@@ -832,6 +832,10 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      non-symlink regular file owned by the effective user. Append-open avoids truncation; the new
      descriptor must match the current path inode, is restricted through procfs to `0600`, and is
      then rechecked before `flock`. This also safely migrates the historical owner-only-parent lock.
+126. **A sealed verdict cannot silently outlive its starting provenance.** MuPDF release-metadata
+     extraction now requires successful parser status, not merely matching emitted dates. After
+     the nested full verifier, the transaction re-reads `HEAD`, committed `latex/`/`tools/` trees
+     and both clean statuses; any drift restores the prior reviewed PDF instead of reporting success.
 
 ## Do this next
 

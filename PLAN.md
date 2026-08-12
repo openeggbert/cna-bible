@@ -1468,3 +1468,5 @@ build and visual passes are available again.
   repository root before hashing the lock key, so aliases to the same PDF share one lock inode.
 - Validate existing lock paths before non-truncating open, bind the descriptor to the current inode
   and owner, restrict it through procfs to `0600`, then recheck before flock; legacy mode migrates.
+- Require successful MuPDF metadata status and recheck HEAD, committed source/tool trees and clean
+  statuses after the nested verifier, rolling back if repository provenance changed during release.
