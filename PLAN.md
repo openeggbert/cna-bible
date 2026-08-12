@@ -420,6 +420,7 @@ log grep replaces.
 | 2026-08-12 | Post-G sealed PDF-date check | Sealed build now reads the PDF Info object with MuPDF and requires CreationDate and ModDate `D:20260812100654Z`, the UTC representation of `SOURCE_DATE_EPOCH=1786529214`, in addition to exact tree/size/SHA-256; provides direct timestamp diagnostics without constraining ordinary working builds |
 | 2026-08-12 | Post-G verifier CLI hardening | Replaced silent unknown-argument fallback with an exact interface: no argument builds/checks, `--no-build` checks, `--help` prints usage, and every unknown/multiple-argument form exits 2 before make; negative fixtures confirm no build log or temporary diagnostic directory is created |
 | 2026-08-12 | Post-G release CLI hardening | Restricted `tools/build-release.sh` to its argument-free workflow plus `--help`; every unknown or multiple-argument invocation exits 2 before repository/dependency inspection or release-log writes, preventing typo-triggered sealed rebuilds |
+| 2026-08-12 | Post-G generated-index structure | Parsed all 2,389 `main.idx` records rather than trusting only makeindex's transcript: every key is non-empty, every encapsulator is `hyperpage`, every printed reference is 1–670, and 681 case-folded logical keys map exactly to 676 `main.ind` items plus five subitems; no PDF delta |
 
 ---
 
@@ -1364,3 +1365,6 @@ build and visual passes are available again.
 - Made the sealed release entry point fail closed as well: its only executable mode takes no
   arguments, while `--help` exits cleanly and every other argument vector returns 2 before any
   repository/dependency check or release-log write.
+- Closed the generated-index source/output census: all 2,389 records have a non-empty key,
+  `hyperpage` encapsulator and printed page 1–670, while 681 case-folded logical keys map without
+  loss to 676 top-level items plus five subitems.

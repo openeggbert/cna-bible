@@ -660,6 +660,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     its argument-free sealed workflow or `--help`. Unknown or multiple arguments print usage and
     return 2 before resolving the repository, checking dependencies or touching the release log,
     so a mistyped option cannot silently start a full fixed-date rebuild.
+90. **The generated index structure is an explicit invariant.** Beyond makeindex's clean exit and
+    the PDF's 1,850 clickable page numbers, the verifier now parses all 2,389 `main.idx` records.
+    Every record must have a non-empty key, use `hyperpage` and cite printed page 1–670; the 681
+    case-folded logical keys must produce exactly 676 top-level items and five subitems, with no
+    lost or unexpected level. The current source/output pair satisfies the complete census.
 
 ## Do this next
 

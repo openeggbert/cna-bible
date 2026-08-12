@@ -137,6 +137,31 @@ else
     fail "no main.ilg -- index was not generated"
 fi
 
+idx="$book_dir/main.idx"
+ind="$book_dir/main.ind"
+if [ -f "$idx" ] && [ -f "$ind" ]; then
+    idx_entry_count=$(wc -l < "$idx")
+    # Each source record must have a non-empty key, the hyperlink encapsulator, and one printed
+    # page in the book's exact arabic range. The key may itself contain TeX braces.
+    idx_valid_count=$(grep -Ec '^\\indexentry\{.+\|hyperpage\}\{([1-9][0-9]?|[1-5][0-9]{2}|6[0-6][0-9]|670)\}$' "$idx" || true)
+    idx_unique_key_count=$(sed -n 's/^\\indexentry{\(.*\)|hyperpage}{[0-9][0-9]*}$/\1/p' "$idx" \
+        | sort -fu | wc -l)
+    ind_item_count=$(grep -c '^  \\item ' "$ind" || true)
+    ind_subitem_count=$(grep -c '^    \\subitem ' "$ind" || true)
+    ind_subsubitem_count=$(grep -c '^      \\subsubitem ' "$ind" || true)
+    ind_key_count=$((ind_item_count + ind_subitem_count + ind_subsubitem_count))
+    if [ "$idx_entry_count" -eq 2389 ] && [ "$idx_valid_count" -eq 2389 ] \
+       && [ "$idx_unique_key_count" -eq 681 ] && [ "$ind_item_count" -eq 676 ] \
+       && [ "$ind_subitem_count" -eq 5 ] && [ "$ind_subsubitem_count" -eq 0 ] \
+       && [ "$ind_key_count" -eq "$idx_unique_key_count" ]; then
+        pass "all 2389 index records form 681 non-empty in-range keys (676 items + 5 subitems)"
+    else
+        fail "index structure changed ($idx_entry_count records, $idx_valid_count valid/in-range, $idx_unique_key_count unique; $ind_item_count items + $ind_subitem_count subitems + $ind_subsubitem_count subsubitems)"
+    fi
+else
+    fail "no main.idx/main.ind -- index source or output is missing"
+fi
+
 # ---------------------------------------------------------------- labels
 echo "-- label/reference hygiene"
 
