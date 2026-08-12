@@ -864,6 +864,12 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      status alongside their existing exact counts instead of flattening every failure to zero. An
      unsafe-action stub that printed the correct zero then exited 41 produced exactly one action-
      audit FAIL despite every displayed census value remaining correct.
+132. **Every outline derivation is status-bound.** The destination, title, parent and order graphs
+     now carry one producer/filter/set status across all PDF and source sides before any of their
+     five exact 1,066-entry PASS verdicts can be issued. Exact cardinalities, pairwise differences
+     and byte order remain required independently of successful transformation status. A pass-
+     through outline `comm` stub exiting 43 turned all six outline verdicts red while diagnostics
+     still showed 12/79/8, 1,066/1,066 and zero differences.
 
 ## Do this next
 

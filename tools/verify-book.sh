@@ -867,16 +867,18 @@ if command -v mutool >/dev/null 2>&1; then
         outline_parent_diff_file=$(mktemp /tmp/cna-bible-outline-parent-diff.XXXXXX.txt)
         outline_order_file=$(mktemp /tmp/cna-bible-outline-order.XXXXXX.txt)
         source_order_file=$(mktemp /tmp/cna-bible-source-order.XXXXXX.txt)
+        outline_graph_ok=1
         grep -o '#nameddest=[^[:space:]]*' "$outline_file" | sed 's/#nameddest=//' \
-            | sort > "$outline_dests_file"
+            | sort > "$outline_dests_file" || outline_graph_ok=0
         perl -ne '
             print "$2\n"
                 if /\\contentsline \{(part|chapter|section|subsection)\}.*\{([^{}]+)\}%$/;
-        ' "$book_dir/main.toc" | sort > "$toc_outline_dests_file"
-        comm -3 "$outline_dests_file" "$toc_outline_dests_file" > "$outline_toc_diff_file"
+        ' "$book_dir/main.toc" | sort > "$toc_outline_dests_file" || outline_graph_ok=0
+        comm -3 "$outline_dests_file" "$toc_outline_dests_file" > "$outline_toc_diff_file" \
+            || outline_graph_ok=0
         perl -ne '
             if (/"(.*)"\s+#nameddest=([^\s]+)$/) { print "$2\t$1\n"; }
-        ' "$outline_file" | LC_ALL=C sort > "$outline_titles_file"
+        ' "$outline_file" | LC_ALL=C sort > "$outline_titles_file" || outline_graph_ok=0
         perl -MEncode=decode -ne '
             BEGIN { binmode STDOUT, ":encoding(UTF-8)"; }
             if (/^\\BOOKMARK \[[^]]*\]\[[^]]*\]\{([^}]*)\}\{(.*)\}\{[^}]*\}%/) {
@@ -886,8 +888,10 @@ if command -v mutool >/dev/null 2>&1; then
                 $title =~ s/^\x{FEFF}//;
                 print "$destination\t$title\n";
             }
-        ' "$book_dir/main.out" | LC_ALL=C sort > "$source_bookmarks_file"
-        comm -3 "$outline_titles_file" "$source_bookmarks_file" > "$outline_title_diff_file"
+        ' "$book_dir/main.out" | LC_ALL=C sort > "$source_bookmarks_file" \
+            || outline_graph_ok=0
+        comm -3 "$outline_titles_file" "$source_bookmarks_file" > "$outline_title_diff_file" \
+            || outline_graph_ok=0
         perl -ne '
             if (/^[+|]\t(\t*)".*"\t#nameddest=([^\s]+)$/) {
                 $depth = 1 + length($1);
@@ -899,25 +903,31 @@ if command -v mutool >/dev/null 2>&1; then
                     delete $at_depth{$candidate} if $candidate > $depth;
                 }
             }
-        ' "$outline_file" | LC_ALL=C sort > "$outline_parents_file"
+        ' "$outline_file" | LC_ALL=C sort > "$outline_parents_file" || outline_graph_ok=0
         perl -ne '
             if (/^\\BOOKMARK \[[^]]*\]\[[^]]*\]\{([^}]*)\}\{.*\}\{([^}]*)\}%/) {
                 print "$1\t$2\n";
             }
-        ' "$book_dir/main.out" | LC_ALL=C sort > "$source_parents_file"
-        comm -3 "$outline_parents_file" "$source_parents_file" > "$outline_parent_diff_file"
+        ' "$book_dir/main.out" | LC_ALL=C sort > "$source_parents_file" \
+            || outline_graph_ok=0
+        comm -3 "$outline_parents_file" "$source_parents_file" > "$outline_parent_diff_file" \
+            || outline_graph_ok=0
         grep -o '#nameddest=[^[:space:]]*' "$outline_file" | sed 's/#nameddest=//' \
-            > "$outline_order_file"
+            > "$outline_order_file" || outline_graph_ok=0
         sed -n 's/^\\BOOKMARK \[[^]]*\]\[[^]]*\]{\([^}]*\)}.*/\1/p' \
-            "$book_dir/main.out" > "$source_order_file"
+            "$book_dir/main.out" > "$source_order_file" || outline_graph_ok=0
         outline_count_scan_ok=1
         if ! outline_entries=$(grep_count -c '#nameddest=' "$outline_file"); then
             outline_entries=0; outline_count_scan_ok=0
         fi
-        outline_destinations=$(grep -o '#nameddest=[^[:space:]]*' "$outline_file" \
-            | sort -u | wc -l)
-        outline_empty_titles=$(awk -F'"' '$0 ~ /#nameddest=/ && (NF < 3 || $2 == "") { count++ } END { print count + 0 }' \
-            "$outline_file")
+        if ! outline_destinations=$(grep -o '#nameddest=[^[:space:]]*' "$outline_file" \
+            | sort -u | wc -l); then
+            outline_destinations=0; outline_graph_ok=0
+        fi
+        if ! outline_empty_titles=$(awk -F'"' '$0 ~ /#nameddest=/ && (NF < 3 || $2 == "") { count++ } END { print count + 0 }' \
+            "$outline_file"); then
+            outline_empty_titles=0; outline_graph_ok=0
+        fi
         if ! outline_parts=$(grep_count -c '#nameddest=part\.' "$outline_file"); then
             outline_parts=0; outline_count_scan_ok=0
         fi
@@ -927,14 +937,16 @@ if command -v mutool >/dev/null 2>&1; then
         if ! outline_appendices=$(grep_count -c '#nameddest=appendix\.[A-H]' "$outline_file"); then
             outline_appendices=0; outline_count_scan_ok=0
         fi
-        if [ "$outline_count_scan_ok" -eq 1 ] && [ "$outline_parts" -eq 12 ] \
+        if [ "$outline_graph_ok" -eq 1 ] && [ "$outline_count_scan_ok" -eq 1 ] \
+           && [ "$outline_parts" -eq 12 ] \
            && [ "$outline_chapters" -eq 79 ] \
            && [ "$outline_appendices" -eq 8 ]; then
             pass "PDF outline contains 12 Parts, 79 chapters, and 8 appendices"
         else
             fail "unexpected PDF outline ($outline_parts Parts, $outline_chapters chapters, $outline_appendices appendices)"
         fi
-        if [ "$outline_count_scan_ok" -eq 1 ] && [ "$outline_entries" -eq 1066 ] \
+        if [ "$outline_graph_ok" -eq 1 ] && [ "$outline_count_scan_ok" -eq 1 ] \
+           && [ "$outline_entries" -eq 1066 ] \
            && [ "$outline_destinations" -eq "$outline_entries" ] \
            && [ "$outline_empty_titles" -eq 0 ]; then
             pass "all $outline_entries PDF outline entries have non-empty titles and unique destinations"
@@ -942,7 +954,8 @@ if command -v mutool >/dev/null 2>&1; then
             fail "damaged PDF outline ($outline_entries entries, $outline_destinations unique destinations, $outline_empty_titles empty titles)"
         fi
         outline_toc_diff_count=$(wc -l < "$outline_toc_diff_file")
-        if [ "$outline_entries" -eq 1066 ] && [ "$outline_toc_diff_count" -eq 0 ]; then
+        if [ "$outline_graph_ok" -eq 1 ] && [ "$outline_entries" -eq 1066 ] \
+           && [ "$outline_toc_diff_count" -eq 0 ]; then
             pass "PDF outline exactly matches all 1066 Part-through-subsection TOC destinations"
         else
             fail "PDF outline/TOC mismatch ($outline_toc_diff_count differing destinations)"
@@ -951,7 +964,7 @@ if command -v mutool >/dev/null 2>&1; then
         outline_title_count=$(wc -l < "$outline_titles_file")
         source_bookmark_count=$(wc -l < "$source_bookmarks_file")
         outline_title_diff_count=$(wc -l < "$outline_title_diff_file")
-        if [ "$outline_title_count" -eq 1066 ] \
+        if [ "$outline_graph_ok" -eq 1 ] && [ "$outline_title_count" -eq 1066 ] \
            && [ "$source_bookmark_count" -eq "$outline_title_count" ] \
            && [ "$outline_title_diff_count" -eq 0 ]; then
             pass "all 1066 PDF outline titles match their source bookmarks exactly"
@@ -962,7 +975,7 @@ if command -v mutool >/dev/null 2>&1; then
         outline_parent_count=$(wc -l < "$outline_parents_file")
         source_parent_count=$(wc -l < "$source_parents_file")
         outline_parent_diff_count=$(wc -l < "$outline_parent_diff_file")
-        if [ "$outline_parent_count" -eq 1066 ] \
+        if [ "$outline_graph_ok" -eq 1 ] && [ "$outline_parent_count" -eq 1066 ] \
            && [ "$source_parent_count" -eq "$outline_parent_count" ] \
            && [ "$outline_parent_diff_count" -eq 0 ]; then
             pass "all 1066 PDF outline entries match their source parent hierarchy"
@@ -972,7 +985,7 @@ if command -v mutool >/dev/null 2>&1; then
         fi
         outline_order_count=$(wc -l < "$outline_order_file")
         source_order_count=$(wc -l < "$source_order_file")
-        if [ "$outline_order_count" -eq 1066 ] \
+        if [ "$outline_graph_ok" -eq 1 ] && [ "$outline_order_count" -eq 1066 ] \
            && [ "$source_order_count" -eq "$outline_order_count" ] \
            && cmp -s "$outline_order_file" "$source_order_file"; then
             pass "all 1066 PDF outline entries preserve source bookmark order"

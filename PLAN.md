@@ -1484,3 +1484,6 @@ build and visual passes are available again.
 - Added a status-aware grep counter for overfull, index, page-profile, outline and unsafe-action
   populations, preserving legitimate zero matches while rejecting scanner/read errors. A correct-
   zero/exit-41 action stub produced one failure with otherwise exact displayed counts.
+- Status-bound every PDF/source outline destination, title, parent and order derivation before its
+  exact set/order verdicts, retaining cardinality and diff checks independently. A correct-output/
+  exit-43 comm stub failed all six outline checks despite exact displayed counts/differences.
