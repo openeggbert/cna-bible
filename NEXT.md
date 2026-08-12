@@ -656,6 +656,10 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     unknown/multiple arguments print usage and return 2 before invoking make. Negative CLI
     fixtures confirm that no build log or temporary diagnostic directory is created, while both
     supported verification modes retain their prior behavior.
+89. **Release-builder arguments are fail-closed too.** `tools/build-release.sh` now accepts only
+    its argument-free sealed workflow or `--help`. Unknown or multiple arguments print usage and
+    return 2 before resolving the repository, checking dependencies or touching the release log,
+    so a mistyped option cannot silently start a full fixed-date rebuild.
 
 ## Do this next
 

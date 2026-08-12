@@ -7,6 +7,22 @@
 
 set -eu
 
+usage() {
+    printf 'Usage: %s\n' "${0##*/}"
+}
+
+case "$#:${1:-}" in
+    0:) ;;
+    1:--help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+esac
+
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 book_dir="$repo_root/latex/book"
 pdf="$book_dir/main.pdf"
