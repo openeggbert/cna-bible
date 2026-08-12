@@ -304,6 +304,14 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     states Android installation and renderer-frame presentation as separate required evidence.
     The book remains 709 pages; physical pages 665–702 were rendered and read. Visual review found
     and corrected one malformed monospace paragraph on page 649, then re-rendered it cleanly.
+38. **Phase F corrective batch 19 is complete and verified.** Four stale chapter-number claims
+    hidden inside code listings were replaced by direct behavioral wording. All twelve Parts now
+    have stable labels, and live Part, appendix and local section citations use references rather
+    than fixed numbers. The verifier now resolves every source `\ref`, catches singular/plural
+    hard-coded structural numbers with spaces or TeX ties, and rejects literal tabs and carriage
+    returns. The book remains 709 pages. A whole-PDF rendered-pixel comparison against batch 18
+    isolated 53 changed physical pages; every one was rendered and read, with four reflow spans
+    checked separately and no visual defect found.
 
 ## Do this next
 
@@ -329,12 +337,13 @@ bounded correction batch; finish with an edition-wide visual and automated pass 
 
 ## Verification status
 
-Everything through Phase E and Phase F corrective batch 18 is verified:
+Everything through Phase E and Phase F corrective batch 19 is verified:
 
 - `make -C latex book` succeeds; **709 pages**.
 - makeindex: 2,183 entries accepted, 0 rejected, 0 warnings.
 - No undefined references, no undefined control sequences, no duplicate labels, no doubled-
-  backslash `\ref`, no hard-coded chapter numbers.
+  backslash `\ref`, no hard-coded chapter/Part/appendix/section numbers, and no literal tabs or
+  carriage returns in compiled TeX.
 - `git diff --check` clean.
 - Structural inventory: 12 Parts, 79 sequential chapter inputs/files, 8 appendix inputs/files;
   zero missing inputs, lost old labels, duplicate labels or hard-coded chapter numbers.
@@ -443,6 +452,11 @@ Everything through Phase E and Phase F corrective batch 18 is verified:
   covered Appendices A–H. A malformed monospace paragraph on physical page 679 (printed 649) was
   corrected, the complete verifier rerun, and pages 679–680 re-rendered cleanly. Physical page 702
   is the intentional blank verso before the index.
+- Phase F corrective batch 19 compared rendered pixels for all 709 physical pages against the
+  batch-18 checkpoint and isolated 53 visible changes. All 53 were rendered at review resolution
+  and read in contact sheets; multi-page reflow spans 99–107, 256–258, 422–431 and page 529 were
+  reviewed separately. No clipping, overlap, malformed listing, broken heading or unintended
+  blank page was found.
 
 **No completed writing batch is pending PDF verification.** Continue with the Phase F whole-book
 consistency sweep, then perform Phase G final verification.
@@ -460,7 +474,7 @@ consistency sweep, then perform Phase G final verification.
 Ten source-audit reports and the 42-family draw-path matrix are complete against pinned CNA
 `7a64362e`. Phase B settled a 12-Part, 79-chapter, 8-appendix edition; Phase C put it on disk,
 migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–7
-rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: eighteen verified
+rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: nineteen verified
 batches filled omitted Chapters 8–11 and 18, removed stale totals/terminology, reconciled the
 early graphics, lifecycle and math narrative, and separated the four current shader strategies
 from the still-missing arbitrary-effect path. State, stream, instancing and programmable-GL
@@ -475,4 +489,5 @@ Input, Audio, Media and both device-service layers now match their live event, o
 capability and callback boundaries. GamerServices, Storage, networking and Avatar now also match
 their live persistence, path, session and rendering contracts. The sharp-runtime chapters now
 also match the current modular graph, task/stream behavior, parity boundaries, test surfaces and
-tracked CI. Continue the remaining whole-book consistency sweep.
+tracked CI. All live structural citations are now stable references, and the verifier enforces
+that invariant. Continue the remaining whole-book duplication/index/visual consistency sweep.

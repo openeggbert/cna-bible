@@ -2,7 +2,7 @@
 \label{ch:spritebatch}
 
 \cnaclass{SpriteBatch} is the API most CNA code touches most often, and --- because it is
-also the one class all 46 public renderer identities in Part~IV must implement --- the class
+also the one class all 46 public renderer identities in Part~\ref{part:renderers} must implement --- the class
 whose bugs and fixes best illustrate what ``renderer parity'' actually costs to achieve. This
 chapter covers its API surface, its supporting types (\cnaclass{SpriteSortMode},
 \cnaclass{SpriteEffects}, \cnaclass{SpriteFont}), and the specific, real bugs found while
@@ -211,14 +211,15 @@ flip of drawn text simply is not expressible today.
 
 Chapter~\ref{ch:design-philosophy} promised that this book would name specific, checkable
 bugs rather than paraphrase a changelog, and this one is worth naming in full because it
-affected every renderer at once, which is unusual --- most of the bugs catalogued in Part~IV
+affected every renderer at once, which is unusual --- most of the bugs catalogued in
+Part~\ref{part:renderers}
 are renderer-specific. Before Task~694, a \texttt{SpriteEffects} flip on
 \texttt{DrawString} only flipped each individual glyph's own texture sampling in place; it
 never mirrored the \emph{sequence or position} of the glyphs themselves, which is what FNA's
 real implementation does via a pair of axis-direction/axis-mirrored terms. The fix lives in
 the shared, renderer-agnostic \texttt{SpriteBatch.cpp} --- meaning it was one fix that
 corrected the behavior identically on every one of CNA's graphics renderers simultaneously,
-rather than something Part~IV's chapters need to revisit renderer by renderer.
+rather than something the chapters in Part~\ref{part:renderers} need to revisit renderer by renderer.
 
 \section{A real, lasting side effect: Begin() changes GraphicsDevice.BlendState}
 \label{sec:spritebatch-blendstate-leak}
@@ -321,13 +322,13 @@ specifically for \cnaclass{SpriteFont} (flagged again in
 Task~861). Combined-axis flip is not
 representable on any renderer at all, for the \cnaclass{SpriteEffects} reason above.
 
-\section{Two real, fixed SDL\_RENDERER bugs, as a preview of Part~IV's method}
+\section{Two real, fixed SDL\_RENDERER bugs, previewing the renderer-audit method}
 \label{sec:sdl-renderer-two-bugs}
 
 Two of the fifteen real bugs found during the SDL\_RENDERER renderer's own Phase~70 audit
 (Chapter~\ref{ch:sdl-renderer} covers the full audit) live directly in \cnaclass{SpriteBatch}
 rendering and are worth previewing here as a template for how this book reports a bug
-throughout Part~IV: name the symptom, the root cause, and the fix. First,
+throughout Part~\ref{part:renderers}: name the symptom, the root cause, and the fix. First,
 \texttt{SDL\_RenderTextureRotated}'s pivot convention differed from XNA's own rotation-origin
 convention; the fix offsets the destination rectangle rather than changing the rotation math
 itself. Second --- more serious --- the \texttt{transformMatrix} argument to
@@ -538,7 +539,7 @@ identical real-XNA exception type.
 \section{Where this leaves a porting engineer}
 
 \cnaclass{SpriteBatch} is, by a wide margin, the most exhaustively cross-renderer-verified
-class in CNA --- every renderer chapter in Part~IV returns to it, because every renderer has
+class in CNA --- every renderer chapter in Part~\ref{part:renderers} returns to it, because every renderer has
 to implement it, and because its bugs (an ignored transform matrix, a mis-scoped flip, a
 silently-downgraded sampler filter) are exactly the class of bug that only surfaces under
 real pixel-readback testing rather than ``it compiles and something appears on screen.'' If

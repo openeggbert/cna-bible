@@ -82,6 +82,7 @@ covers only what is specific to CNA's own renderer layer on top of it; this book
 \texttt{free-direct} chapter covers the library itself.
 
 \section{A real architectural problem the design did not anticipate}
+\label{sec:freedirect-shadow-backbuffer}
 
 \texttt{free-direct}'s own \texttt{IDirectDrawSurface::Lock()} never exposes a writable
 pointer for the \emph{primary} surface --- only for offscreen ones. Rather than treating the
@@ -170,7 +171,8 @@ inside \texttt{FreeDirectRenderer.cpp} so \texttt{<ddraw.h>} never leaks into a 
 one is a pure redirect: \texttt{Clear()} and \texttt{ReadBackbuffer()} both route through an
 internal \texttt{Impl::ActiveSurface()} indirection that resolves to whichever surface is
 currently bound, while \texttt{Present()} always targets the real shadow backbuffer from
-Section~1 regardless of what is bound at the time --- an intentional asymmetry, since only the
+\S\ref{sec:freedirect-shadow-backbuffer} regardless of what is bound at the time --- an intentional
+asymmetry, since only the
 shadow backbuffer is ever the thing actually \texttt{Blt()}'d onto the real primary surface.
 
 \texttt{dx3\_texture\_rendertarget\_test.cpp} verifies this bind-redirect concretely rather than

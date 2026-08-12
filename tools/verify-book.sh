@@ -93,7 +93,9 @@ echo "-- label/reference hygiene"
 chapters="$book_dir/chapters"
 front="$book_dir/front"
 
-dupes=$(grep -rho '\\label{[^}]*}' "$chapters" "$front" 2>/dev/null | sort | uniq -d)
+dupes=$(grep -ho '\\label{[^}]*}' "$book_dir/main.tex" 2>/dev/null;
+        grep -rho '\\label{[^}]*}' "$chapters" "$front" 2>/dev/null)
+dupes=$(printf '%s\n' "$dupes" | sort | uniq -d)
 if [ -n "$dupes" ]; then
     fail "duplicate \\label definitions in source:"
     echo "$dupes" | sed 's/^/        /'
@@ -101,29 +103,41 @@ else
     pass "no duplicate \\label definitions in source"
 fi
 
-# Every \ref{ch:...} must have a matching \label{ch:...}.
+# Every source \ref must have a matching label, including part, chapter, section and appendix
+# aliases. LaTeX also diagnoses this after enough passes; the source check makes the invariant
+# explicit and catches it without interpreting log wording.
 missing=""
-for r in $(grep -rho '\\ref{ch:[^}]*}' "$chapters" "$front" 2>/dev/null | sed 's/\\ref{//;s/}//' | sort -u); do
-    grep -rq "\\\\label{$r}" "$chapters" "$front" || missing="$missing $r"
+refs=$(
+    {
+        grep -ho '\\ref{[^}]*}' "$book_dir/main.tex" 2>/dev/null
+        grep -rho '\\ref{[^}]*}' "$chapters" "$front" 2>/dev/null
+    } | sed 's/\\ref{//;s/}//' | sort -u
+)
+for r in $refs; do
+    if ! grep -q "\\\\label{$r}" "$book_dir/main.tex" 2>/dev/null \
+       && ! grep -rq "\\\\label{$r}" "$chapters" "$front" 2>/dev/null; then
+        missing="$missing $r"
+    fi
 done
 if [ -n "$missing" ]; then
-    fail "\\ref to nonexistent chapter labels:$missing"
+    fail "\\ref to nonexistent labels:$missing"
 else
-    pass "every \\ref{ch:...} resolves to a \\label"
+    pass "every source \\ref resolves to a \\label"
 fi
 
 # ---------------------------------------------------------------- stale facts
 echo "-- stale-fact sweep"
 
-# Two hard-coded cross-reference styles exist in this manuscript's history:
-# "Chapter~N" and the shorter "Ch.N" / "Ch.~N". Both break silently on a restructure,
-# and neither produces a LaTeX warning, so only this check finds them.
-hard=$(grep -rnoE 'Chapter~[0-9]+|Ch\.~?[0-9]+' "$chapters" "$front" 2>/dev/null | wc -l)
+# Hard-coded chapter/part/appendix/section references appeared with both TeX ties and ordinary
+# spaces, including inside listings. All break silently on a restructure and none produces a
+# LaTeX warning.
+structure_re='Chapters?(~|[[:space:]])+[0-9]+|Ch\.(~|[[:space:]])*[0-9]+|Parts?(~|[[:space:]])+(I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)\>|Appendix(es)?(~|[[:space:]])+[A-H]\>|Sections?(~|[[:space:]])+[0-9]+([.][0-9]+)*'
+hard=$(grep -rnoE "$structure_re" "$chapters" "$front" 2>/dev/null | wc -l)
 if [ "$hard" -gt 0 ]; then
-    fail "hard-coded chapter-number references: $hard (use \\ref{ch:...} unless genuinely historical)"
-    grep -rnE 'Chapter~[0-9]+|Ch\.~?[0-9]+' "$chapters" "$front" 2>/dev/null | head -10 | sed 's/^/        /'
+    fail "hard-coded structural references: $hard (use a stable \\ref unless genuinely historical)"
+    grep -rnE "$structure_re" "$chapters" "$front" 2>/dev/null | head -10 | sed 's/^/        /'
 else
-    pass "no hard-coded chapter-number references (Chapter~N or Ch.N)"
+    pass "no hard-coded chapter/part/appendix/section references"
 fi
 
 # A \ref written with a doubled backslash silently degrades to a line break plus
@@ -171,6 +185,24 @@ done
 
 # ---------------------------------------------------------------- whitespace
 echo "-- working tree"
+
+# A literal tab can silently replace the backslash of a mistyped \texttt command and still yield
+# a green LaTeX build (caught visually in Appendix D on 2026-08-12). The manuscript uses spaces,
+# so tabs and CRLF carriage returns are always defects in compiled TeX sources.
+if grep -rIn $'\t' "$chapters" "$front" "$book_dir/main.tex" > /tmp/cna-bible-tabs.txt 2>/dev/null; then
+    fail "literal tab characters in compiled TeX sources"
+    head -10 /tmp/cna-bible-tabs.txt | sed 's/^/        /'
+else
+    pass "no literal tabs in compiled TeX sources"
+fi
+
+if grep -rIl $'\r' "$chapters" "$front" "$book_dir/main.tex" > /tmp/cna-bible-crlf.txt 2>/dev/null; then
+    fail "carriage returns in compiled TeX sources"
+    head -10 /tmp/cna-bible-crlf.txt | sed 's/^/        /'
+else
+    pass "no carriage returns in compiled TeX sources"
+fi
+
 if git -C "$repo_root" diff --check > /dev/null 2>&1; then
     pass "git diff --check clean"
 else

@@ -73,7 +73,7 @@ current, not stale.
 | **C — structural migration** | **Complete.** The 12-Part / 79-chapter / 8-appendix migration, context-sensitive terminology pass, current selector/identifier migration, and module-owned source-path sweep are complete and PDF-verified clean at 645 pages. |
 | **D — chapter writing** | **Complete.** Seven verified batches rewrote Chapters 19–79 against the pinned source and sibling evidence. |
 | **E — appendices** | **Complete.** Appendices A–H were rebuilt against pinned source and the completed chapter text, then verified as one bounded batch. |
-| **F — whole-book consistency** | **In progress.** Eighteen verified corrective batches removed stale totals/terminology, filled five structurally present but unwritten chapters (8–11 and 18), and reconciled lifecycle, math, graphics, renderer, Content/XNB, Model/glTF/CNJ, input/media/services, sharp-runtime, sibling-library, platform, testing/CI, porting-practice and appendix-reference claims with pinned evidence. Continue the edition-wide factual, cross-reference, duplication, index and visual sweep. |
+| **F — whole-book consistency** | **In progress.** Nineteen verified corrective batches removed stale totals/terminology, filled five structurally present but unwritten chapters (8–11 and 18), reconciled every subject area with pinned evidence, and made Part/chapter/appendix/section references restructure-safe. Continue the edition-wide duplication, index and visual sweep. |
 | **G — final verification** | Not started. |
 
 ### 3.1 Phase A research areas — all delivered
@@ -361,6 +361,7 @@ log grep replaces.
 | 2026-08-12 | Phase F corrective batch 16 | **709 pages**, build clean; makeindex 2,184 / 0 / 0; Chapters 71–73 reconciled to pinned-versus-moving Proton evidence, actual Windows default/explicit build targets, filtered Direct2D CnaTests execution and the Input label's 541-by-five command despite a stale x3 comment; physical pages 611–636 rendered and read as five contact sheets plus full-size risk pages, all visually clean |
 | 2026-08-12 | Phase F corrective batch 17 | **709 pages**, build clean; makeindex 2,183 / 0 / 0; Chapters 74–79 and cross-chapter ecosystem/sharp-runtime claims reconciled to free-direct's remediated blit path and follow-up benchmark, actual inaudible pan boundary, retained Timidity decoder, exact tracked SQLite blob and bounded Android evidence; physical pages 39–42, 563–568 and 637–668 rendered and read as eight contact sheets plus full-size risk pages, all visually clean |
 | 2026-08-12 | Phase F corrective batch 18 | **709 pages**, build clean; makeindex 2,183 / 0 / 0; Appendices A–H mechanically re-audited, edition pins separated from later branch movement, CNAEXT token/header inventory made exact, MIDI decoder/public-route and Android install/frame evidence boundaries corrected; physical pages 665–702 rendered and read as seven contact sheets plus full-size risk pages; one malformed monospace paragraph on printed page 649 corrected and re-rendered clean |
+| 2026-08-12 | Phase F corrective batch 19 | **709 pages**, build clean; makeindex 2,183 / 0 / 0; four stale numeric listing references corrected, twelve Parts labelled, and all live Part/appendix/section citations migrated to stable references; verifier expanded to all source refs, singular/plural structural-number forms and literal tab/CR defects; a whole-PDF pixel comparison against batch 18 identified 53 visibly changed physical pages, all rendered and read clean |
 
 ---
 
@@ -986,3 +987,21 @@ mid-session at the owner's direction, so the build and visual passes are availab
   accidental tab-expanded `texttt` paragraph on physical page 679 (printed 649); it was repaired,
   the full verifier repeated, and physical pages 679–680 re-rendered clean. Physical page 702 is
   the intentional blank verso before the index.
+
+### 2026-08-12 — Phase F corrective batch 19: durable structural references
+
+- Found four stale chapter-number references inside code listings that the original verifier's
+  tied-space-only pattern could not see. Replaced the inaccurate chapter claims with direct
+  behavioral wording in the math, stock-effect, ContentManager and Model examples.
+- Added stable labels to all twelve `\part` declarations and migrated every live hard-coded Part,
+  Appendix and local Section citation in compiled prose. Cross-reference ranges retain their
+  printed Roman numerals while now following future structural edits automatically.
+- Hardened `tools/verify-book.sh` to validate every source `\ref` against `main.tex`, chapters and
+  front matter; reject singular and plural hard-coded chapter/Part/appendix/section forms with
+  either spaces or TeX ties; and reject literal tabs and carriage returns in compiled TeX. The
+  tab invariant encodes the real malformed-Appendix-D defect caught during batch 18.
+- Ran the complete verifier: 709 pages, makeindex 2,183 accepted / 0 rejected / 0 warnings, all
+  checks green. A rendered-pixel comparison of all 709 pages against the batch-18 checkpoint
+  isolated 53 changed physical pages. Every changed page was rendered at review resolution and
+  read in contact sheets, with the four multi-page reflow spans inspected separately; no clipping,
+  overlap, malformed listing, broken heading or unintended blank page was found.
