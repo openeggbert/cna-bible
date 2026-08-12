@@ -429,6 +429,7 @@ log grep replaces.
 | 2026-08-12 | Post-G source-image graph closure | Parsed every compiled `includegraphics` target and compared it case-sensitively with the five source PNG paths: exactly five includes map one-to-one with no orphan, duplicate or missing/non-PNG target, complementing the recorder set and embedded RGB/alpha pixel audit |
 | 2026-08-12 | Post-G visual-render fail-fast | Require successful `pdfinfo` parsing and a numeric page total before visual-range arithmetic, and diagnose private render-directory allocation failure separately; damaged artifacts and invalid output parents now stop before `pdftoppm` with one primary error |
 | 2026-08-12 | Post-G sealed-pipeline dependency closure | Preflight the union of release-build/fingerprint commands and every complete-verifier dependency before invoking TeX, reporting all missing tools together; an absent late-stage Poppler/Netpbm/MuPDF/Ghostscript command no longer wastes a full sealed rebuild |
+| 2026-08-12 | Post-G transactional release artifact | Snapshot an existing reviewed `main.pdf` before TeX and restore it on build/fingerprint/verifier failure or HUP/INT/TERM; when no prior artifact exists, remove partial output; only a fully green sealed pipeline commits the rebuilt PDF while preserving logs/auxiliaries for diagnosis |
 
 ---
 
@@ -1393,3 +1394,5 @@ build and visual passes are available again.
   errors, before bound arithmetic or `pdftoppm` can produce secondary/partial output.
 - Closed sealed-pipeline dependency preflight over the build and full verifier, reporting every
   missing tool before TeX rather than discovering a late parser absence after a costly rebuild.
+- Made the sealed PDF transactional: failed/interrupted build, fingerprint or verification paths
+  restore the prior artifact byte-for-byte (or remove a new partial), while retaining diagnostics.

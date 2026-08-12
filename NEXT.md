@@ -703,6 +703,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     verifier parsers: Git/latexmk/core utilities, Perl, Poppler, Netpbm, MuPDF and Ghostscript.
     Missing commands are reported together; an absent late-stage parser can no longer waste a
     full fixed-date rebuild before failing.
+99. **The reviewed release PDF is transactionally preserved.** Before TeX, the sealed workflow
+    snapshots any existing `main.pdf` outside the source tree. Build, fingerprint, verifier or
+    HUP/INT/TERM failure restores that file byte-for-byte (or removes a partial output if none
+    existed); only complete success commits the rebuilt artifact. Logs and auxiliary files stay
+    available for diagnosis, but a failed attempt cannot masquerade as the latest release PDF.
 
 ## Do this next
 
