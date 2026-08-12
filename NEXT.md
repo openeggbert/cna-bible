@@ -926,6 +926,10 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
 144. **Physical text-bound parsing is status-bound.** The bounding-box Perl pass must complete
      successfully before its zero-outside-word result can pass. A targeted stub emitted the real
      zero and then exited 97; exactly the physical-edge verdict failed.
+145. **Final HEAD passes independently of the workspace.** A new local no-hardlink clone of
+     `e124a10` (manuscript tree `406104d...`, tools tree `e81bd97...`) carried no ignored PDF or
+     auxiliary state. Its sealed workflow recreated the exact 3,314,744-byte `7c877ef...` release
+     and passed the complete hardened verifier. The isolated clone was removed afterward.
 
 ## Do this next
 

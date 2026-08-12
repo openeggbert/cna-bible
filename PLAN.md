@@ -1525,3 +1525,6 @@ build and visual passes are available again.
   the page-709 run failed at the count guard and recursively removed its private output child.
 - Bound the PDF bounding-box aggregation status to the zero-outside-word verdict. A parser stub
   emitted the correct zero then exited 97; exactly the physical-edge check failed.
+- Reproduced final HEAD `e124a10` from a fresh local no-hardlink clone with no ignored PDF or
+  workspace auxiliaries. The exact manuscript/tools trees `406104d...` / `e81bd97...` rebuilt the
+  3,314,744-byte `7c877ef...` release and passed the complete hardened verifier; fixture removed.
