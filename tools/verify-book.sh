@@ -626,6 +626,8 @@ if command -v mutool >/dev/null 2>&1; then
         outline_parents_file=$(mktemp /tmp/cna-bible-outline-parents.XXXXXX.txt)
         source_parents_file=$(mktemp /tmp/cna-bible-source-parents.XXXXXX.txt)
         outline_parent_diff_file=$(mktemp /tmp/cna-bible-outline-parent-diff.XXXXXX.txt)
+        outline_order_file=$(mktemp /tmp/cna-bible-outline-order.XXXXXX.txt)
+        source_order_file=$(mktemp /tmp/cna-bible-source-order.XXXXXX.txt)
         grep -o '#nameddest=[^[:space:]]*' "$outline_file" | sed 's/#nameddest=//' \
             | sort > "$outline_dests_file"
         perl -ne '
@@ -665,6 +667,10 @@ if command -v mutool >/dev/null 2>&1; then
             }
         ' "$book_dir/main.out" | LC_ALL=C sort > "$source_parents_file"
         comm -3 "$outline_parents_file" "$source_parents_file" > "$outline_parent_diff_file"
+        grep -o '#nameddest=[^[:space:]]*' "$outline_file" | sed 's/#nameddest=//' \
+            > "$outline_order_file"
+        sed -n 's/^\\BOOKMARK \[[^]]*\]\[[^]]*\]{\([^}]*\)}.*/\1/p' \
+            "$book_dir/main.out" > "$source_order_file"
         outline_entries=$(grep -c '#nameddest=' "$outline_file" || true)
         outline_destinations=$(grep -o '#nameddest=[^[:space:]]*' "$outline_file" \
             | sort -u | wc -l)
@@ -715,9 +721,20 @@ if command -v mutool >/dev/null 2>&1; then
             fail "PDF outline hierarchy mismatch ($outline_parent_count PDF, $source_parent_count source, $outline_parent_diff_count differing pairs)"
             head -10 "$outline_parent_diff_file" | sed 's/^/        /'
         fi
+        outline_order_count=$(wc -l < "$outline_order_file")
+        source_order_count=$(wc -l < "$source_order_file")
+        if [ "$outline_order_count" -eq 1066 ] \
+           && [ "$source_order_count" -eq "$outline_order_count" ] \
+           && cmp -s "$outline_order_file" "$source_order_file"; then
+            pass "all 1066 PDF outline entries preserve source bookmark order"
+        else
+            fail "PDF outline order mismatch ($outline_order_count PDF, $source_order_count source)"
+            diff -u "$source_order_file" "$outline_order_file" | head -20 | sed 's/^/        /'
+        fi
         rm -f "$outline_dests_file" "$toc_outline_dests_file" "$outline_toc_diff_file" \
             "$outline_titles_file" "$source_bookmarks_file" "$outline_title_diff_file" \
             "$outline_parents_file" "$source_parents_file" "$outline_parent_diff_file"
+        rm -f "$outline_order_file" "$source_order_file"
     else
         fail "mutool could not read the PDF outline"
     fi

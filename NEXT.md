@@ -612,6 +612,12 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     action's target byte-for-byte. SDL Init and both
     Microsoft Present links match. A two-target swap preserves URI allowlist/cardinality but
     yields two identity failures; the release PDF needs no change.
+81. **The PDF outline preserves source bookmark order.** Destination, title and parent checks
+    previously compared sorted sets, so two complete bookmark subtrees could theoretically trade
+    positions without failing. The verifier now compares the unsorted 1,066-destination sequence
+    emitted by MuPDF with the sequence in `main.out`, byte-for-byte. The release order matches;
+    swapping any two records changes two sequence positions even when all former set checks stay
+    green. This verifier-only closure has no PDF delta.
 
 ## Do this next
 
