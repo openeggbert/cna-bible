@@ -587,6 +587,12 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     untagged state prevents a partial or accidental tag tree from being presented as an accessible
     edition; a future tagged/PDF-UA release remains an explicit owner-selected, separately audited
     change. Producer and linearization details remain outside the semantic gate.
+77. **Claude Code's durable workflow now points at the real release tooling.** `CLAUDE.md` names
+    `tools/verify-book.sh` as the authoritative once-per-batch automated suite and keeps rendered
+    touched-page inspection as a separate requirement. It distinguishes that workflow from the
+    sealed `tools/build-release.sh`, which should fail ordinary manuscript changes until a new
+    release is authorized. Historical batched-writing, source-grounding and push rules remain
+    unchanged.
 
 ## Do this next
 

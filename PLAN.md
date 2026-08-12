@@ -407,6 +407,7 @@ log grep replaces.
 | 2026-08-12 | Post-G font/image population closure | Bound font portability to exactly 27 complete rows; extracted PDF images as five RGB + five soft-mask planes and compared decoded Netpbm pixels to the five source RGBA PNGs in compilation order, all RGB/alpha pairs byte-identical after decoding; verifier now enforces exact source/embedded populations and README records `pdfimages`/`pngtopnm` dependencies; no PDF delta |
 | 2026-08-12 | Post-G automated parse/rewrite round trip | Restored the Phase-G round trip as an automated release check: MuPDF rewrites to a disposable PDF, Poppler requires all 709 pages and byte-identical layout-mode text versus the release, and Ghostscript independently interprets the rewritten artifact; current release passes all stages, with no modification to sealed bytes |
 | 2026-08-12 | Post-G explicit PDF profile | Bound the semantic artifact profile to PDF 1.7, exactly 709 pages, unencrypted, untagged, unsuspect and without user properties, in addition to all per-page A4/rotation/box checks; requiring the consciously untagged state prevents an accidental partial tag tree from being presented as a PDF/UA edition, while tagged accessibility remains an owner-selected future release decision |
+| 2026-08-12 | Post-G Claude workflow reconciliation | Updated `CLAUDE.md` to make `tools/verify-book.sh` the authoritative once-per-batch automated pass, retain rendered touched-page reading as a separate requirement, and distinguish the sealed `tools/build-release.sh` from ordinary manuscript work, without changing batched-writing, source-grounding or push policy |
 
 ---
 
@@ -1312,3 +1313,6 @@ build and visual passes are available again.
   and no user properties, alongside the existing geometry checks. This prevents a partial tag tree
   from masquerading as an accessible edition; any genuinely tagged/PDF-UA release remains an
   explicit owner decision and separate audit.
+- Reconciled the durable Claude Code guide with the completed tooling: the authoritative batch
+  check is now `tools/verify-book.sh`, visual inspection of touched pages remains mandatory, and
+  the sealed fixed-hash command is reserved for release reproduction. No methodology or PDF delta.

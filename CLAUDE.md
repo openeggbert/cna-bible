@@ -44,6 +44,10 @@ before the current expansion phase started; useful for background, not for "what
   build CNA and capture a real, headless screenshot via its `SOFTWARE` graphics backend.
   `/workspace/cna` (or wherever `cna` gets cloned for a given session) does **not** persist
   across sessions — reapply this patch to a fresh clone whenever screenshot capture is needed.
+- `tools/verify-book.sh` — the authoritative build/source/PDF verification suite. Use it once per
+  writing batch; its PDF checks still do not replace reading rendered images of touched pages.
+- `tools/build-release.sh` — the sealed fixed-date release reproduction. It requires the reviewed
+  byte fingerprint and is not the command for an in-progress manuscript change.
 
 ## Build
 
@@ -58,20 +62,18 @@ explicit author decision, trading slower error discovery for faster writing thro
 "Batched verification" below). Do not rebuild after every single chapter edit; do rebuild and
 fully verify once per batch of roughly 8–10 chapters/appendices.
 
-When a verification pass does run, check both of these — the first is a substring match and
-can silently false-positive on ordinary prose containing the word "undefined" (e.g. "...an
-address, undefined behavior..."), so prefer the second, tighter pattern:
+When a verification pass does run, use the complete suite:
 
 ```bash
-grep -i "Warning.*undefined\|undefined reference\|undefined control" latex/book/main.log
-grep -i "multiply defined\|multiply-defined" latex/book/main.log
+tools/verify-book.sh
 ```
 
-Both should be empty. Neither check substitutes for the PNG-render visual pass described below
-— `grep -i overfull` is proven unreliable in both directions on this project (misses real
-overflows; separately, hundreds of pre-existing "overfull" log lines never surface under a
-plain `grep -i` due to binary-detection false negatives) — only rendering the affected pages to
-PNG and reading them catches a real text overflow.
+It builds the book and performs the tight reference/label/index/source checks as well as the
+complete PDF artifact audit. For a sealed owner-review release only, `tools/build-release.sh`
+forces the recorded source date, exact byte fingerprint and then the same verifier. A normal
+manuscript change should fail that sealed hash gate until a new release checkpoint is authorized.
+Neither command substitutes for the PNG-render visual pass described below — only rendering the
+affected pages and reading them closes a real text/layout change.
 
 ## Non-negotiable methodology (established across this whole project, not just the expansion)
 
@@ -94,7 +96,7 @@ PNG and reading them catches a real text overflow.
   layout defect the moment it's introduced. During the writing part of a batch: run the
   spacing-fix regex on each touched file as usual, but do **not** run `make book`, and do
   **not** render pages to PNG. Once a batch's writing is done (or a natural stopping point is
-  reached), run the full verification pass once: `make book`, both `grep` checks above, locate
+  reached), run the full verification pass once: `tools/verify-book.sh`, locate
   each touched chapter's physical page range (`pdftotext -f N -l N`), render every touched page
   to PNG (`pdftoppm -png -f N -l N -r 120`), read each one, and fix whatever is found — stale
   cross-references (this project's most common real failure mode: a plain-text "Chapter~17"
