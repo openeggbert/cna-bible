@@ -18,6 +18,9 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 book_dir="$repo_root/latex/book"
 log="$book_dir/main.log"
 pdf="$book_dir/main.pdf"
+lock_helper="$repo_root/tools/book-lock.sh"
+[ -r "$lock_helper" ] || { printf 'ERROR: missing tools/book-lock.sh\n' >&2; exit 1; }
+. "$lock_helper"
 
 usage() {
     printf 'Usage: %s [--no-build]\n' "${0##*/}"
@@ -77,7 +80,8 @@ echo "== The CNA Bible: verification pass =="
 # absent. Release verification therefore requires every independent parser used below and fails
 # early with one actionable diagnostic instead of silently reducing coverage.
 missing_commands=""
-for required_command in make git perl pdfinfo pdftotext pdffonts pdfimages pngtopnm cmp mutool gs; do
+for required_command in make git perl pdfinfo pdftotext pdffonts pdfimages pngtopnm cmp mutool gs \
+    flock mkdir stat sha256sum; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         missing_commands="$missing_commands $required_command"
     fi
@@ -85,6 +89,12 @@ done
 if [ -n "$missing_commands" ]; then
     fail "missing required verification command(s):${missing_commands}"
     exit 1
+fi
+
+if [ "$do_build" -eq 1 ]; then
+    acquire_book_lock exclusive || exit 1
+else
+    acquire_book_lock shared || exit 1
 fi
 
 # ---------------------------------------------------------------- build

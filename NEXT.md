@@ -728,6 +728,13 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      transactional restoration/removal of the PDF on a failed sealed attempt. Users can therefore
      provision the full toolchain and interpret failed releases without reverse-engineering the
      scripts; this documentation-only change has no typesetting delta.
+104. **All artifact readers and writers share one lock protocol.** `tools/book-lock.sh` now gives
+     default verification and sealed release an exclusive repository lock, while `--no-build`
+     verification and isolated visual rendering take a shared lock. Multiple read-only audits can
+     still run together, but none can observe a PDF/aux set mid-build; sealed release passes its
+     inherited exclusive descriptor into the nested verifier without weakening the transaction.
+     The child accepts that descriptor only when its device/inode identity matches the correct
+     repository lock, so an arbitrary environment-supplied open file cannot bypass serialization.
 
 ## Do this next
 

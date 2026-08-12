@@ -26,6 +26,9 @@ esac
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 book_dir="$repo_root/latex/book"
 pdf="$book_dir/main.pdf"
+lock_helper="$repo_root/tools/book-lock.sh"
+[ -r "$lock_helper" ] || { printf 'ERROR: missing tools/book-lock.sh\n' >&2; exit 1; }
+. "$lock_helper"
 source_date_epoch=1786529214
 expected_bytes=3314744
 expected_sha256=7c877ef20bdb20042bdd32483b2e79cb07e81dec7a8d86dc24f6d29d4a04b2af
@@ -47,34 +50,9 @@ if [ -n "$missing_commands" ]; then
     exit 1
 fi
 
-# A sealed build mutates one shared aux/log/PDF set and its failure path can restore the prior
-# artifact. Serialize that transaction per repository so concurrent invocations cannot overwrite
-# one another or make one run restore across another run's successful output.
-# Put the predictable per-repository filename below a private per-user directory, never directly
-# in world-writable /tmp where a pre-created symlink could redirect the shell open. Accept an
-# existing directory only when it is a real directory owned by this effective user with mode 0700.
-release_lock_dir="/tmp/cna-bible-release-locks-$EUID"
-if ! mkdir -m 700 "$release_lock_dir" 2>/dev/null && [ ! -d "$release_lock_dir" ]; then
-    printf 'ERROR: could not create private release-lock directory\n' >&2
-    exit 1
-fi
-read -r lock_dir_owner lock_dir_mode <<EOF
-$(stat -c '%u %a' "$release_lock_dir" 2>/dev/null || true)
-EOF
-if [ -L "$release_lock_dir" ] || [ ! -d "$release_lock_dir" ] \
-   || [ "$lock_dir_owner" != "$EUID" ] \
-   || [ "$lock_dir_mode" != "700" ]; then
-    printf 'ERROR: unsafe release-lock directory (owner=%s mode=%s)\n' \
-        "${lock_dir_owner:-missing}" "${lock_dir_mode:-missing}" >&2
-    exit 1
-fi
-release_lock_id=$(printf '%s' "$repo_root" | sha256sum | awk '{print $1}')
-release_lock="$release_lock_dir/${release_lock_id}.lock"
-exec 9>"$release_lock"
-if ! flock -n 9; then
-    printf 'ERROR: another sealed release build is already running for this repository\n' >&2
-    exit 1
-fi
+# A sealed build mutates the shared aux/log/PDF set and its failure path can restore the prior
+# artifact. Hold the repository-wide exclusive artifact lock through its nested verifier.
+acquire_book_lock exclusive || exit 1
 
 if ! git -C "$repo_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     printf 'ERROR: sealed release build requires a Git worktree\n' >&2
@@ -164,6 +142,6 @@ if [ "$actual_bytes" -ne "$expected_bytes" ] || [ "$actual_sha256" != "$expected
     exit 1
 fi
 
-"$repo_root/tools/verify-book.sh" --no-build
+CNA_BIBLE_LOCK_FD="$book_lock_fd" "$repo_root/tools/verify-book.sh" --no-build
 release_succeeded=1
 trap - HUP INT TERM

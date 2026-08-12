@@ -17,6 +17,9 @@ set -eu
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 pdf="$repo_root/latex/book/main.pdf"
+lock_helper="$repo_root/tools/book-lock.sh"
+[ -r "$lock_helper" ] || { printf 'ERROR: missing tools/book-lock.sh\n' >&2; exit 1; }
+. "$lock_helper"
 
 usage() {
     printf 'Usage: %s FIRST LAST [OUTDIR]\n' "${0##*/}"
@@ -50,7 +53,7 @@ if [ "$first" -gt "$last" ]; then
 fi
 
 missing_commands=""
-for required_command in pdfinfo pdftoppm mktemp; do
+for required_command in pdfinfo pdftoppm mktemp flock mkdir stat sha256sum; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         missing_commands="$missing_commands $required_command"
     fi
@@ -59,6 +62,8 @@ if [ -n "$missing_commands" ]; then
     printf 'ERROR: missing required rendering command(s):%s\n' "$missing_commands" >&2
     exit 1
 fi
+
+acquire_book_lock shared || exit 1
 
 [ -f "$pdf" ] || { echo "no built PDF at $pdf -- run 'make -C latex book' first" >&2; exit 1; }
 
