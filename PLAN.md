@@ -73,7 +73,7 @@ current, not stale.
 | **C — structural migration** | **Complete.** The 12-Part / 79-chapter / 8-appendix migration, context-sensitive terminology pass, current selector/identifier migration, and module-owned source-path sweep are complete and PDF-verified clean at 645 pages. |
 | **D — chapter writing** | **Complete.** Seven verified batches rewrote Chapters 19–79 against the pinned source and sibling evidence. |
 | **E — appendices** | **Complete.** Appendices A–H were rebuilt against pinned source and the completed chapter text, then verified as one bounded batch. |
-| **F — whole-book consistency** | **In progress.** Sixteen verified corrective batches removed stale totals/terminology, filled five structurally present but unwritten chapters (8–11 and 18), and reconciled lifecycle, math, graphics, renderer, Content/XNB, Model/glTF/CNJ, input/media/services, sharp-runtime, sibling-library, platform and testing/CI claims with pinned evidence. Continue the edition-wide factual, cross-reference, duplication, index and visual sweep. |
+| **F — whole-book consistency** | **In progress.** Seventeen verified corrective batches removed stale totals/terminology, filled five structurally present but unwritten chapters (8–11 and 18), and reconciled lifecycle, math, graphics, renderer, Content/XNB, Model/glTF/CNJ, input/media/services, sharp-runtime, sibling-library, platform, testing/CI and porting-practice claims with pinned evidence. Continue the edition-wide factual, cross-reference, duplication, index and visual sweep. |
 | **G — final verification** | Not started. |
 
 ### 3.1 Phase A research areas — all delivered
@@ -359,6 +359,7 @@ log grep replaces.
 | 2026-08-12 | Phase F corrective batch 14 | **707 pages**, build clean; makeindex 2,184 / 0 / 0; Chapters 59–63 reconciled to current easy-gl/meta-gl layering and context-loss adoption, free-direct/free-api annotation/test/audio boundaries, platform taxonomy, MinGW fallback and Wine engagement evidence; physical pages 569–594 rendered and read as five contact sheets plus full-size risk pages; one target-name overflow on printed page 545 corrected, full verification repeated and physical page 575 re-rendered clean |
 | 2026-08-12 | Phase F corrective batch 15 | **709 pages**, build clean; makeindex 2,184 / 0 / 0; Chapters 61 and 64–67 reconciled to source-site versus worker concurrency, five focused versus 24 admitted Web identities, Emscripten network topology, primary Android emulator/APK evidence, portable-versus-native Metal tests, workflow trigger drift and iOS/tvOS configuration non-claims; physical pages 583–610 rendered and read as five contact sheets plus full-size risk pages, all visually clean |
 | 2026-08-12 | Phase F corrective batch 16 | **709 pages**, build clean; makeindex 2,184 / 0 / 0; Chapters 71–73 reconciled to pinned-versus-moving Proton evidence, actual Windows default/explicit build targets, filtered Direct2D CnaTests execution and the Input label's 541-by-five command despite a stale x3 comment; physical pages 611–636 rendered and read as five contact sheets plus full-size risk pages, all visually clean |
+| 2026-08-12 | Phase F corrective batch 17 | **709 pages**, build clean; makeindex 2,183 / 0 / 0; Chapters 74–79 and cross-chapter ecosystem/sharp-runtime claims reconciled to free-direct's remediated blit path and follow-up benchmark, actual inaudible pan boundary, retained Timidity decoder, exact tracked SQLite blob and bounded Android evidence; physical pages 39–42, 563–568 and 637–668 rendered and read as eight contact sheets plus full-size risk pages, all visually clean |
 
 ---
 
@@ -863,7 +864,8 @@ mid-session at the owner's direction, so the build and visual passes are availab
   than every operation being a no-op; only `Delegate` exposes throwing `DynamicInvoke`; HMAC and
   PBKDF2 do carry sensitive input material; platform support is split across Windows/POSIX/Linux/
   Emscripten cases; and 128-bit support follows the compiler probe rather than operating-system
-  name. The local git-ignored `plan.sqlite3` is 7,471,104 bytes, not a tracked 7.4-MiB artifact.
+  name. The pinned `plan.sqlite3` blob is 7,471,104 bytes; although its name also matches a current
+  ignore rule, it was already tracked and is present in commit `f827a6c5`.
 - Ran `tools/verify-book.sh` twice after the prose and layout repairs: 707 pages, makeindex 2,185
   accepted / 0 rejected / 0 warnings, all automated checks green. Rendered and read physical pages
   533–568 across Chapters 53–58 as five contact sheets and full-size pages. Visual review found
@@ -936,3 +938,28 @@ mid-session at the owner's direction, so the build and visual passes are availab
   read physical pages 611–636 across Chapters 68–73 as five contact sheets plus full-size
   hostile-host, discipline and CI pages. No clipping, overlap, malformed table, broken heading or
   other visual defect was found.
+
+### 2026-08-12 — Phase F corrective batch 17: Porting-practice and roadmap truth
+
+- Reframed the Blupi performance audit as a before/after record. The historical 0.715-ms Release
+  and 4.704-ms unoptimized measurements remain discovery evidence; the current pin defaults an
+  otherwise-unspecified top-level single-configuration build to Release, detects equal source and
+  destination extents at runtime, uses a per-row `memcpy` fast path with opaque-alpha fixup, and
+  records a 0.466-ms / 14.8-times follow-up result.
+- Corrected two audio boundaries. Both games call `SetPan()` only for mono effects, but the current
+  implementation discards its computed left/right gains and tests only success/no-crash behavior.
+  CNA's vendored SDL3_mixer retains Timidity even though FluidSynth is disabled; the missing CNA
+  feature is a public Song/Content `.mid` mapping plus an instrument/asset policy and retained test,
+  not the absence of every underlying MIDI decoder.
+- Proved that sharp-runtime's 7,471,104-byte `plan.sqlite3` is the exact tracked blob at commit
+  `f827a6c5`: `ls-tree`, `git show` and matching worktree/commit blob hashes agree. Its ignore-rule
+  match does not untrack the existing file. Bounded the Android roadmap wording to require a fresh
+  adapted-pin frame before a current renderer claim while preserving the historical pre-adaptation
+  SDL_RENDERER AVD presentation.
+- Mechanically re-audited Chapters 74 and 76–78, including xna4-spec's 544 entries, the samples
+  63/23/67 partition, examples' 249 registered demos, 52 CNA root plans and sharp-runtime's
+  16,201-row task table / 2,183-ticket inventory, without further prose correction. Ran
+  `tools/verify-book.sh`: 709 pages, makeindex 2,183 accepted / 0 rejected / 0 warnings, all
+  automated checks green. Rendered and read physical pages 39–42, 563–568 and 637–668 as eight
+  contact sheets plus full-size risk pages. The two blank chapter-end verso pages are intentional;
+  no clipping, overlap, malformed table, broken heading or other visual defect was found.

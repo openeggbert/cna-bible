@@ -13,13 +13,14 @@ Together they demonstrate what a genuine call-site audit looks like in practice.
 \section{The methodology: grep both games first, then decide}
 
 The single most important fact about how \texttt{free-direct} came to be shaped the way it is
-is procedural: every design decision in its own history is backed by a reproducible audit
-against both games' actual source, at named, dated commits, not by guessing at what a
-DirectDraw-era game in general might need. This produced numbers precise enough to build an
+is procedural: its subsystem decisions are backed by reproducible audits against the target
+games' actual source, at named, dated commits, not by guessing at what a DirectDraw-era game in
+general might need. DirectDraw and DirectSound use both games; DirectPlay is driven only by
+Free Eggbert because Planet Blupi never calls it. This produced numbers precise enough to build an
 API surface around: \emph{free-eggbert} calls \texttt{Blt} four times and \texttt{BltFast} six
 times; \emph{Planet Blupi} calls \texttt{Blt} three times and \texttt{BltFast} five times. One
-\texttt{Blt} call site in each game is the single hottest call in the entire program --- the
-once-per-frame back-buffer-to-primary present operation --- which is exactly why
+\texttt{Blt} call site in each game is the once-per-frame back-buffer-to-primary present
+operation---the hottest DirectDraw route identified by the call-site audit---which is exactly why
 Chapter~\ref{ch:freedirect-deep-dive}'s account of DirectDraw support describes it as the most
 complete of the library's three subsystems: it was the subsystem under the most direct,
 continuous pressure from real gameplay.
@@ -91,19 +92,19 @@ actually check what calls it and why.
 \section{A performance audit adds exact costs to the same call sites}
 
 A later, dedicated performance audit of \texttt{free-direct}'s DirectDraw implementation
-went further than call-site counting alone: it benchmarked the real, compiled library
+went further than call-site counting alone: it benchmarked the then-current compiled library
 directly (headlessly, via \texttt{SDL\_VIDEODRIVER=dummy}) rather than reasoning from
 Big-O alone, and the resulting numbers sharpen exactly the call sites this chapter has
 already named. \texttt{BltFast} has no destination-size parameter at all in the real
 DirectDraw~3 API --- every call is 1:1 by construction, never capable of scaling --- and
 every one of the confirmed real \texttt{BltFast} call sites in both games
 (\emph{free-eggbert}: \texttt{pixmap.cpp:406,574,580,612,1762,1818}; \emph{Planet Blupi}:
-\texttt{pixmap.cpp:395,401,433,1235,1291}) is therefore provably non-scaling. Yet the
-shared blit engine behind both \texttt{Blt} and \texttt{BltFast} computes a per-pixel
-integer division and a per-pixel bit-depth branch unconditionally, even on a 1:1 copy ---
-measured at \textbf{29 times slower than a raw \texttt{memcpy}} of the identical byte count
-at an optimized build (0.715~ms versus 0.0244~ms for one 640$\times$480 32-bit blit), and
-\textbf{206 times slower} under the project's own default, unoptimized build configuration.
+\texttt{pixmap.cpp:395,401,433,1235,1291}) is therefore provably non-scaling. At the time of
+measurement, the shared blit engine behind both \texttt{Blt} and \texttt{BltFast} still computed
+a per-pixel integer division and bit-depth branch even on a 1:1 copy. It measured
+\textbf{29 times slower than a raw \texttt{memcpy}} of the identical byte count at an optimized
+build (0.715~ms versus 0.0244~ms for one 640$\times$480 32-bit blit), and \textbf{206 times slower}
+under the then-default unoptimized configuration.
 
 \begin{center}
 \small
@@ -117,27 +118,25 @@ Default (no \texttt{-O} flags) & 4.704~ms & 0.0229~ms & 205.8$\times$ \\
 \end{tabular}
 \end{center}
 
-That default-build gap is itself the audit's highest-leverage single finding: the project's
-own \texttt{CMakeLists.txt} never sets a default \texttt{CMAKE\_BUILD\_TYPE}, so following
-the repository's own build instructions with no extra flags silently produces a binary with
-no optimization at all, at a measured \textbf{6.6 times} the cost of an explicit
-\texttt{-DCMAKE\_BUILD\_TYPE=Release} build --- a one-line \texttt{CMakeLists.txt} guard
-with no behavioral risk, affecting every function in the library, not merely DirectDraw's
-own blit path. This is worth naming precisely because it recurs as a category throughout
-this book: a real, measurable, zero-behavior-change performance defect that was sitting in
-plain sight in the build configuration itself, only visible once someone actually benchmarked
-against the real compiled artifact instead of assuming the default build reflected the
-project's intent.
+Those numbers are discovery evidence, not the current implementation. The pin now defaults an
+otherwise-unspecified \emph{top-level, single-configuration} free-direct build to Release while
+leaving a consuming project's choice untouched. It also detects equal source/destination extents
+at runtime and performs per-row \texttt{memcpy} when format and color-key conditions permit,
+followed by the required opaque-alpha fixup. The recorded follow-up benchmark reduced the same
+Release case from 0.715~ms to 0.466~ms, or from 29.4 to 14.8 times the raw-copy reference. The
+remaining gap is mostly the alpha pass; the original 205.8-times row no longer describes a plain
+standalone configure. This sequence is worth preserving because it shows the full evidence loop:
+measure a call-site-backed cost, remediate it, then retain both the before and after results.
 
 Not every \texttt{Blt}-family call site is pure waste, though, and the audit is careful to
 say so: \emph{free-eggbert}'s \texttt{CPixmap::Display()} (\texttt{pixmap.cpp:1509--1516}),
 the once-per-frame full-screen present blit this chapter's opening section already singled
-out as the hottest call in the program, is the one confirmed call site where the scaling
+out as the hottest DirectDraw route, is the one confirmed call site where the scaling
 math is doing genuinely necessary work --- its destination rect comes from the real window's
 client area while its source rect is the fixed internal game resolution, and the two differ
-whenever the window size doesn't exactly match. A future 1:1 fast path would need to keep
-that check a runtime comparison of actual rect sizes, not a blanket assumption that
-presentation is always unscaled. The same call-site audit also turned up a piece of
+whenever the window size doesn't exactly match. The implemented 1:1 fast path therefore keeps
+that check as a runtime comparison of actual rect sizes rather than assuming that presentation is
+always unscaled. The same call-site audit also turned up a piece of
 confirmed dead code on the game side of the boundary: \emph{free-eggbert}'s
 \texttt{CPixmap::DrawMap(int, RECT, RECT)} (\texttt{pixmap.cpp:640}) has exactly one
 \texttt{Blt()} call inside it, but grepping the entire \emph{free-eggbert} source tree for
@@ -168,9 +167,11 @@ interprets it as \texttt{PCMWAVEFORMAT} specifically: the two struct layouts pla
 read two bytes of structure padding as the bits-per-sample field for every single sound in
 both games --- a real, if narrowly averted, silent-audio-corruption risk, caught by checking
 what the real games actually populate before choosing an interpretation. A second, confirmed,
-call-site-driven fact rounds this out: \texttt{SetPan()} only audibly matters for mono
-buffers, and both games only ever pan mono sound effects, so this narrower scope was never a
-real limitation for either target.
+call-site-driven fact rounds this out: both games call \texttt{SetPan()} only on mono sound
+effects. That explains why the intended contract was documented as mono-only, but it does not
+make current panning audible. The implementation computes left/right gains and discards them;
+only the ordinary volume gain reaches SDL. The tests prove clamping, return values, and no-crash
+behavior, not an audible stereo split.
 
 \section{Dead code, confirmed rather than assumed}
 
@@ -272,15 +273,18 @@ deterministic in a way a variable target elapsed time does not.
 \subsection{The MIDI gap, and why it is a real gap rather than a missing file format}
 
 The ten inspected music files are Standard MIDI data, and CNA's own \cnaclass{Song} loader does
-not register \texttt{.mid} --- but the deeper reason this cannot be a simple new
-\cnaclass{ContentTypeReader} is architectural, not superficial: CNA's own vendored
-\texttt{SDL\_mixer} configuration explicitly disables FluidSynth MIDI, so no MIDI synthesis
-path exists anywhere underneath \cnaclass{Song} to read from at all. The analysis lays out
-three real options rather than picking one prematurely: pre-render every track to OGG/FLAC
-against a chosen SoundFont ahead of time (lowest implementation risk, but a licensing/
-distribution question for the rendered assets and the SoundFont itself); add a real MIDI
-decoder/synthesizer path to CNA proper (the cleanest reusable outcome, but scope creep into the
-framework itself, beyond what a single game's port should decide unilaterally); or keep a
+not register \texttt{.mid}. The feasibility analysis correctly identifies that public integration
+gap, but its explanation predates a fuller decoder audit. CNA disables FluidSynth, yet its vendored
+SDL3\_mixer build leaves the Timidity MIDI decoder enabled; the lower audio layer therefore does
+have a synthesis route, subject to a usable Timidity instrument configuration. What is missing is
+a supported \cnaclass{Song}/Content extension mapping, asset/instrument policy, and retained test
+showing that this route works in CNA rather than merely compiling below it.
+
+The analysis lays out three real options rather than picking one prematurely: pre-render every
+track to OGG/FLAC against a chosen SoundFont ahead of time (lowest implementation risk, but a
+licensing/distribution question for the rendered assets and the SoundFont itself); expose and
+verify a reusable CNA-level MIDI route over the available decoder (cleaner for future games, but
+scope beyond what one port should decide unilaterally); or keep a
 \emph{Free Eggbert}-specific MIDI service bridging through \texttt{free-api}'s own existing
 TinySoundFont path while every other subsystem moves to CNA. The analysis's own recommendation
 is explicitly staged, not a single final answer: option three (the game-specific bridge) for an
