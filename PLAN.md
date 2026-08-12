@@ -365,6 +365,7 @@ log grep replaces.
 | 2026-08-12 | Phase F corrective batch 20 | **709 pages**, build clean; makeindex 2,387 / 0 / 0; 43 glossary terms, all 46 renderer selectors and the platform/testing/porting chapter topics gained canonical index destinations; malformed pointer/reference keys removed and verifier hardened against recurrence; 684 unique keys versus 517 before the batch; only index pages 703–709 changed visibly, all rendered and read clean at full size |
 | 2026-08-12 | Phase F corrective batch 21 | **709 pages**, build clean; makeindex 2,387 / 0 / 0; a whole-artifact coordinate audit found 44 words crossing the physical right edge despite successful builds, bounded emergency stretch plus targeted semantic breakpoints reduced 544 internal overfull boxes to 153 and eliminated every physical-edge crossing; header allocation corrected without changing the text block; all 709 pages re-rendered and read clean |
 | 2026-08-12 | Phase G final verification | **709 pages**, complete verifier green; readable unencrypted PDF 1.7 on A4, 27/27 fonts embedded/subsetted/Unicode-mapped, 12/79/8 Part/chapter/appendix outline, 302,443-word searchable text layer wholly inside the MediaBoxes, clean round-trip parse, no forms or JavaScript, and no pending visual page review |
+| 2026-08-12 | Post-G release hardening | **709 pages**, independent clean-tree build and complete verifier green; two duplicated function words and two awkward constructions corrected, with all four affected pages rendered and read clean; all 89 compiled content sources, 709 page boxes/rotations, page-label transition, 1,076 unique internal targets, 1,802 link rectangles, three reviewed HTTPS links and 1,065 numbered TOC landings validated; all pages independently interpreted by Ghostscript; fixed-date clean builds byte-identical; negative tests proved repeated-word, displaced-TOC and unreviewed-URI failure paths |
 
 ---
 
@@ -1061,3 +1062,28 @@ mid-session at the owner's direction, so the build and visual passes are availab
   accepted / 0 rejected / 0 warnings, all source, structure, index, whitespace, container, font,
   outline and physical-boundary invariants green. A mechanical editorial-placeholder and tiny-
   chapter audit found no unfinished manuscript content. Phases A–G are complete.
+
+### 2026-08-12 — post-G release hardening
+
+- Proofread the extracted manuscript mechanically for adjacent repeated function words and
+  high-similarity duplicated sentences. Corrected two real repetitions plus two awkward
+  constructions; rendered and read the four affected physical pages clean.
+- Extended the artifact verifier from aggregate PDF metadata to all 709 page boxes and rotations,
+  the front-matter page-label transition, internal named-destination existence, link annotation
+  geometry and targeting, and the physical landing page of every numbered TOC entry. The final
+  artifact has 1,076 unique internal link targets, 1,802 valid link annotations and 1,065 numbered
+  TOC entries that agree with their printed page numbers.
+- Made Poppler, MuPDF and Ghostscript tooling explicit release-verifier prerequisites, and added
+  independent all-page Ghostscript processing. Negative fixtures confirmed that the verifier
+  rejects both a multiline repeated word and a deliberately displaced TOC page.
+- Built the book independently from a clean temporary copy containing only tracked and intentional
+  untracked sources. It produced the same 709-page A4 structure with a clean log, proving that the
+  release does not depend on repository-local auxiliary files.
+- Repeated that clean build from two different temporary paths under the same
+  `SOURCE_DATE_EPOCH`; the PDFs were byte-identical with SHA-256
+  `c61e4121d5afd7524cc0c1a8143489279409abc2600b45b01ca409c5388aab32`.
+- Closed the source graph mechanically: all 89 chapter, appendix and nested renderer-fragment
+  files exist and are compiled exactly once. Audited active PDF content as well: the release has
+  exactly three reviewed HTTPS API-reference links and no form, JavaScript, remote-navigation,
+  launch, submission, import or embedded-file action. A 709-page negative fixture with one URI
+  substituted proved that the allowlist reports both the unexpected and missing destination.

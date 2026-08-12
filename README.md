@@ -6,14 +6,17 @@ Microsoft XNA 4.0 programming model. The single LaTeX volume covers the core
 framework, graphics renderers, content, input, audio, networking, sibling
 libraries, cross-platform engineering, migration, and project practice.
 
-The manuscript currently contains 79 chapters and eight appendices. Its active
-expansion is a long-running project; [NEXT.md](NEXT.md) records the precise
-current state and [PLAN.md](PLAN.md) is the authoritative task list.
+The verified edition contains 79 chapters and eight appendices in one 709-page
+volume. Phases A--G are complete against the pinned source baseline;
+[NEXT.md](NEXT.md) records the precise handoff and [PLAN.md](PLAN.md) preserves
+the authoritative plan and verification history.
 
 ## Build
 
 The build requires a TeX installation with `latexmk`, `pdflatex`, and
-`makeindex`.
+`makeindex`. The complete verifier additionally requires Poppler's `pdfinfo`,
+`pdftotext`, and `pdffonts`, MuPDF's `mutool`, Ghostscript's `gs`, plus Perl and
+Git; it reports any missing command before starting.
 
 ```bash
 make -C latex book
@@ -21,18 +24,16 @@ make -C latex book
 
 The PDF is written to `latex/book/main.pdf`.
 
-For a fresh verification build:
+For a fresh build plus the complete source and PDF-artifact verification suite:
 
 ```bash
-cd latex/book
-latexmk -pdf -interaction=nonstopmode -halt-on-error -file-line-error -g main.tex
-grep -iE 'Warning.*undefined|undefined reference|undefined control' main.log
-grep -iE 'multiply defined|multiply-defined' main.log
+tools/verify-book.sh
 ```
 
-Both `grep` commands should produce no output. A successful build does not
-replace visual verification: render and inspect every physical PDF page changed
-by a content batch.
+The suite checks the build, references, structure, index, physical page bounds,
+fonts, PDF navigation, page labels, link geometry and action safety, plus
+independent Ghostscript processing. It does not replace visual verification: render and inspect every
+physical PDF page changed by a content batch.
 
 ## Repository guide
 
@@ -42,7 +43,8 @@ by a content batch.
 - `PLAN.md` — durable expansion targets, status, and session history.
 - `NEXT.md` — concise handoff for the next autonomous session.
 - `CLAUDE.md` — writing, source-grounding, validation, and Git conventions.
-- `PROGRESS.md` — historical record of the original complete-book pass.
+- `PROGRESS.md` — historical record of the superseded two-volume edition; not
+  an active status or source path guide.
 - `tools/cna-screenshot-infra/` — reproducible real-screenshot support for
   graphics chapters.
 

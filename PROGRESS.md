@@ -1,4 +1,8 @@
-# The CNA Bible — writing progress
+# The CNA Bible — historical writing progress
+
+> **Archived context only (2026-07-20).** This file describes the superseded two-volume
+> edition and its former `latex/volume1` / `latex/volume2` paths. It is not an active handoff or
+> build guide. Use `NEXT.md`, `PLAN.md`, and `README.md` for the current single-volume edition.
 
 **Status: both volumes complete, including a content-completeness pass covering
 CNJ/XNB/Storage/NOXNA/RAM/cna-template/cna-extended/libcna.com, a repo-map expansion

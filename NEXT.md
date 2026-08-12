@@ -328,6 +328,17 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     with all 27 fonts embedded, subsetted and Unicode-mapped; its outline contains 12 Parts, 79
     chapters and 8 appendices; its 302,443-word searchable text layer stays inside every page.
     The complete verifier and a MuPDF parse/rewrite round trip are green.
+42. **The post-G release hardening pass is complete and verified.** An independent clean-tree
+    build reproduced the 709-page artifact. Mechanical proofreading removed two duplicated
+    function words and regularized two awkward constructions; all four affected pages were
+    rendered and read clean. The verifier now checks every page's A4 geometry and rotation, the
+    roman-to-arabic page-label transition, all 1,076 unique internal targets, all 1,802 link
+    rectangles, the printed-page landing of all 1,065 numbered TOC entries, and complete
+    Ghostscript interpretation. It fails early rather than silently reducing coverage when a
+    required PDF tool is unavailable. Two clean builds under the same `SOURCE_DATE_EPOCH` are
+    byte-identical (SHA-256 `c61e4121d5afd7524cc0c1a8143489279409abc2600b45b01ca409c5388aab32`).
+    All 89 chapter, appendix and renderer-fragment sources are compiled exactly once; the PDF has
+    only the three reviewed primary-reference HTTPS links and no active or remote-launch actions.
 
 ## Do this next
 
@@ -480,8 +491,15 @@ Everything through Phase G is verified:
   any physical page, no running-head height warning and no unintended blank page.
 - Phase G independently checked the PDF container, A4 geometry, encryption state, all 27 font
   rows, the complete 12/79/8 outline, text extraction and a MuPDF parse/rewrite round trip.
+- The post-G pass rebuilt from a clean copy of the tracked and intentional untracked sources;
+  validated every physical page box, page label, internal destination, link rectangle and
+  numbered TOC landing; and independently interpreted all 709 pages with Ghostscript. A negative
+  test proved the new multiline repeated-word check, and a deliberately displaced TOC page proved
+  the destination audit. A third fixture substituted an unreviewed URI while preserving the
+  709-page layout and proved the external-action allowlist. Two clean, independently located
+  builds with a fixed source date produced byte-identical PDFs.
 
-**No writing, correction or PDF-verification batch is pending.**
+**No known writing, correction or PDF-verification defect is pending.**
 
 ## Environment notes
 
@@ -513,5 +531,6 @@ their live persistence, path, session and rendering contracts. The sharp-runtime
 also match the current modular graph, task/stream behavior, parity boundaries, test surfaces and
 tracked CI. All live structural citations are stable references, and the index now covers both
 API symbols and the book's major platform, verification and porting concepts. Phase G confirmed
-the final 709-page PDF's physical bounds, fonts, outline, text layer and container integrity;
-Phases A–G are closed.
+the final 709-page PDF's physical bounds, fonts, outline, text layer and container integrity. A
+post-G clean build and navigation audit additionally proved its page labels, links and numbered
+TOC landings; Phases A–G are closed.
