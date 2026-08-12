@@ -858,6 +858,12 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      necessary, but can no longer be sufficient after a producer or filter reports an error. A
      pass-through sort stub that emitted correct data and then exited 37 produced graph failures
      despite reported 91/98/5 counts and zero set differences.
+131. **Zero-count and fixed-count grep scans are status-aware.** A shared counter now distinguishes
+     legitimate no-match status 1 from execution/read error status >1. Overfull diagnostics, index
+     structure, all page-box profiles, outline populations and the unsafe-action census bind that
+     status alongside their existing exact counts instead of flattening every failure to zero. An
+     unsafe-action stub that printed the correct zero then exited 41 produced exactly one action-
+     audit FAIL despite every displayed census value remaining correct.
 
 ## Do this next
 

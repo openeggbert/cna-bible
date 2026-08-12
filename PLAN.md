@@ -1481,3 +1481,6 @@ build and visual passes are available again.
 - Status-bound every producer/filter/set stage in the 91-source input, 98-input recorder and
   five-image closure graphs in addition to their existing exact cardinalities. A correct-output/
   exit-37 sort stub failed all three even while their counts and differences remained exact.
+- Added a status-aware grep counter for overfull, index, page-profile, outline and unsafe-action
+  populations, preserving legitimate zero matches while rejecting scanner/read errors. A correct-
+  zero/exit-41 action stub produced one failure with otherwise exact displayed counts.

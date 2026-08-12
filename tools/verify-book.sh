@@ -129,6 +129,15 @@ append_inventory_matches() {
     local scan_status=$?
     [ "$scan_status" -eq 0 ] || [ "$scan_status" -eq 1 ]
 }
+grep_count() {
+    local count scan_status
+    count=$(grep "$@" 2>/dev/null)
+    scan_status=$?
+    case "$scan_status" in
+        0|1) printf '%s\n' "${count:-0}" ;;
+        *) return "$scan_status" ;;
+    esac
+}
 
 echo "== The CNA Bible: verification pass =="
 
@@ -173,7 +182,10 @@ forbid_matches "$diagnostic_dir/headheight-log.txt" \
     "running heads fit the reserved header height" \
     -n -A3 "Package fancyhdr Warning: \\headheight is too small" "$log"
 
-overfull=$(grep -Fc 'Overfull \hbox' "$log" 2>/dev/null || true)
+if ! overfull=$(grep_count -Fc 'Overfull \hbox' "$log"); then
+    fail "could not count overfull-box diagnostics"
+    overfull=unknown
+fi
 info "$overfull internal overfull hbox warning(s); physical PDF bounds are checked below"
 
 # ---------------------------------------------------------------- index
@@ -200,14 +212,25 @@ if [ -f "$idx" ] && [ -f "$ind" ]; then
     idx_entry_count=$(wc -l < "$idx")
     # Each source record must have a non-empty key, the hyperlink encapsulator, and one printed
     # page in the book's exact arabic range. The key may itself contain TeX braces.
-    idx_valid_count=$(grep -Ec '^\\indexentry\{.+\|hyperpage\}\{([1-9][0-9]?|[1-5][0-9]{2}|6[0-6][0-9]|670)\}$' "$idx" || true)
+    index_count_scan_ok=1
+    if ! idx_valid_count=$(grep_count -Ec '^\\indexentry\{.+\|hyperpage\}\{([1-9][0-9]?|[1-5][0-9]{2}|6[0-6][0-9]|670)\}$' "$idx"); then
+        idx_valid_count=0
+        index_count_scan_ok=0
+    fi
     idx_unique_key_count=$(sed -n 's/^\\indexentry{\(.*\)|hyperpage}{[0-9][0-9]*}$/\1/p' "$idx" \
         | LC_ALL=C sort -fu | wc -l)
-    ind_item_count=$(grep -c '^  \\item ' "$ind" || true)
-    ind_subitem_count=$(grep -c '^    \\subitem ' "$ind" || true)
-    ind_subsubitem_count=$(grep -c '^      \\subsubitem ' "$ind" || true)
+    if ! ind_item_count=$(grep_count -c '^  \\item ' "$ind"); then
+        ind_item_count=0; index_count_scan_ok=0
+    fi
+    if ! ind_subitem_count=$(grep_count -c '^    \\subitem ' "$ind"); then
+        ind_subitem_count=0; index_count_scan_ok=0
+    fi
+    if ! ind_subsubitem_count=$(grep_count -c '^      \\subsubitem ' "$ind"); then
+        ind_subsubitem_count=0; index_count_scan_ok=0
+    fi
     ind_key_count=$((ind_item_count + ind_subitem_count + ind_subsubitem_count))
-    if [ "$idx_entry_count" -eq 2389 ] && [ "$idx_valid_count" -eq 2389 ] \
+    if [ "$index_count_scan_ok" -eq 1 ] && [ "$idx_entry_count" -eq 2389 ] \
+       && [ "$idx_valid_count" -eq 2389 ] \
        && [ "$idx_unique_key_count" -eq 681 ] && [ "$ind_item_count" -eq 676 ] \
        && [ "$ind_subitem_count" -eq 5 ] && [ "$ind_subsubitem_count" -eq 0 ] \
        && [ "$ind_key_count" -eq "$idx_unique_key_count" ]; then
@@ -607,19 +630,27 @@ if ! page_boxes=$(pdfinfo -f 1 -l "$pages" -box "$pdf" 2>/dev/null); then
     page_boxes=""
     page_boxes_ok=0
 fi
-a4_pages=$(printf '%s\n' "$page_boxes" \
-    | grep -cE '^Page +[0-9]+ size:  +595\.276 x 841\.89 pts \(A4\)$' || true)
-unrotated_pages=$(printf '%s\n' "$page_boxes" \
-    | grep -cE '^Page +[0-9]+ rot:  +0$' || true)
+page_profile_scan_ok=1
+if ! a4_pages=$(printf '%s\n' "$page_boxes" \
+    | grep_count -cE '^Page +[0-9]+ size:  +595\.276 x 841\.89 pts \(A4\)$'); then
+    a4_pages=0; page_profile_scan_ok=0
+fi
+if ! unrotated_pages=$(printf '%s\n' "$page_boxes" \
+    | grep_count -cE '^Page +[0-9]+ rot:  +0$'); then
+    unrotated_pages=0; page_profile_scan_ok=0
+fi
 complete_page_boxes=1
 for box_name in MediaBox CropBox BleedBox TrimBox ArtBox; do
-    box_count=$(printf '%s\n' "$page_boxes" \
-        | grep -cE "^Page +[0-9]+ ${box_name}: +0\.00 +0\.00 +595\.28 +841\.89$" || true)
+    if ! box_count=$(printf '%s\n' "$page_boxes" \
+        | grep_count -cE "^Page +[0-9]+ ${box_name}: +0\.00 +0\.00 +595\.28 +841\.89$"); then
+        box_count=0; page_profile_scan_ok=0
+    fi
     [ "$box_count" -eq "$pages" ] || complete_page_boxes=0
 done
 if [ "$pages" -eq 709 ] && [ "$pdf_version" = "1.7" ] && [ "$encrypted" = "no" ] \
    && [ "$tagged" = "no" ] && [ "$suspects" = "no" ] && [ "$user_properties" = "no" ] \
-   && [ "$page_boxes_ok" -eq 1 ] && [ "$a4_pages" -eq "$pages" ] \
+   && [ "$page_boxes_ok" -eq 1 ] && [ "$page_profile_scan_ok" -eq 1 ] \
+   && [ "$a4_pages" -eq "$pages" ] \
    && [ "$unrotated_pages" -eq "$pages" ] && [ "$complete_page_boxes" -eq 1 ]; then
     pass "PDF 1.7 has 709 untagged, unencrypted, unsuspect A4 pages with matching boxes"
 else
@@ -879,21 +910,31 @@ if command -v mutool >/dev/null 2>&1; then
             > "$outline_order_file"
         sed -n 's/^\\BOOKMARK \[[^]]*\]\[[^]]*\]{\([^}]*\)}.*/\1/p' \
             "$book_dir/main.out" > "$source_order_file"
-        outline_entries=$(grep -c '#nameddest=' "$outline_file" || true)
+        outline_count_scan_ok=1
+        if ! outline_entries=$(grep_count -c '#nameddest=' "$outline_file"); then
+            outline_entries=0; outline_count_scan_ok=0
+        fi
         outline_destinations=$(grep -o '#nameddest=[^[:space:]]*' "$outline_file" \
             | sort -u | wc -l)
         outline_empty_titles=$(awk -F'"' '$0 ~ /#nameddest=/ && (NF < 3 || $2 == "") { count++ } END { print count + 0 }' \
             "$outline_file")
-        outline_parts=$(grep -c '#nameddest=part\.' "$outline_file" || true)
-        outline_chapters=$(grep -c '#nameddest=chapter\.[0-9]' "$outline_file" || true)
-        outline_appendices=$(grep -c '#nameddest=appendix\.[A-H]' "$outline_file" || true)
-        if [ "$outline_parts" -eq 12 ] && [ "$outline_chapters" -eq 79 ] \
+        if ! outline_parts=$(grep_count -c '#nameddest=part\.' "$outline_file"); then
+            outline_parts=0; outline_count_scan_ok=0
+        fi
+        if ! outline_chapters=$(grep_count -c '#nameddest=chapter\.[0-9]' "$outline_file"); then
+            outline_chapters=0; outline_count_scan_ok=0
+        fi
+        if ! outline_appendices=$(grep_count -c '#nameddest=appendix\.[A-H]' "$outline_file"); then
+            outline_appendices=0; outline_count_scan_ok=0
+        fi
+        if [ "$outline_count_scan_ok" -eq 1 ] && [ "$outline_parts" -eq 12 ] \
+           && [ "$outline_chapters" -eq 79 ] \
            && [ "$outline_appendices" -eq 8 ]; then
             pass "PDF outline contains 12 Parts, 79 chapters, and 8 appendices"
         else
             fail "unexpected PDF outline ($outline_parts Parts, $outline_chapters chapters, $outline_appendices appendices)"
         fi
-        if [ "$outline_entries" -eq 1066 ] \
+        if [ "$outline_count_scan_ok" -eq 1 ] && [ "$outline_entries" -eq 1066 ] \
            && [ "$outline_destinations" -eq "$outline_entries" ] \
            && [ "$outline_empty_titles" -eq 0 ]; then
             pass "all $outline_entries PDF outline entries have non-empty titles and unique destinations"
@@ -972,7 +1013,11 @@ if command -v mutool >/dev/null 2>&1; then
             | sort -u > "$expected_uris_file"
         comm -23 "$external_uris_file" "$expected_uris_file" > "$unexpected_uris_file"
         comm -13 "$external_uris_file" "$expected_uris_file" > "$missing_uris_file"
-        unsafe_action_count=$(grep -Ec '/S/(JavaScript|JS|Launch|GoToR|SubmitForm|ImportData)([^A-Za-z]|$)|/EmbeddedFiles([^A-Za-z]|$)' "$objects_file" || true)
+        action_count_scan_ok=1
+        if ! unsafe_action_count=$(grep_count -Ec '/S/(JavaScript|JS|Launch|GoToR|SubmitForm|ImportData)([^A-Za-z]|$)|/EmbeddedFiles([^A-Za-z]|$)' "$objects_file"); then
+            unsafe_action_count=0
+            action_count_scan_ok=0
+        fi
         annotation_action_census=$(
             perl -ne '
                 next unless m{/Type/Annot};
@@ -993,7 +1038,8 @@ EOF
         external_uri_count=$(wc -l < "$external_uris_file")
         unexpected_uri_count=$(wc -l < "$unexpected_uris_file")
         missing_uri_count=$(wc -l < "$missing_uris_file")
-        if [ "$unsafe_action_count" -eq 0 ] && [ "$external_uri_count" -eq 3 ] \
+        if [ "$action_count_scan_ok" -eq 1 ] && [ "$unsafe_action_count" -eq 0 ] \
+           && [ "$external_uri_count" -eq 3 ] \
            && [ "$annotation_count" -eq 3653 ] && [ "$link_subtype_count" -eq 3653 ] \
            && [ "$goto_action_count" -eq 3650 ] && [ "$uri_action_count" -eq 3 ] \
            && [ "$direct_destination_count" -eq 0 ] && [ "$other_annotation_count" -eq 0 ] \
