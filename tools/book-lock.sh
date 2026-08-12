@@ -7,7 +7,7 @@ acquire_book_lock() {
     local inherited_fd=${CNA_BIBLE_LOCK_FD:-}
     local existing_fd=${book_lock_fd:-}
     local existing_mode=${book_lock_mode:-}
-    local lock_dir lock_dir_owner lock_dir_mode lock_id lock_file prior_umask
+    local lock_dir lock_dir_owner lock_dir_mode lock_digest lock_id lock_file prior_umask
     local inherited_identity lock_identity existing_identity opened_identity
     local lock_file_owner lock_file_mode lock_file_symlink
 
@@ -39,7 +39,21 @@ EOF
         return 1
     fi
 
-    lock_id=$(printf '%s' "$repo_root" | sha256sum | awk '{print $1}')
+    if ! lock_digest=$(printf '%s' "$repo_root" | sha256sum); then
+        printf 'ERROR: could not derive the repository book-lock identity\n' >&2
+        return 1
+    fi
+    lock_id=${lock_digest%% *}
+    case "$lock_id" in
+        *[!0-9a-f]*|'')
+            printf 'ERROR: invalid repository book-lock identity\n' >&2
+            return 1
+            ;;
+    esac
+    if [ "${#lock_id}" -ne 64 ]; then
+        printf 'ERROR: invalid repository book-lock identity length\n' >&2
+        return 1
+    fi
     lock_file="$lock_dir/${lock_id}.lock"
     if [ -e "$lock_file" ] || [ -L "$lock_file" ]; then
         read -r lock_file_owner lock_file_mode <<EOF

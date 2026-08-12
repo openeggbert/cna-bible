@@ -1503,3 +1503,9 @@ build and visual passes are available again.
   The clone carried no workspace auxiliary or ignored artifact, reproduced the exact 3,314,744-byte
   / `7c877ef...` PDF with the reviewed dates, and passed the complete current verifier before the
   isolated fixture was removed.
+- Bound remaining exact-count and metadata decisions to successful readers: index-log fields,
+  PDF Info parsing, source/recorder/image/outline/action graph counts, searchable text and blank
+  versos now fail closed on producer error. Correct-output/failed-status `awk` and `wc` fixtures
+  produced the expected immediate and twelve dependent failures. The lock helper now validates
+  its SHA-256 without relying on caller `pipefail`; the renderer rejects a failed `pdfinfo` before
+  output allocation. Its real physical-page-709 path still rendered and read visually clean.

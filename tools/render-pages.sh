@@ -90,7 +90,10 @@ pdf_info=$(pdfinfo "$pdf" 2>/dev/null) || {
     printf 'ERROR: pdfinfo could not parse %s\n' "$pdf" >&2
     exit 1
 }
-total=$(printf '%s\n' "$pdf_info" | awk '/^Pages:/ {print $2}')
+total=$(printf '%s\n' "$pdf_info" | awk '/^Pages:/ {print $2}') || {
+    printf 'ERROR: could not parse the pdfinfo page-count field\n' >&2
+    exit 1
+}
 case "$total" in
     ''|*[!0-9]*)
         printf 'ERROR: pdfinfo did not report a numeric page count for %s\n' "$pdf" >&2
@@ -138,10 +141,16 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 pdftoppm -png -r 120 -f "$first" -l "$last" "$pdf" "$run_dir/page"
-rendered_count=$(find "$run_dir" -maxdepth 1 -type f -name 'page-*.png' | wc -l)
+rendered_count=$(find "$run_dir" -maxdepth 1 -type f -name 'page-*.png' | wc -l) || {
+    printf 'ERROR: could not count rendered PNG files\n' >&2
+    exit 1
+}
 expected_count=$((last - first + 1))
 actual_names=$(find "$run_dir" -maxdepth 1 -type f -name 'page-*.png' -printf '%f\n' \
-    | LC_ALL=C sort)
+    | LC_ALL=C sort) || {
+    printf 'ERROR: could not inventory rendered PNG names\n' >&2
+    exit 1
+}
 expected_names=""
 page=$first
 while [ "$page" -le "$last" ]; do

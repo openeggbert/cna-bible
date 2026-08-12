@@ -898,6 +898,13 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      rebuilt the exact 3,314,744-byte `7c877ef...` artifact with the reviewed dates, then passed
      the complete verifier: 709 pages, all 27 fonts, five source/image pairs, 3,653 links, 5,054
      named destinations and the twelve Part-derived blank versos. The clone was removed afterward.
+139. **Exact counts now require successful readers, not only plausible output.** Index-log fields,
+     PDF metadata, source/recorder/image/outline/action graph counts, searchable-text and blank-page
+     censuses all bind their producer status before PASS. A `wc` stub that printed every correct
+     count then exited 67 produced twelve dependent failures; an `awk` page parser that printed 709
+     then exited 61 failed immediately. The lock helper validates its SHA-256 directly, independent
+     of caller pipeline settings, and the renderer likewise rejects a correct-output/exit-71
+     `pdfinfo` before allocating output. A real page-709 render remained exact and visually clean.
 
 ## Do this next
 

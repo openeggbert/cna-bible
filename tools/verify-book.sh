@@ -138,6 +138,11 @@ grep_count() {
         *) return "$scan_status" ;;
     esac
 }
+line_count() {
+    local count
+    count=$(wc -l < "$1") || return $?
+    printf '%s\n' "$count"
+}
 
 echo "== The CNA Bible: verification pass =="
 
@@ -192,11 +197,16 @@ info "$overfull internal overfull hbox warning(s); physical PDF bounds are check
 echo "-- index"
 ilg="$book_dir/main.ilg"
 if [ -f "$ilg" ]; then
-    entries=$(sed -n 's/.*(\([0-9]*\) entries accepted.*/\1/p' "$ilg" | tail -1)
-    rejected=$(sed -n 's/.*entries accepted, \([0-9]*\) rejected.*/\1/p' "$ilg" | tail -1)
-    warns=$(sed -n 's/.*lines written, \([0-9]*\) warnings.*/\1/p' "$ilg" | tail -1)
+    index_log_scan_ok=1
+    entries=$(sed -n 's/.*(\([0-9]*\) entries accepted.*/\1/p' "$ilg" | tail -1) \
+        || index_log_scan_ok=0
+    rejected=$(sed -n 's/.*entries accepted, \([0-9]*\) rejected.*/\1/p' "$ilg" | tail -1) \
+        || index_log_scan_ok=0
+    warns=$(sed -n 's/.*lines written, \([0-9]*\) warnings.*/\1/p' "$ilg" | tail -1) \
+        || index_log_scan_ok=0
     info "makeindex accepted ${entries:-?} entries, ${rejected:-?} rejected, ${warns:-?} warnings"
-    if [ "${entries:-0}" != "2389" ] || [ "${rejected:-1}" != "0" ] \
+    if [ "$index_log_scan_ok" -ne 1 ] || [ "${entries:-0}" != "2389" ] \
+       || [ "${rejected:-1}" != "0" ] \
        || [ "${warns:-1}" != "0" ]; then
         fail "makeindex inventory changed or reported rejected entries/warnings"
     else
@@ -209,16 +219,22 @@ fi
 idx="$book_dir/main.idx"
 ind="$book_dir/main.ind"
 if [ -f "$idx" ] && [ -f "$ind" ]; then
-    idx_entry_count=$(wc -l < "$idx")
+    index_count_scan_ok=1
+    if ! idx_entry_count=$(line_count "$idx"); then
+        idx_entry_count=0
+        index_count_scan_ok=0
+    fi
     # Each source record must have a non-empty key, the hyperlink encapsulator, and one printed
     # page in the book's exact arabic range. The key may itself contain TeX braces.
-    index_count_scan_ok=1
     if ! idx_valid_count=$(grep_count -Ec '^\\indexentry\{.+\|hyperpage\}\{([1-9][0-9]?|[1-5][0-9]{2}|6[0-6][0-9]|670)\}$' "$idx"); then
         idx_valid_count=0
         index_count_scan_ok=0
     fi
-    idx_unique_key_count=$(sed -n 's/^\\indexentry{\(.*\)|hyperpage}{[0-9][0-9]*}$/\1/p' "$idx" \
-        | LC_ALL=C sort -fu | wc -l)
+    if ! idx_unique_key_count=$(sed -n 's/^\\indexentry{\(.*\)|hyperpage}{[0-9][0-9]*}$/\1/p' "$idx" \
+        | LC_ALL=C sort -fu | wc -l); then
+        idx_unique_key_count=0
+        index_count_scan_ok=0
+    fi
     if ! ind_item_count=$(grep_count -c '^  \\item ' "$ind"); then
         ind_item_count=0; index_count_scan_ok=0
     fi
@@ -344,12 +360,13 @@ uniq -d "$input_targets_file" > "$duplicate_inputs_file" || input_graph_ok=0
 while IFS= read -r input_target; do
     [ -f "$book_dir/$input_target" ] || printf '%s\n' "$input_target"
 done < "$input_targets_file" > "$missing_inputs_file" || input_graph_ok=0
-chapter_source_count=$(wc -l < "$chapter_sources_file")
-compiled_source_count=$(wc -l < "$input_targets_file")
-orphan_source_count=$(wc -l < "$orphan_sources_file")
-duplicate_input_count=$(wc -l < "$duplicate_inputs_file")
-missing_input_count=$(wc -l < "$missing_inputs_file")
-content_source_count=$(find "$chapters" -type f -name '*.tex' | wc -l)
+chapter_source_count=$(line_count "$chapter_sources_file") || { chapter_source_count=0; input_graph_ok=0; }
+compiled_source_count=$(line_count "$input_targets_file") || { compiled_source_count=0; input_graph_ok=0; }
+orphan_source_count=$(line_count "$orphan_sources_file") || { orphan_source_count=0; input_graph_ok=0; }
+duplicate_input_count=$(line_count "$duplicate_inputs_file") || { duplicate_input_count=0; input_graph_ok=0; }
+missing_input_count=$(line_count "$missing_inputs_file") || { missing_input_count=0; input_graph_ok=0; }
+content_source_count=$(find "$chapters" -type f -name '*.tex' | wc -l) \
+    || { content_source_count=0; input_graph_ok=0; }
 if [ "$input_graph_ok" -eq 1 ] && [ "$content_source_count" -eq 89 ] \
    && [ "$chapter_source_count" -eq 91 ] \
    && [ "$compiled_source_count" -eq 91 ] \
@@ -391,9 +408,12 @@ else
 fi
 comm -3 "$recorder_expected_file" "$recorder_actual_file" > "$recorder_diff_file" \
     || recorder_graph_ok=0
-recorder_expected_count=$(wc -l < "$recorder_expected_file")
-recorder_actual_count=$(wc -l < "$recorder_actual_file")
-recorder_diff_count=$(wc -l < "$recorder_diff_file")
+recorder_expected_count=$(line_count "$recorder_expected_file") \
+    || { recorder_expected_count=0; recorder_graph_ok=0; }
+recorder_actual_count=$(line_count "$recorder_actual_file") \
+    || { recorder_actual_count=0; recorder_graph_ok=0; }
+recorder_diff_count=$(line_count "$recorder_diff_file") \
+    || { recorder_diff_count=0; recorder_graph_ok=0; }
 if [ "$recorder_graph_ok" -eq 1 ] && [ "$recorder_expected_count" -eq 98 ] \
    && [ "$recorder_actual_count" -eq 98 ] \
    && [ "$recorder_diff_count" -eq 0 ]; then
@@ -424,11 +444,12 @@ comm -23 "$image_sources_file" "$image_targets_file" > "$image_orphans_file" \
 uniq -d "$image_targets_file" > "$image_duplicates_file" || image_graph_ok=0
 comm -13 "$image_sources_file" "$image_targets_file" > "$image_missing_file" \
     || image_graph_ok=0
-image_source_count=$(wc -l < "$image_sources_file")
-image_target_count=$(wc -l < "$image_targets_file")
-image_orphan_count=$(wc -l < "$image_orphans_file")
-image_duplicate_count=$(wc -l < "$image_duplicates_file")
-image_missing_count=$(wc -l < "$image_missing_file")
+image_source_count=$(line_count "$image_sources_file") || { image_source_count=0; image_graph_ok=0; }
+image_target_count=$(line_count "$image_targets_file") || { image_target_count=0; image_graph_ok=0; }
+image_orphan_count=$(line_count "$image_orphans_file") || { image_orphan_count=0; image_graph_ok=0; }
+image_duplicate_count=$(line_count "$image_duplicates_file") \
+    || { image_duplicate_count=0; image_graph_ok=0; }
+image_missing_count=$(line_count "$image_missing_file") || { image_missing_count=0; image_graph_ok=0; }
 if [ "$image_graph_ok" -eq 1 ] && [ "$image_source_count" -eq 5 ] \
    && [ "$image_target_count" -eq 5 ] \
    && [ "$image_orphan_count" -eq 0 ] && [ "$image_duplicate_count" -eq 0 ] \
@@ -591,13 +612,18 @@ if ! pdf_info=$(pdfinfo "$pdf" 2>/dev/null); then
     fail "pdfinfo could not parse main.pdf"
     exit 1
 fi
-pages=$(printf '%s\n' "$pdf_info" | awk '/^Pages:/ {print $2}')
+pdf_info_scan_ok=1
+pages=$(printf '%s\n' "$pdf_info" | awk '/^Pages:/ {print $2}') || pdf_info_scan_ok=0
 case "$pages" in
     ''|*[!0-9]*)
         fail "pdfinfo could not parse main.pdf or report a numeric page count"
         exit 1
         ;;
 esac
+if [ "$pdf_info_scan_ok" -ne 1 ]; then
+    fail "could not parse the pdfinfo page-count field"
+    exit 1
+fi
 if [ -z "$pdf_info" ]; then
     fail "pdfinfo could not parse main.pdf"
     exit 1
@@ -607,18 +633,19 @@ fi
 info "main.pdf is $pages pages"
 info "chapter LaTeX: $(find "$chapters" -name '*.tex' | xargs cat 2>/dev/null | wc -l) lines across $(find "$chapters" -name '*.tex' | wc -l) files"
 
-encrypted=$(printf '%s\n' "$pdf_info" | awk -F: '/^Encrypted:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
-form=$(printf '%s\n' "$pdf_info" | awk -F: '/^Form:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
-javascript=$(printf '%s\n' "$pdf_info" | awk -F: '/^JavaScript:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
-pdf_version=$(printf '%s\n' "$pdf_info" | awk -F: '/^PDF version:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
-tagged=$(printf '%s\n' "$pdf_info" | awk -F: '/^Tagged:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
-suspects=$(printf '%s\n' "$pdf_info" | awk -F: '/^Suspects:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
-user_properties=$(printf '%s\n' "$pdf_info" | awk -F: '/^UserProperties:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
-title=$(printf '%s\n' "$pdf_info" | awk -F: '/^Title:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
-author=$(printf '%s\n' "$pdf_info" | awk -F: '/^Author:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
-subject=$(printf '%s\n' "$pdf_info" | awk -F: '/^Subject:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
-keywords=$(printf '%s\n' "$pdf_info" | awk -F: '/^Keywords:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
-creator=$(printf '%s\n' "$pdf_info" | awk -F: '/^Creator:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
+pdf_info_fields_ok=1
+encrypted=$(printf '%s\n' "$pdf_info" | awk -F: '/^Encrypted:/ {sub(/^[[:space:]]+/, "", $2); print $2}') || pdf_info_fields_ok=0
+form=$(printf '%s\n' "$pdf_info" | awk -F: '/^Form:/ {sub(/^[[:space:]]+/, "", $2); print $2}') || pdf_info_fields_ok=0
+javascript=$(printf '%s\n' "$pdf_info" | awk -F: '/^JavaScript:/ {sub(/^[[:space:]]+/, "", $2); print $2}') || pdf_info_fields_ok=0
+pdf_version=$(printf '%s\n' "$pdf_info" | awk -F: '/^PDF version:/ {sub(/^[[:space:]]+/, "", $2); print $2}') || pdf_info_fields_ok=0
+tagged=$(printf '%s\n' "$pdf_info" | awk -F: '/^Tagged:/ {sub(/^[[:space:]]+/, "", $2); print $2}') || pdf_info_fields_ok=0
+suspects=$(printf '%s\n' "$pdf_info" | awk -F: '/^Suspects:/ {sub(/^[[:space:]]+/, "", $2); print $2}') || pdf_info_fields_ok=0
+user_properties=$(printf '%s\n' "$pdf_info" | awk -F: '/^UserProperties:/ {sub(/^[[:space:]]+/, "", $2); print $2}') || pdf_info_fields_ok=0
+title=$(printf '%s\n' "$pdf_info" | awk -F: '/^Title:/ {sub(/^[[:space:]]+/, "", $2); print $2}') || pdf_info_fields_ok=0
+author=$(printf '%s\n' "$pdf_info" | awk -F: '/^Author:/ {sub(/^[[:space:]]+/, "", $2); print $2}') || pdf_info_fields_ok=0
+subject=$(printf '%s\n' "$pdf_info" | awk -F: '/^Subject:/ {sub(/^[[:space:]]+/, "", $2); print $2}') || pdf_info_fields_ok=0
+keywords=$(printf '%s\n' "$pdf_info" | awk -F: '/^Keywords:/ {sub(/^[[:space:]]+/, "", $2); print $2}') || pdf_info_fields_ok=0
+creator=$(printf '%s\n' "$pdf_info" | awk -F: '/^Creator:/ {sub(/^[[:space:]]+/, "", $2); print $2}') || pdf_info_fields_ok=0
 info_object_ok=1
 if ! trapped=$(mutool show -g "$pdf" trailer/Info 2>/dev/null \
     | sed -n 's/.*\/Trapped\/\([^/>]*\).*/\1/p'); then
@@ -647,7 +674,8 @@ for box_name in MediaBox CropBox BleedBox TrimBox ArtBox; do
     fi
     [ "$box_count" -eq "$pages" ] || complete_page_boxes=0
 done
-if [ "$pages" -eq 709 ] && [ "$pdf_version" = "1.7" ] && [ "$encrypted" = "no" ] \
+if [ "$pdf_info_fields_ok" -eq 1 ] && [ "$pages" -eq 709 ] \
+   && [ "$pdf_version" = "1.7" ] && [ "$encrypted" = "no" ] \
    && [ "$tagged" = "no" ] && [ "$suspects" = "no" ] && [ "$user_properties" = "no" ] \
    && [ "$page_boxes_ok" -eq 1 ] && [ "$page_profile_scan_ok" -eq 1 ] \
    && [ "$a4_pages" -eq "$pages" ] \
@@ -656,7 +684,7 @@ if [ "$pages" -eq 709 ] && [ "$pdf_version" = "1.7" ] && [ "$encrypted" = "no" ]
 else
     fail "unexpected PDF profile/geometry ($pages pages, version=$pdf_version, tagged=$tagged, suspects=$suspects, user-properties=$user_properties, encrypted=$encrypted, $a4_pages A4, $unrotated_pages unrotated, boxes=$complete_page_boxes)"
 fi
-if [ "$form" = "none" ] && [ "$javascript" = "no" ]; then
+if [ "$pdf_info_fields_ok" -eq 1 ] && [ "$form" = "none" ] && [ "$javascript" = "no" ]; then
     pass "PDF contains no forms or JavaScript"
 else
     fail "unexpected active PDF content (form='${form:-?}', JavaScript='${javascript:-?}')"
@@ -664,7 +692,8 @@ fi
 if [ "$title" = "The CNA Bible" ] && [ "$author" = "Robert Vokac" ] \
    && [ "$subject" = "A source-grounded guide to CNA and the Microsoft XNA 4.0 programming model" ] \
    && [ "$keywords" = "CNA, Microsoft XNA, C++23, graphics renderers, game development" ] \
-   && [ "$creator" = "LaTeX with hyperref" ] && [ "$info_object_ok" -eq 1 ] \
+   && [ "$creator" = "LaTeX with hyperref" ] && [ "$pdf_info_fields_ok" -eq 1 ] \
+   && [ "$info_object_ok" -eq 1 ] \
    && [ "$trapped" = "False" ]; then
     pass "PDF title, author, subject, keywords, creator, and trapped state match release metadata"
 else
@@ -704,15 +733,18 @@ rm -f "$bbox_file"
 # overlook. The word count deliberately uses the same Poppler layout mode recorded in the plan.
 text_layer_file=$(mktemp /tmp/cna-bible-text-layer.XXXXXX.txt)
 if pdftotext -layout "$pdf" "$text_layer_file" 2>/dev/null; then
-    text_layer_words=$(wc -w < "$text_layer_file")
+    text_layer_scan_ok=1
+    text_layer_words=$(wc -w < "$text_layer_file") || { text_layer_words=0; text_layer_scan_ok=0; }
+    text_layer_counts=$(perl -0777 -ne '
+        $nul += () = /\x00/g;
+        $replacement += () = /\xEF\xBF\xBD/g;
+        END { print (($nul + 0) . " " . ($replacement + 0)); }
+    ' "$text_layer_file") || { text_layer_counts="0 0"; text_layer_scan_ok=0; }
     read -r text_layer_nuls text_layer_replacements <<EOF
-$(perl -0777 -ne '
-    $nul += () = /\x00/g;
-    $replacement += () = /\xEF\xBF\xBD/g;
-    END { print (($nul + 0) . " " . ($replacement + 0)); }
-' "$text_layer_file")
+$text_layer_counts
 EOF
-    if [ "$text_layer_words" -eq 302448 ] && [ "$text_layer_nuls" -eq 0 ] \
+    if [ "$text_layer_scan_ok" -eq 1 ] && [ "$text_layer_words" -eq 302448 ] \
+       && [ "$text_layer_nuls" -eq 0 ] \
        && [ "$text_layer_replacements" -eq 0 ]; then
         pass "searchable text layer has 302448 words and no NUL/U+FFFD corruption"
     else
@@ -753,8 +785,11 @@ fi
 # in compilation order. This checks content rather than compression bytes or object numbers.
 image_audit_dir=$(mktemp -d /tmp/cna-bible-images.XXXXXX)
 if pdfimages -png "$pdf" "$image_audit_dir/image" >/dev/null 2>&1; then
-    embedded_image_files=$(find "$image_audit_dir" -maxdepth 1 -type f -name 'image-*.png' | wc -l)
-    source_image_files=$(find "$book_dir/images" -maxdepth 1 -type f -name '*.png' | wc -l)
+    image_decode_scan_ok=1
+    embedded_image_files=$(find "$image_audit_dir" -maxdepth 1 -type f -name 'image-*.png' | wc -l) \
+        || { embedded_image_files=0; image_decode_scan_ok=0; }
+    source_image_files=$(find "$book_dir/images" -maxdepth 1 -type f -name '*.png' | wc -l) \
+        || { source_image_files=0; image_decode_scan_ok=0; }
     image_mismatches=0
     image_number=0
     for source_image in \
@@ -779,7 +814,8 @@ if pdfimages -png "$pdf" "$image_audit_dir/image" >/dev/null 2>&1; then
         fi
         image_number=$((image_number + 2))
     done
-    if [ "$source_image_files" -eq 5 ] && [ "$embedded_image_files" -eq 10 ] \
+    if [ "$image_decode_scan_ok" -eq 1 ] && [ "$source_image_files" -eq 5 ] \
+       && [ "$embedded_image_files" -eq 10 ] \
        && [ "$image_mismatches" -eq 0 ]; then
         pass "all 5 source PNGs match their 5 embedded RGB/alpha image pairs pixel-for-pixel"
     else
@@ -962,7 +998,8 @@ if command -v mutool >/dev/null 2>&1; then
         else
             fail "damaged PDF outline ($outline_entries entries, $outline_destinations unique destinations, $outline_empty_titles empty titles)"
         fi
-        outline_toc_diff_count=$(wc -l < "$outline_toc_diff_file")
+        outline_toc_diff_count=$(line_count "$outline_toc_diff_file") \
+            || { outline_toc_diff_count=0; outline_graph_ok=0; }
         if [ "$outline_graph_ok" -eq 1 ] && [ "$outline_entries" -eq 1066 ] \
            && [ "$outline_toc_diff_count" -eq 0 ]; then
             pass "PDF outline exactly matches all 1066 Part-through-subsection TOC destinations"
@@ -970,9 +1007,12 @@ if command -v mutool >/dev/null 2>&1; then
             fail "PDF outline/TOC mismatch ($outline_toc_diff_count differing destinations)"
             head -10 "$outline_toc_diff_file" | sed 's/^/        /'
         fi
-        outline_title_count=$(wc -l < "$outline_titles_file")
-        source_bookmark_count=$(wc -l < "$source_bookmarks_file")
-        outline_title_diff_count=$(wc -l < "$outline_title_diff_file")
+        outline_title_count=$(line_count "$outline_titles_file") \
+            || { outline_title_count=0; outline_graph_ok=0; }
+        source_bookmark_count=$(line_count "$source_bookmarks_file") \
+            || { source_bookmark_count=0; outline_graph_ok=0; }
+        outline_title_diff_count=$(line_count "$outline_title_diff_file") \
+            || { outline_title_diff_count=0; outline_graph_ok=0; }
         if [ "$outline_graph_ok" -eq 1 ] && [ "$outline_title_count" -eq 1066 ] \
            && [ "$source_bookmark_count" -eq "$outline_title_count" ] \
            && [ "$outline_title_diff_count" -eq 0 ]; then
@@ -981,9 +1021,12 @@ if command -v mutool >/dev/null 2>&1; then
             fail "PDF outline title mismatch ($outline_title_count PDF, $source_bookmark_count source, $outline_title_diff_count differing pairs)"
             head -10 "$outline_title_diff_file" | sed 's/^/        /'
         fi
-        outline_parent_count=$(wc -l < "$outline_parents_file")
-        source_parent_count=$(wc -l < "$source_parents_file")
-        outline_parent_diff_count=$(wc -l < "$outline_parent_diff_file")
+        outline_parent_count=$(line_count "$outline_parents_file") \
+            || { outline_parent_count=0; outline_graph_ok=0; }
+        source_parent_count=$(line_count "$source_parents_file") \
+            || { source_parent_count=0; outline_graph_ok=0; }
+        outline_parent_diff_count=$(line_count "$outline_parent_diff_file") \
+            || { outline_parent_diff_count=0; outline_graph_ok=0; }
         if [ "$outline_graph_ok" -eq 1 ] && [ "$outline_parent_count" -eq 1066 ] \
            && [ "$source_parent_count" -eq "$outline_parent_count" ] \
            && [ "$outline_parent_diff_count" -eq 0 ]; then
@@ -992,8 +1035,10 @@ if command -v mutool >/dev/null 2>&1; then
             fail "PDF outline hierarchy mismatch ($outline_parent_count PDF, $source_parent_count source, $outline_parent_diff_count differing pairs)"
             head -10 "$outline_parent_diff_file" | sed 's/^/        /'
         fi
-        outline_order_count=$(wc -l < "$outline_order_file")
-        source_order_count=$(wc -l < "$source_order_file")
+        outline_order_count=$(line_count "$outline_order_file") \
+            || { outline_order_count=0; outline_graph_ok=0; }
+        source_order_count=$(line_count "$source_order_file") \
+            || { source_order_count=0; outline_graph_ok=0; }
         if [ "$outline_graph_ok" -eq 1 ] && [ "$outline_order_count" -eq 1066 ] \
            && [ "$source_order_count" -eq "$outline_order_count" ] \
            && cmp -s "$outline_order_file" "$source_order_file"; then
@@ -1063,9 +1108,12 @@ if command -v mutool >/dev/null 2>&1; then
             direct_destination_count other_annotation_count <<EOF
 $annotation_action_census
 EOF
-        external_uri_count=$(wc -l < "$external_uris_file")
-        unexpected_uri_count=$(wc -l < "$unexpected_uris_file")
-        missing_uri_count=$(wc -l < "$missing_uris_file")
+        external_uri_count=$(line_count "$external_uris_file") \
+            || { external_uri_count=0; action_graph_ok=0; }
+        unexpected_uri_count=$(line_count "$unexpected_uris_file") \
+            || { unexpected_uri_count=0; action_graph_ok=0; }
+        missing_uri_count=$(line_count "$missing_uris_file") \
+            || { missing_uri_count=0; action_graph_ok=0; }
         if [ "$action_graph_ok" -eq 1 ] && [ "$action_count_scan_ok" -eq 1 ] \
            && [ "$unsafe_action_count" -eq 0 ] \
            && [ "$external_uri_count" -eq 3 ] \
@@ -1092,8 +1140,10 @@ EOF
         ' "$objects_file" | sort -u > "$named_dests_file" || destination_graph_ok=0
         comm -23 "$link_dests_file" "$named_dests_file" > "$missing_dests_file" \
             || destination_graph_ok=0
-        link_dest_count=$(wc -l < "$link_dests_file")
-        missing_dest_count=$(wc -l < "$missing_dests_file")
+        link_dest_count=$(line_count "$link_dests_file") \
+            || { link_dest_count=0; destination_graph_ok=0; }
+        missing_dest_count=$(line_count "$missing_dests_file") \
+            || { missing_dest_count=0; destination_graph_ok=0; }
         if [ "$destination_graph_ok" -eq 1 ] && [ "$link_dest_count" -eq 1542 ] \
            && [ "$missing_dest_count" -eq 0 ]; then
             pass "all 1542 unique internal PDF link targets exist"
@@ -1383,7 +1433,8 @@ EOF
                 fail "TOC clickable-coverage audit failed ($toc_link_count links, $toc_link_target_count actual targets, $toc_expected_target_count expected targets, $bad_toc_link_count differing)"
                 grep -v '^SUMMARY ' "$toc_link_result_file" | head -10 | sed 's/^/        /'
             fi
-            if [ "$(wc -l < "$toc_pdf_order_file")" -eq 1066 ] \
+            toc_pdf_order_count=$(line_count "$toc_pdf_order_file") || toc_pdf_order_count=0
+            if [ "$toc_pdf_order_count" -eq 1066 ] \
                && cmp -s "$toc_pdf_order_file" "$toc_source_order_file"; then
                 pass "all 1066 visible TOC destinations preserve source order"
             else
@@ -1686,15 +1737,16 @@ rm -f "$roundtrip_pdf" "$roundtrip_text" "$source_roundtrip_text"
 if command -v gs >/dev/null 2>&1; then
     ink_file=$(mktemp /tmp/cna-bible-ink.XXXXXX.txt)
     if gs -q -dNOPAUSE -dBATCH -sDEVICE=inkcov -o "$ink_file" "$pdf"; then
+        blank_page_scan_ok=1
         blank_pages=$(awk '$1 == 0 && $2 == 0 && $3 == 0 && $4 == 0 {print NR}' "$ink_file" \
-            | paste -sd, -)
+            | paste -sd, -) || blank_page_scan_ok=0
         expected_blank_pages=$(perl -ne '
             if (/\\contentsline \{part\}.*\{(\d+)\}\{part\.\d+\}%$/) {
                 push @pages, $1 + 31;
             }
             END { print join(",", @pages); }
-        ' "$book_dir/main.toc")
-        if [ "$blank_pages" = "$expected_blank_pages" ]; then
+        ' "$book_dir/main.toc") || blank_page_scan_ok=0
+        if [ "$blank_page_scan_ok" -eq 1 ] && [ "$blank_pages" = "$expected_blank_pages" ]; then
             pass "Ghostscript processed all pages; exactly the 12 Part-derived open-right versos are blank"
         else
             fail "unexpected blank-page set from Ghostscript ink coverage (actual='${blank_pages:-none}', expected='${expected_blank_pages:-none}')"
