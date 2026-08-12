@@ -809,8 +809,8 @@ EOF
         comm -23 "$link_dests_file" "$named_dests_file" > "$missing_dests_file"
         link_dest_count=$(wc -l < "$link_dests_file")
         missing_dest_count=$(wc -l < "$missing_dests_file")
-        if [ "$link_dest_count" -gt 0 ] && [ "$missing_dest_count" -eq 0 ]; then
-            pass "all $link_dest_count unique internal PDF link targets exist"
+        if [ "$link_dest_count" -eq 1542 ] && [ "$missing_dest_count" -eq 0 ]; then
+            pass "all 1542 unique internal PDF link targets exist"
         else
             fail "internal PDF link audit failed ($missing_dest_count missing of $link_dest_count unique targets)"
             head -10 "$missing_dests_file" | sed 's/^/        /'
@@ -1252,8 +1252,8 @@ EOF
             read -r _ toc_target_count bad_toc_target_count <<EOF
 $(tail -1 "$toc_target_result_file")
 EOF
-            if [ "$toc_target_count" -gt 0 ] && [ "$bad_toc_target_count" -eq 0 ]; then
-                pass "all $toc_target_count numbered TOC entries land on their printed pages"
+            if [ "$toc_target_count" -eq 1065 ] && [ "$bad_toc_target_count" -eq 0 ]; then
+                pass "all 1065 numbered TOC entries land on their printed pages"
             else
                 fail "TOC destination audit failed ($bad_toc_target_count wrong of $toc_target_count numbered entries)"
                 grep -v '^SUMMARY ' "$toc_target_result_file" | head -10 | sed 's/^/        /'

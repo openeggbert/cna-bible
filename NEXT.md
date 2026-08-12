@@ -624,6 +624,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     byte-for-byte. This supplements the existing target coverage, visible identity and landing
     checks: swapping two otherwise-valid rows preserves their set but fails the new order guard.
     The release artifact is unchanged.
+83. **Internal-target and numbered-landing populations are fixed.** The verifier no longer accepts
+    any non-empty internally consistent population: it requires exactly 1,542 unique internal
+    link targets and exactly 1,065 numbered TOC entries with correct physical landings. These
+    counts join the already-fixed 3,653 links, 5,054 names, 1,066 visible TOC identities and 1,850
+    index numbers, preventing silent removal of a valid subgroup. The release passes unchanged.
 
 ## Do this next
 

@@ -413,6 +413,7 @@ log grep replaces.
 | 2026-08-12 | Post-G external-link text identity | Extended the all-link MuPDF text/geometry pass to require each of three URI action targets to equal the URL visibly printed under its rectangle after terminal sentence punctuation removal; SDL Init and both Microsoft Present URLs match byte-for-byte; swapping two approved target values preserves the exact URI allowlist/cardinality but produces two identity failures, closing a semantic gap without PDF delta |
 | 2026-08-12 | Post-G outline order integrity | Added byte-for-byte comparison of the unsorted 1,066-destination MuPDF outline sequence with source `main.out`; destination/title/parent set checks alone could not detect two otherwise-valid subtrees trading positions, while the sequence guard does; current order matches exactly, with no PDF delta |
 | 2026-08-12 | Post-G visible-TOC order integrity | Filtered physical TOC annotations to the first occurrence of each expected destination, excluding six legitimate duplicate surrounding-navigation links; the resulting 1,066-destination sequence matches `main.toc` byte-for-byte, closing row-order swaps that coverage/identity/landing set checks could miss; no PDF delta |
+| 2026-08-12 | Post-G internal-target/landing cardinalities | Replaced non-empty predicates with exact release populations for 1,542 unique internal link targets and 1,065 numbered TOC landings, complementing already-fixed link/name/TOC/index counts and preventing silent deletion of an internally consistent subgroup; complete verifier remains green, no PDF delta |
 
 ---
 
@@ -1336,3 +1337,6 @@ build and visual passes are available again.
 - Bound visible TOC order using the first occurrence of each expected destination, which excludes
   six legitimate duplicate navigation links while retaining all 1,066 structural rows. The PDF
   sequence matches `main.toc` byte-for-byte; row swaps now fail even if set checks remain green.
+- Fixed the remaining navigation cardinalities that had only non-empty predicates: exactly 1,542
+  unique internal link targets and 1,065 numbered TOC landings. Silent removal of a still-valid
+  subgroup now fails alongside the existing exact link/name/TOC/index populations.
