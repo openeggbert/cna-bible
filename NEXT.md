@@ -513,6 +513,13 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     not 19: three public headers and fifteen implementation files. Chapter 59 no longer overstates
     the implementation side by one, and the verifier rejects both stale count phrasings. The
     complete build is green; physical page 569 was rendered and read full-size, clean.
+66. **The free-direct status census now states its exact token boundary.** A broad word grep
+    appears to contradict the 95-row table because `dsound.h` opens with twelve untagged summary
+    classifications, then repeats them in the annotated declarations. Counting explicit
+    `Status: IMPLEMENTED|PARTIAL|STUB` lines reproduces the table exactly: ddraw 24/12/7, dplay
+    12/7/7, dsound 20/4/2, total 56/23/16. Chapter 60 now records this rule so the marker census
+    cannot be mistaken for either a bare-word census or a public-method count. The complete build
+    is green; physical page 577 was rendered and read full-size, clean.
 
 ## Do this next
 

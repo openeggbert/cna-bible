@@ -396,6 +396,7 @@ log grep replaces.
 | 2026-08-12 | Post-G physical-module inventory terminology | Directly recounted 1,776 records across the seven cited pure-rename commits, all `R100`; confirmed the pinned 1,357 → 1,357 reconciliation and its 1,287 byte-identical / 70 directive-only split; corrected “production translation units” to the evidence's “production files,” because the inventory includes headers; regression guard added; complete build green and physical page 117 read full-size, clean |
 | 2026-08-12 | Post-G platform-count reproducibility | Defined the 1,195-file production population exactly as 720 `.hpp` + 474 `.cpp` + one `.mm`, excluding tests/examples; direct line audit gives 55 files / 152 OS-macro directive lines, split 97 renderer / 55 framework; compiler-only generated branches excluded; `CNA_RENDERER_*` directives corrected 109 → 110; SDL-family count qualified as roughly 6,000 lexical tokens; stale-count guard added; complete build green and physical pages 584–585 read full-size, clean |
 | 2026-08-12 | Post-G easy-gl/meta-gl consumer recount | Exact include-directive scan at easy-gl pin `0b46d35` finds 18 direct meta-gl consumers, not 19: three public headers plus fifteen implementation files; Chapter 59 corrected and stale-count guard added; complete build green and physical page 569 read full-size, clean |
+| 2026-08-12 | Post-G free-direct status-census definition | Reproduced all 95 explicit `Status:` annotation lines exactly: ddraw 24/12/7, dplay 12/7/7, dsound 20/4/2; clarified that dsound's opening twelve bare status words are an untagged summary and must not be counted a second time; no numeric table change; complete build green and physical page 577 read full-size, clean |
 
 ---
 
@@ -1249,3 +1250,8 @@ build and visual passes are available again.
   18 production files directly include meta-gl: three headers and fifteen `.cpp` files. Corrected
   Chapter 59's 19 / three-plus-sixteen off-by-one and added a verifier guard. The complete build
   is green; physical page 569 was rendered and read full-size, clean.
+- Reproduced free-direct's status table by its actual annotation token. The three pinned headers
+  contain exactly 95 `Status:` lines (56 implemented, 23 partial, 16 stub); `dsound.h` also has an
+  opening twelve-item untagged recap that a broad word grep double-counts. Clarified the census
+  rule in Chapter 60 without changing the already-correct table. The complete build is green;
+  physical page 577 was rendered and read full-size, clean.
