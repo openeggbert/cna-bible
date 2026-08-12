@@ -15,8 +15,9 @@ the authoritative plan and verification history.
 
 The build requires a TeX installation with `latexmk`, `pdflatex`, and
 `makeindex`. The complete verifier additionally requires Poppler's `pdfinfo`,
-`pdftotext`, and `pdffonts`, MuPDF's `mutool`, Ghostscript's `gs`, plus Perl and
-Git; it reports any missing command before starting.
+`pdftotext`, `pdffonts`, and `pdfimages`; Netpbm's `pngtopnm`; MuPDF's `mutool`;
+Ghostscript's `gs`; plus Perl, Git, and standard `cmp`. It reports any missing
+command before starting.
 
 ```bash
 make -C latex book

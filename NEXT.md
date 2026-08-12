@@ -570,6 +570,12 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     The fixed fingerprint is intentionally a sealed-release gate: manuscript or layout changes
     fail until a new independent reproducibility and visual-review checkpoint authorizes new
     constants. README documents the command and warns against hash-only updates.
+74. **Font and image populations are release invariants.** Font portability now requires exactly
+    27 rows, not merely a non-empty all-good set. The verifier extracts all embedded images and
+    uses Netpbm plus binary comparison to match both decoded RGB and alpha planes, in compile
+    order, to exactly five source PNGs. All five pairs are pixel-identical; the intentionally
+    identical SDL Renderer/EasyGL sources remain separate occurrences. README records the added
+    `pdfimages`/`pngtopnm` requirements. No artifact change was needed.
 
 ## Do this next
 

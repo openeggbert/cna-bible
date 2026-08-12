@@ -404,6 +404,7 @@ log grep replaces.
 | 2026-08-12 | Post-G annotation/action allowlist | Complete object census proves all 3,653 annotations are Link actions: 3,650 internal GoTo plus exactly three reviewed HTTPS URI actions, with no direct-destination or unclassified annotation; verifier now requires this positive distribution as well as the existing unsafe-action blacklist and exact URI allowlist, preventing unknown media/widget/attachment action types from passing by omission; no PDF delta |
 | 2026-08-12 | Post-G PDF catalog allowlist | Normalized volatile object numbers and bound the catalog to only Pages, Outlines, destination Names, UseOutlines mode, en-US language, exact PageLabels and OpenAction; Names contains only Dests and OpenAction is internal GoTo/Fit to the actual first page object; synthetic `/AA` root addition fails exact comparison, closing root-level script/name-tree expansion independently of action census; no PDF delta |
 | 2026-08-12 | Post-G sealed release command | Added `tools/build-release.sh`: forces full latexmk rebuild under `SOURCE_DATE_EPOCH=1786529214`, requires 3,314,744 bytes and SHA-256 `7c877ef20bdb20042bdd32483b2e79cb07e81dec7a8d86dc24f6d29d4a04b2af`, then runs the complete verifier; README documents the command and makes fingerprint changes contingent on a new independent reproducibility and visual-review checkpoint |
+| 2026-08-12 | Post-G font/image population closure | Bound font portability to exactly 27 complete rows; extracted PDF images as five RGB + five soft-mask planes and compared decoded Netpbm pixels to the five source RGBA PNGs in compilation order, all RGB/alpha pairs byte-identical after decoding; verifier now enforces exact source/embedded populations and README records `pdfimages`/`pngtopnm` dependencies; no PDF delta |
 
 ---
 
@@ -1297,3 +1298,7 @@ build and visual passes are available again.
   rebuild, requires the reviewed 3,314,744-byte / `7c877ef...` fingerprint and then runs the full
   verifier. README records the workflow and explicitly requires a new independent reproduction
   and visual checkpoint before changing fingerprint constants.
+- Closed font/image cardinalities: font portability now means exactly 27 complete font rows.
+  `pdfimages` plus Netpbm decode the five embedded RGB/soft-mask pairs and their five RGBA sources;
+  all corresponding RGB and alpha planes compare byte-identically. The verifier enforces exact
+  populations and README records the added tools; no PDF delta.

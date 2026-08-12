@@ -33,7 +33,7 @@ echo "== The CNA Bible: verification pass =="
 # absent. Release verification therefore requires every independent parser used below and fails
 # early with one actionable diagnostic instead of silently reducing coverage.
 missing_commands=""
-for required_command in make git perl pdfinfo pdftotext pdffonts mutool gs; do
+for required_command in make git perl pdfinfo pdftotext pdffonts pdfimages pngtopnm cmp mutool gs; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         missing_commands="$missing_commands $required_command"
     fi
@@ -475,11 +475,54 @@ font_summary=$(
 read -r font_total font_bad <<EOF
 $font_summary
 EOF
-if [ "$font_total" -gt 0 ] && [ "$font_bad" -eq 0 ]; then
-    pass "all $font_total fonts are embedded, subsetted, and Unicode-mapped"
+if [ "$font_total" -eq 27 ] && [ "$font_bad" -eq 0 ]; then
+    pass "all 27 fonts are embedded, subsetted, and Unicode-mapped"
 else
     fail "font portability check failed ($font_bad of $font_total font rows incomplete)"
 fi
+
+# Prove that every reviewed source PNG survives PDF embedding pixel-for-pixel. pdfTeX stores each
+# RGBA source as one RGB image plus one grayscale soft mask, so compare both decoded Netpbm planes
+# in compilation order. This checks content rather than compression bytes or object numbers.
+image_audit_dir=$(mktemp -d /tmp/cna-bible-images.XXXXXX)
+if pdfimages -png "$pdf" "$image_audit_dir/image" >/dev/null 2>&1; then
+    embedded_image_files=$(find "$image_audit_dir" -maxdepth 1 -type f -name 'image-*.png' | wc -l)
+    source_image_files=$(find "$book_dir/images" -maxdepth 1 -type f -name '*.png' | wc -l)
+    image_mismatches=0
+    image_number=0
+    for source_image in \
+        "$book_dir/images/ch07-matrix-rotation-software.png" \
+        "$book_dir/images/ch09-rendertarget-roundtrip-software.png" \
+        "$book_dir/images/ch09-drawprimitives-software.png" \
+        "$book_dir/images/ch18-spritebatch-rotation-easygl.png" \
+        "$book_dir/images/ch17-spritebatch-rotation-sdlrenderer.png"; do
+        rgb_image=$(printf '%s/image-%03d.png' "$image_audit_dir" "$image_number")
+        alpha_image=$(printf '%s/image-%03d.png' "$image_audit_dir" "$((image_number + 1))")
+        source_rgb=$(printf '%s/source-rgb-%03d.pnm' "$image_audit_dir" "$image_number")
+        source_alpha=$(printf '%s/source-alpha-%03d.pnm' "$image_audit_dir" "$image_number")
+        embedded_rgb=$(printf '%s/embedded-rgb-%03d.pnm' "$image_audit_dir" "$image_number")
+        embedded_alpha=$(printf '%s/embedded-alpha-%03d.pnm' "$image_audit_dir" "$image_number")
+        if ! pngtopnm "$source_image" > "$source_rgb" 2>/dev/null \
+           || ! pngtopnm -alpha "$source_image" > "$source_alpha" 2>/dev/null \
+           || ! pngtopnm "$rgb_image" > "$embedded_rgb" 2>/dev/null \
+           || ! pngtopnm "$alpha_image" > "$embedded_alpha" 2>/dev/null \
+           || ! cmp -s "$source_rgb" "$embedded_rgb" \
+           || ! cmp -s "$source_alpha" "$embedded_alpha"; then
+            image_mismatches=$((image_mismatches + 1))
+        fi
+        image_number=$((image_number + 2))
+    done
+    if [ "$source_image_files" -eq 5 ] && [ "$embedded_image_files" -eq 10 ] \
+       && [ "$image_mismatches" -eq 0 ]; then
+        pass "all 5 source PNGs match their 5 embedded RGB/alpha image pairs pixel-for-pixel"
+    else
+        fail "PDF image provenance failed ($source_image_files sources, $embedded_image_files extracted planes, $image_mismatches mismatches)"
+    fi
+else
+    fail "pdfimages could not extract the embedded image inventory"
+fi
+find "$image_audit_dir" -mindepth 1 -maxdepth 1 -type f -delete
+rmdir "$image_audit_dir"
 
 # Verify the navigation structure in the produced artifact, not only the source input list.
 # Hyperref names ordinary chapters chapter.N and appendices appendix.A, while Parts use part.N.
