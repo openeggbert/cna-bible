@@ -431,6 +431,7 @@ log grep replaces.
 | 2026-08-12 | Post-G sealed-pipeline dependency closure | Preflight the union of release-build/fingerprint commands and every complete-verifier dependency before invoking TeX, reporting all missing tools together; an absent late-stage Poppler/Netpbm/MuPDF/Ghostscript command no longer wastes a full sealed rebuild |
 | 2026-08-12 | Post-G transactional release artifact | Snapshot an existing reviewed `main.pdf` before TeX and restore it on build/fingerprint/verifier failure or HUP/INT/TERM; when no prior artifact exists, remove partial output; only a fully green sealed pipeline commits the rebuilt PDF while preserving logs/auxiliaries for diagnosis |
 | 2026-08-12 | Post-G serialized release transaction | Acquire a non-blocking kernel `flock` keyed by the absolute repository path before Git/source preflight and PDF snapshot; a concurrent sealed invocation now fails immediately rather than racing on shared auxiliaries, release log, output PDF or restore state |
+| 2026-08-12 | Post-G rollback snapshot retention | Hardened the exceptional rollback path: if restoring the prior PDF itself fails, retain the only snapshot and print its exact recovery path instead of deleting it during cleanup; normal success and successful rollback still remove their temporary snapshot |
 
 ---
 
@@ -1399,3 +1400,5 @@ build and visual passes are available again.
   restore the prior artifact byte-for-byte (or remove a new partial), while retaining diagnostics.
 - Serialized the whole sealed transaction with a per-repository non-blocking kernel lock, so
   concurrent invocations cannot interleave build output or cross each other's restore boundary.
+- Preserved the only prior-PDF snapshot when rollback copying itself fails and report its path,
+  preferring recoverability over cleanup in that exceptional storage/permission failure.

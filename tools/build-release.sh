@@ -79,14 +79,21 @@ prior_pdf=""
 release_succeeded=0
 transaction_started=0
 restore_or_commit_pdf() {
+    snapshot_may_be_removed=1
     if [ "$transaction_started" -eq 1 ] && [ "$release_succeeded" -eq 0 ]; then
         if [ -n "$prior_pdf" ] && [ -f "$prior_pdf" ]; then
-            cp -p "$prior_pdf" "$pdf"
+            if ! cp -p "$prior_pdf" "$pdf"; then
+                printf 'ERROR: could not restore the prior PDF; snapshot retained at %s\n' \
+                    "$prior_pdf" >&2
+                snapshot_may_be_removed=0
+            fi
         else
             rm -f "$pdf"
         fi
     fi
-    [ -z "$prior_pdf" ] || rm -f "$prior_pdf"
+    if [ "$snapshot_may_be_removed" -eq 1 ] && [ -n "$prior_pdf" ]; then
+        rm -f "$prior_pdf"
+    fi
 }
 trap restore_or_commit_pdf EXIT
 trap 'exit 129' HUP

@@ -713,6 +713,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      second invocation fails immediately with a specific message instead of racing on shared
      auxiliaries, release log and transactional restore state; the kernel releases the lock on
      every normal, failed, signalled or crashed process exit.
+101. **A failed rollback never destroys its only snapshot.** If copying the prior PDF back into
+     place itself fails, the transaction handler now retains the private snapshot and reports its
+     exact path rather than deleting it during generic cleanup. Normal success and successful
+     rollback still remove the temporary copy; the exceptional branch therefore favors manual
+     recovery over a falsely tidy `/tmp`.
 
 ## Do this next
 
