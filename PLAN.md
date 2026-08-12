@@ -1492,3 +1492,5 @@ build and visual passes are available again.
   output/exit-47 URI comm stub failed only the action audit; destination closure remained green.
 - Bound Catalog, Names-root and OpenAction normalization-filter status into the existing positive
   catalog allowlist rather than trusting plausible text emitted before a filter error.
+- Reconciled README/CLAUDE with the final clean-tools, exact provenance, final recheck/rollback and
+  physical-repository lock-key contract; reflowed the dependency paragraph without scope change.

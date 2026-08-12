@@ -880,6 +880,10 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      first-page OpenAction comparisons now also consume each intervening `sed` filter status, not
      only the underlying MuPDF query status. Plausible normalized text emitted before a filter error
      can no longer satisfy the positive catalog allowlist.
+135. **Public workflow docs match the final sealed contract.** README now names the clean
+     `tools/` requirement, exact provenance header/final recheck, physical-repository lock identity
+     and provenance-triggered rollback; CLAUDE records `pwd -P` as the required lock-key basis for
+     future artifact tools. The long dependency paragraph was reflowed without changing scope.
 
 ## Do this next
 

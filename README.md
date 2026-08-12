@@ -17,9 +17,9 @@ The build requires a TeX installation with `latexmk`, `pdflatex`, and
 `makeindex`. The complete verifier additionally requires Poppler's `pdfinfo`,
 `pdftotext`, `pdffonts`, and `pdfimages`; Netpbm's `pngtopnm`; MuPDF's `mutool`;
 Ghostscript's `gs`; plus Perl, Git, and standard `cmp`. The visual-page driver
-uses Poppler's `pdftoppm`, `file`, and Netpbm `pngtopnm`. The sealed workflow also uses util-linux `flock` to
-serialize builds; the artifact-lock protocol expects Linux procfs at `/proc/self/fd` and GNU
-`stat`. Each tool reports missing prerequisites before doing expensive work.
+uses Poppler's `pdftoppm`, `file`, and Netpbm `pngtopnm`. The sealed workflow also uses util-linux
+`flock` to serialize builds; the artifact-lock protocol expects Linux procfs at `/proc/self/fd`
+and GNU `stat`. Each tool reports missing prerequisites before doing expensive work.
 
 ```bash
 make -C latex book
@@ -44,11 +44,14 @@ That command must produce a 3,314,744-byte PDF with SHA-256
 `7c877ef20bdb20042bdd32483b2e79cb07e81dec7a8d86dc24f6d29d4a04b2af` and PDF creation/modification
 date `D:20260812100654Z`. A manuscript or layout
 change is expected to fail this gate until a new release has been independently reproduced and
-reviewed. The command also requires the reviewed clean `latex/` Git tree before invoking TeX, so
-committed, staged, unstaged, or untracked release-input drift fails early; do not update its tree
-or PDF fingerprints merely to make the command pass. Sealed builds are serialized per repository;
-if a build, fingerprint check or verifier fails, the command restores the prior reviewed PDF (or
-removes a newly created partial artifact) while retaining its log for diagnosis.
+reviewed. The command requires the reviewed committed `latex/` tree plus clean `latex/` and
+`tools/` worktree state before invoking TeX, so committed, staged, unstaged, or untracked release-
+input/tool drift fails early; do not update its tree or PDF fingerprints merely to make the
+command pass. Its header records the exact HEAD and source/tool trees, and the transaction checks
+that provenance again after verification. Sealed builds are serialized by physical repository
+identity even through path aliases; if a build, fingerprint check, verifier, or final provenance
+check fails, the command restores the prior reviewed PDF (or removes a newly created partial
+artifact) while retaining its log for diagnosis.
 
 The suite checks the build, references, structure, index, physical page bounds,
 fonts, PDF navigation, page labels, link geometry and action safety, plus

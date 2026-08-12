@@ -50,7 +50,8 @@ before the current expansion phase started; useful for background, not for "what
   byte fingerprint and is not the command for an in-progress manuscript change.
 - `tools/book-lock.sh` — sourced lock protocol shared by the release, verifier and page renderer.
   New commands that read the built artifact must take its shared lock; commands that write TeX
-  auxiliaries, logs or the PDF must take its exclusive lock.
+  auxiliaries, logs or the PDF must take its exclusive lock. Key locks by the physical repository
+  root (`pwd -P`) so directory symlinks cannot split one artifact into multiple lock namespaces.
 
 ## Build
 
