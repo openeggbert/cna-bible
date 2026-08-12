@@ -870,6 +870,12 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      and byte order remain required independently of successful transformation status. A pass-
      through outline `comm` stub exiting 43 turned all six outline verdicts red while diagnostics
      still showed 12/79/8, 1,066/1,066 and zero differences.
+133. **PDF action and destination sets require successful derivation.** Separate status graphs now
+     bind URI extraction/allowlisting/action census and GoTo/name-tree closure across every Perl,
+     sort and comm stage. Their exact 3/3,653/1,542 populations and zero-difference predicates
+     remain independent requirements rather than substitutes for successful parsing. A targeted
+     URI comm stub emitted the correct empty difference then exited 47: exactly the action audit
+     failed with correct displayed counts, while the 1,542-target closure still passed.
 
 ## Do this next
 

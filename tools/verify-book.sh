@@ -1017,21 +1017,24 @@ if command -v mutool >/dev/null 2>&1; then
         expected_uris_file=$(mktemp /tmp/cna-bible-expected-uris.XXXXXX.txt)
         unexpected_uris_file=$(mktemp /tmp/cna-bible-unexpected-uris.XXXXXX.txt)
         missing_uris_file=$(mktemp /tmp/cna-bible-missing-uris.XXXXXX.txt)
+        action_graph_ok=1
         perl -ne 'while (m{/URI\((https://[^()]*)\)}g) { print "$1\n"; }' "$objects_file" \
-            | sort -u > "$external_uris_file"
+            | sort -u > "$external_uris_file" || action_graph_ok=0
         printf '%s\n' \
             'https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-present' \
             'https://learn.microsoft.com/en-us/windows/win32/direct3d9/d3dpresent' \
             'https://wiki.libsdl.org/SDL3/SDL_Init' \
-            | sort -u > "$expected_uris_file"
-        comm -23 "$external_uris_file" "$expected_uris_file" > "$unexpected_uris_file"
-        comm -13 "$external_uris_file" "$expected_uris_file" > "$missing_uris_file"
+            | sort -u > "$expected_uris_file" || action_graph_ok=0
+        comm -23 "$external_uris_file" "$expected_uris_file" > "$unexpected_uris_file" \
+            || action_graph_ok=0
+        comm -13 "$external_uris_file" "$expected_uris_file" > "$missing_uris_file" \
+            || action_graph_ok=0
         action_count_scan_ok=1
         if ! unsafe_action_count=$(grep_count -Ec '/S/(JavaScript|JS|Launch|GoToR|SubmitForm|ImportData)([^A-Za-z]|$)|/EmbeddedFiles([^A-Za-z]|$)' "$objects_file"); then
             unsafe_action_count=0
             action_count_scan_ok=0
         fi
-        annotation_action_census=$(
+        if ! annotation_action_census=$(
             perl -ne '
                 next unless m{/Type/Annot};
                 $annotations++;
@@ -1043,7 +1046,10 @@ if command -v mutool >/dev/null 2>&1; then
                 END { print join(" ", map { $_ + 0 }
                     ($annotations, $links, $goto, $uri, $direct, $other)); }
             ' "$objects_file"
-        )
+        ); then
+            annotation_action_census="0 0 0 0 0 0"
+            action_graph_ok=0
+        fi
         read -r annotation_count link_subtype_count goto_action_count uri_action_count \
             direct_destination_count other_annotation_count <<EOF
 $annotation_action_census
@@ -1051,7 +1057,8 @@ EOF
         external_uri_count=$(wc -l < "$external_uris_file")
         unexpected_uri_count=$(wc -l < "$unexpected_uris_file")
         missing_uri_count=$(wc -l < "$missing_uris_file")
-        if [ "$action_count_scan_ok" -eq 1 ] && [ "$unsafe_action_count" -eq 0 ] \
+        if [ "$action_graph_ok" -eq 1 ] && [ "$action_count_scan_ok" -eq 1 ] \
+           && [ "$unsafe_action_count" -eq 0 ] \
            && [ "$external_uri_count" -eq 3 ] \
            && [ "$annotation_count" -eq 3653 ] && [ "$link_subtype_count" -eq 3653 ] \
            && [ "$goto_action_count" -eq 3650 ] && [ "$uri_action_count" -eq 3 ] \
@@ -1065,18 +1072,21 @@ EOF
         fi
         rm -f "$external_uris_file" "$expected_uris_file" "$unexpected_uris_file" "$missing_uris_file"
 
+        destination_graph_ok=1
         perl -ne '
             next unless m{/S/GoTo};
             while (m{/D\(([^()]*)\)}g) { print "$1\n"; }
-        ' "$objects_file" | sort -u > "$link_dests_file"
+        ' "$objects_file" | sort -u > "$link_dests_file" || destination_graph_ok=0
         perl -ne '
             next unless m{/Names\[};
             while (m{\(([^()]*)\)\d+ 0 R}g) { print "$1\n"; }
-        ' "$objects_file" | sort -u > "$named_dests_file"
-        comm -23 "$link_dests_file" "$named_dests_file" > "$missing_dests_file"
+        ' "$objects_file" | sort -u > "$named_dests_file" || destination_graph_ok=0
+        comm -23 "$link_dests_file" "$named_dests_file" > "$missing_dests_file" \
+            || destination_graph_ok=0
         link_dest_count=$(wc -l < "$link_dests_file")
         missing_dest_count=$(wc -l < "$missing_dests_file")
-        if [ "$link_dest_count" -eq 1542 ] && [ "$missing_dest_count" -eq 0 ]; then
+        if [ "$destination_graph_ok" -eq 1 ] && [ "$link_dest_count" -eq 1542 ] \
+           && [ "$missing_dest_count" -eq 0 ]; then
             pass "all 1542 unique internal PDF link targets exist"
         else
             fail "internal PDF link audit failed ($missing_dest_count missing of $link_dest_count unique targets)"

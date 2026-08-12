@@ -1487,3 +1487,6 @@ build and visual passes are available again.
 - Status-bound every PDF/source outline destination, title, parent and order derivation before its
   exact set/order verdicts, retaining cardinality and diff checks independently. A correct-output/
   exit-43 comm stub failed all six outline checks despite exact displayed counts/differences.
+- Added separate producer/filter/set status graphs for the three-URI/3,653-action allowlist and
+  1,542-target GoTo/name-tree closure, alongside exact populations/differences. A targeted correct-
+  output/exit-47 URI comm stub failed only the action audit; destination closure remained green.
