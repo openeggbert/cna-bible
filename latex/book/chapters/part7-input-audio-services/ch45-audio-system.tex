@@ -50,8 +50,9 @@ $2^{\text{pitch}}$, and a real state-variable filter (low-pass, high-pass, or ba
 implemented via an SDL3\_mixer per-track callback matching FAudio's own filter algorithm
 precisely. \cnaclass{DynamicSoundEffectInstance} supports both integer and, as a
 \texttt{CNAEXT} addition with no real-XNA equivalent, floating-point buffer submission; its
-\texttt{PendingBufferCount} only decreases once a submitted chunk is genuinely consumed by
-playback, matching FNA's own behavior rather than decrementing eagerly at submission time.
+\texttt{PendingBufferCount} tracks queued plus submitted chunks rather than decrementing eagerly
+at submission time. Its whole-chunk accounting is regression-tested in the no-resampling case;
+the source-byte/output-byte conversion boundary under resampling remains open below.
 
 \subsection{Full method reference: SoundEffect}
 
@@ -63,8 +64,8 @@ not per-instance settings. Beyond \texttt{CreateInstance()} and the static, fire
 families exist: a \texttt{CNAEXT} file-path constructor for loading directly from an asset name
 (not part of the real XNA~4.0 API, which only ever loads through
 \cnaclass{ContentManager}); two raw-buffer constructors (a full-format one taking explicit
-channel count/sample rate/loop points, and a simpler one assuming mono 16-bit PCM at a given
-sample rate) --- both requiring \emph{headerless} PCM data as already emphasized;
+sample rate and mono/stereo channel layout for the complete vector, and a range form adding byte
+offset/count plus loop start/length) --- both requiring \emph{headerless} PCM data as already emphasized;
 \texttt{GetSampleDuration} / \texttt{GetSampleSizeInBytes} (both static) convert between a raw
 buffer's byte size and its playback duration, in either direction, for PCM data at a given
 format --- the calculation a streaming or dynamically-generated sound needs to know how large
@@ -84,7 +85,7 @@ The raw-buffer overloads remain signed 16-bit PCM only.
 // format SoundEffect itself doesn't parse) and playing it once.
 std::vector<SharpRuntime::bytecs> pcmData = SynthesizeBeep(440.0f, 0.2f);  // 440 Hz, 200 ms
 
-const SoundEffect beep(pcmData, 44100, AudioChannels::Mono);
+SoundEffect beep(pcmData, 44100, AudioChannels::Mono);
 beep.Play(1.0f, 0.0f, 0.0f);   // volume, pitch (semitone-equivalent), pan
 \end{lstlisting}
 
@@ -195,25 +196,19 @@ tone.BufferNeeded += [&tone](System::Object*, const System::EventArgs&)
 tone.Play();
 \end{lstlisting}
 
-\subsection{A real, recent bug: a whole chunk popped for one byte of real playback}
+\subsection{A fixed early-pop bug, and the remaining resampling boundary}
 
-The claim earlier in this section --- \texttt{PendingBufferCount} only decreases once a chunk
-is \emph{genuinely} consumed --- is worth the same scrutiny as the \cnaclass{Cue} lifetime bug
-above, because a real, externally-reported bug (found the same week, independently
+The queue count is worth the same scrutiny as the \cnaclass{Cue} lifetime bug above, because a
+real, externally-reported bug (found the same week, independently
 re-verified by hand-tracing the exact algorithm against real byte counts before any fix) shows
 how easy that guarantee is to get subtly wrong. The pre-fix byte-accounting loop compared
 \texttt{total} (bytes SDL reports as consumed so far) against \texttt{queuedBytes} (bytes this
 instance still believes are queued), and popped an \emph{entire} submitted chunk off its
 internal tracking list the instant \texttt{total > queuedBytes} became true at all --- not once
-that specific chunk's own full byte count had actually finished playing. Hand-tracing two
-whole-second, 4096-byte chunks against real elapsed time makes the consequence concrete: after
-roughly 30~ms of real playback (perhaps 92 bytes genuinely consumed), the comparison already
-went true, and the \emph{entire} first 4096-byte chunk was popped --- \texttt{PendingBufferCount}
-dropped from~2 to~1 after 30~ms of a chunk that needed a full second to actually finish. By
-roughly 1017~ms (barely past that first chunk's own real duration), the loop's second iteration
-fired for the same reason, popping the \emph{second} chunk too --- \texttt{PendingBufferCount}
-reached~0 a little over a second in, roughly half the real two-second runway both chunks
-together should have provided.
+that specific chunk's own full byte count had actually finished playing. The regression fixture
+submits two one-second 44.1-kHz stereo S16 chunks, each
+$44{,}100\times2\times2=176{,}400$ bytes. The old loop could report one pending chunk after only
+about 50~ms and none after about 1.2~s, rather than two and one respectively.
 
 The fix computes a single \texttt{consumed = total - queuedBytes} budget once per
 \texttt{Update()} call, and only pops a chunk once that budget actually covers the chunk's
@@ -225,6 +220,14 @@ the audio hardware actually needed, silently over-generating and over-submitting
 ahead of genuine playback need --- wasted CPU work rather than an audible glitch, and exactly
 the kind of gap invisible to any test that does not model real elapsed time against real chunk
 durations, which is why it went untested for as long as it did.
+
+That fix is not yet a general audible-consumption oracle. \texttt{submittedChunkSizes\_} records
+source bytes, while \texttt{SDL\_GetAudioStreamQueued} observes the live stream after SDL has
+established its conversion destination. When source and mixer formats differ, those byte counts
+need not share a unit. The pinned audio plan therefore still leaves
+\texttt{AUD-07-011} (completion accounting under resampling) and the 22.05/44.1/48-kHz dynamic
+conversion campaign open. Until those close, treat \texttt{PendingBufferCount} as proven against
+the same-format regression, not as a sample-accurate playback-position signal for every rate.
 
 \section{The XACT object model: AudioEngine, SoundBank, WaveBank, Cue}
 
@@ -452,6 +455,9 @@ filter can only ever decode as low-pass or high-pass, never band-pass --- itself
 quirk in FAudio being faithfully replicated, not invented independently. Reverb is a
 documented no-op, since SDL3\_mixer provides no auxiliary send/return bus to implement it
 against, and there is no HRTF or elevation modeling in the 3D audio approximation at all.
+Dynamic submission bounds-checks offsets and counts but does not require S16 byte counts or float
+sample counts to be divisible by the selected channel-frame width; the corresponding
+\texttt{AUD-07-005/006} P0 validation tasks remain open alongside the resampling completion gap.
 
 \section{Real memory-safety bugs found and fixed}
 
@@ -485,9 +491,11 @@ cause and redirected the audit to the incorrect linear pitch formula.
 \section{Microphone}
 
 \cnaclass{Microphone} provides real SDL3 capture-device enumeration and streaming, a
-\texttt{BufferReady} event, and enforces a buffer-duration constraint of 100 to 1000
-milliseconds in multiples of 10 milliseconds --- matching real XNA's own documented
-constraint on this API exactly.
+\texttt{BufferReady} event, and an intended buffer-duration constraint of 100 to 1000
+milliseconds in multiples of 10. The implementation does not currently enforce that contract
+exactly: its setter validates \texttt{TimeSpan::Milliseconds}, the sub-second component, rather
+than total milliseconds. The upper-bound branch can never fire and a duration such as 1,100~ms
+has a 100-ms component and passes. Callback-cadence verification remains open.
 
 \subsection{Full method reference and a worked example}
 
@@ -500,8 +508,8 @@ instance is owned internally and lives for the process's lifetime. Per-instance,
 \texttt{IsHeadset} / \texttt{SampleRate} describe the device; \texttt{BufferDuration} is the
 get/set threshold controlling how often \texttt{BufferReady} fires --- reading its setter's own
 doc comment confirms the 100--1000ms-in-multiples-of-10 constraint is enforced by actually
-throwing \texttt{System::ArgumentOutOfRangeException} for an out-of-range value, not merely
-documented and left unchecked. \texttt{Start()} / \texttt{Stop()} begin/end capture;
+throwing \texttt{System::ArgumentOutOfRangeException} for a bad \emph{millisecond component},
+with the total-duration hole above. \texttt{Start()} / \texttt{Stop()} begin/end capture;
 \texttt{GetData(buffer)} (and its offset/count sub-range overload) drains whatever captured
 audio is currently queued into a caller-supplied buffer, returning the number of bytes
 actually written --- the correct way to read \texttt{BufferReady}'s payload, since the event
@@ -510,6 +518,13 @@ itself carries no data, only a notification that some is now available.
 pair, converting between a raw capture buffer's byte size and its duration for this specific
 device's sample rate.
 
+Capture-start truthfulness is also unfinished. \texttt{Start()} asks SDL for a 44.1-kHz mono S16
+stream, but sets \texttt{State} to \texttt{Started} even when opening the device failed. A read
+then returns zero, which is indistinguishable from a healthy stream with no data yet. The cached
+device list has no refresh/hotplug policy. Permission denial, unplug, returned-format validation,
+frame alignment and concurrent stop/read are consequently open contracts, not implications of the
+basic capture tests.
+
 \begin{lstlisting}
 // Worked example: capturing microphone input and feeding it straight
 // into a DynamicSoundEffectInstance for live playback -- the standard
@@ -517,21 +532,32 @@ device's sample rate.
 // and playback through the same headerless-PCM buffer format both
 // classes share.
 Microphone* mic = Microphone::getDefaultProperty();
+if (mic == nullptr)
+{
+    ShowCaptureUnavailable();
+    return;
+}
+
 DynamicSoundEffectInstance playback(mic->getSampleRateProperty(), AudioChannels::Mono);
 
-mic->BufferReady += [mic, &playback](System::Object*, const System::EventArgs&)
-{
-    std::vector<SharpRuntime::bytecs> captured(4096);
-    const int bytesRead = mic->GetData(captured);
-    if (bytesRead > 0)
+const auto captureToken = mic->BufferReady.Add(
+    [mic, &playback](System::Object*, const System::EventArgs&)
     {
-        captured.resize(bytesRead);
-        playback.SubmitBuffer(captured);
-    }
-};
+        std::vector<SharpRuntime::bytecs> captured(4096);
+        const int bytesRead = mic->GetData(captured);
+        if (bytesRead > 0)
+        {
+            captured.resize(bytesRead);
+            playback.SubmitBuffer(captured);
+        }
+    });
 
 mic->Start();
 playback.Play();
+
+// Before playback leaves scope:
+mic->Stop();
+mic->BufferReady.Remove(captureToken);
 \end{lstlisting}
 
 \section{Status}
@@ -545,3 +571,6 @@ The corrected format readers and pitch/pan fixes materially narrow those reports
 itself has not declared them resolved. Reverb/aux send is a permanent no-op,
 \texttt{REPLACE\_QUIETEST} is partial, \cnaclass{InstancePlayLimitException} has no throw site,
 and production mixer teardown is unreachable.
+Dynamic-buffer resampling completion/frame alignment and microphone state/format/permission
+boundaries likewise remain open in \texttt{plan\_audio.md}; real implementations and focused
+tests do not by themselves close those campaigns.

@@ -8,7 +8,7 @@ surface.
 
 \section{The option removes the types}
 
-\texttt{CNA\_DEVICES} defaults to \texttt{OFF}. It gates all 24 public headers, 14 production
+\texttt{CNA\_DEVICES} defaults to \texttt{OFF}. It gates all 25 installed headers, 14 production
 sources, and ten test files in \texttt{modules/devices-ext}; with the default setting the
 archive contains object files with no defined API symbols and its tests register no cases.
 Names such as \cnaclass{Camera}, \cnaclass{FileDialog}, and \cnaclass{SystemTray} do not merely
@@ -123,6 +123,13 @@ Application-owned state captured by their callbacks must outlive the native oper
 callbacks should hand work back to the game thread before touching graphics state. Host shutdown
 must destroy these objects before global SDL teardown; the sensor/haptic side additionally uses
 the explicit shutdown coordinator described in Chapter~\ref{ch:sensors}.
+
+There is a sharper callback-boundary gap in the present implementation. Both the file-dialog
+result trampoline and the tray-entry trampoline invoke caller-supplied C\texttt{++} callbacks
+directly from an SDL C callback, with no \texttt{try}/\texttt{catch}. A handler that throws can
+therefore unwind across a C ABI boundary; callers must currently keep those handlers
+non-throwing. This is distinct from the sensor module's native diagnostic policy above, which
+already catches and records exceptions at the corresponding boundary.
 
 The ten devices-ext test sources exercise fake/native-wrapper contracts only when the gate is
 on; in a default build they silently contribute zero tests. A CI matrix that never configures

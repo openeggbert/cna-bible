@@ -70,23 +70,27 @@ known-broken FNA behavior is not owed parity the way a genuine XNA behavior is.
 \begin{lstlisting}
 // Worked example: constructing a standalone Song outside any MediaLibrary
 // scan (Album/Artist/Genre all stay nullptr, matching a song with no
-// library context), then handing it directly to MediaPlayer.
-Song* introTrack = Song::FromUri("Intro Theme", "Content/Audio/intro.ogg");
-MediaPlayer::Play(introTrack);
+// library context), then handing it directly to MediaPlayer. FromUri()
+// returns an owning raw pointer; keep that ownership explicit. Play()
+// clones the Song into its own queue rather than adopting this pointer.
+std::unique_ptr<Song> introTrack(
+    Song::FromUri("Intro Theme", "Content/Audio/intro.ogg"));
+MediaPlayer::Play(introTrack.get());
 
 // Duration is whatever the caller supplied (zero, if none) until playback
 // actually starts -- MediaPlayer overwrites it with the real decoded
 // duration read back from the audio backend once the file is opened.
 \end{lstlisting}
 
-\subsection{The resolver advertises three undecodable extensions}
+\subsection{The resolver advertises two undecodable extensions}
 
 \cnaclass{MediaLibrary} correctly avoids indexing AAC and WMA, but the loose-file
-\texttt{SongTypeReader} separately advertises \texttt{.opus}, \texttt{.aac}, and
-\texttt{.wma} alongside MP3, Ogg, WAV, and FLAC. CNA's vendored SDL3\_mixer build has no Opus,
-AAC, or WMA decoder. Resolution can therefore select a path that construction cannot decode.
-This is a real inconsistency between extension discovery and the playback dependency, not a
-promise that every listed extension works.
+\texttt{SongTypeReader} separately advertises \texttt{.aac} and \texttt{.wma} alongside MP3,
+Ogg, WAV, FLAC, and Opus. CNA's vendored SDL3\_mixer build does have an Opus decoder, and the
+library scanner deliberately includes \texttt{.opus}; it has no AAC or WMA decoder.
+Loose-file resolution can therefore select an AAC or WMA path that construction can represent
+but the playback backend cannot decode. This is a real inconsistency between extension
+discovery and the playback dependency, not a promise that every listed extension works.
 
 \section{The library hierarchy}
 \label{sec:medialibrary}

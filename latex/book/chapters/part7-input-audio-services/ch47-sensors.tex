@@ -15,9 +15,10 @@ namespace (\cnaclass{Accelerometer}, \cnaclass{Gyroscope}, \cnaclass{Compass},
 public \texttt{CurrentValueChanged} event, and abstract \texttt{Start()} / \texttt{Stop()}.
 What makes this namespace worth a dedicated section in this book is not its API surface,
 which is small, but the genuine concurrency-safety engineering behind it --- because, unlike
-most of CNA's XNA-facing surface, a sensor's \texttt{CurrentValueChanged} callback can
-legitimately fire from whatever thread SDL's own sensor event-watch mechanism happens to
-invoke it on, not necessarily the game's own update thread.
+most of CNA's XNA-facing surface, a sensor's \texttt{CurrentValueChanged} callback need not
+fire on the game's update thread. Desktop Accelerometer/Gyroscope delivery can arrive on the
+thread that pushes SDL's watched event, while the native Android Compass/Motion backends use
+their own worker threads.
 
 \subsection{A real, found-and-fixed data race, and the design it produced}
 
@@ -31,7 +32,7 @@ access --- an atomic \texttt{ClaimDisposalOnce()} so exactly one of two racing
 the loser to block on, and (added after a later external audit found the first version could
 still strand a waiting thread if the winning cleanup itself threw) an RAII
 \texttt{DisposalTerminalStateGuard} that unconditionally publishes the disposed state even on
-an exceptional exit path. \texttt{Accelerometer} and \texttt{Compass} each additionally track
+an exceptional exit path. \texttt{Accelerometer} and \texttt{Gyroscope} each additionally track
 which specific threads are currently mid-dispatch into a callback, so that a handler which
 reentrantly disposes its own sensor instance does not deadlock waiting for itself to finish.
 
@@ -159,8 +160,9 @@ mobile-only special case. It also carries the one genuinely real \texttt{State} 
 this namespace, and the legacy WP7~7.0 \texttt{ReadingChanged} event --- deprecated since WP7
 7.1 in favor of \texttt{CurrentValueChanged}, but still present and still raised immediately
 after \texttt{CurrentValueChanged} for the same reading, exactly matching real WP7's own
-still-shipping deprecated-but-functional behavior. \cnaclass{Gyroscope} follows the identical
-shape and the identical throttling fixes. \cnaclass{Compass}, by contrast, has no SDL3
+still-shipping deprecated-but-functional behavior. \cnaclass{Gyroscope} follows the same SDL
+delivery and throttling shape, but its State property is CNAEXT and it has no legacy
+\texttt{ReadingChanged} event. \cnaclass{Compass}, by contrast, has no SDL3
 backing at all --- SDL3 exposes no magnetometer API on any platform --- so it is only
 genuinely real on Android, through a dedicated native backend built directly on the NDK's own
 rotation-vector and magnetic-field sensors; on every other platform, \texttt{IsSupported}

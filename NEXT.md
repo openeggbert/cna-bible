@@ -11,7 +11,7 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
 |---|---|
 | cna-bible branch | `next`; local commits are ahead of `origin/next` (push requires explicit external-publication approval) |
 | CNA pinned SHA | `7a64362efef4119bf880459ef1704fb2c52199e2` (`develop` == `origin/develop`, 2026-08-11) |
-| Book builds | **yes** — 707 pages, all automated checks green; all completed Phase D/E writing and ten Phase F corrective batches are visually verified |
+| Book builds | **yes** — 707 pages, all automated checks green; all completed Phase D/E writing and eleven Phase F corrective batches are visually verified |
 | Phase | **A–E complete; F in progress:** Chapters 19–79 and Appendices A–H are complete. Phase F has filled omitted Chapters 8–11 and 18, corrected early graphics/lifecycle drift, and continues the whole-book consistency sweep. |
 
 ## What is done
@@ -228,6 +228,18 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     oracle counts and open D6/D7 evidence were re-audited without correction. The book remains
     707 pages; all physical pages 421–448 across Chapters 38–42 were rendered and read, with dense
     ABI, animation and toolchain pages inspected full-size and visually clean.
+30. **Phase F corrective batch 11 is complete and verified.** Chapters 44–48 now match the live
+    event-driven input contract, including relative-mouse draining, debug-key visibility, layout
+    mapping, touch connectivity and removable text-input subscriptions. Audio now separates the
+    fixed same-domain dynamic-buffer regression from the still-open resampling accounting and
+    frame-alignment gaps, and its microphone example no longer leaks a process-wide callback.
+    Media records Opus as genuinely decodable, gives the raw `Song::FromUri` result an RAII owner,
+    and retains the AAC/WMA and native-Windows video-gate defects. Sensor dispatch/lifecycle wording
+    now distinguishes the SDL and Android paths and the correct Accelerometer/Gyroscope pair.
+    Host devices records 25 installed headers and the uncaught file-dialog/tray callback boundary.
+    The book remains 707 pages; all physical pages 455–498 across Chapters 44–48 were rendered and
+    read in six contact sheets, with the RAII media example and dense sensor lifecycle page inspected
+    full-size and visually clean.
 
 ## Do this next
 
@@ -253,10 +265,10 @@ bounded correction batch; finish with an edition-wide visual and automated pass 
 
 ## Verification status
 
-Everything through Phase E and Phase F corrective batch 10 is verified:
+Everything through Phase E and Phase F corrective batch 11 is verified:
 
 - `make -C latex book` succeeds; **707 pages**.
-- makeindex: 2,182 entries accepted, 0 rejected, 0 warnings.
+- makeindex: 2,184 entries accepted, 0 rejected, 0 warnings.
 - No undefined references, no undefined control sequences, no duplicate labels, no doubled-
   backslash `\ref`, no hard-coded chapter numbers.
 - `git diff --check` clean.
@@ -329,6 +341,11 @@ Everything through Phase E and Phase F corrective batch 10 is verified:
   read from the original full-resolution renders after their grayscale contact sheets displayed
   at low contrast. The stride table, pointer-boundary prose, animation equations and CNJ-v2 schema
   discussion showed no clipping, overlap, malformed table, broken heading or other visual defect.
+- Phase F corrective batch 11 rendered and reviewed every physical page 455–498 across Chapters
+  44–48. Six contact sheets covered the complete affected span; pages 482 and 491 were also read
+  full-size. The input/audio listings, RAII media example, sensor lifecycle prose and host-device
+  callback boundary showed no clipping, overlap, malformed listing, broken heading or other visual
+  defect.
 
 **No completed writing batch is pending PDF verification.** Continue with the Phase F whole-book
 consistency sweep, then perform Phase G final verification.
@@ -346,7 +363,7 @@ consistency sweep, then perform Phase G final verification.
 Ten source-audit reports and the 42-family draw-path matrix are complete against pinned CNA
 `7a64362e`. Phase B settled a 12-Part, 79-chapter, 8-appendix edition; Phase C put it on disk,
 migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–7
-rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: ten verified
+rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: eleven verified
 batches filled omitted Chapters 8–11 and 18, removed stale totals/terminology, reconciled the
 early graphics, lifecycle and math narrative, and separated the four current shader strategies
 from the still-missing arbitrary-effect path. State, stream, instancing and programmable-GL
@@ -357,4 +374,5 @@ diagnostic renderers now also agree with the complete-or-refuse cube/resource bo
 is 707 pages. Content/XNB path containment, limits, texture hardening and SpriteFont invariants now
 also match the integrated remediation state. The Model/glTF/CNJ chapters now distinguish the live
 hierarchies, stride and animation contracts from their remaining validation and conformance gaps;
-continue the remaining whole-book consistency sweep.
+Input, Audio, Media and both device-service layers now match their live event, ownership,
+capability and callback boundaries. Continue the remaining whole-book consistency sweep.

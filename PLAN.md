@@ -353,6 +353,7 @@ log grep replaces.
 | 2026-08-12 | Phase F corrective batch 8 | **707 pages**, build clean; makeindex 2,168 / 0 / 0; D3D11/12 public cube transitions, D3D12 viewport/clear semantics, GDI composition/stencil/MSAA, SDL_RENDERER capability/refusal boundaries, SVG_DOM additive evidence and Software/Headless scope reconciled; shared cube/volume readback and RT-cube upload matrices converted from obsolete silent-no-op behavior to the current complete-or-refuse contract; 49 touched physical pages rendered and read, dense matrices inspected full-size, all visually clean |
 | 2026-08-12 | Phase F corrective batch 9 | **707 pages**, build clean; makeindex 2,176 / 0 / 0; Chapters 33–35/37 reconciled to integrated content-path containment, live XNB name/object limits, checked texture arithmetic, exact Texture2D/raw-cube bytes, Texture2D mip/device admission, Texture3D capability refusal and SpriteFont default-character validation while retaining genuine 3D/cube mip/compressed-byte gaps; physical pages 337–388 rendered and read, dense reader/limits pages inspected full-size, all visually clean |
 | 2026-08-12 | Phase F corrective batch 10 | **707 pages**, build clean; makeindex 2,182 / 0 / 0; Chapters 38–42 reconciled to the three live model-hierarchy routes, checked collection indices, external glTF URI boundary, eight-layout stride oracle, typed-index-pointer and CNJ validation gaps, exact skeletal/morph cubic behavior and skin-gated animation scope; Chapter 43 re-audited without correction; physical pages 421–448 rendered and read, dense ABI/animation/toolchain pages inspected full-size, all visually clean |
+| 2026-08-12 | Phase F corrective batch 11 | **707 pages**, build clean; makeindex 2,184 / 0 / 0; Chapters 44–48 reconciled to live input state/drain semantics, dynamic-audio and microphone gaps, Media ownership/codec truth, sensor dispatch/lifecycle distinctions and optional host-device callback boundaries; physical pages 455–498 rendered and read as six contact sheets, RAII and concurrency pages inspected full-size, all visually clean |
 
 ---
 
@@ -785,3 +786,28 @@ mid-session at the owner's direction, so the build and visual passes are availab
   automated checks green. Rendered and read physical pages 421–448 across Chapters 38–42 as seven
   contact sheets; pages 437–444 were also read from the original full-resolution renders. No
   clipping, overlap, malformed table/listing, broken heading or other visual defect was found.
+
+### 2026-08-12 — Phase F corrective batch 11: Input, audio and device-service contract truth
+
+- Reconciled Input with its event accumulator rather than describing every `GetState()` as a pure
+  read: relative mouse state drains its delta, SDL motion is ignored outside relative mode, and
+  the event queue is drained once per frame. F9/F10 still reach keyboard state before their debug
+  side effects. Keyboard layout mapping, touch capability/connectivity and the UTF-16 text-input
+  subscription example now match the live API and its ownership rules.
+- Reframed dynamic-audio completion around the fixed 44.1-kHz stereo regression while preserving
+  the open resampling-domain and channel-frame-alignment tasks. Corrected raw `SoundEffect`
+  constructor signatures and non-const playback. The microphone example now guards a missing
+  default device and removes its process-wide event token before captured playback state dies;
+  the component-based buffer-duration check and open backend/permission/device gaps are explicit.
+- Corrected Media's extension boundary: Opus is supported and indexed, while loose-file AAC/WMA
+  remain advertised but undecodable. The standalone `Song::FromUri` result now has an explicit
+  `unique_ptr` owner because `MediaPlayer` clones rather than adopts it. The Windows FFmpeg guard
+  defect remains documented. Sensor prose distinguishes SDL callback threads from Android worker
+  threads, and correctly assigns dispatch-token self-disposal tracking to Accelerometer and
+  Gyroscope. Host devices now counts 25 installed headers and names the uncaught file-dialog/tray
+  exception boundary across SDL's C callbacks.
+- Ran `tools/verify-book.sh`: 707 pages, makeindex 2,184 accepted / 0 rejected / 0 warnings, all
+  automated checks green. Rendered and read physical pages 455–498 across Chapters 44–48 in six
+  contact sheets; the RAII media example (482) and dense sensor lifecycle page (491) were also
+  inspected full-size. No clipping, overlap, malformed listing, broken heading or other visual
+  defect was found.
