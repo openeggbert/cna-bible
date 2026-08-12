@@ -798,6 +798,10 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      clean source/tool preflight, the release header now records the repository commit plus the
      committed `latex/` and `tools/` tree IDs. The fingerprint remains defined by the exact PDF,
      while logs can now be tied unambiguously to both the manuscript and verification logic.
+118. **A failed visual render cannot strand unexpected private output.** The renderer now
+     preflights every utility used by its validation and cleanup path, recursively empties its own
+     freshly allocated run child on failure or signal, and documents that successful paths are
+     printed in physical-page order rather than by filesystem timestamp.
 
 ## Do this next
 

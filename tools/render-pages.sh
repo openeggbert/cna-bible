@@ -11,7 +11,7 @@
 #   tools/render-pages.sh 243 245              # render physical pages 243..245
 #   tools/render-pages.sh 243 245 /tmp/out     # ...under a chosen parent directory
 #
-# Prints the paths of the generated PNGs, newest last, so they can be read directly.
+# Prints the generated PNG paths in ascending physical-page order for direct inspection.
 
 set -eu
 
@@ -66,7 +66,8 @@ if [ "$first" -gt "$last" ]; then
 fi
 
 missing_commands=""
-for required_command in pdfinfo pdftoppm mktemp flock mkdir stat sha256sum file pngtopnm; do
+for required_command in pdfinfo pdftoppm mktemp flock mkdir stat sha256sum file pngtopnm awk find \
+    sort wc sed rmdir; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         missing_commands="$missing_commands $required_command"
     fi
@@ -121,7 +122,9 @@ run_dir=$(mktemp -d "$outdir/render-${first}-${last}.XXXXXX") || {
 render_complete=0
 cleanup_failed_render() {
     if [ "$render_complete" -eq 0 ]; then
-        find "$run_dir" -mindepth 1 -maxdepth 1 -type f -delete 2>/dev/null || true
+        # The directory was allocated privately by this process. Remove every unexpected entry,
+        # including nested paths or non-PNG objects left by a failed renderer, before rmdir.
+        find "$run_dir" -mindepth 1 -delete 2>/dev/null || true
         rmdir "$run_dir" 2>/dev/null || true
     fi
 }

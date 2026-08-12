@@ -1450,3 +1450,5 @@ build and visual passes are available again.
   arbitrarily long decimal cannot overflow comparisons and trigger an unintended Poppler render.
 - Added exact repository-commit, manuscript-tree and tool-tree identities to every sealed-build
   header after the clean-input preflight, making archived release logs independently traceable.
+- Made failed visual-run cleanup exhaustive inside the freshly allocated private child, completed
+  the renderer's validation/cleanup dependency preflight and corrected its output-order contract.
