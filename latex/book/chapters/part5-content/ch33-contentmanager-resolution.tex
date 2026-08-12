@@ -205,17 +205,19 @@ The same setter does not clear the separately lazy content manifest, so
 not a hot-reload mechanism. No located test changes \texttt{RootDirectory}, probes aliasing, or
 loads an absolute/traversing asset name.
 
-The two nested-reference paths need to be distinguished from this broad rule. A \texttt{.cnj}
-\texttt{sourceFile} is robustly narrower: it rejects an absolute field, traversals, symlink
-escapes, another \texttt{.cnj}, and implicit sidecar cycles by comparing weakly-canonical paths;
-the focused safety tests cover each boundary. \texttt{ContentReader::ReadExternalReference<T>()}
-instead rejects only a relative reference whose normalized logical form starts above the root.
-An absolute reference is not rejected before it is passed to \texttt{ContentManager::Load()}, so
-it follows the unrestricted asset-name path just described; the tests cover the relative
-\texttt{..} rejection but not that absolute bypass. Song and Video XNB readers are wider again:
-they normalize their embedded media path lexically but perform no root check, so either traversal
-or an absolute media reference can name a file outside the content root. These are
-source-established boundaries, not failure-injection reproductions.
+Paths supplied \emph{inside} content need to be distinguished from this broad top-level rule. A
+\texttt{.cnj} \texttt{sourceFile} rejects an absolute field, traversals, symlink escapes, another
+\texttt{.cnj}, and implicit sidecar cycles by comparing weakly-canonical paths.
+\texttt{ContentReader::ReadExternalReference<T>()} separately rejects absolute, drive, and UNC
+spellings plus a logical relative path that normalizes above the content root. Song and Video XNB
+readers use the shared filesystem-containment helper for their embedded media path and validate the
+selected extension-probe result a second time, so a symlinked \texttt{.ogg}/\texttt{.ogv}
+alternative cannot bypass the first check. For an explicitly loaded XNB outside the configured
+root, the XNB's containing directory is the authorized external-bundle root: contained companions
+remain loadable, but the bundle cannot escape its own directory. Focused tests exercise traversal,
+absolute paths, symlinked extension candidates, normalized in-root references, cache retry, and
+the explicit-bundle case. The checks are not a race-proof open operation; the TOCTOU qualification
+is recorded in Chapter~\ref{ch:content-robustness}.
 
 \section{Direct loading: the shape of Chapter~\ref{ch:first-game}'s smallest program}
 \label{sec:direct-loading}
@@ -830,20 +832,15 @@ Int32   durationMs
 \end{lstlisting}
 
 The first value is a file reference, not an invocation of the generic external-reference
-mechanism.  CNA first combines the owning manager's \cnaclass{RootDirectory} and the logical asset
-name (for example,
-\texttt{Content/Music/Menu}) and takes that path's parent.  It replaces backslashes with forward
-slashes in both inputs, appends the serialized reference as a sibling, and applies only C++ lexical
-path normalization.  Thus a reference such as
-\texttt{"../Audio/loop.wma"} means a sibling-directory lookup rather than a second content-manager
-load.  This matches the role of FNA's \cnaclass{FileHelpers.ResolveRelativePath()}, but it is an
-important distinction from CNA's generic external-reference helper: that helper rejects a logical
-path which climbs above the content root, while \cnaclass{SongReader} has no equivalent containment
-check.  A sufficiently deep \texttt{..} reference, an absolute reference, or a symlink reached
-after lexical normalization can therefore name a real file outside the configured content tree.
-Neither lexical normalization nor the subsequent existence probes canonicalizes the path or proves
-that it is a regular audio file.  Compiled content is normally trusted input here; it is not a
-sandboxed reference format.
+mechanism. CNA first combines the owning manager's \cnaclass{RootDirectory} and the logical asset
+name (for example, \texttt{Content/Music/Menu}) into the owning XNB path, then resolves the
+serialized value as a sibling through \cnaclass{ResolveContainedPathRelativeToFile()}. A reference
+such as \texttt{"../Audio/loop.wma"} remains legitimate when it normalizes inside the authorized
+root. Empty, absolute, drive, UNC, above-root, and existing-symlink escapes instead fail as
+\cnaclass{ContentLoadException}. Normally the authorized root is the manager's content root. If the
+caller explicitly loaded an XNB outside it, the external XNB's containing directory becomes a
+narrow bundle root, allowing its own contained companions without granting access to adjacent
+directories. This is deliberately stricter than FNA's plain relative-path resolution.
 
 For a resolved path longer than four characters, the reader removes the final four characters
 without inspecting what they are, then calls \cnaclass{Normalize()} on the resulting stem.  It first
@@ -855,7 +852,8 @@ available supported companion.  It also happens to round-trip MonoGame content w
 serialized \texttt{.ogg}, because removing and then re-appending its four-character extension
 finds the same file.  It is not general extension validation: \texttt{.mp3} loses four characters
 too, and the three supported spellings are case-sensitive filesystem probes on a case-sensitive
-host.
+host. Because a probed candidate can itself be a symlink, CNA feeds the final selection through the
+same containment helper again before constructing the song.
 
 There are two malformed-edge differences worth keeping separate from the valid-format contract.
 CNA skips the stripping step when the resolved string has four or fewer characters; FNA calls
@@ -906,11 +904,13 @@ propagates CNA's \cnaclass{FileNotFoundException} through the manager path.
 
 That is useful but intentionally narrow evidence.  The fixture is MonoGame-produced rather than
 an original XNA \texttt{.wma}-placeholder asset, and it neither plays/decodes the companion nor
-proves the \texttt{.oga} or \texttt{.qoa} alternatives.  No located test covers a null manager,
-direct existing-instance input, sibling \texttt{..} and absolute/symlink paths, separator
-normalization, short or malformed strings, negative/extreme duration values, directory admission,
-or a Song root in the whole-container fuzzer.  Treat the successful fixture as evidence for the
-one real companion graph it contains, not as a security or media-playback certificate.
+proves the \texttt{.oga} or \texttt{.qoa} alternatives. Shared containment tests add deep
+traversal, an absolute path, a symlink selected by extension probing, an in-root normalized
+\texttt{..} path, cache retry after rejection, and a confined explicit external bundle. No located
+test covers a null manager, direct existing-instance input, short or malformed strings,
+negative/extreme duration values, directory admission, or a Song root in the whole-container
+fuzzer. Treat that combined evidence as path-policy and loading coverage, not a media-playback
+certificate.
 
 \subsubsection{\cnaclass{VideoReader}: five trusted metadata fields around a deferred media open}
 \label{sec:xnb-video-reader}
@@ -943,16 +943,16 @@ validates that the soundtrack integer is one of the three named \cnaclass{VideoS
 values.  It is simply cast, and current playback code on both sides treats that field as metadata
 rather than a cue to duck, mute, or select an audio track.
 
-\paragraph{Sibling resolution is deliberately filesystem-shaped, and not a containment boundary.}
+\paragraph{Sibling resolution is filesystem-shaped, inside an explicit containment boundary.}
 The reader forms a base path from \cnaclass{ContentManager}'s \texttt{RootDirectory} plus the
-logical XNB asset name, then resolves the serialized string as a sibling.  CNA changes
-backslashes to slashes, uses \cnans{std::filesystem::path}'s lexical normalization, and probes
-the resulting filesystem path directly.  FNA's \texttt{FileHelpers.ResolveRelativePath()} uses a
-URI to collapse the same relative-directory syntax before using its filesystem probes.  Neither
-path is \cnaclass{ContentReader::ReadExternalReference<T>()}: there is no generic logical-root
-check here.  A sufficiently deep parent traversal, an absolute reference, or a symlink reached
-after lexical normalization can consequently identify a file outside the configured content
-tree.  This is compiled-content path handling, not a sandbox for an untrusted reference string.
+logical XNB asset name, then resolves the serialized string as a sibling. CNA's shared helper
+normalizes separators and relative segments, rejects empty and disallowed absolute spellings, and
+compares weakly-canonical paths against the authorized root. For an ordinary XNB this is the
+configured content root; for an explicitly loaded external XNB it is that bundle's containing
+directory. FNA's \texttt{FileHelpers.ResolveRelativePath()} uses a URI to collapse the same
+relative-directory syntax but supplies no equivalent containment policy. This path is still not
+\cnaclass{ContentReader::ReadExternalReference<T>()}; it is a separate filesystem-relative route
+with the same CNA containment invariant.
 
 After resolution, the normal XNA convention is a fake \texttt{.wmv} suffix.  Both readers remove
 the final four characters without checking that they actually spell \texttt{.wmv}, first accept
@@ -962,16 +962,18 @@ retained.  Thus a real \texttt{intro.wmv} can become an adjacent \texttt{intro.o
 \texttt{intro.ogg}; a pre-existing \texttt{intro.ogv} also round-trips through strip and
 re-probe.  This is narrower than Song's \texttt{.ogg}/\texttt{.oga}/\texttt{.qoa} set and does
 not make CNA's ordinary loose-file \cnaclass{Video} extensions (such as \texttt{.mkv} or
-\texttt{.mp4}) into supported XNB substitutions.
+\texttt{.mp4}) into supported XNB substitutions. CNA revalidates the winning probe through the
+containment helper, closing a symlink-at-the-probed-extension bypass.
 
 There are two small malformed-reference qualifications.  CNA only strips when the \emph{resolved}
 path exceeds four characters; FNA calls \texttt{Substring(0, length - 4)} unconditionally, so a
 short direct-reader path can fail in FNA before the numeric fields are read.  At exactly four
 characters, both eventually retain the original string, although CNA skips FNA's empty-stem
 filesystem probes.  CNA uses \cnans{std::filesystem::exists()}, which also reports a directory;
-FNA uses \texttt{File.Exists()}, which does not.  No current Video reader test covers any of
-these edge cases, separator normalization, a path escape, a symlink, the \texttt{.wmv} to
-\texttt{.ogv}/\texttt{.ogg} success paths, or an invalid soundtrack integer.
+FNA uses \texttt{File.Exists()}, which does not. Shared tests cover traversal, absolute input,
+symlinked extension probing, normalized in-root lookup, cache retry, and a confined external
+bundle. They do not cover the short-reference and directory cases, every separator spelling, both
+successful \texttt{.wmv} substitutions, or an invalid soundtrack integer.
 
 \paragraph{Loading creates trusted metadata; opening and most validation happen later.}
 \cnaclass{VideoReader} needs both an owning \cnaclass{ContentManager} and that manager's

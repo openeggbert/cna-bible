@@ -19,7 +19,7 @@ Control & Bound & Enforcement point & Status \\
 \endhead
 XNB compressed payload & 64 MiB & before decompression allocation & partial: initial file read uncapped \\
 XNB decoded payload & 256 MiB & hint and final decoded size & enforced \\
-XNB string & 1 MiB & after \texttt{ReadString} & enforced post-read \\
+XNB type-reader name & 1 MiB & after \texttt{ReadString} & enforced post-read \\
 reader count & 4,096 & type-reader table & enforced \\
 object/type nesting & 256 & RAII graph guard and type-name parser & enforced \\
 shared resources & 1,000,000 & table count before fixups & enforced \\
@@ -35,14 +35,17 @@ read into a string.  An oversized uncompressed file can therefore allocate befor
 \section{Top-level names and internal references have different trust rules}
 
 \cnaclass{ContentManager::Load<T>} deliberately accepts an explicit absolute asset name;
-\texttt{RootDirectory} is a base, not a sandbox.  Containment applies instead to paths supplied
-\emph{inside} content: XNB external references, CNJ \texttt{sourceFile}, model sidecars, and
-embedded media paths.
+\texttt{RootDirectory} is a base, not a sandbox. Containment applies instead to paths supplied
+\emph{inside} content. Logical XNB external references reject absolute spellings and normalization
+above the content root before re-entering the manager. Filesystem-shaped CNJ \texttt{sourceFile},
+model sidecars, and embedded media paths add weak-canonical symlink checks against their
+authorized root.
 
-The shared containment tests cover traversal, absolute and drive paths, Unicode-shaped input,
-and existing-symlink escapes.  They also assert that rejection occurs before file access and
-does not poison the manager cache.  Legitimate \texttt{.} segments, repeated separators, and
-\texttt{..} that normalize back inside the root remain allowed.
+Across those routes, the containment tests cover traversal, absolute and drive paths,
+Unicode-shaped input, and existing-symlink escapes on the filesystem-aware paths. They also assert
+that rejection occurs before file access and does not poison the manager cache. Legitimate
+\texttt{.} segments, repeated separators, and \texttt{..} that normalize back inside the root
+remain allowed.
 
 Symlink checking is not claimed to be race-proof.  Weak canonicalization followed by later open
 has a time-of-check/time-of-use window.  The correct statement is that resolved escapes are
@@ -103,7 +106,8 @@ custom CNJ factories can throw arbitrary exceptions.  A caller should not assume
         parsers;
   \item SpriteFont does not cross-check the lengths of its parallel glyph, crop, character, and
         kerning tables;
-  \item raw Color texture payload validation remains less uniform than compressed-level checks;
+  \item Texture3D/TextureCube mip topology and compressed-byte exactness remain weaker than the
+        Texture2D reader's checks;
   \item symlink containment is not TOCTOU-proof;
   \item a low-severity misaligned-load issue remains open in the vendored cgltf path.
 \end{itemize}

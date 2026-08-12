@@ -73,7 +73,7 @@ current, not stale.
 | **C — structural migration** | **Complete.** The 12-Part / 79-chapter / 8-appendix migration, context-sensitive terminology pass, current selector/identifier migration, and module-owned source-path sweep are complete and PDF-verified clean at 645 pages. |
 | **D — chapter writing** | **Complete.** Seven verified batches rewrote Chapters 19–79 against the pinned source and sibling evidence. |
 | **E — appendices** | **Complete.** Appendices A–H were rebuilt against pinned source and the completed chapter text, then verified as one bounded batch. |
-| **F — whole-book consistency** | **In progress.** Two verified corrective batches removed stale universal totals/terminology, filled five structurally present but unwritten chapters (8–11 and 18), and reconciled early identity/build/graphics/lifecycle claims with pinned evidence. Continue the edition-wide factual, cross-reference, duplication, index and visual sweep. |
+| **F — whole-book consistency** | **In progress.** Nine verified corrective batches removed stale totals/terminology, filled five structurally present but unwritten chapters (8–11 and 18), and reconciled lifecycle, math, graphics, renderer and Content/XNB claims with pinned evidence. Continue the edition-wide factual, cross-reference, duplication, index and visual sweep. |
 | **G — final verification** | Not started. |
 
 ### 3.1 Phase A research areas — all delivered
@@ -351,6 +351,7 @@ log grep replaces.
 | 2026-08-12 | Phase F corrective batch 6 | **707 pages**, build clean; makeindex 2,183 / 0 / 0; Chapters 19/22 reconciled to the complete vertex-stream and instancing bridge, current capability/refusal classes, coherent singular/plural bindings, live SpriteBatch state and EasyGL's post-remediation MRT/wireframe/fog/colour-mask/mip/viewport contracts; physical pages 235–239, 248–250 and 262–270 rendered and read, high-risk table/listing pages inspected full-size, all visually clean |
 | 2026-08-12 | Phase F corrective batch 7 | **707 pages**, build clean; makeindex 2,161 / 0 / 0; normalized 2D/cube target binding, shared usage, aspect-selective ordered clears and per-command viewport/scissor semantics reconciled across the shared device and Vulkan/BGFX/WebGPU/SDL_GPU; current renderer-specific closures and bounded gaps recorded; Chapters 26–27 audited without correction; 31 touched physical pages rendered and read, dense matrices and representative renderer pages inspected full-size, all visually clean |
 | 2026-08-12 | Phase F corrective batch 8 | **707 pages**, build clean; makeindex 2,168 / 0 / 0; D3D11/12 public cube transitions, D3D12 viewport/clear semantics, GDI composition/stencil/MSAA, SDL_RENDERER capability/refusal boundaries, SVG_DOM additive evidence and Software/Headless scope reconciled; shared cube/volume readback and RT-cube upload matrices converted from obsolete silent-no-op behavior to the current complete-or-refuse contract; 49 touched physical pages rendered and read, dense matrices inspected full-size, all visually clean |
+| 2026-08-12 | Phase F corrective batch 9 | **707 pages**, build clean; makeindex 2,176 / 0 / 0; Chapters 33–35/37 reconciled to integrated content-path containment, live XNB name/object limits, checked texture arithmetic, exact Texture2D/raw-cube bytes, Texture2D mip/device admission, Texture3D capability refusal and SpriteFont default-character validation while retaining genuine 3D/cube mip/compressed-byte gaps; physical pages 337–388 rendered and read, dense reader/limits pages inspected full-size, all visually clean |
 
 ---
 
@@ -733,3 +734,26 @@ mid-session at the owner's direction, so the build and visual passes are availab
   automated checks green. Rendered and read physical pages 176, 238–245 and 327–366 as three
   contact sheets; pages 240–242, 327 and 348 were inspected full-size. No clipping, overlap,
   malformed table, broken heading or other visual defect was found.
+
+### 2026-08-12 — Phase F corrective batch 9: Content/XNB remediation truth
+
+- Reconciled the three distinct path policies. Public \texttt{ContentManager::Load<T>} still
+  accepts explicit absolute names; logical \texttt{ReadExternalReference<T>()} rejects rooted and
+  above-root spellings before re-entering the manager; Song/Video and filesystem-shaped sidecars
+  use weak-canonical containment, revalidate selected extension candidates, and confine an
+  explicitly external XNB to its own bundle directory. Updated the focused evidence boundary
+  without projecting symlink canonicalization onto the logical-only helper.
+- Replaced the pre-remediation limits account. \texttt{maxStringBytes} is a post-read bound on raw
+  type-reader names rather than every String, and the shared depth limit is live in both the
+  generic type-name parser and RAII-guarded object dispatch. The initial whole-file read remains
+  outside \texttt{maxFileSize}, so the book preserves that partial-control warning.
+- Reconciled all three texture readers. Texture2D now checks multiplication, device axes, exact
+  raw/DXT level bytes, level-zero-or-complete mip topology and matching existing instances.
+  Texture3D and TextureCube use checked products; raw cube bytes are exact; Texture3D refuses a
+  renderer without its capability; null/refused cube or volume uploads throw rather than silently
+  succeeding. Their remaining permissive DXT sizing and mip-topology boundaries stay explicit.
+  SpriteFont construction/set/fallback now enforce and test the default-character invariant.
+- Ran `tools/verify-book.sh`: 707 pages, makeindex 2,176 accepted / 0 rejected / 0 warnings, all
+  automated checks green. Rendered and read physical pages 337–388 across Chapters 33–37. Six
+  contact sheets plus a regenerated sRGB sheet for pages 373–381 showed no clipping, overlap,
+  malformed table, broken heading or other visual defect.

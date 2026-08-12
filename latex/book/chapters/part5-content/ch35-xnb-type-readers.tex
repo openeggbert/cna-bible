@@ -149,25 +149,29 @@ content-disposal coordinator.
 \texttt{ReadExternalReference<T>()} has two separate CNA restrictions. An empty serialized
 reference returns \texttt{std::nullopt}; a nonempty one needs a live manager, resolves relative to
 the containing logical asset name, and then enters the ordinary \texttt{Load<T>()} candidate and
-cache path. Relative upward escape is rejected, but an absolute reference still escapes through
-the manager's unrestricted absolute-path route described in \S8.4. The declaration looks generic,
-but the implementation is explicitly instantiated only for \cnaclass{Texture2D} and
+cache path. An absolute, drive, or UNC spelling is rejected before that manager call, as is a
+relative path whose normalized logical form starts above the content root. The declaration looks
+generic, but the implementation is explicitly instantiated only for \cnaclass{Texture2D} and
 \cnaclass{TextureCube}; another \texttt{T} compiles against the declaration but has no linked
 definition. FNA's method is genuinely generic and returns \texttt{default(T)}; CNA's
-\texttt{optional} return is the necessary value-type distinction. Existing tests cover only the
-Texture2D sibling, empty, relative-escape, and null-manager paths.
+\texttt{optional} return is the necessary value-type distinction. Focused tests cover the
+Texture2D sibling, empty, relative-escape, absolute, and null-manager paths.
 
-Finally, \cnaclass{XnbReadLimits} is not a universal admission policy on the current
-\texttt{develop} source. Type-reader and shared-resource counts are checked; collection and
-decoded-pixel limits work when a particular built-in reader calls the corresponding helper.
+Finally, \cnaclass{XnbReadLimits} is not a universal admission policy. Type-reader and
+shared-resource counts are checked; collection and decoded-pixel limits work when a particular
+built-in reader calls the corresponding helper. \texttt{maxObjectNestingDepth} now bounds both
+nested generic type names and recursive object dispatch at 256; the latter uses an RAII guard so a
+failed child read restores the counter. \texttt{maxStringBytes} is live for the raw type-reader
+name, although it is checked only after \texttt{BinaryReader::ReadString()} has allocated and does
+not apply separately to ordinary serialized String fields. Focused tests cover the default/custom
+type-name limit, the reader-table propagation and name bound, and object depth both at and beyond
+the limit.
 
-Three declared limits have gaps: \texttt{maxStringBytes} and
-\texttt{maxObjectNestingDepth} have no live consumer, while \texttt{maxFileSize} is consulted
-only on the LZX decompression path. An uncompressed XNB is first read wholesale by
-\cnaclass{ContentManager}, and deeply nested object dispatch or a nested generic type-reader name
-has no reader-level depth guard. Treat the defaults as partial defensive checks, not proof that
-every untrusted XNB has a file, string, allocation, or stack-depth bound. No located focused test
-proves those three advertised limits on this branch.
+\texttt{maxFileSize} remains the conspicuous partial control: it is consulted for the compressed
+payload only after \cnaclass{ContentManager} has already read the whole XNB. An oversized
+uncompressed file can therefore allocate first. Treat the defaults as observable defenses at
+their named call sites, not proof that every XNB field has a pre-allocation file, string, or
+aggregate-memory bound.
 
 \subsection{\cnaclass{ContentTypeReader} is a value-erased adapter, not a runtime type system}
 \label{sec:content-type-reader-contract}
@@ -390,9 +394,8 @@ negative count and enforcing the configured ten-million-element default before c
 growth. Thus a negative count succeeds as an empty key sequence after the two loop fields, while
 a very large positive count repeatedly appends keys until the body stream fails or storage is
 exhausted. It does not reserve the full count in advance, but it has no reader-level count ceiling
-either. A current hardening commit that notes this omission exists only on the unmerged
-\texttt{feature/audit} branch; it is not behavior supplied by this book's current
-\texttt{develop} authority.
+either. The pinned source contains no separate CurveReader guard or focused count-limit
+regression, so the common collection limit must not be projected onto this bespoke loop.
 
 There is also an easy-to-miss existing-instance asymmetry. CurveReader does not advertise
 \texttt{CanDeserializeIntoExistingObject}; the normal \cnaclass{ContentReader} object dispatch
@@ -412,7 +415,7 @@ test. The checked-in XNB fixture inventory contains no Curve asset; the related 
 only the \texttt{.cnj} Curve covered in Chapter~\ref{ch:math-core-types}. Treat the binary
 reader as a faithful ordinary-layout decoder, not as a bounded or semantic curve validator.
 
-\subsection{Texture2DReader validates decoded Color levels but not texture topology}
+\subsection{Texture2DReader validates exact bytes and the allocatable mip topology}
 \label{sec:xnb-texture2d-reader-contract}
 
 \texttt{Microsoft.Xna.Framework.Content.Texture2DReader} is separately registered (or included
@@ -443,55 +446,39 @@ container accepts that platform code, but this reader never performs the corresp
 channel/block layout even when its nominal format is one of the four accepted forms. The fixture
 tree has no version-4 or Xbox Texture2D XNB with which to establish an interoperable result.
 
-The existing byte defenses are useful but deliberately local. Width and height must each be
-positive, then the reader calls \texttt{CheckDecodedByteSize(width * height * 4)} before creating
-the texture; with the default \cnaclass{XnbReadLimits}, that nominal base-level RGBA size is
-capped at 256 MiB. For an uncompressed Color level, it reads exactly the declared byte count and
-then requires exactly \texttt{levelWidth * levelHeight * 4} bytes before constructing
-\cnaclass{Color} objects. A negative byte count becomes \cnaclass{ContentLoadException}; a short
-stream remains \texttt{EndOfStreamException}. DXT's helper checks that there are \emph{at least}
-the required 4-by-4 blocks (eight bytes per DXT1 block and sixteen per DXT3/5 block), then emits
-exactly one RGBA image. It does not reject surplus compressed bytes in a declared level, and its
-too-short-data failure is \texttt{std::out\_of\_range}, not the reader's content-load error.
-Thus this is not a uniform malformed-texture exception policy.
+The byte and dimension preflights now form one coherent boundary. Width and height must each be
+positive; \cnaclass{CheckedMultiplyOrThrow()} computes \texttt{width * height * 4} without signed
+overflow before the 256-MiB decoded-size check. A device is obtained before allocation, and either
+axis above \cnaclass{GraphicsDevice::GetMaxTextureDimension()} is rejected. Each raw Color level
+must contain exactly \texttt{levelWidth * levelHeight * 4} bytes. Each DXT level must likewise
+match the exact block-rounded compressed byte count before decompression, so neither shortage nor
+surplus reaches the minimum-based DXT helper. A negative declared count is a
+\cnaclass{ContentLoadException}; a physically truncated stream remains
+\texttt{EndOfStreamException}.
 
-Nor is the initial product a complete allocation or device admission policy. It has no per-axis
-device maximum, so a shape such as 500000 by 1 has a small nominal byte count yet can be invalid
-for the selected GPU. More subtly, the current source uses raw signed \texttt{int64\_t}
-multiplication: two legal positive Int32 dimensions can leave \texttt{width * height} representable
-but overflow on the following \texttt{* 4} before \texttt{CheckDecodedByteSize()} observes a
-value. That is C\texttt{++} signed-overflow undefined behavior, not a clean limit rejection.
-The unmerged \texttt{feature/audit} branch contains a checked-multiply and a device-axis preflight,
-but neither commit is an ancestor of this book's \texttt{develop} authority. It must not be
-treated as shipped protection.
-
-Mip topology has the same distinction between a normal asset and hostile input. Construction uses
-only \texttt{levelCount > 1}: a positive multi-level declaration creates the framework's full
-halving chain, rather than a chain exactly as long as the file says. Zero or negative counts make
-a one-level texture and run no per-level reads, so this reader accepts an uninitialized texture
-payload instead of rejecting an invalid count. A positive count above the physical chain has no
-ceiling. The reader shifts \texttt{width >> level} and \texttt{height >> level}, while
-\cnaclass{Texture2D::SetData()} checks only that the level is nonnegative; its CPU mip store grows
-for arbitrary higher levels and the renderer is asked to update them. Large levels also make the
-shift itself undefined. An unmerged audit change adds an upper mip ceiling, but current
-\texttt{develop} does not have it. The base-level decoded-size check is therefore not a bound on
-the number, topology, or total storage of declared mip payloads.
+Mip topology is explicit rather than inferred permissively. The declared count must be positive
+and no greater than the complete floor-halved chain. Because CNA's public Texture2D allocation can
+represent either level zero alone or the complete chain, the reader accepts exactly those two
+shapes and rejects a partial prefix that would otherwise allocate fabricated missing levels. This
+also bounds every later shift and \texttt{SetData()} call to a real allocated mip. The decoded-size
+limit still applies to the base RGBA image rather than an independent aggregate budget for all
+levels, but a complete geometric mip chain adds less than one third over that base.
 
 A GPU device is mandatory for ordinary manager loading. With a non-null \cnaclass{ContentManager}
 that lacks one, \texttt{getGraphicsDeviceInternal()} throws the manager's own diagnostic before
 the reader's null-device branch. The latter is relevant only to a manually constructed
 \cnaclass{ContentReader} with no manager. Direct existing-instance use has another non-obvious
 shape: normal object dispatch passes none, but a direct boxed \cnaclass{Texture2D} is moved into
-the reader and reused without checking its dimensions, format, device, or mip count against the
-file. File dimensions determine the byte check, whereas \texttt{SetData()} uses the retained
-texture's dimensions. The returned C\texttt{++} handle is the moved/reused value, not a guarantee
-that a caller-owned object was overwritten as a transactional replacement. FNA likewise reuses a
-non-null reference, but has managed reference identity rather than this value-handoff boundary.
+the reader. CNA now requires its dimensions, Color upload format, and mip count to match the file
+before the first upload; it does not separately compare device identity. The returned C\texttt{++}
+handle is still the moved/reused value, not a guarantee that a caller-owned object was overwritten
+as a transactional replacement. FNA likewise reuses a non-null reference, but has managed
+reference identity rather than this value-handoff boundary.
 
-The focused unit test proves registration, unsupported \texttt{Bgr565}, one bad Color byte count,
-negative width, and two-axis huge dimensions. It does not prove a successful direct Color or DXT
-decode, legacy/version-4 mapping, Xbox swapping, zero height/width, negative/zero/excessive mip
-counts, one-axis device limits, overflow arithmetic, truncated/negative/surplus level data,
+The focused tests prove registration, unsupported \texttt{Bgr565}, a mismatched Color byte count,
+negative and zero dimensions, checked rejection of overflow-shaped dimensions, a one-axis device
+limit, and an excessive mip count. They do not prove a successful direct Color or DXT decode,
+legacy/version-4 mapping, Xbox swapping, partial mip-prefix rejection, exact compressed surplus,
 missing device, existing-instance mismatch, or reader version. End-to-end coverage is better but
 narrow: a real MonoGame 1-by-1 white Color XNB verifies its exact pixel; a real LZX-compressed
 64-by-64 Color explosion is checked only for non-uniform output; and the real SpriteFont fixture
@@ -500,7 +487,7 @@ checked-in Texture2D DXT1/DXT5, version-4, Xbox, or non-Color fixture. Treat the
 well-tested ordinary Color path with some real compressed integration, not as complete
 Texture2D/XNB format or adversarial-GPU validation.
 
-\subsection{Texture3DReader now slices DXT volumes, but does not admit a physical volume}
+\subsection{Texture3DReader slices DXT volumes and refuses unsupported renderers}
 \label{sec:xnb-texture3d-reader-contract}
 
 The separately registered \texttt{Microsoft.Xna.Framework.Content.Texture3DReader} is unusual in
@@ -537,14 +524,10 @@ and a short physical stream is \texttt{EndOfStreamException}.
 
 Raw Color levels receive a useful exact check after reading: the bytes must equal the current
 \texttt{width * height * depth * 4} before the reader builds real \cnaclass{Color} objects. Base
-dimensions must also be individually positive and are presented to
-\texttt{CheckDecodedByteSize()} before texture creation. As in the 2D reader, that is not a
-complete arithmetic guard in current \texttt{develop}. The initial raw signed
-\texttt{int64\_t width * height * depth * 4} expression can overflow before the limit helper
-observes it, and the later \texttt{int32\_t voxelCount = width * height * depth} is an independent
-overflow site. The checked-multiply and voxel-range corrections exist in unmerged
-\texttt{feature/audit}, not in the authority documented here. A valid-looking total byte size
-also supplies no per-axis device maximum or reader-level aggregate mip-data budget.
+dimensions must also be individually positive. Both the decoded-byte product and the later voxel
+count use \cnaclass{CheckedMultiplyOrThrow()}, and the voxel result must fit \texttt{Int32} before
+the Color vector and API count are formed. These checks close both prior signed-overflow sites.
+They do not add a per-axis device maximum or a reader-level aggregate mip-data budget.
 
 Mip admission has a separate hole. Construction receives only \texttt{levelCount > 1}, so a
 positive multi-level file allocates the framework's complete width/height chain rather than a
@@ -562,24 +545,27 @@ manager reaches the reader's error. But a direct caller may supply a non-null
 \texttt{shared\_ptr<Texture3D>}; normal dispatch never does. That pointer is copied and the same
 referenced resource is mutated in place, without a format, device, dimensions, or mip-chain match
 against the file; it also bypasses the reader's new-texture device lookup. This is close to FNA's
-reference-instance behavior, but notably unlike CNA Texture2D's transported value. Renderer
-support is not checked at either point: the default 3D renderer factory can return null, after
-which Texture3D's upload and readback paths simply skip renderer work. Loading an XNB can therefore
-return a nominal Texture3D whose supplied voxels were not represented by a real renderer resource
-on a 2D-only implementation.
+reference-instance behavior, but notably unlike CNA Texture2D's transported value. For a new
+resource, \cnaclass{Texture3D}'s constructor queries \cnaclass{GraphicsCapability::Texture3D} and
+throws \cnaclass{NotSupportedException} on a 2D-only renderer. A renderer that advertises the
+capability but returns no resource, or refuses the complete update, is also surfaced by
+\cnaclass{SetData()} rather than silently discarding voxels. A supplied existing pointer still
+bypasses the constructor capability query, but not that upload-time complete-or-refuse check.
 
 Evidence for the ordinary wire is narrow. The joint 3D/cube unit file proves registration,
-rejects one unsupported \texttt{Bgr565} word, and directly feeds a locally written 2-by-2-by-1
-Color body to \texttt{ReadUntyped()}, then reads four exact voxels back. There is no external
+rejects one unsupported \texttt{Bgr565} word, zero width/depth, and checked-multiply overflow, then
+directly feeds a locally written 2-by-2-by-1 Color body to \texttt{ReadUntyped()}. That test expects
+a clean refusal when the renderer lacks Texture3D, or reads four exact voxels back when it supports
+the capability. There is no external
 Texture3D XNB anywhere in the fixture tree, no header/table/ContentManager XNB test, and no
-direct DXT, multi-slice, mip, truncation, dimensions, byte-count, version, device, existing-pointer,
-or renderer-capability case. The whole-container fuzzer has real Model, Texture2D, and SoundEffect
+direct DXT, multi-slice, mip, truncation, raw byte-count, version, missing-device, or
+existing-pointer case. The whole-container fuzzer has real Model, Texture2D, and SoundEffect
 seeds only. The separate CNJ test does exercise a self-contained 2-by-2-by-2 volume, but it is a
 different loader and cannot establish XNB compatibility. Treat the current reader as a faithful
-ordinary field-order implementation with a repaired slice algorithm, not as externally-fixtured
-or universally renderer-safe volume-texture support.
+ordinary field-order implementation with repaired arithmetic and explicit capability behavior,
+not as externally-fixtured or complete adversarial volume-texture coverage.
 
-\subsection{TextureCubeReader loads a real DXT1 cube but still trusts raw Color byte counts}
+\subsection{TextureCubeReader loads a real DXT1 cube and validates raw Color byte counts}
 \label{sec:xnb-texturecube-reader-contract}
 
 The explicitly registered \texttt{Microsoft.Xna.Framework.Content.TextureCubeReader} has FNA's
@@ -601,27 +587,20 @@ returns the expected RGBA image. Extra compressed bytes are accepted and discard
 declared level has been consumed; a too-short DXT level throws \texttt{std::out\_of\_range}, not
 a unified content-load error.
 
-The uncompressed branch has a sharper current-develop defect. It calls
-\texttt{ReadBytesExactOrThrow()}, which proves only that the file supplied as many bytes as its
-own \emph{declared} count, then indexes the result as though it were exactly
-\texttt{faceSize * faceSize * 4}. A small positive raw byte count therefore reaches
-\texttt{bytes[o]} through \texttt{bytes[o+3]} past the vector's end. This is not merely a missing
-test assertion: the later \texttt{feature/audit} commit \texttt{e3bc2be1} records it as a
-reproduced heap out-of-bounds read and adds the sibling readers' equality guard and regression
-test, but that commit is not an ancestor of current \texttt{develop}. A too-large raw count is
-silently ignored after the expected colors have been formed. Treat both cases as the live source
-contract until the source fix is integrated; the earlier broad XNB hardening commit's description
-does not override the code actually present on this branch.
+The uncompressed branch now follows Texture2D's exact equality guard. After
+\texttt{ReadBytesExactOrThrow()} proves the stream supplied the declared count, the reader requires
+exactly \texttt{faceSize * faceSize * 4} bytes before indexing the vector. Both an undersized and
+oversized raw declaration therefore fail as \cnaclass{ContentLoadException}; the regression test
+reproduces the formerly out-of-bounds undersized case.
 
 The preflight before those levels is only partial. It rejects a nonpositive size and presents
 \texttt{size * size * 4} to \texttt{CheckDecodedByteSize()}, bounding one base face's nominal
 RGBA bytes to the default 256 MiB. Six faces and a complete mip chain can require almost eight
 times that base amount, and there is no total cube-data budget. The raw signed
-\texttt{int64\_t size * size * 4} expression can itself overflow before the helper observes a
-value; its checked-multiply counterpart is also only on unmerged \texttt{feature/audit}. There
-is no reader-level device-size admission either (apart from a separate D3D9 profile check inside
-the resource constructor). The base face cap is consequently neither a complete arithmetic guard
-nor a portable GPU limit.
+product is now computed by \cnaclass{CheckedMultiplyOrThrow()}, so an overflow-shaped size fails
+cleanly before the helper. There is no reader-level device-size admission (apart from a separate
+D3D9 profile check inside the resource constructor). The base face cap is consequently an
+arithmetic and per-face allocation guard, not an aggregate cube budget or portable GPU limit.
 
 Mip handling repeats the family pattern. The constructor sees only \texttt{levels > 1}, then
 creates the framework's full square chain rather than a chain exactly equal to the file count.
@@ -630,8 +609,11 @@ continue with 1-by-1 data and are never rejected. TextureCube validates a nonneg
 rectangle, and element count, but not that the level is allocated. Its mip helper shifts the base
 size by the supplied level, so sufficiently large hostile levels make that shift undefined before
 the renderer update. The reader also has no generic cube-capability gate: a renderer using the
-default null cube factory produces an object whose upload/readback methods simply skip renderer
-work. A successful parser return is not proof that an actual cube resource exists.
+default null cube factory produces an object without backing storage. The public upload no longer
+silently skips that case: the first face's \cnaclass{SetData()}
+throws \cnaclass{NotSupportedException}, as does a renderer that declines the complete region. A
+successful reader return therefore means all serialized face uploads reported complete, although
+there is still no pre-allocation cube-capability query.
 
 Existing-instance behavior is particularly unlike FNA's reference object. Normal ContentReader
 dispatch gives this reader no instance. For a direct move-only \cnaclass{TextureCube} read,
@@ -647,8 +629,10 @@ limited oracle. A real MonoGame \texttt{SampleCube64DXT1Mips.xnb} loads through
 \cnaclass{ContentManager}; it covers all six faces and seven DXT1 levels from 64 through 1,
 including the sub-4-by-4 block case. The test checks size, Color output format, level count,
 non-uniform PositiveX level 0, and that one NegativeZ 1-by-1 read does not throw. It does not
-check exact pixels, face orientation/order, every face, DXT3/DXT5, raw Color, bad byte count,
-size/level/format/version/device/existing cases, cache/unload, or another producer/platform.
+check exact pixels, face orientation/order, every face, DXT3/DXT5, or raw Color success. Focused
+tests separately reject a mismatched raw cube byte count, zero and overflow-shaped cube sizes, plus
+an unsupported Texture3D format; cube level topology, version/device/existing cases, cache/unload,
+and another producer/platform remain uncovered.
 There is no Cube seed in the whole-container fuzzer. Thus the fixture is valuable evidence for
 ordinary DXT1 traversal, not proof that arbitrary Cube XNB input is bounded or that all six faces
 are semantically correct.
@@ -688,16 +672,14 @@ or glyph vector out of bounds. FNA also trusts its content-pipeline tables, but 
 fail with a bounds exception; CNA's unchecked \texttt{std::vector} indexing is not a safe error
 boundary for untrusted XNB input.
 
-The optional default character exposes a second current-develop defect. CNA copies a present
-character without checking that the character map contains it. When an unknown text character
-then falls back, both measurement and drawing call \texttt{find(defaultCharacter)} and immediately
-read \texttt{it->second}; an absent default therefore dereferences \texttt{end()}. FNA's
-dictionary indexer instead throws on that inconsistent state. The later unmerged
-\texttt{feature/audit} commit \texttt{fb1dcbc4} adds construction/setter validation and a checked
-fallback, but it is not an ancestor of current \texttt{develop}. This is observable in the
-current CNJ SpriteFont test fixture too: it supplies \texttt{"?"} as the default while its sole
-glyph is \texttt{'A'}, then never measures an unknown character. Treat the absence of an XNB
-default-character invariant as live source behavior, not as a harmless test omission.
+The optional default character has a separate invariant even though the four parallel list lengths
+remain unchecked. \cnaclass{SpriteFont}'s constructor requires a present default to occur in the
+character map, and the property setter enforces the same rule before changing state. The fallback
+lookup also checks for \texttt{end()} before dereferencing it, mirroring FNA's dictionary failure
+instead of invoking undefined behavior. This applies equally to XNB and CNJ because both readers
+finish by calling the same constructor. Graphics tests cover rejection at construction and set,
+state preservation after a rejected set, a valid default, and actual unknown-character fallback;
+the CNJ suite independently rejects a serialized absent default.
 
 Existing-instance handling differs deliberately, even though ordinary manager dispatch never
 reaches it. SpriteFontReader leaves \texttt{CanDeserializeIntoExistingObject} false, as FNA
@@ -717,10 +699,10 @@ kerning values, decoded atlas pixels, or rendering. A second real MonoGame
 \texttt{FontCalibri14.xnb} exercises the same reader after a 44,032-byte multi-block LZX decode;
 the test establishes only a nonempty map and positive \texttt{MeasureString("Hello")} width.
 The focused reader tests cover registration and the false existing-instance property, while the
-many renderer SpriteFont pixel tests hand-build tiny fonts rather than validating XNB tables. No
-located test covers a true XNB default character, list/count mismatch, duplicate or malformed
-character map, invalid rectangles/floats, truncation, nonzero reader version, direct-existing
-failure, cache/unload, another producer/platform, or a SpriteFont seed in the container fuzzer.
+many runtime SpriteFont tests hand-build tiny fonts rather than validating XNB tables. No located
+test covers a true XNB default character, list/count mismatch, duplicate or malformed character
+map, invalid rectangles/floats, truncation, nonzero reader version, direct-existing failure,
+cache/unload, another producer/platform, or a SpriteFont seed in the container fuzzer.
 Treat the two real fixtures as sound ordinary-layout and compressed-path evidence, not as a
 validation or adversarial-input oracle.
 
@@ -838,12 +820,15 @@ The texture strings use the generic \texttt{ReadExternalReference<T>()} path, no
 filesystem shortcut.  Thus an empty string is null, while a nonempty relative reference resolves
 beside the effect asset, goes through normal ContentManager resolution, and retains that returned
 texture through a private \texttt{shared\_ptr}.  CNA applies the generic lexical escape rejection
-for a path which normalizes above the root, although the existing generic absolute-path and
-symlink limits still apply.  It also asks directly for \texttt{Texture2D} or \texttt{TextureCube}.
+for a path which normalizes above the root and rejects absolute, drive, and UNC spellings. This
+logical helper does not canonicalize the eventual filesystem candidate, so the broader top-level
+manager behavior for an in-root symlink still applies. It also asks directly for
+\texttt{Texture2D} or \texttt{TextureCube}.
 FNA asks for the broader \texttt{Texture} type and uses \texttt{as Texture2D} or
 \texttt{as TextureCube}; a wrong concrete root therefore becomes null in FNA but reaches CNA's
-exact-type loading/cast boundary.  No stock-effect test exercises a nonempty, missing, escaping,
-wrong-type, absolute, or symlinked external texture reference.
+exact-type loading/cast boundary. The shared external-reference suite covers a Texture2D sibling,
+empty value, relative escape, absolute path, and null manager. No stock-effect-specific test
+exercises a nonempty, missing, wrong-type, or symlinked external texture reference.
 
 Apart from the normal scalar reads, the readers intentionally leave validation to the effect
 properties.  SkinnedEffect's setter admits only one, two, or four weights per vertex, matching

@@ -11,7 +11,7 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
 |---|---|
 | cna-bible branch | `next`; local commits are ahead of `origin/next` (push requires explicit external-publication approval) |
 | CNA pinned SHA | `7a64362efef4119bf880459ef1704fb2c52199e2` (`develop` == `origin/develop`, 2026-08-11) |
-| Book builds | **yes** — 707 pages, all automated checks green; all completed Phase D/E writing and eight Phase F corrective batches are visually verified |
+| Book builds | **yes** — 707 pages, all automated checks green; all completed Phase D/E writing and nine Phase F corrective batches are visually verified |
 | Phase | **A–E complete; F in progress:** Chapters 19–79 and Appendices A–H are complete. Phase F has filled omitted Chapters 8–11 and 18, corrected early graphics/lifecycle drift, and continues the whole-book consistency sweep. |
 
 ## What is done
@@ -204,6 +204,18 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     Skia and LLGL, instead of the obsolete transparent-black no-op. The book remains 707 pages;
     all 49 touched physical pages were rendered and read, and the two cube matrices plus dense
     renderer pages were inspected full-size and visually clean.
+28. **Phase F corrective batch 9 is complete and verified.** Chapters 33–35 and 37 now match the
+    integrated Content/XNB remediation state. Top-level absolute asset names remain intentionally
+    open, while logical XNB references reject rooted/above-root spellings and filesystem-shaped
+    Song/Video/CNJ/sidecar paths add weak-canonical containment, extension-candidate revalidation,
+    and confined explicit bundles. The XNB limits account now distinguishes the post-read
+    type-reader-name bound from ordinary String fields and records live type-name/object recursion
+    guards. Texture2D now has exact raw/compressed bytes, checked arithmetic, device-axis and mip-
+    topology admission; Texture3D/TextureCube arithmetic, raw cube bytes, Texture3D capability and
+    complete-or-refuse uploads are current without erasing their remaining mip/compressed-byte
+    gaps. SpriteFont's default-character invariant and regression evidence are also current. The
+    book remains 707 pages; all physical pages 337–388 spanning Chapters 33–37 were rendered and
+    read, with the dense limits and reader pages inspected full-size and visually clean.
 
 ## Do this next
 
@@ -229,10 +241,10 @@ bounded correction batch; finish with an edition-wide visual and automated pass 
 
 ## Verification status
 
-Everything through Phase E and Phase F corrective batch 8 is verified:
+Everything through Phase E and Phase F corrective batch 9 is verified:
 
 - `make -C latex book` succeeds; **707 pages**.
-- makeindex: 2,168 entries accepted, 0 rejected, 0 warnings.
+- makeindex: 2,176 entries accepted, 0 rejected, 0 warnings.
 - No undefined references, no undefined control sequences, no duplicate labels, no doubled-
   backslash `\ref`, no hard-coded chapter numbers.
 - `git diff --check` clean.
@@ -295,6 +307,11 @@ Everything through Phase E and Phase F corrective batch 8 is verified:
   Three contact sheets covered all 49 pages; readback/transition matrices on pages 240–242 and
   representative renderer pages 327 and 348 were inspected full-size. No clipping, overlap,
   malformed table, broken heading or other visual defect was found.
+- Phase F corrective batch 9 rendered and reviewed every physical page 337–388 across Chapters
+  33–37. Six contact sheets covered the complete affected chapter span; the initially low-contrast
+  pages 373–381 were regenerated in sRGB and read separately. The path-policy prose, limits tables,
+  texture-reader sections and robustness summary showed no clipping, overlap, malformed table,
+  broken heading or other visual defect.
 
 **No completed writing batch is pending PDF verification.** Continue with the Phase F whole-book
 consistency sweep, then perform Phase G final verification.
@@ -312,7 +329,7 @@ consistency sweep, then perform Phase G final verification.
 Ten source-audit reports and the 42-family draw-path matrix are complete against pinned CNA
 `7a64362e`. Phase B settled a 12-Part, 79-chapter, 8-appendix edition; Phase C put it on disk,
 migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–7
-rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: eight verified
+rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: nine verified
 batches filled omitted Chapters 8–11 and 18, removed stale totals/terminology, reconciled the
 early graphics, lifecycle and math narrative, and separated the four current shader strategies
 from the still-missing arbitrary-effect path. State, stream, instancing and programmable-GL
@@ -320,4 +337,5 @@ contracts now also match the pinned renderer interface and post-audit remediatio
 render-target binding, usage, ordered-clear and dynamic viewport/scissor semantics now match the
 four deferred modern renderers as well. Modern Direct3D, Windows/vector/DOM 2D families and the
 diagnostic renderers now also agree with the complete-or-refuse cube/resource boundary. The book
-is 707 pages; continue the remaining whole-book consistency sweep.
+is 707 pages. Content/XNB path containment, limits, texture hardening and SpriteFont invariants now
+also match the integrated remediation state; continue the remaining whole-book consistency sweep.
