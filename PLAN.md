@@ -1472,3 +1472,6 @@ build and visual passes are available again.
   statuses after the nested verifier, rolling back if repository provenance changed during release.
 - Proved that final guard in an isolated committed fixture: untracked `latex/` drift created by a
   successful verifier caused status 1, byte-identical prior-PDF restore and zero snapshot residue.
+- Changed whitespace verification from index-relative `git diff --check` to `git diff HEAD --check`,
+  covering the final tracked worktree across staged and unstaged layers. A staged-defect fixture
+  produced old/new statuses 0/2 and the expected trailing-whitespace diagnostic.

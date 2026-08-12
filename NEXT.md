@@ -841,6 +841,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      creating an untracked `latex/` drift. Despite unchanged HEAD and committed tree IDs, release
      exited 1, named the provenance change, restored the marker prior PDF byte-for-byte and left
      zero transaction snapshots; the drift remained available for diagnosis.
+128. **Staging cannot hide whitespace defects from verification.** The working-tree hygiene pass
+     now runs `git diff HEAD --check`, evaluating the final tracked content across both index and
+     unstaged layers. This replaces the index-relative default whose green result ignored already
+     staged trailing whitespace. In a mini-repository fixture, the staged defect gave status 0 to
+     the old command and status 2 plus the exact offending line to the new command.
 
 ## Do this next
 

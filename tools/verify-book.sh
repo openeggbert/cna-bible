@@ -499,11 +499,13 @@ forbid_matches "$diagnostic_dir/crlf.txt" "carriage returns in compiled TeX sour
     "no carriage returns in compiled TeX sources" -rIl $'\r' \
     "$chapters" "$front" "$book_dir/main.tex"
 
-if git -C "$repo_root" diff --check > /dev/null 2>&1; then
-    pass "git diff --check clean"
+# Compare the resulting worktree to HEAD, not merely unstaged content to the index. Otherwise a
+# staged whitespace defect disappears from plain `git diff --check` and can be reported clean.
+if git -C "$repo_root" diff HEAD --check > /dev/null 2>&1; then
+    pass "git diff HEAD --check clean"
 else
-    fail "git diff --check reports whitespace errors"
-    git -C "$repo_root" diff --check | head -20
+    fail "git diff HEAD --check reports whitespace errors"
+    git -C "$repo_root" diff HEAD --check | head -20
 fi
 
 # ---------------------------------------------------------------- PDF output
