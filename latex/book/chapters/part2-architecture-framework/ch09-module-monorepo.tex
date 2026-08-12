@@ -7,6 +7,8 @@ CNA is one repository, but it is not one library with global \texttt{src/} and
 application author because include spelling, link closure, optional features, and even which tests
 compile are all derived from those module boundaries.
 
+\input{figures/fig-module-architecture.tex}
+
 \section{Location is ownership}
 
 The normal framework layout is:
@@ -112,11 +114,12 @@ helpers.  This keeps their link closures small while preserving the same include
 
 \section{Renderer families are physical modules too}
 
-\path{modules/renderers/} declares 42 implementation families plus shared infrastructure.  Only
+\path{modules/renderers/} declares \RendererFamilyCount{} implementation families plus shared
+infrastructure. Only
 the selected family is normally entered, and each family receives a concrete target named
 \texttt{cna\_renderer\_<family>}.  One family may carry more than one public identity: EasyGL owns
-five GL-profile identities, which is why the public registry contains 46 identities but the source
-partition contains 42 families.
+five GL-profile identities, which is why the public registry contains \RendererIdentityCount{}
+identities but the source partition contains \RendererFamilyCount{} families.
 
 The common setup function gives a renderer its own include root, build flags, sharp-runtime
 closure, and reverse links to graphics/core/math.  The renderer's source glob is deliberately

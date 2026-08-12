@@ -11,7 +11,7 @@ independent \texttt{OPENGL4} and CPU-only \texttt{PORTABLEGL} implementations re
 closing sections after the common EasyGL path has established the programmable-profile
 baseline.
 
-\section{A documentation staleness warning, taken seriously}
+\section{Documentation status at the pin}
 
 Before any specific claim in this chapter: \texttt{docs/easygl\_bugs.md}, the primary
 per-bug record for this renderer, carries its own explicit staleness banner. It was last
@@ -120,7 +120,7 @@ through asynchronous browser events. The cross-product contract and evidence bou
 \S\ref{sec:backend-recovery-debug-matrix}.
 \end{sourcenote}
 
-\subsection{A worked example: finding the real SpriteBatch quad ceiling}
+\subsection{Finding the SpriteBatch quad ceiling}
 
 The \texttt{uint16\_t} index-type finding above is worth turning into an actual number, since
 ``roughly 16{,}383 quads'' is a real, checkable threshold a game can hit without realizing it
@@ -146,7 +146,7 @@ instead of one call per texture atlas --- has two real mitigations: split the si
 under the ceiling, or batch fewer, larger draws (one atlas texture covering many tiles) so the
 quad count per batch stays low regardless of how much is actually drawn on screen.
 
-\section{The D3D9 oracle cross-measurement: a genuinely different kind of test}
+\section{D3D9 oracle cross-comparison}
 
 A separate, one-off investigation ran EasyGL against the same 31-scene oracle corpus built
 for the \texttt{D3D9} renderer's own pixel-for-pixel verification against real XNA~4.0
@@ -166,78 +166,39 @@ environment-map Fresnel term failed to interpolate correctly (Gouraud-style) acr
 primitive on EasyGL --- a concrete, independent confirmation of a divergence
 Chapter~\ref{ch:stock-effects} already predicted from the effect-level audit alone.
 
-\subsection{Both of those two bugs are fixed now --- verified directly against the current shader source}
+\subsection{Current shader-source corrections}
 
-The investigation's own account (\texttt{docs/d3d9-divergence-report.md}) is explicit that both
-findings above were ``logged here, not fixed'' at the time --- but reading
-\texttt{EasyGLRenderer.cpp} directly today shows both have since been closed, and it is
-worth correcting the record rather than reproducing a now-stale ``still open'' framing. Every
-stock-effect fragment/vertex shader pair in the file carries an identical, explicitly-labeled
-comment: ``Task~1111: matches FNA's \texttt{EffectHelpers.SetFogVector} / \texttt{Common.fxh}
-\texttt{ComputeFogFactor} exactly \dots{} NOT a naive \texttt{(fogEnd-z)/(fogEnd-fogStart)}
-falloff, which silently inverts/collapses once \texttt{FogEnd<FogStart} (oracle scene
-\texttt{fog\_gradient\_quad})'' --- naming the exact failing scene from the cross-measurement
-above by name. Working the corrected formula through with the oracle scene's own real values
-(\texttt{FogStart=0}, \texttt{FogEnd=-1}) confirms the fix is not just labeled correctly but
-mathematically sound: \texttt{vFogFactor = clamp((z + FogEnd) / (FogEnd - FogStart), 0, 1)}
-becomes \texttt{(z - 1) / (-1) = 1 - z} at these values, giving \texttt{vFogFactor = 1} (fully
-unfogged, original color shows through) at the near edge $z=0$ and \texttt{vFogFactor = 0}
-(fully fogged) at the far edge $z=1$ --- exactly the near-white-to-near-black gradient real XNA
-renders, not the solid-black collapse the pre-fix naive formula produced. The Fresnel bug has
-an equally explicit fix comment, a few hundred lines later in the same file, labeled
-Task~1112: the vertex shader now computes \texttt{viewAngle} from \emph{each vertex's own
-un-interpolated} normal and eye vector before the Fresnel \texttt{pow()} term is evaluated, so
-the GPU's own Gouraud interpolation happens to the already-computed scalar afterward --- matching
-real XNA's \texttt{EnvironmentMapEffect.fx} exactly, rather than the mathematically distinct
-operation of interpolating the normal first and recomputing Fresnel per fragment. Both fixes
-apply uniformly across every one of this renderer's stock-effect shader programs (colored,
-textured, color-plus-textured, and the lit/skinned variants alike), not as a one-off patch to
-the single scene that exposed each bug.
+\begin{historynote}
+\texttt{docs/d3d9-divergence-report.md} recorded the fog-gradient and Fresnel findings as open.
+Both are closed in the pinned \texttt{EasyGLRenderer.cpp}; the document is now historical.
+\end{historynote}
 
-\section{A second stale-doc claim, this time about \texttt{Viewport}}
+For \texttt{FogStart=0} and \texttt{FogEnd=-1}, the current
+\texttt{clamp((z + FogEnd) / (FogEnd - FogStart), 0, 1)} becomes $1-z$. The named oracle scene
+therefore runs from unfogged at $z=0$ to fully fogged at $z=1$, avoiding the former solid-black
+collapse. The environment-map vertex shader computes its Fresnel scalar from each vertex's normal
+and eye vector before interpolation, matching the stock XNA shader. These corrections apply to
+the renderer's stock-effect shader variants, not only to the scenes that exposed them.
 
-The staleness warning this chapter opened with applies to more than just
-\texttt{docs/easygl\_bugs.md}. \texttt{docs/rendertarget-support.md} --- the same document
-Chapter~\ref{ch:vulkan-backend}'s own equivalent finding drew from, where three of its own
-tracked tasks turned out to already be fixed on Vulkan --- lists this renderer's own
-\texttt{Viewport} support identically: ``zero wiring on any renderer'' (Task~880), meaning a
-custom sub-region \cnaclass{Viewport} was believed to have no actual GPU effect at all.
-Reading \texttt{EasyGLRenderer.cpp} directly instead of trusting that status column
-finds the same Task~880 fix already landed here too, with real, unconditional
-\texttt{device.set\_viewport()} / \texttt{device.set\_depth\_range()} calls replacing whatever
-no-op previously sat behind \texttt{SetViewport()}.
+\section{Viewport and scissor}
 
-The comparison with Vulkan's own version of this exact fix (Chapter~\ref{ch:vulkan-backend})
-is worth drawing out, because the two renderers did not land at the same scope. Vulkan's fix is
-honestly limited to the backbuffer pass only --- a render-target pass there stays hardcoded to
-that target's own full size, because Vulkan's deferred, once-per-frame command-recording model
-has no way to recover which \cnaclass{Viewport} was active at the moment a given render
-target's draws were originally issued. EasyGL has no equivalent limitation, for an
-architectural reason rather than extra effort spent on this specific fix: \texttt{SetViewport()}
-issues its OpenGL calls immediately, at the moment a game actually calls it, with no deferred
-recording step in between --- so the same fix genuinely applies whether or not a
-\cnaclass{RenderTarget2D} / \cnaclass{RenderTargetCube} face is currently bound, using the active
-target's own height (the current binding record's \texttt{height}) for the coordinate-origin flip instead of the
-window's physical height whenever one is. A concrete illustration of a theme
-Chapter~\ref{ch:backend-architecture} already introduced in the abstract: two renderers
-implementing the identical interface method can genuinely differ in how completely they can
-honor it, for reasons rooted in each renderer's own underlying execution model rather than in
-how carefully either one was built.
+\begin{contractnote}
+\texttt{SetViewport()} immediately calls \texttt{device.set\_viewport()} and
+\texttt{device.set\_depth\_range()}. The route works for the backbuffer, 2D targets, and cube
+faces, using the active target height for the Y-origin conversion. SpriteBatch preserves a custom
+sub-viewport and builds its orthographic projection from that viewport's dimensions. Focused
+pixel tests cover one custom viewport and two viewport changes in one frame.
+\end{contractnote}
 
-The earlier Task~880 account also missed a draw-family correction that has since landed.
-\texttt{EasyGLSpriteBatchRenderer::FlushBatch()} reads the active native viewport. For a genuine
-sub-region it leaves the GL rectangle in place and builds its orthographic projection from that
-viewport's width and height, making sprite coordinates viewport-local as in FNA. Only the default
-full-target case resets to the full active render target or physical window. Dedicated pixel tests
-cover one custom viewport and two batches using different viewports in one frame, so SpriteBatch
-no longer overwrites a public custom rectangle or leaves later 3D work behind a false public cache.
+This scope is broader than Vulkan's pinned route, which is limited to the backbuffer because its
+deferred recording does not retain the viewport associated with each target draw; see
+Chapter~\ref{ch:vulkan-backend}. EasyGL applies the state at the call site.
 
-Scissor does not share that overwrite. \texttt{ApplyRasterizerState()} owns the GL enable and
-\texttt{SetScissorRect()} owns only the rectangle, both immediate. The latter now flips Y
-against \texttt{currentRtHeight\_} when a render target is active. Thus
-\path{docs/easygl_bugs.md}'s still-live row claiming it always uses physical window height is
-stale in current source, just like the viewport status above; \texttt{easygl\_scissor\_test}
-pixel-proves disabled, enabled, and disabled-again behavior independently.
+\texttt{ApplyRasterizerState()} controls scissor enablement, while
+\texttt{SetScissorRect()} sets the rectangle and flips Y against \texttt{currentRtHeight\_} for
+an active target. \texttt{easygl\_scissor\_test} compares disabled, enabled, and disabled-again
+pixels. The contrary rows in \texttt{docs/rendertarget-support.md} and
+\path{docs/easygl_bugs.md} predate these implementations.
 
 \subsection{A claim this chapter itself got wrong: two-sided stencil's shared mask is correct, not a bug}
 
@@ -260,67 +221,32 @@ device.set_stencil_func_separate(::easygl::CullFace::Back,
     referenceStencil, static_cast<unsigned int>(stencilMask));
 \end{lstlisting}
 
-The claim that this is \emph{incorrect} does not survive checking real XNA's own documented
-contract before assuming CNA's own code is at fault --- exactly the discipline
-Chapter~\ref{ch:what-is-cna} asks every claim in this book to meet. \texttt{xna4-spec}'s own
-\texttt{DepthStencilState.xml} defines four separate \cnaclass{CounterClockwiseStencil}*
-properties (\texttt{Function}, \texttt{Fail}, \texttt{DepthBufferFail}, \texttt{Pass} --- all
-four genuinely \emph{operations}) but exactly one \texttt{StencilMask} property, with no
-\texttt{CounterClockwiseStencilMask} anywhere in the type at all. Real XNA 4.0 itself has no API
-surface for a separate back-face stencil mask to begin with --- a game targeting real XNA cannot
-set one, so a renderer cannot fail to honor a value that was never settable in the first place.
-Reusing \texttt{stencilMask} for both faces is not a shortcut standing in for a missing feature;
-it is the \emph{only} behavior consistent with the real, documented API this class faithfully
-reproduces, confirmed by the same pattern for \texttt{stencilWriteMask} a few lines later in the
-identical function (also passed unchanged to both \texttt{Front} and \texttt{Back}, and also
-correctly so --- real XNA's \texttt{StencilWriteMask} is likewise a single, non-per-face
-property).
+Microsoft XNA 4.0 defines separate clockwise and counter-clockwise stencil \emph{operations},
+but only one \texttt{StencilMask} and one \texttt{StencilWriteMask}. CNA therefore passes each
+mask unchanged to both faces. The four counter-clockwise operation fields remain independent:
+\texttt{ccwStencilFunc}, \texttt{ccwStencilFail}, \texttt{ccwStencilDepthFail}, and
+\texttt{ccwStencilPass} reach a separate \texttt{set\_stencil\_op\_separate()} call for the back
+face. A two-sided mirror technique may use different front/back operations, but the public XNA
+contract exposes no per-face mask to vary.
 
-What genuinely \emph{is} per-face, and what this same function gets right, is worth stating
-precisely rather than lumping the whole feature together as either ``correct'' or ``buggy'':
-the four \cnaclass{CounterClockwiseStencil}* \emph{operation} properties are threaded through
-as \texttt{ccwStencilFunc} / \texttt{ccwStencilFail} / \texttt{ccwStencilDepthFail}/%
-\texttt{ccwStencilPass}, distinct parameters from their clockwise counterparts, and applied to
-\texttt{CullFace::Back} via a genuinely separate \texttt{set\_stencil\_op\_separate()} call ---
-real per-face divergent behavior, exactly where real XNA's own API allows it to diverge. A
-mirror-reflection technique relying on \texttt{TwoSidedStencilMode} (the same worked example
-Chapter~\ref{ch:state-objects} builds around \cnaclass{DepthStencilState}) can safely assume
-different \emph{stencil operations} for front- and back-facing geometry on this renderer, but
-must not assume a different \emph{stencil mask} is possible for either face --- not a
-limitation of this renderer specifically, but of the real XNA type every renderer implements
-identically.
-
-\section{\texttt{GetData()} really does work --- just not the way ``no GPU readback'' implies}
+\section{\texttt{GetData()} and CPU shadows}
 \label{sec:easygl-getdata-shadow}
 
-An earlier pass of this chapter said \cnaclass{VertexBuffer} / \cnaclass{IndexBuffer}
-\texttt{GetData} were ``not implemented at all'' on this renderer, with ``no interface method
-to even express a readback request.'' Reading \texttt{VertexBuffer.hpp} / \texttt{.cpp} directly
-shows that framing overstates the gap: \texttt{GetData} is real, public API, and it genuinely
-returns correct data --- it is just never a GPU readback at all, on \emph{any} renderer,
-because it does not need to be. A private \texttt{cpuShadow\_} byte buffer, declared directly
-on \cnaclass{VertexBuffer} itself (not per-renderer), caches every \texttt{SetData} call's
-already-packed GPU-layout bytes:
+An earlier pass described \cnaclass{VertexBuffer} and \cnaclass{IndexBuffer}
+\texttt{GetData} as absent. The public method instead returns bytes from the resource-level
+\texttt{cpuShadow\_}; it does not issue a GPU readback on any renderer. Each \texttt{SetData}
+call caches its packed GPU-layout bytes:
 
 \begin{lstlisting}
-// Task 930: CPU-side shadow of the most recent SetData call's compact GPU-layout
-// bytes, enabling GetData() without a real per-renderer GPU readback path (mirrors
-// Texture2D's own SetData/GetData shadow-buffer precedent) -- nothing in the XNA
-// 4.0 pipeline writes back into a VertexBuffer from the GPU side, so a CPU shadow
-// is a fully faithful implementation, not an approximation.
+// Packed bytes from the most recent SetData call.
 std::vector<std::uint8_t> cpuShadow_;
 \end{lstlisting}
 
-The comment's own justification is worth taking at face value rather than treating the shadow
-as a stopgap: real XNA's \cnaclass{VertexBuffer} / \cnaclass{IndexBuffer} are never written to
-by the GPU pipeline (no compute shaders, no transform feedback in the XNA 4.0 model), so
-\texttt{SetData} followed by \texttt{GetData} is a round-trip through CPU memory in real XNA
-too --- a CPU shadow is not an emulation of a missing capability, it is the same shape real
-XNA's own contract already has. \texttt{IndexBuffer} carries the identical mechanism, confirmed
-by its own header comment pointing back to \cnaclass{VertexBuffer}'s as the shared rationale.
-Both throw \texttt{NotSupportedException} correctly when \texttt{GetData} is called on a
-\texttt{BufferUsage::WriteOnly} buffer, matching real XNA's own documented restriction --- the
-shadow exists but is deliberately not consulted in that case.
+Microsoft XNA 4.0 exposes no GPU-write route for these buffers: no compute shader or transform
+feedback can alter them. A CPU shadow therefore preserves the observable \texttt{SetData} to
+\texttt{GetData} contract. \texttt{IndexBuffer} uses the same mechanism. Both types throw
+\texttt{NotSupportedException} when \texttt{GetData} is called on a
+\texttt{BufferUsage::WriteOnly} buffer, so that mode deliberately bypasses the shadow.
 
 There is one shared typed-path exception this chapter's earlier wording missed:
 the options-taking \texttt{SetData} wrappers on both dynamic buffer classes upload correctly
@@ -331,11 +257,10 @@ readback limitation. Chapter~\ref{ch:textures-rendertargets} traces the exact pa
 
 \subsection{The separate raw-layout gap: \texttt{SetDataRaw}}
 
-Chapter~\ref{ch:backend-architecture}'s Task~1080 custom-vertex-layout capability --- EasyGL's
-own extension letting a caller supply an arbitrary \cnaclass{VertexDeclaration} instead of only
-the seven typed \texttt{VertexPositionXxx} shapes --- reaches the renderer through a different,
-\texttt{CNAEXT} entry point, \texttt{SetDataRaw()}, and that path does \emph{not} participate in
-the shadow mechanism at all:
+EasyGL's \texttt{CNAEXT} custom-layout route lets a caller supply an arbitrary
+\cnaclass{VertexDeclaration} instead of one of the seven typed
+\texttt{VertexPositionXxx} shapes. It reaches the renderer through \texttt{SetDataRaw()}, which
+does \emph{not} participate in the shadow mechanism:
 
 \begin{lstlisting}
 void VertexBuffer::SetDataRaw(const void* data, int count, int stride)
@@ -388,39 +313,36 @@ test set. Current persistent EasyGL-specific classes include the independent
 in larger corpora are environment/control classes rather than renderer evidence. A baseline is
 meaningful only with its exact commit, configured registrations, display/driver, and test filter.
 
-\section{A real screenshot, captured headlessly under Xvfb}
+\section{Xvfb screenshot evidence}
 
-\texttt{EasyGL} opens a real SDL3 window and issues real OpenGL ES calls, so --- unlike the
-\texttt{SOFTWARE} renderer's screenshots elsewhere in this book, reachable with no display at
-all --- a genuine screenshot needs a genuine (if virtual) display. This book's own
-screenshot-feasibility notes named \texttt{Xvfb} plus Mesa's software \texttt{llvmpipe} GL
-implementation as plausible for exactly this case, but had explicitly left it untested.
+\texttt{EasyGL} creates an SDL3 window and issues OpenGL ES calls. Unlike the
+\texttt{SOFTWARE} renderer's display-free screenshots, this path needs a display server. The
+retained campaign used \texttt{Xvfb} with Mesa's \texttt{llvmpipe}; earlier feasibility notes
+had identified that route but left it untested.
 
 Building this renderer with \texttt{CNA\_BUILD\_EXAMPLES=ON} and running a small headless demo
-under \texttt{xvfb-run} confirms the technique works here too, using the identical scene and
-capture helper as Chapter~\ref{ch:sdl-renderer}'s own equivalent section: the real
+under \texttt{xvfb-run} exercises the route using the same scene and capture helper as
+Chapter~\ref{ch:sdl-renderer}'s equivalent section: the
 \texttt{modules/renderers/easygl/examples/\allowbreak{}easygl\_spritebatch\_rotation\_golden\_test.cpp} rotate-around-origin scene
-(Task~465/417; also Chapter~\ref{ch:spritebatch}'s own worked example), captured via
+(also used in Chapter~\ref{ch:spritebatch}), captured via
 \texttt{SaveBackBufferScreenshotEXT} after \texttt{xvfb-run -a --server-args="-screen 0
 1024x768x24" env -u WAYLAND\_DISPLAY ./build-easygl/cna\_xvfb\_screenshot\_demo\_easygl}.
 
 \begin{figure}[h]
 \centering
+\begin{figurealt}{EasyGL screenshot of a SpriteBatch rotation fixture. A red marker rotated ninety degrees around the source bottom-right origin lands at the destination rectangle's top-right corner.}
 \includegraphics[width=0.5\textwidth]{images/ch18-spritebatch-rotation-easygl.png}
-\caption{Real, unedited output of the same rotate-around-origin \cnaclass{SpriteBatch} scene as
-Figure~\ref{fig:ch17-spritebatch-rotation}, this time rendered by \texttt{EasyGL} through a real
-OpenGL ES context under a virtual \texttt{Xvfb} display. The two images are pixel-identical for
-this scene --- a real, independent cross-renderer agreement on a case both renderers' own audits
-(this chapter's Phase~1111/1112 fixes; Chapter~\ref{ch:sdl-renderer}'s Phase~70 audit) already
-established each gets right on its own.}
+\end{figurealt}
+\caption{Output of the rotate-around-origin \cnaclass{SpriteBatch} scene from
+Figure~\ref{fig:ch17-spritebatch-rotation}, rendered by \texttt{EasyGL} through OpenGL ES under
+\texttt{Xvfb}. The retained EasyGL and SDL Renderer images are pixel-identical for this fixture;
+the comparison does not extend beyond the recorded scene.}
 \label{fig:ch18-spritebatch-rotation}
 \end{figure}
 
-Figure~\ref{fig:ch18-spritebatch-rotation} is that real output. Confirming both renderers
-produce the same result for the same scene is a small but genuine independent data point: it is
-exactly the kind of pixel-level cross-renderer agreement the D3D9 oracle corpus elsewhere in this
-chapter measures far more systematically, here obtained by the simplest possible
-means --- two real screenshots, compared by eye.
+The two retained $400\times300$ PNG files are byte-for-byte identical. This establishes
+cross-renderer agreement for the named fixture only; the D3D9 oracle corpus elsewhere in this
+chapter covers a broader set of scenes.
 
 \section{OPENGL4: modern core without the EasyGL family}
 

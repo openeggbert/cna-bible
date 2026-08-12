@@ -1,1655 +1,399 @@
-\chapter{Vectors, Matrices, Quaternions, and Conventions}
+\chapter{Math Types and Coordinate Conventions}
 \label{ch:math-conventions}
 \label{ch:math-core-types}
 
-Every CNA class covered later in this book --- \cnaclass{SpriteBatch}, \cnaclass{Model},
-every stock effect, every renderer --- passes values of the types in this chapter across its
-API. They live under \texttt{modules/math/include/Microsoft/Xna/Framework/} (not in the
-\texttt{Graphics} sub-namespace), are all value types (C\texttt{++} \texttt{struct}s, matching
-XNA's own \texttt{struct} semantics rather than reference-type classes, with the sole
-exception of \cnaclass{BoundingFrustum}, discussed below), and most carry a private
-debug-display helper, and several also a \texttt{CheckForNaNs()} guard, both ported from FNA's
-own debug-visualizer tooling --- \S\ref{sec:shared-debug-surface} below documents exactly which
-types have which, and a real finding about how reachable either one actually is.
+CNA's math module carries the values that connect game code, content, effects, and renderers.
+Its names follow XNA, but correct use depends on conventions that method names do not reveal:
+row-vector matrix composition, a right-handed world basis, packed-color layout, interval
+boundaries, and several incomplete geometric paths. This chapter explains those contracts.
+Appendix~\ref{ch:api-quick-reference} is the compact API inventory; the module headers remain the
+signature authority.
 
-\section{A shared surface: Equals, GetHashCode, ToString, and two debug-only helpers}
-\label{sec:shared-debug-surface}
+\section{Mental model}
 
-Before working through each type in turn, it's worth naming once what all eleven type
-families in this chapter share, rather than re-stating it eleven times: every one of them ---
-\cnaclass{Vector2} / \cnaclass{Vector3} / \cnaclass{Vector4}, \cnaclass{Matrix},
-\cnaclass{Quaternion}, \cnaclass{Plane}, \cnaclass{Ray}, \cnaclass{Rectangle},
-\cnaclass{Point}, \cnaclass{BoundingBox}, \cnaclass{BoundingSphere},
-\cnaclass{BoundingFrustum}, and \cnaclass{CurveKey} --- implements the same three-method
-identity surface read directly from each header: \texttt{bool Equals(const T\& other) const},
-a \texttt{GetHashCode() const} hash accessor --- though not at a uniform return type: the
-vectors, \cnaclass{Matrix}, and \cnaclass{Quaternion} return a plain \texttt{int};
-\cnaclass{Point} and \cnaclass{Rectangle} return \texttt{intcs}; \cnaclass{Plane},
-\cnaclass{Ray}, all three bounding-volume types, and \cnaclass{CurveKey} return
-\texttt{std::size\_t} --- a real, three-way inconsistency in the port across otherwise
-structurally identical methods, not a typo in this book --- and (all but \cnaclass{CurveKey})
-\texttt{std::string ToString() const}. This is CNA's C\texttt{++}
-expression of the same override every C\# \texttt{struct} gets for free from
-\texttt{System.ValueType}: C\texttt{++} has no boxing and no virtual dispatch on a value type
-the way .NET does, so each override has to be spelled out explicitly per type rather than
-inherited once. Most of these types (the vectors, \cnaclass{Matrix}, \cnaclass{Quaternion},
-\cnaclass{Plane}, \cnaclass{Ray}, \cnaclass{Rectangle}, \cnaclass{Point}) additionally provide
-\texttt{operator==} / \texttt{operator!=} as friend functions performing the identical
-component-wise comparison \texttt{Equals()} does --- both spellings reach the same comparison,
-so \texttt{a == b} and \texttt{a.Equals(b)} are interchangeable wherever both exist; the
-operator form is simply the more idiomatic C\texttt{++} spelling for everyday code, while
-\texttt{Equals()} exists to satisfy the same \texttt{System::IEquatable<T>}-style contract XNA
-itself expects.
+Except for \cnaclass{BoundingFrustum}, the core types are C\texttt{++} value types with public
+components or fields. Copying a \cnaclass{Vector3}, \cnaclass{Matrix}, \cnaclass{Rectangle}, or
+\cnaclass{Color} copies its value; no framework identity or heap ownership is involved.
+\cnaclass{BoundingFrustum} instead owns derived planes and corners behind its matrix property, so
+it behaves more like a small object than a plain aggregate.
 
-\paragraph{The debug-display helper: real, but only on some types, and privately unreachable.}
-The two members this chapter's own opening paragraph names --- a debug-display string helper
-and \texttt{CheckForNaNs()} --- are real, but neither is present on every type in this chapter,
-and reading each header directly is the only way to know which is which:
-\texttt{getDebugDisplayStringProperty()} exists (always \texttt{private}) on
-\cnaclass{Vector2} / \cnaclass{Vector3} / \cnaclass{Vector4}, \cnaclass{Matrix},
-\cnaclass{Quaternion}, \cnaclass{Rectangle}, \cnaclass{Point}, \cnaclass{BoundingBox}, and
-\cnaclass{BoundingFrustum}, but \emph{not} on \cnaclass{Plane}, \cnaclass{Ray},
-\cnaclass{BoundingSphere}, \cnaclass{CurveKey}, or \cnaclass{Curve}. \texttt{CheckForNaNs()} is
-narrower still, present only on the five genuinely floating-point-heavy types where a NaN
-component is a meaningful failure mode: \cnaclass{Vector2}, \cnaclass{Vector3},
-\cnaclass{Vector4}, \cnaclass{Matrix}, and \cnaclass{Quaternion}.
-
-Two things are worth verifying rather than assuming, and both turned out to be real findings
-once checked directly against the source:
+Most arithmetic families provide two spellings:
 
 \begin{itemize}
-\item \textbf{Neither helper is ever actually called from anywhere else in the codebase.} A
-  project-wide search for call sites of \texttt{CheckForNaNs()} or
-  \texttt{getDebugDisplayStringProperty()} outside each type's own defining \texttt{.cpp} file
-  turns up nothing --- no test, no example program, no other framework class invokes either
-  one. \texttt{getDebugDisplayStringProperty()} is \texttt{private} on every type that has it,
-  with no public accessor anywhere, so nothing outside the type itself could call it even if it
-  wanted to. As shipped, both helpers are unreachable through any public code path; the most
-  plausible explanation, consistent with this chapter's opening claim that they're ``ported
-  from FNA's own debug-visualizer tooling,'' is that they exist to back an IDE
-  debugger-visualizer extension (the .NET convention this was ported from is the
-  \texttt{[DebuggerDisplay]} attribute) that has no C\texttt{++} counterpart wired up yet --- no
-  \texttt{.natvis} file (Visual Studio) or LLDB/GDB summary-provider script was found anywhere
-  in the repository. Worth knowing before assuming a call to either method exists somewhere
-  this book simply didn't happen to read.
-\item \textbf{\texttt{CheckForNaNs()}'s five implementations are not actually identical.} The
-  three vector types' versions run unconditionally, in every build configuration:
-  \texttt{Vector2::CheckForNaNs()} is a plain \texttt{if (std::isnan(X) ||
-  std::isnan(Y)) throw std::logic\_error(...)}, with no preprocessor guard at all.
-  \cnaclass{Matrix}'s and \cnaclass{Quaternion}'s versions, by contrast, are wrapped in
-  \texttt{\#if !defined(NDEBUG)} --- meaning they compile to nothing whatsoever in a release
-  build, while the three vector types' checks would still run (uselessly, since nothing calls
-  them) even there. Because no call site anywhere currently invokes any of the five, this
-  inconsistency has zero observable effect today --- but it is exactly the kind of small,
-  easy-to-miss divergence that would surface immediately if a future change wired
-  \texttt{CheckForNaNs()} into, say, a debug-only assertion after arithmetic operations, and it
-  is worth naming now, while it is still harmless, rather than after it causes a
-  release-vs-debug behavioral difference someone has to debug.
+  \item a value-returning form, such as \texttt{Vector3::Normalize(value)};
+  \item an output-reference form with a trailing \texttt{result\&}, mirroring XNA's
+        \texttt{ref}/\texttt{out} overloads.
 \end{itemize}
 
-\section{Vectors: Vector2, Vector3, Vector4}
+They are separate public declarations. Do not assume the output-reference form is alias-safe:
+some implementations write fields while still reading the input. The live
+\cnaclass{Plane::Transform} defect later in this chapter is the consequential example.
 
-The three vector types share one shape: public fields (\texttt{X}, \texttt{Y}, and as
-applicable \texttt{Z}, \texttt{W}), a set of static constants (\texttt{Zero}, \texttt{One},
-\texttt{UnitX} / \texttt{UnitY}/\ldots), a default zero-initializing constructor, a per-component
-constructor, and an \texttt{explicit} single-scalar broadcast constructor
-(\texttt{Vector2(float value)} sets both components to \texttt{value}). \cnaclass{Vector3} and
-\cnaclass{Vector4} additionally provide composing constructors from lower-dimensional vectors
-plus extra scalars --- \texttt{Vector3(Vector2, float z)}, \texttt{Vector4(Vector3, float w)},
-\texttt{Vector4(Vector2, float z, float w)} --- letting code build a higher-dimensional
-vector out of a lower one without manually unpacking components.
+\section{Common value surface}
+\label{sec:shared-debug-surface}
 
-\cnaclass{Vector3} alone defines direction constants --- \texttt{Up}, \texttt{Down},
-\texttt{Right}, \texttt{Left}, \texttt{Forward}, \texttt{Backward} --- with an explicit doc
-comment that \texttt{Forward} / \texttt{Backward} assume a \emph{right-handed} coordinate
-system (\texttt{Forward = (0,0,-1)}, \texttt{Backward = (0,0,1)}), a detail worth remembering
-whenever this book's later chapters discuss camera or model transforms.
+The vectors, matrices, quaternions, planes, rays, integer geometry, bounding volumes, and
+\cnaclass{CurveKey} expose equality and hashing; most also expose \texttt{ToString}. Hash return
+types are not uniform: the port uses \texttt{int}, \texttt{intcs}, or
+\texttt{std::size\_t} according to the type. Code that abstracts over these values should use
+\texttt{auto} or its own normalized hash type.
 
-Every static method that can meaningfully be either ``return a new value'' or ``write into an
-existing one'' is provided \emph{both} ways --- a value-returning overload and an output-ref
-overload writing into a \texttt{result\&} parameter --- mirroring XNA's own C\# \texttt{ref}
-method-overload convention exactly: \texttt{Add}, \texttt{Clamp}, \texttt{Distance}/%
-\texttt{DistanceSquared}, \texttt{Divide}, \texttt{Dot}, \texttt{Lerp}, \texttt{Max}/%
-\texttt{Min}, \texttt{Multiply}, \texttt{Negate}, \texttt{Normalize}, \texttt{Reflect},
-\texttt{SmoothStep}, \texttt{Subtract}, and the curve-interpolation pair
-\texttt{Barycentric} / \texttt{CatmullRom} / \texttt{Hermite}. \texttt{Transform} additionally
-comes in by-\cnaclass{Matrix} and by-\cnaclass{Quaternion} forms, each with single-value and
-full-array/range overloads; \texttt{TransformNormal} (Vector2/Vector3 only) applies a matrix
-transform with translation stripped out, the form correct for transforming surface normals
-rather than positions. Operators (\texttt{==}, \texttt{!=}, unary/binary \texttt{-},
-component-wise and scalar \texttt{*} / \texttt{/}, and \texttt{+}) are implemented as
-\texttt{friend} functions; \cnaclass{Vector3} alone adds \texttt{CNAEXT} in-place
-\texttt{operator+=} / \texttt{operator-=} convenience overloads beyond the strict XNA surface.
+Several types retain private debugger-display helpers, and the floating-point vectors,
+\cnaclass{Matrix}, and \cnaclass{Quaternion} define \texttt{CheckForNaNs}. No external call site
+or debugger visualizer was located at the pin. Vector checks are compiled unconditionally;
+matrix and quaternion checks disappear under \texttt{NDEBUG}. This difference has no current
+runtime effect because none of the helpers is called.
 
-Both \cnaclass{Matrix} and \cnaclass{Quaternion} are only forward-declared in these headers
-rather than included, specifically to avoid a circular include --- \texttt{Matrix.hpp} and
-\texttt{Quaternion.hpp} both depend on the vector types in the other direction.
+\section{Coordinate and composition contract}
 
-\subsection{Full method reference: the shared vector operation set}
+Four rules carry into every graphics chapter:
+
+\begin{enumerate}
+  \item \cnaclass{Vector3::Forward} is $(0,0,-1)$ and
+        \cnaclass{Vector3::Backward} is $(0,0,1)$: CNA follows XNA's right-handed world basis.
+  \item CNA uses row-vector transforms. A position is conceptually multiplied on the left:
+        $p' = pM$.
+  \item Matrix products read in application order. With row vectors,
+        \texttt{rotation * translation} rotates first and translates second.
+  \item Perspective clip space needs four components. Preserve clip-space $W$ until clipping and
+        the perspective divide have completed.
+\end{enumerate}
+
+This explains the standard world/view/projection product:
+
+\[
+  p_{\mathrm{clip}} = p_{\mathrm{object}}\,M_{\mathrm{world}}\,
+                      M_{\mathrm{view}}\,M_{\mathrm{projection}} .
+\]
+
+The public depth convention is $[0,1]$. A renderer may translate that convention for its native
+API, but application matrices and effects remain XNA-shaped.
+
+\section{Vectors}
+
+\cnaclass{Vector2}, \cnaclass{Vector3}, and \cnaclass{Vector4} provide public components,
+zero/one and unit constants, arithmetic, dot products, distances, normalization, reflection,
+clamping, and the XNA interpolation family. \cnaclass{Vector3} adds directions and
+\texttt{Cross}; \cnaclass{Vector4} adds lower-dimensional transform inputs. Operations such as
+\texttt{Lerp} are not clamped, so an amount outside $[0,1]$ extrapolates.
+
+\subsection{Operation groups}
 \label{sec:vector-full-reference}
 
-The paragraph above named the shared operation set; this subsection documents each one's
-actual parameters and behavior once, since \cnaclass{Vector2} / \cnaclass{Vector3}/%
-\cnaclass{Vector4} implement every one of them identically in shape (only the component count
-differs). Every entry below exists as \emph{two} overloads unless stated otherwise --- a
-value-returning \texttt{static} form and a \texttt{void}-returning output-parameter form taking
-the same arguments plus a trailing \texttt{T\& result} --- and as an instance-callable
-counterpart is never provided (these are always reached as \texttt{Vector3::Add(a, b)}, never
-\texttt{a.Add(b)}).
+\begin{center}
+\small
+\begin{tabular}{@{}p{0.25\textwidth}p{0.62\textwidth}@{}}
+\toprule
+\textbf{Group} & \textbf{Public families and boundary} \\
+\midrule
+Arithmetic & \texttt{Add}, \texttt{Subtract}, component/scalar \texttt{Multiply} and
+  \texttt{Divide}, \texttt{Negate}, operators, \texttt{Min}, \texttt{Max}, and
+  \texttt{Clamp}. \\
+Measurement & \texttt{Length}, \texttt{LengthSquared}, \texttt{Distance},
+  \texttt{DistanceSquared}, and \texttt{Dot}; \cnaclass{Vector3} adds \texttt{Cross}. \\
+Interpolation & \texttt{Lerp}, \texttt{SmoothStep}, \texttt{Barycentric},
+  \texttt{CatmullRom}, and \texttt{Hermite}. Amounts are caller-controlled. \\
+Transforms & Matrix and quaternion \texttt{Transform}, plus array/range forms.
+  \texttt{TransformNormal} omits translation and exists for \cnaclass{Vector2}/
+  \cnaclass{Vector3}. \\
+\bottomrule
+\end{tabular}
+\end{center}
 
-\begin{description}
-\item[\texttt{Add(value1, value2)}] component-wise sum.
-\item[\texttt{Subtract(value1, value2)}] component-wise difference (\texttt{value1 - value2}).
-\item[\texttt{Multiply(value1, value2)}] component-wise product; a second overload,
-  \texttt{Multiply(value1, scaleFactor)}, multiplies every component by one \texttt{float}.
-\item[\texttt{Divide(value1, value2)}] component-wise quotient; a second overload,
-  \texttt{Divide(value1, divider)}, divides every component by one \texttt{float}.
-\item[\texttt{Negate(value)}] a single-argument unary negation, distinct from the
-  \texttt{operator-(value)} friend function that does the same thing operator-style.
-\item[\texttt{Distance(value1, value2)}] Euclidean distance, returned as \texttt{float} (not a
-  vector --- no output-ref variant takes a vector reference; the output-ref overload writes
-  into a \texttt{float\& result} instead).
-\item[\texttt{DistanceSquared(value1, value2)}] the same, without the final square root ---
-  the standard micro-optimization for distance \emph{comparisons}, where the relative ordering
-  of squared distances matches the relative ordering of true distances and the square root's
-  cost can be skipped entirely.
-\item[\texttt{Dot(value1, value2)}] the dot product, again returned as \texttt{float}.
-\item[\texttt{Clamp(value1, min, max)}] clamps each component of \texttt{value1} independently
-  between the matching components of \texttt{min} and \texttt{max}.
-\item[\texttt{Min(value1, value2)} / \texttt{Max(value1, value2)}] per-component minimum/maximum
-  --- not the same as comparing vector magnitude; each component is chosen independently.
-\item[\texttt{Lerp(value1, value2, amount)}] linear interpolation; \texttt{amount} is
-  conventionally in $[0,1]$ but is not clamped --- passing a value outside that range
-  extrapolates rather than throwing.
-\item[\texttt{SmoothStep(value1, value2, amount)}] the same shape as \texttt{Lerp} but applying
-  a smoothed (ease-in/ease-out) interpolation curve instead of a linear one.
-\item[\texttt{Hermite(value1, tangent1, value2, tangent2, amount)}] Hermite spline
-  interpolation between two positions, each with its own tangent vector.
-\item[\texttt{CatmullRom(value1, value2, value3, value4, amount)}] Catmull-Rom spline
-  interpolation through four control points, evaluated between the middle two.
-\item[\texttt{Barycentric(value1, value2, value3, amount1, amount2)}] converts barycentric
-  triangle coordinates (\texttt{amount1} weighting toward \texttt{value2}, \texttt{amount2}
-  weighting toward \texttt{value3}) into a Cartesian point inside the triangle defined by the
-  three vertices.
-\item[\texttt{Reflect(vector, normal)}] reflects \texttt{vector} across a surface whose normal
-  is \texttt{normal}.
-\item[\texttt{Normalize(value)}] a \emph{static} form returning a normalized copy, distinct from
-  the instance method \texttt{void Normalize()} that normalizes \texttt{*this} in place.
-\item[\texttt{Transform(position, matrix)}] transforms a position by a \cnaclass{Matrix};
-  further overloads accept a whole \texttt{std::vector<T>} (transforming every element into a
-  destination vector) and a ranged form taking an explicit source index, destination index, and
-  length, for transforming a sub-range of a larger array without copying it first.
-\item[\texttt{Transform(value, rotation)}] the same shape, transforming by a
-  \cnaclass{Quaternion} rotation instead of a \cnaclass{Matrix} --- \cnaclass{Vector4} alone
-  additionally accepts a \cnaclass{Vector2} or \cnaclass{Vector3} \emph{input} to either
-  \texttt{Transform} overload, since transforming a lower-dimensional position by a
-  \cnaclass{Matrix} / \cnaclass{Quaternion} still naturally produces a full \cnaclass{Vector4}
-  result once the implied \texttt{W} component is accounted for.
-\item[\texttt{TransformNormal(normal, matrix)}] (\cnaclass{Vector2} / \cnaclass{Vector3} only)
-  applies a matrix transform with translation stripped out first --- the mathematically correct
-  form for transforming a surface normal, where translating the normal itself would be
-  meaningless.
-\end{description}
-
-The description list above --- and every other ``full method reference'' in this chapter ---
-deliberately covers only the \emph{static} operation surface; each vector type additionally
-provides five ordinary \emph{instance} methods that are easy to overlook precisely because
-they aren't part of the value/output-ref static-method pattern the rest of this section is
-built around: \texttt{float Length() const} and \texttt{float LengthSquared() const} (the
-worked example immediately below already calls \texttt{toTarget.Length()}, without this book
-having named the method it's calling until now), plus the shared
-\texttt{Equals} / \texttt{GetHashCode} / \texttt{ToString} identity triad documented once, for
-every type in this chapter, in \S\ref{sec:shared-debug-surface} above.
+Normalizing a zero vector divides by zero; CNA does not substitute a fallback direction. Validate
+input when non-finite output would escape into gameplay or rendering.
 
 \begin{lstlisting}
-// Worked example: normalize a direction, then move an object toward a
-// target at a fixed speed using Vector2::Distance and Vector2::Lerp.
-Vector2 position(100.0f, 100.0f);
-const Vector2 target(300.0f, 220.0f);
-const float speed = 120.0f;   // pixels per second
-
+// Illustrative: move toward a target without overshooting it.
 Vector2 toTarget = target - position;
 const float distance = toTarget.Length();
 if (distance > 0.0001f)
 {
     toTarget.Normalize();
-    const float step = std::min(speed * deltaSeconds, distance);
-    position = position + toTarget * step;
+    position = position + toTarget *
+        std::min(speed * deltaSeconds, distance);
 }
 \end{lstlisting}
 
-\paragraph{A second worked example: Vector3::Cross, the one method in this family not shared by Vector2/Vector4.}
-Every method in \S\ref{sec:vector-full-reference}'s reference table above is implemented
-identically by all three vector types; \texttt{Cross(vector1, vector2)} is the one genuine
-exception, since a cross product is only meaningfully defined in three dimensions ---
-\cnaclass{Vector2} and \cnaclass{Vector4} do not declare it at all. \cnaclass{Plane}'s own
-three-point constructor (\S\ref{sec:quaternion-full-reference} below) uses exactly this method
-internally to derive a face normal from two triangle edges, which is also the most common
-reason application code reaches for \texttt{Cross} directly:
+Cross-product order sets the normal's sign. For a triangle $(a,b,c)$,
+\texttt{Cross(b - a, c - a)} reverses if $b$ and $c$ are exchanged; the same winding choice
+later controls face culling.
+
+\subsection{Why Vector4 matters}
+
+\texttt{Vector3::Transform(position, projection)} returns three components and therefore cannot
+carry the projected $W$ needed by a software rasterizer or a manual clipping stage.
+\cnaclass{Vector4} accepts a \cnaclass{Vector3} input directly:
 
 \begin{lstlisting}
-// Worked example: compute a triangle's face normal from two of its edges --
-// the same computation Plane's own three-point constructor performs
-// internally, made explicit here for a case that just needs the normal
-// itself (e.g. per-face lighting) rather than a full Plane.
-const Vector3 edge1 = b - a;
-const Vector3 edge2 = c - a;
-
-Vector3 faceNormal = Vector3::Cross(edge1, edge2);
-faceNormal.Normalize();
-\end{lstlisting}
-
-Winding order matters here exactly as it does for backface culling
-(Chapter~\ref{ch:graphicsdevice}'s \texttt{RasterizerState} coverage): swapping \texttt{edge1}
-and \texttt{edge2} --- equivalently, swapping \texttt{b} and \texttt{c} --- negates the
-resulting normal, since \texttt{Cross(v1, v2) == -Cross(v2, v1)} for any two vectors.
-
-\subsection{A third worked example: Vector4's own extra Transform overloads, and why clip space needs them}
-
-\S\ref{sec:vector-full-reference}'s reference table above noted, in passing, that
-\cnaclass{Vector4} alone accepts a \cnaclass{Vector2} or \cnaclass{Vector3} \emph{input} to
-\texttt{Transform}, in addition to the \cnaclass{Vector4}-to-\cnaclass{Vector4} form
-\cnaclass{Vector2} / \cnaclass{Vector3} themselves already have. This is not a redundant
-convenience overload --- it exists because transforming a 3D position by a full
-\cnaclass{Matrix} (in particular a perspective projection) genuinely produces a fourth
-component the source position never had, and \cnaclass{Vector3}'s own \texttt{Transform}
-silently discards exactly that component. Reading CNA's own \texttt{SOFTWARE} renderer
-rasterizer (Chapter~\ref{ch:graphicsdevice}'s own worked examples both run through it) shows
-precisely where this matters in practice: every vertex it processes is transformed into clip
-space with \texttt{Vector4::Transform(position, combined)} --- taking a \cnaclass{Vector3}
-position directly --- specifically \emph{because} the resulting \texttt{W} component is
-required by the perspective divide and near-plane clipping that come immediately afterward,
-both of which happen before \texttt{W} is ever discarded. Had the rasterizer instead used
-\cnaclass{Vector3}'s own \texttt{Transform(position, matrix)}, the very quantity the rest of
-the pipeline depends on would already be gone.
-
-\begin{lstlisting}
-// Worked example: manually reproducing the first step of CNA's own
-// SOFTWARE rasterizer -- transforming a vertex position into clip space
-// and inspecting the W component the perspective divide needs.
 const Matrix combined = world * view * projection;
-
-const Vector3 objectSpacePosition(0.0f, 0.8f, 0.0f);   // one triangle vertex
-
-// Vector3::Transform(objectSpacePosition, combined) would silently drop
-// exactly the component the next two lines depend on -- use Vector4's own
-// overload, which accepts the Vector3 input directly, instead.
-const Vector4 clip = Vector4::Transform(objectSpacePosition, combined);
-
-// The perspective divide (screen-space X/Y, and depth) needs clip.W --
-// this is the step Vector3::Transform's silently-discarded W would have
-// made impossible to perform correctly afterward.
-const Vector3 ndc(clip.X / clip.W, clip.Y / clip.W, clip.Z / clip.W);
+const Vector4 clip = Vector4::Transform(position, combined);
+if (clip.W != 0.0f)
+{
+    const Vector3 ndc(
+        clip.X / clip.W, clip.Y / clip.W, clip.Z / clip.W);
+}
 \end{lstlisting}
 
-\section{Matrix: a 4x4, and one CNA-specific bridge method}
+The Software renderer uses this four-component route before clipping and division. The snippet is
+illustrative; production code must also handle the clip volume and the sign and magnitude of
+\texttt{W}.
 
-\cnaclass{Matrix} stores sixteen public \texttt{float} fields named \texttt{M11}
-through \texttt{M44} (row-major naming: \texttt{M<row><col>}), with direction-vector
-convenience accessors --- \texttt{getBackwardProperty} / \texttt{setBackwardProperty} (the
-third row), \texttt{getForwardProperty} (negated third row), \texttt{getUpProperty} (second
-row), \texttt{getDownProperty} (negated second row), \texttt{getLeftProperty}/%
-\texttt{getRightProperty} (negated/plain first row), and
-\texttt{getTranslationProperty} / \texttt{setTranslationProperty} (the fourth row). Unlike the
-vector types' \texttt{Zero} / \texttt{One} fields, \texttt{Identity} is exposed as a static
-\emph{function}, \texttt{getIdentityProperty()}, not a field constant.
+\section{Matrix}
 
-The static factory surface is the largest of any type in this chapter: billboard and
-constrained-billboard construction, axis-angle and quaternion and yaw/pitch/roll rotation,
-look-at, orthographic (centered and off-center), perspective (plain, field-of-view, and
-off-center), per-axis rotation (\texttt{CreateRotationX/Y/Z}), scale (scalar, per-axis, and
-\cnaclass{Vector3} overloads), shadow, translation (scalar and \cnaclass{Vector3}
-overloads), reflection, and world-matrix construction --- each, again, with a value-returning
-and an output-ref overload. Arithmetic statics (\texttt{Add}, \texttt{Divide},
-\texttt{Invert}, \texttt{Lerp}, \texttt{Multiply}, \texttt{Negate}, \texttt{Subtract},
-\texttt{Transpose}) and the instance method \texttt{Decompose(scale\&, rotation\&,
-translation\&) -> bool} round out the surface.
+\cnaclass{Matrix} stores \texttt{M11} through \texttt{M44}. Translation occupies the fourth
+row, and direction properties expose the first three rows according to the right-handed basis.
+The principal factory groups are translation, scale, rotations, quaternion conversion,
+look-at/world, orthographic and perspective projections, billboards, planar shadow, and
+reflection.
 
-One method exists purely to bridge XNA's conceptual row-major matrix into the graphics
-renderers covered in Part~\ref{part:renderers}: \texttt{CNAEXT void ToColumnMajor(float out[16]) const}. Despite
-its older prose description, the implementation does \emph{not} numerically transpose the
-matrix: it copies \texttt{M11}, \texttt{M12}, ..., \texttt{M44} in declaration order. The
-transpose is the receiving API's interpretation of those same 16 floats as column-major storage
---- equivalently, ``GLSL column~$i$ equals HLSL row~$i$.'' The only dedicated test uses identity,
-which cannot distinguish this copy from a real transpose. Renderer code must preserve the
-consumer-side convention rather than adding a second transpose.
-
-\subsection{Full factory method reference}
+\subsection{Factory and arithmetic groups}
 \label{sec:matrix-full-reference}
-
-Every factory below returns a full \cnaclass{Matrix} by value and has a matching
-output-parameter twin (\texttt{..., Matrix\& result}), per the convention already established
-for the vector types.
-
-\begin{description}
-\item[\texttt{CreateTranslation(x, y, z)} / \texttt{CreateTranslation(Vector3 position)}] a
-  pure translation matrix.
-\item[\texttt{CreateScale(scale)}] uniform scale on all three axes from a single \texttt{float};
-  \texttt{CreateScale(xScale, yScale, zScale)} scales each axis independently;
-  \texttt{CreateScale(Vector3 scales)} takes the three factors packed into a vector.
-\item[\texttt{CreateRotationX(radians)} / \texttt{CreateRotationY(radians)} /
-  \texttt{CreateRotationZ(radians)}] rotation around one principal axis --- the form the worked
-  example in \S\ref{sec:worked-examples} below actually uses.
-\item[\texttt{CreateFromAxisAngle(axis, angle)}] rotation around an arbitrary (not necessarily
-  axis-aligned) axis vector.
-\item[\texttt{CreateFromQuaternion(quaternion)}] converts a \cnaclass{Quaternion} rotation into
-  its equivalent \cnaclass{Matrix} form.
-\item[\texttt{CreateFromYawPitchRoll(yaw, pitch, roll)}] builds a rotation from the three Euler
-  angles directly, without an intermediate \cnaclass{Quaternion}.
-\item[\texttt{CreateLookAt(cameraPosition, cameraTarget, cameraUpVector)}] the standard
-  view-matrix construction --- camera position, the point it's looking at, and the world ``up''
-  direction (almost always \cnaclass{Vector3::Up}) --- used in the worked example below for
-  exactly this purpose.
-\item[\texttt{CreateOrthographic(width, height, zNearPlane, zFarPlane)}] a centered orthographic
-  projection; \texttt{CreateOrthographicOffCenter(left, right, bottom, top, zNearPlane,
-  zFarPlane)} is the off-center form, letting the projection volume's center not coincide with
-  the view axis.
-\item[\texttt{CreatePerspective(width, height, nearPlaneDistance, farPlaneDistance)}] a
-  perspective projection specified by an explicit near-plane width/height rather than a field
-  of view; \texttt{CreatePerspectiveFieldOfView(fieldOfView, aspectRatio, nearPlaneDistance,
-  farPlaneDistance)} is the far more commonly used field-of-view form (the one the worked
-  example below uses, with \texttt{MathHelper::PiOver4} as a typical 90-degree-diagonal field of
-  view); \texttt{CreatePerspectiveOffCenter(left, right, bottom, top, nearPlaneDistance,
-  farPlaneDistance)} is the off-center form of the explicit-width/height version.
-\item[\texttt{CreateBillboard(objectPosition, cameraPosition, cameraUpVector,
-  cameraForwardVector)}] a spherical billboard matrix --- rotates an object to always face the
-  camera; \texttt{cameraForwardVector} is an \texttt{std::optional<Vector3>}, used only in the
-  degenerate case where the object and camera positions coincide.
-\item[\texttt{CreateConstrainedBillboard(objectPosition, cameraPosition, rotateAxis,
-  cameraForwardVector, objectForwardVector)}] a cylindrical billboard constrained to rotate only
-  around a single fixed axis (\texttt{rotateAxis}) --- the form used for billboarded sprites
-  that should stay upright (e.g.\ trees, grass) rather than fully facing the camera on every
-  axis.
-\item[\texttt{CreateShadow(lightDirection, plane)}] a projection matrix that flattens geometry
-  onto \texttt{plane} as if lit from \texttt{lightDirection} --- the classic planar-shadow
-  technique.
-\item[\texttt{CreateReflection(plane)}] a reflection matrix across an arbitrary \cnaclass{Plane}
-  --- the standard technique behind a planar mirror or water-reflection effect.
-\item[\texttt{CreateWorld(position, forward, up)}] builds a world matrix directly from a
-  position and forward/up direction vectors, without going through rotation angles or a
-  quaternion at all.
-\end{description}
-
-\subsection{Arithmetic statics and Decompose}
 \label{sec:matrix-arithmetic}
 
-Alongside the factory methods above, \cnaclass{Matrix} provides the same
-value/output-ref-paired arithmetic family the vector types do: \texttt{Add} / \texttt{Subtract}
-(component-wise, all sixteen fields), \texttt{Multiply} (both matrix-by-matrix, which is true
-$4\times4$ matrix multiplication rather than component-wise, and matrix-by-\texttt{float}
-scalar), \texttt{Divide} (matrix-by-matrix component-wise, and matrix-by-\texttt{float}
-scalar), \texttt{Negate}, \texttt{Invert} (the matrix inverse --- undefined, and not checked
-for, when the matrix is singular), \texttt{Transpose} (swaps rows and columns --- distinct
-from, and unrelated to, the \texttt{CNAEXT ToColumnMajor} bridge method above, which transposes
-for a completely different reason), and \texttt{Lerp} (component-wise linear interpolation
-across all sixteen fields --- rarely what an application actually wants for interpolating a
-\emph{rotation}, since lerping a full transform matrix component-wise does not produce the same
-result as \texttt{Quaternion::Slerp} followed by \texttt{CreateFromQuaternion}; \texttt{Lerp}
-here is a direct per-field port of FNA's own method, not a recommendation).
+\begin{center}
+\small
+\begin{tabular}{@{}p{0.25\textwidth}p{0.62\textwidth}@{}}
+\toprule
+\textbf{Purpose} & \textbf{Representative methods} \\
+\midrule
+Object transform & \texttt{CreateTranslation}, \texttt{CreateScale},
+  \texttt{CreateRotationX/Y/Z}, \texttt{CreateFromAxisAngle},
+  \texttt{CreateFromQuaternion}, \texttt{CreateFromYawPitchRoll}. \\
+Camera/projection & \texttt{CreateLookAt}, \texttt{CreateWorld},
+  \texttt{CreateOrthographic}, \texttt{CreateOrthographicOffCenter},
+  \texttt{CreatePerspective*}. \\
+Special geometry & \texttt{CreateBillboard}, \texttt{CreateConstrainedBillboard},
+  \texttt{CreateShadow}, \texttt{CreateReflection}. \\
+Algebra & \texttt{Add}, \texttt{Subtract}, matrix/scalar \texttt{Multiply} and
+  \texttt{Divide}, \texttt{Negate}, \texttt{Invert}, \texttt{Transpose}, and
+  component-wise \texttt{Lerp}. \\
+\bottomrule
+\end{tabular}
+\end{center}
 
-\texttt{Decompose(scale\&, rotation\&, translation\&) -> bool} is the one instance method in
-this family, and is worth reading precisely rather than assuming it succeeds unconditionally:
-per-axis scale is recovered first (as the length of each of the upper-left $3\times3$
-sub-matrix's three rows, sign-corrected), and \emph{only if all three axis scales are
-non-zero} does the method go on to extract a rotation quaternion from the remaining
-scale-normalized rotation sub-matrix and return \texttt{true}. If any axis scale is within epsilon of zero --- a degenerate, singular scale, not merely a
-very small non-zero one --- \texttt{rotation} is set to \texttt{Quaternion::Identity} and the
-method returns \texttt{false}, leaving the caller to decide how to handle a matrix that cannot
-be meaningfully decomposed. That epsilon check is itself worth a precise note: rather than
-calling \cnaclass{MathHelper}'s own \texttt{WithinEpsilon}, \texttt{Matrix.cpp} defines a
-private, file-local \texttt{WithinEpsilon} in its own anonymous namespace, hardcoding the same
-\texttt{FLT\_EPSILON} value (\texttt{1.192092896e-07f}) \cnaclass{MathHelper} computes at
-startup --- the source comment explains this duplication is deliberate, specifically to avoid
-a circular dependency between \texttt{Matrix.cpp} and \cnaclass{MathHelper} from this
-anonymous namespace, not an oversight. (The source carries one more precisely-documented,
-practically-inconsequential divergence from FNA worth naming for completeness: FNA's sign
-computation uses C\#'s \texttt{Math.Sign()}, which returns \texttt{0} for negative zero; CNA's
-uses \texttt{std::signbit}, which returns \texttt{true} for negative zero, giving a
-sign of $-1$ where FNA would give $0$ for that one specific edge case --- the source comment
-calls this out directly as an edge case with no practical impact, and this book found no
-scenario in which a real matrix hits it.)
+\texttt{Matrix::Lerp} interpolates all sixteen fields. It is not a substitute for decomposing a
+transform and interpolating its rotation with \texttt{Quaternion::Slerp}. Likewise,
+\texttt{Invert} does not report a singular input; callers that may receive degenerate transforms
+need an independent validity check.
 
-\subsection{Composition and clip-space conventions}
+\texttt{Decompose(scale, rotation, translation)} returns \texttt{false} if any recovered axis
+scale is near zero and sets rotation to identity. Scale and translation remain useful, but no
+unique rotation can be extracted from the degenerate matrix.
 
-CNA follows XNA's row-vector convention. \texttt{Matrix::Multiply(A, B)} and
-\texttt{A * B} apply \texttt{A} first and \texttt{B} second, because
-$v(A B) = (vA)B$; translation therefore lives in the fourth row. This order is the opposite of
-the quaternion argument convention described in \S\ref{sec:quaternion-full-reference}, where
-\texttt{Multiply(q1, q2)} applies \texttt{q2} first. The type name ``Multiply'' is not enough to
-infer composition order across these two APIs.
+\subsection{The ToColumnMajor bridge}
 
-Projection factories produce Direct3D-style normalized depth $[0,1]$, not OpenGL's historical
-$[-1,1]$. The perspective coefficients map the near plane to zero and the far plane to one;
-\cnaclass{BoundingFrustum}'s independently extracted planes encode the same clip volume,
-$-w \le x,y \le w$ and $0 \le z \le w$, with outward-facing normals. This convention is part of
-the math contract even when a renderer later targets an API with a different native convention.
+\texttt{CNAEXT Matrix::ToColumnMajor(float[16])} copies the sixteen fields in declaration order.
+It does not numerically transpose the matrix. The bridge relies on the receiving shader API
+interpreting those bytes as column-major storage: GLSL column $i$ corresponds to HLSL row $i$.
+The dedicated identity test cannot distinguish a copy from a transpose, so renderer code and
+non-identity tests remain the evidence for this convention.
 
-\begin{lstlisting}
-// Worked example: recovering a moving object's individual scale, rotation,
-// and translation back out of its combined world matrix -- useful for,
-// e.g., a debug inspector panel that needs to display them separately
-// rather than as one opaque 4x4 matrix.
-Vector3 scale, translation;
-Quaternion rotation;
+\section{Quaternion}
 
-if (worldMatrix.Decompose(scale, rotation, translation))
-{
-    // scale/rotation/translation are all valid -- display or use them.
-}
-else
-{
-    // worldMatrix has a zero (or near-zero) scale on at least one axis --
-    // e.g. an object that was scaled flat to nothing on purpose, or a bug
-    // upstream that produced a degenerate transform. rotation was reset to
-    // Quaternion::Identity; scale/translation are still meaningful.
-}
-\end{lstlisting}
+\cnaclass{Quaternion} provides axis-angle, rotation-matrix, and yaw/pitch/roll construction;
+normalization, conjugate and inverse; arithmetic; \texttt{Lerp}; and \texttt{Slerp}.
 
-\subsection{Worked examples: CreateBillboard, and the degenerate-case fallback it handles for you}
-
-\texttt{CreateBillboard} is one of the factory methods \S\ref{sec:matrix-full-reference}'s
-reference table above only describes in the abstract; reading its implementation shows it does
-real, worthwhile defensive work beyond the basic ``face the camera'' computation. It first
-computes the direction from the camera to the object; if that direction's squared length falls
-below a small fixed \texttt{BillboardEpsilon} (\texttt{0.0001f}) --- meaning the object and
-camera positions are at, or extremely near, the same point, where ``face the camera'' is
-undefined --- it falls back to \texttt{cameraForwardVector} if one was supplied, or
-\cnaclass{Vector3}\texttt{::Forward} otherwise, rather than dividing by (near) zero and
-producing a \texttt{NaN}-filled matrix silently.
-
-\begin{lstlisting}
-// Worked example: billboarding a particle so it always faces the camera,
-// regardless of the particle's own orientation -- the standard technique
-// for 2D sprite-like particles (smoke, sparks, glow) rendered in a 3D
-// scene.
-const Matrix billboard = Matrix::CreateBillboard(
-    particlePosition, cameraPosition, Vector3::Up, std::nullopt);
-
-// billboard can now be used directly as a per-particle World matrix --
-// its rotation component always faces cameraPosition, no matter how the
-// particle itself moves from frame to frame.
-BasicEffect fx(dev);
-fx.World = billboard;
-\end{lstlisting}
-
-Passing \texttt{std::nullopt} for \texttt{cameraForwardVector} above is safe specifically
-\emph{because} of the epsilon fallback just described: for any particle position that isn't
-coincident with the camera (the overwhelmingly common case), \texttt{cameraForwardVector} is
-never even consulted. It only matters in the degenerate case, where falling back to
-\cnaclass{Vector3}\texttt{::Forward} is a reasonable default for most cameras --- supply an
-explicit \texttt{cameraForwardVector} only when a specific fallback orientation actually
-matters for a particular degenerate case (e.g.\ a particle that can genuinely spawn exactly at
-the camera's own position).
-
-\subsection{A worked example: CreateConstrainedBillboard, and its second, stricter epsilon}
-
-\texttt{CreateConstrainedBillboard} solves a different problem than plain
-\texttt{CreateBillboard}: rather than always facing the camera on every axis, it billboards
-around one fixed \texttt{rotateAxis} only --- the standard technique for a tree, a grass
-blade, or a torch flame billboard sprite, all of which should stay upright rather than tilting
-to fully face the camera the way a spherical particle billboard does. Reading its
-implementation shows it reuses \texttt{CreateBillboard}'s own \texttt{BillboardEpsilon}
-object/camera-coincidence guard, but adds a \emph{second}, independent degenerate case unique
-to the constrained form: what happens when the camera direction is nearly \emph{parallel} to
-\texttt{rotateAxis} itself, the case where ``rotate around this axis to face the camera'' has
-no well-defined answer (looking straight down the axis a tree trunk billboard is meant to
-stay upright around, for instance). This second case is guarded by its own threshold,
-\texttt{BillboardParallelEpsilon} --- \texttt{0.9982547f}, a dot-product magnitude corresponding
-to approximately $3.39$° from exactly parallel --- and falls back first to
-\texttt{objectForwardVector} if supplied, and failing that to whichever of
-\cnaclass{Vector3}\texttt{::Right} / \texttt{::Forward} is itself less nearly parallel to
-\texttt{rotateAxis}, rather than producing a degenerate (zero-length) right vector from an
-near-parallel cross product.
-
-\begin{lstlisting}
-// Worked example: billboarding a tree's foliage sprite so it always turns
-// to face the camera around the vertical (Y) axis only, keeping the tree
-// upright rather than tilting -- CreateBillboard alone would tilt it.
-const Matrix foliageBillboard = Matrix::CreateConstrainedBillboard(
-    treePosition, cameraPosition, Vector3::Up, std::nullopt, std::nullopt);
-
-BasicEffect fx(dev);
-fx.World = foliageBillboard;
-\end{lstlisting}
-
-\subsection{Worked examples: CreateShadow and CreateReflection, and one asymmetry between them}
-
-\texttt{CreateShadow} and \texttt{CreateReflection} both take a \cnaclass{Plane} and produce a
-\cnaclass{Matrix} that projects geometry relative to it --- flattened onto the plane as if
-lit from a direction, or mirrored across it --- but reading both implementations directly
-turns up a real asymmetry worth knowing about before assuming they behave identically with
-respect to plane normalization: \texttt{CreateReflection} normalizes its input \cnaclass{Plane}
-defensively, internally, before using it (via a private, file-local
-\texttt{NormalizePlaneValue} helper --- the same technique \S\ref{sec:matrix-arithmetic}'s
-\texttt{WithinEpsilon} finding already showed \texttt{Matrix.cpp} using for other
-small helpers), so a caller does \emph{not} need to normalize the plane themselves first.
-\texttt{CreateShadow}, by contrast, uses \texttt{plane.Normal} and \texttt{plane.D} exactly as
-given, with no defensive normalization step --- matching \cnaclass{Plane}\texttt{::Transform}'s
-own documented requirement (\S\ref{sec:quaternion-full-reference} above) that the plane already
-be normalized, but in the opposite direction from \texttt{CreateReflection}'s more forgiving
-behavior. Passing an unnormalized plane to \texttt{CreateShadow} will not throw or assert ---
-it will simply produce a shadow matrix that is subtly wrong, with no indication at the call
-site that normalization was the missing step.
-
-\begin{lstlisting}
-// Worked example: a planar shadow, the classic technique for projecting a
-// character's silhouette onto a flat floor as if lit from an overhead
-// light -- CreateShadow requires the floor plane to already be normalized,
-// unlike CreateReflection just above, which normalizes defensively itself.
-Plane floorPlane = Plane::Normalize(Plane(Vector3::Up, 0.0f));   // y = 0
-const Vector3 lightDirection(0.3f, -1.0f, 0.2f);   // pointing mostly downward
-
-const Matrix shadowMatrix = Matrix::CreateShadow(lightDirection, floorPlane);
-
-// Matrix composition in CNA (matching XNA's own row-vector convention,
-// consistent with this chapter's very first Matrix worked example above)
-// applies the *left* operand first: characterWorldMatrix positions the
-// character in world space first, and shadowMatrix then projects that
-// onto the floor plane -- not the other way around.
-BasicEffect fx(dev);
-fx.World = characterWorldMatrix * shadowMatrix;
-fx.DiffuseColor = Vector3(0.0f, 0.0f, 0.0f);   // a flat shadow is drawn unlit
-\end{lstlisting}
-
-\subsection{A worked example: CreateOrthographic for a shadow map's light-space projection}
-
-Every \texttt{Matrix} worked example so far in this chapter has used
-\texttt{CreatePerspectiveFieldOfView}; \texttt{CreateOrthographic} solves a genuinely different
-problem, and CNA's own test suite shows exactly where it matters in practice: building the
-light-space view-projection matrix a directional-light shadow map renders depth from. Reading
-\texttt{CreateOrthographic}'s implementation directly (and confirmed by a worked comment in
-CNA's own shadow-mapping test, \texttt{easygl\_shadowmapping\_createshadowmap\_shader\_test.cpp})
-shows precisely why an orthographic projection, not a perspective one, is the right tool here:
-its \texttt{M14} / \texttt{M24} / \texttt{M34} components are all zero and \texttt{M44} is exactly
-\texttt{1.0f}, so \emph{every} transformed position's resulting clip-space \texttt{W} is
-\texttt{1} regardless of its distance from the light --- unlike
-\S\ref{sec:vector-full-reference}'s own \texttt{Vector4::Transform} clip-space finding above,
-where a \emph{perspective} projection's \texttt{W} genuinely varies with depth and the
-perspective divide does real work. A directional light has no single position for distance to
-vary from in the first place (it's a direction, not a point), which is exactly why its
-shadow-map projection should never need a perspective divide at all.
-
-\begin{lstlisting}
-// Worked example: a directional light's shadow-map view-projection matrix
-// -- an orthographic (not perspective) projection, since a directional
-// light has no single position for a perspective projection's distance
-// falloff to be measured from.
-const Matrix lightView = Matrix::CreateLookAt(
-    lightPosition, lightPosition + lightDirection, Vector3::Up);
-const Matrix lightProjection = Matrix::CreateOrthographic(
-    shadowMapWorldWidth, shadowMapWorldHeight, nearPlane, farPlane);
-const Matrix lightViewProjection = lightView * lightProjection;
-
-// Render the scene's depth from the light's own point of view, using
-// lightViewProjection in place of the main camera's usual perspective
-// view/projection chain, to build the shadow map itself.
-\end{lstlisting}
-
-For a fixed-size shadow-casting area (as opposed to one that needs to track a moving camera's
-visible frustum, which CNA's own test file's comments note is what its \emph{sample}
-application layer does, via a separate helper this chapter's own scope doesn't cover), the
-plain, centered \texttt{CreateOrthographic} above is sufficient; the off-center form,
-\texttt{CreateOrthographicOffCenter}, exists for the same reason
-\texttt{CreatePerspectiveOffCenter} does --- letting the projected volume's center not
-coincide with the view axis, useful for a split shadow-map atlas region or an asymmetric UI
-projection rather than the common symmetric case.
-
-\section{Quaternion, Plane, and Ray}
-
-\cnaclass{Quaternion} follows the same value/output-ref-pair convention as the vectors:
-\texttt{Add}, \texttt{Concatenate} (value1 followed by value2 --- order matters for
-quaternion composition), \texttt{Conjugate}, \texttt{CreateFromAxisAngle}/%
-\texttt{CreateFromRotationMatrix} / \texttt{CreateFromYawPitchRoll}, \texttt{Divide},
-\texttt{Dot}, \texttt{Inverse}, \texttt{Lerp} (normalized), \texttt{Slerp},
-\texttt{Multiply} (quaternion-by-quaternion and quaternion-by-scalar), \texttt{Negate}, and
-\texttt{Normalize}, plus its single static constant, \texttt{Identity}.
-
-\cnaclass{Plane} stores a \texttt{Vector3 Normal} and a \texttt{float D} (distance from
-origin), with constructors from a \cnaclass{Vector4} (XYZ as normal, W as distance), from an
-explicit normal-plus-distance pair, from three points, or from four raw scalars.
-\texttt{DotCoordinate} / \texttt{DotNormal} implement the two distinct dot-product forms a
-plane test needs; \texttt{Intersects} overloads against \cnaclass{BoundingBox},
-\cnaclass{BoundingSphere}, and \cnaclass{BoundingFrustum} all return
-\cnaclass{PlaneIntersectionType} (\S\ref{sec:bounding-volumes}). \cnaclass{Plane} declares
-\texttt{friend class BoundingFrustum}, because frustum plane extraction
-(\S\ref{sec:bounding-volumes}) needs to construct and normalize planes directly rather than
-only through \cnaclass{Plane}'s public surface.
-
-\cnaclass{Ray} is the one type in this chapter whose XNA-to-C\texttt{++} translation is more
-idiomatic than literal: XNA's \texttt{Intersects} methods return a nullable
-\texttt{float?} in C\#; CNA's equivalents return \texttt{std::optional<float>} directly ---
-the intersection distance if one exists, \texttt{std::nullopt} otherwise --- against
-\cnaclass{BoundingBox}, \cnaclass{BoundingSphere}, \cnaclass{Plane}, and
-\cnaclass{BoundingFrustum}, each with a by-ref \texttt{std::optional<float>\&} output-parameter
-twin as well.
-
-\subsection{Full method reference: Quaternion}
+\subsection{Composition and interpolation}
 \label{sec:quaternion-full-reference}
 
-\begin{description}
-\item[\texttt{Concatenate(value1, value2)}] composes two rotations so that \texttt{value1} is
-  applied first, then \texttt{value2} --- quaternion multiplication order matters, and this
-  static method exists specifically so the ``apply first / apply second'' reading is explicit
-  at the call site rather than relying on the reader to remember which side of
-  \texttt{operator*} means what.
-\item[\texttt{Conjugate(value)}] the static, value-returning form of negating the vector part
-  only (\texttt{X}, \texttt{Y}, \texttt{Z}) while leaving \texttt{W} unchanged --- distinct from
-  the instance method \texttt{void Conjugate()}, which does the same thing to \texttt{*this} in
-  place.
-\item[\texttt{CreateFromAxisAngle(axis, angle)}] builds a rotation quaternion from an arbitrary
-  axis and an angle in radians --- the quaternion counterpart to
-  \cnaclass{Matrix}'s own \texttt{CreateFromAxisAngle}.
-\item[\texttt{CreateFromRotationMatrix(matrix)}] extracts the equivalent quaternion from a
-  \cnaclass{Matrix}'s rotation component --- the inverse operation of
-  \cnaclass{Matrix}'s own \texttt{CreateFromQuaternion}.
-\item[\texttt{CreateFromYawPitchRoll(yaw, pitch, roll)}] builds a rotation quaternion directly
-  from the three Euler angles, without an intermediate \cnaclass{Matrix}.
-\item[\texttt{Inverse(quaternion)}] the multiplicative inverse --- for a unit-length rotation
-  quaternion, numerically close to (but not defined identically as) \texttt{Conjugate}.
-\item[\texttt{Lerp(quaternion1, quaternion2, amount)}] normalized linear interpolation between
-  two rotations --- fast, but the interpolation rate is not perfectly uniform in angle the way
-  \texttt{Slerp} is.
-\item[\texttt{Slerp(quaternion1, quaternion2, amount)}] spherical linear interpolation ---
-  uniform angular velocity across the interpolation, at higher computational cost than
-  \texttt{Lerp}; the correct choice for animation blending where consistent rotation speed
-  actually matters.
-\item[\texttt{Dot(quaternion1, quaternion2)}] the quaternion dot product, returned as
-  \texttt{float}.
-\item[\texttt{Add} / \texttt{Subtract} / \texttt{Multiply} / \texttt{Divide} / \texttt{Negate}] the same
-  component-wise arithmetic family the vector types provide, operating on all four
-  \texttt{X} / \texttt{Y} / \texttt{Z} / \texttt{W} components; \texttt{Multiply} additionally has a
-  quaternion-by-\texttt{float} scalar overload alongside the quaternion-by-quaternion form.
-\item[\texttt{Normalize(quaternion)}] the static, value-returning form; the instance method
-  \texttt{void Normalize()} normalizes \texttt{*this} in place.
-\end{description}
+Quaternion multiplication is easy to read backwards: \texttt{q1 * q2} represents
+\texttt{q2}'s rotation followed by \texttt{q1}'s. The explicitly named
+\texttt{Quaternion::Concatenate(a, b)} instead promises $a$ followed by $b$. Use the named form
+when operation order should be obvious at the call site.
 
-\paragraph{Making good on ``which side of operator* means what'': Concatenate is Multiply with its arguments swapped.}
-The \texttt{Concatenate} entry above promises to spell out an ordering \texttt{operator*}
-leaves ambiguous; comparing the two implementations directly (not merely their doc comments)
-shows precisely how they relate. \texttt{operator*(q1, q2)} is defined purely in terms of
-\texttt{Quaternion::Multiply(q1, q2)}, and expanding both \texttt{Multiply}'s and
-\texttt{Concatenate}'s component formulas term-by-term shows
-\texttt{Concatenate(value1, value2)} computes exactly the same result as
-\texttt{Multiply(value2, value1)} --- equivalently, \texttt{value2 * value1} via the operator
---- \emph{not} \texttt{value1 * value2}. In other words, ``\texttt{value1} applied first, then
-\texttt{value2}'' (the composition order \texttt{Concatenate} promises) is the
-\emph{right-to-left} reading of quaternion multiplication: \texttt{operator*} / \texttt{Multiply}
-apply their \emph{right-hand} argument's rotation first. This matches the standard mathematical
-Hamilton-product convention, but is deliberately \emph{not} the reading of CNA's row-vector
-\cnaclass{Matrix} multiplication: \texttt{rotation * translation} applies rotation first.
-This contrast is exactly the kind of detail that is easy to get backwards from the method
-names alone --- \texttt{Concatenate(a, b)} reads left-to-right in the source, while the
-result deliberately represents \texttt{a} followed by \texttt{b}, whereas direct
-\texttt{a * b} applies \texttt{b} first. Reach for
-\texttt{Concatenate} specifically when the ``applied first / applied second'' reading needs to
-be unambiguous at the call site, and treat any direct \texttt{q1 * q2} in this book's own
-examples (or anyone else's) as applying \texttt{q2}'s rotation first.
+\texttt{Lerp} chooses the short arc, linearly mixes components, and normalizes the result.
+\texttt{Slerp} follows the sphere and gives uniform angular progress. For small turns the
+difference is usually negligible; a long slow rotation can expose \texttt{Lerp}'s ease-in/ease-out
+rate.
 
 \begin{lstlisting}
-// Worked example: Slerp between two facing directions over one second,
-// the standard technique for smoothly turning a character or camera.
-Quaternion currentFacing = Quaternion::CreateFromYawPitchRoll(0.0f, 0.0f, 0.0f);
-const Quaternion targetFacing =
-    Quaternion::CreateFromYawPitchRoll(MathHelper::PiOver2, 0.0f, 0.0f);
+Quaternion facing = Quaternion::CreateFromYawPitchRoll(
+    0.0f, 0.0f, 0.0f);
+const Quaternion target = Quaternion::CreateFromYawPitchRoll(
+    MathHelper::PiOver2, 0.0f, 0.0f);
 
-const float turnAmount = std::min(1.0f, turnSpeed * deltaSeconds);
-currentFacing = Quaternion::Slerp(currentFacing, targetFacing, turnAmount);
-
-const Matrix orientation = Matrix::CreateFromQuaternion(currentFacing);
+facing = Quaternion::Slerp(
+    facing, target, std::min(1.0f, turnSpeed * deltaSeconds));
+const Matrix orientation = Matrix::CreateFromQuaternion(facing);
 \end{lstlisting}
 
-\paragraph{Why the worked example above uses Slerp, not Lerp: a numeric comparison.}
-\S\ref{sec:quaternion-full-reference}'s reference table above already states that
-\texttt{Lerp}'s interpolation rate is ``not perfectly uniform in angle the way \texttt{Slerp}
-is''; it is worth actually measuring that non-uniformity rather than taking the claim on
-faith. Both methods --- read directly from \texttt{Quaternion.cpp} --- pick the shorter of the
-two possible arcs between the input quaternions (by checking their dot product's sign and
-negating one side if it's negative, since a quaternion and its negation represent the same
-rotation, so either arc is a geometrically valid choice and only one of them is the
-\emph{short} way around), and \texttt{Lerp} normalizes its result at the end so it always
-lands back on the unit hypersphere --- but \texttt{Lerp} otherwise interpolates the four raw
-components in a
-straight line through the hypersphere's interior before that final normalization, while
-\texttt{Slerp} interpolates along the sphere's surface directly. Comparing both against a
-150-degree rotation (large enough to make the difference clearly visible; a small rotation
-would hide it almost entirely, a lesson worth keeping in mind whenever a worked example's own
-test case needs to actually reveal the effect it claims to demonstrate) and measuring the
-resulting rotation angle at several points along $t \in [0, 1]$, rather than only at the
-endpoints, shows precisely what ``not perfectly uniform'' means in practice:
+The retained executable
+\path{tools/cna-screenshot-infra/quaternion_vs_matrix_demo.cpp} compares a Z-axis matrix
+rotation with the corresponding axis-angle quaternion route. At the pinned build used for the
+artifact, the matrix components, transformed point, and rendered image agreed.
 
-\begin{lstlisting}
-// Worked example: measuring Lerp's actual non-uniformity against Slerp's
-// guaranteed-uniform angular velocity, across a large (150-degree)
-// rotation -- a small rotation would make the two methods look nearly
-// identical and hide the difference this example exists to show.
-const Quaternion start = Quaternion::Identity;
-const Quaternion end = Quaternion::CreateFromAxisAngle(
-    Vector3::Backward, MathHelper::ToRadians(150.0f));
-
-for (const float t : { 0.10f, 0.25f, 0.40f, 0.50f, 0.60f, 0.75f, 0.90f })
-{
-    const Quaternion lerped = Quaternion::Lerp(start, end, t);
-    const Quaternion slerped = Quaternion::Slerp(start, end, t);
-    // ... measure each result's rotation angle from `start` here ...
-}
-\end{lstlisting}
-
-Run numerically (independently of CNA's C\texttt{++}, as a cross-check against the exact same
-component formulas both methods use), the two methods agree \emph{exactly} at $t=0$, $t=0.5$,
-and $t=1$ --- $0$°, $75$°, and $150$° respectively, for both --- but disagree everywhere else
-along the way: \texttt{Slerp} tracks the expected uniform angle ($t \times 150$°) exactly at
-every sampled $t$, while \texttt{Lerp} measured $11.9$° (not $15$°) at $t=0.1$, $33.0$° (not
-$37.5$°) at $t=0.25$, and symmetrically \emph{overshoots} on the other side of the midpoint ---
-$92.5$° (not $90$°) at $t=0.6$, $138.1$° (not $135$°) at $t=0.9$. In other words, \texttt{Lerp}
-doesn't merely approximate uniform angular motion with some evenly-distributed error --- it
-eases in through the first half of the interpolation and eases back out through the second
-half, symmetric around the exact midpoint where both methods necessarily agree. For a single
-short turn (as in the worked example above) this is imperceptible; for a long, slow rotation
-where the easing itself would read as an unwanted acceleration/deceleration artifact,
-\texttt{Slerp}'s extra trigonometric cost buys a real, measurable difference, not merely a
-theoretical one.
-
-\paragraph{A second worked example: proving Quaternion and Matrix rotations actually agree.}
-\S\ref{sec:matrix-full-reference}'s worked example rotated a triangle with
-\texttt{Matrix::CreateRotationZ}; \cnaclass{Matrix}'s own \texttt{CreateFromQuaternion} means
-the same 30-degree rotation can equally be built starting from a \cnaclass{Quaternion} instead
---- and it is worth actually checking, not just asserting, that both paths agree, rather than
-trusting the two APIs are equivalent purely because their documentation says so.
-
-\begin{lstlisting}
-const float angle = MathHelper::ToRadians(30.0f);
-const Matrix matrixWorld = Matrix::CreateRotationZ(angle);
-
-// Vector3::Backward is (0,0,1) -- the axis that makes CreateFromAxisAngle's
-// right-hand rotation match CreateRotationZ's own convention exactly.
-const Quaternion q = Quaternion::CreateFromAxisAngle(Vector3::Backward, angle);
-const Matrix quaternionWorld = Matrix::CreateFromQuaternion(q);
-
-const Vector3 testPoint(0.7f, 0.3f, 0.0f);
-const Vector3 viaMatrix     = Vector3::Transform(testPoint, matrixWorld);
-const Vector3 viaQuaternion = Vector3::Transform(testPoint, quaternionWorld);
-// viaMatrix and viaQuaternion are identical, component for component.
-\end{lstlisting}
-
-Built and run against this book's own \texttt{SOFTWARE}-renderer tooling (the same headless
-pipeline behind Figure~\ref{fig:ch07-matrix-rotation}), this comparison is not an
-approximation: the maximum absolute difference across all sixteen components of
-\texttt{matrixWorld} versus \texttt{quaternionWorld} measured exactly \texttt{0}, and the
-transformed test point matched to six decimal places
-(\texttt{(0.456218, 0.609808, 0.000000)} via both paths). Re-rendering the identical scene
-from \S\ref{sec:matrix-full-reference} with \texttt{fx.World = quaternionWorld} in place of
-the original \texttt{Matrix::CreateRotationZ} result reproduces
-Figure~\ref{fig:ch07-matrix-rotation} pixel-for-pixel --- confirmed by direct comparison, not
-merely expected --- which is why this book does not reproduce the same image a second time
-here: the interesting result is the exact numeric agreement itself, not a second look at an
-identical picture.
-
-\subsection{Full method reference: Plane}
-
-\begin{description}
-\item[\texttt{Plane(Vector4 value)}] constructs from a \cnaclass{Vector4} whose \texttt{XYZ}
-  is the normal and \texttt{W} is the distance.
-\item[\texttt{Plane(Vector3 normal, float d)}] the explicit normal-plus-distance form.
-\item[\texttt{Plane(Vector3 a, Vector3 b, Vector3 c)}] constructs the plane that contains all
-  three given points.
-\item[\texttt{Plane(float a, float b, float c, float d)}] constructs directly from the four raw
-  scalar coefficients of the plane equation $ax + by + cz + d = 0$.
-\item[\texttt{Dot(value)}] the dot product of the plane (as a 4-vector: normal plus distance)
-  and a \cnaclass{Vector4}.
-\item[\texttt{DotCoordinate(value)}] the dot product of the plane's normal with a 3D
-  \emph{point}, plus the plane's distance --- the form to use for testing which side of the
-  plane a position lies on.
-\item[\texttt{DotNormal(value)}] the dot product of the plane's normal with a 3D
-  \emph{direction} only, ignoring distance entirely --- the form to use for testing a direction
-  vector (e.g.\ whether a ray's direction points toward or away from the plane) rather than a
-  position.
-\item[\texttt{Intersects(BoundingBox)} / \texttt{Intersects(BoundingSphere)} /
-  \texttt{Intersects(const BoundingFrustum\&)}] each returns a \cnaclass{PlaneIntersectionType}
-  (\S\ref{sec:bounding-volumes-full-reference} below).
-\item[\texttt{Normalize(value)}] the static, value-returning form of normalizing both the
-  normal vector and rescaling \texttt{D} to match; the instance method \texttt{void
-  Normalize()} does the same to \texttt{*this} in place.
-\item[\texttt{Transform(plane, matrix)} / \texttt{Transform(plane, rotation)}] transforms a
-  \emph{normalized} plane by a \cnaclass{Matrix} or \cnaclass{Quaternion} --- the plane must
-  already be normalized for the result to be correct, since transforming an unnormalized
-  plane's normal and distance independently does not commute with normalization. At the pinned
-  revision, the matrix overload has the aliasing defect described below; the quaternion overload
-  does not use that path.
-\end{description}
-
-\paragraph{A second worked example: DotCoordinate as a half-space test.}
-\texttt{DotCoordinate} and \texttt{DotNormal} are easy to conflate at a glance since both
-compute the same dot product against the plane's normal; the difference is exactly the
-\texttt{+ D} term, read directly from \cnaclass{Plane}'s own implementation:
-\texttt{DotCoordinate} adds the plane's distance term (\texttt{D}) after the dot product,
-\texttt{DotNormal} does not. That extra term is what makes \texttt{DotCoordinate(point)} return
-a genuine signed distance-like quantity for a \emph{position} in space --- positive on the
-side the normal points toward, negative on the other side, zero exactly on the plane ---
-which is precisely the test \cnaclass{Plane::Intersects(BoundingSphere)} and its sibling
-overloads use internally to classify \cnaclass{PlaneIntersectionType::Front} versus
-\texttt{Back} versus \texttt{Intersecting}.
-
-\begin{lstlisting}
-// Worked example: a manual half-space test using DotCoordinate directly --
-// the same test Plane::Intersects performs internally, made explicit for a
-// case that only needs a yes/no answer for one point (e.g. a gameplay
-// trigger volume bounded by a single plane, not a full bounding-volume test).
-const Plane waterSurface(Vector3::Up, -waterHeight);
-
-const float distance = waterSurface.DotCoordinate(playerPosition);
-const bool playerIsAboveWater = (distance > 0.0f);
-\end{lstlisting}
-
-\paragraph{The matrix transform intends inverse-transpose, but currently aliases its temporary.}
-The correct operation is to invert the point transform, transpose that inverse into a
-\emph{different} matrix, and transform the plane's four coefficients. CNA intends exactly that,
-but calls \texttt{Matrix::Transpose(transformedMatrix, transformedMatrix)}. The out-parameter
-overload writes field by field while reading the source and is not alias-safe. Each upper-triangle
-entry is replaced from the lower triangle, then the matching lower entry re-reads the value just
-written; the result is a symmetrization from the lower triangle, not a transpose.
-
-A pure X translation already exposes the defect: the correct transform leaves the plane $y=1$
-unchanged, while the aliased path introduces an X component into its normal. Identity and diagonal
-scale matrices hide the bug because their inverses are symmetric, which is why the existing
-identity-only tests pass and why an earlier numeric check using diagonal scale was misleading.
-Until the implementation uses a distinct transpose destination, do not use the matrix overload
-for a nontrivial transform. Chapter~\ref{ch:geometry-color-layout} records the minimal
-counterexample and the cross-subsystem consequence.
-
-\subsection{Full method reference: Ray}
-
-\begin{description}
-\item[\texttt{Ray(Vector3 position, Vector3 direction)}] the only non-default constructor ---
-  \texttt{Position} and \texttt{Direction} are both public fields, not properties.
-\item[Volume \texttt{Intersects} overloads] The \texttt{BoundingBox},
-  \texttt{BoundingSphere}, \texttt{Plane}, and \texttt{const BoundingFrustum\&} overloads each return
-  \texttt{std::optional<float>} --- the distance along the ray to the first intersection, or
-  \texttt{std::nullopt} if the ray misses entirely. Each has a by-ref
-  \texttt{std::optional<float>\& result} output-parameter twin. The frustum's outside-ray path
-  currently throws rather than producing either result, as the bounding-volume section records.
-\end{description}
-
-These overloads do not share one tolerance. The box slab test treats a direction component as
-parallel within about $5.96\times10^{-8}$; the plane test uses $10^{-5}$ for parallelism and
-$-10^{-5}$ for a just-behind hit; the sphere test uses no epsilon. A zero-direction ray that starts
-inside a box returns \texttt{nullopt}, because every axis takes the parallel branch and no finite
-entry distance is ever assigned. Treat a \cnaclass{Ray} as a valid directed line, not as a point
-container with a harmless zero direction.
-
-\begin{lstlisting}
-// Worked example: mouse picking against a bounding sphere -- construct a
-// ray from the camera through a screen point, then test for a hit.
-Ray pickRay(cameraPosition, pickDirection);   // pickDirection already normalized
-
-if (const std::optional<float> hitDistance = pickRay.Intersects(targetSphere))
-{
-    const Vector3 hitPoint = pickRay.Position + pickRay.Direction * (*hitDistance);
-    // ... react to the hit at hitPoint ...
-}
-\end{lstlisting}
-
-\paragraph{A second worked example: picking the nearest of several candidates, not just the first hit.}
-The mouse-picking example above stopped at the first hit; a common follow-up mistake is
-assuming \texttt{Intersects} against a list of candidates already returns them in
-front-to-back order --- it does not, since each call is independent and knows nothing about
-any other candidate. Picking the \emph{nearest} object under the cursor, out of several whose
-bounding volumes the ray happens to intersect, means comparing every returned distance
-explicitly and keeping the smallest:
-
-\begin{lstlisting}
-// Worked example: pick the nearest of several candidate objects under the
-// cursor -- each Intersects call only reports whether/where *that one*
-// object was hit, so finding the nearest requires comparing distances
-// across every candidate explicitly, not trusting call order.
-const Ray pickRay(cameraPosition, pickDirection);
-
-const SceneObject* nearestHit = nullptr;
-float nearestDistance = std::numeric_limits<float>::max();
-
-for (const SceneObject& candidate : candidates)
-{
-    if (const std::optional<float> hitDistance =
-            pickRay.Intersects(candidate.GetBoundingBox()))
-    {
-        if (*hitDistance < nearestDistance)
-        {
-            nearestDistance = *hitDistance;
-            nearestHit = &candidate;
-        }
-    }
-}
-// nearestHit is null if the ray missed every candidate entirely.
-\end{lstlisting}
-
-\section{Rectangle and Point}
-
-\cnaclass{Rectangle} stores \texttt{intcs X, Y, Width, Height} --- the
-\texttt{SharpRuntime} \texttt{intcs} alias from Chapter~\ref{ch:design-philosophy}'s type-alias
-table, not a raw C\texttt{++} \texttt{int} --- with derived get-only properties
-\texttt{Left} / \texttt{Right} / \texttt{Top} / \texttt{Bottom}, a get/set \texttt{Location}
-(\cnaclass{Point}), and a get-only \texttt{Center} (\cnaclass{Point}, ``rounded down for odd
-sizes''). \texttt{Contains} and \texttt{Intersects} each come in value-returning and
-output-ref forms against a coordinate pair, a \cnaclass{Point}, or another
-\cnaclass{Rectangle}; \texttt{Offset} and \texttt{Inflate} mutate in place; static
-\texttt{Intersect} / \texttt{Union} compute a new rectangle from two inputs. A static
-\texttt{Empty} constant and a get-only \texttt{IsEmpty} property round out the surface ---
-worth reading precisely rather than assuming ``empty'' means ``zero area'': \texttt{IsEmpty}
-is implemented as \texttt{Width == 0 \&\& Height == 0 \&\& X == 0 \&\& Y == 0}, so a rectangle
-with zero width and height but a nonzero position (e.g.\ one produced by \texttt{Intersect}
-for two rectangles that touch at a single point away from the origin) does \emph{not} report
-\texttt{true} for \texttt{IsEmpty}, even though it has zero area --- checking
-\texttt{Width > 0 \&\& Height > 0} directly, as this section's own \texttt{Intersect} worked
-example below already does, is the correct test for ``has zero area,'' not \texttt{IsEmpty}.
-
-\cnaclass{Point} is the integer counterpart to \cnaclass{Vector2} --- \texttt{intcs X, Y} ---
-with component-wise \texttt{+}, \texttt{-}, \texttt{*}, and \texttt{/} operators implemented
-as friend functions. Note for anyone diffing against a stricter reading of the real XNA~4.0
-\cnaclass{Point} surface: CNA's component-wise \texttt{Point * Point} and \texttt{Point /
-Point} operators are present here regardless of whether the original XNA assembly's public
-operator surface defines them identically --- a detail worth a direct \texttt{xna4-spec}
-diff (this book's \texttt{xna4-spec} auditing chapter) rather than an assumption, if exact
-operator-surface parity matters for your use case.
-
-\subsection{Full method reference: Rectangle}
-
-\begin{description}
-\item[\texttt{Contains(x, y)}] tests whether the integer coordinates \texttt{(x, y)} lie
-  inside the rectangle; \texttt{Contains(Point)} and \texttt{Contains(Rectangle)} test a point
-  or full containment of another rectangle respectively --- all three have a by-ref
-  \texttt{bool\& result} output-parameter twin.
-\item[\texttt{Offset(Point)} / \texttt{Offset(offsetX, offsetY)}] translate the rectangle in
-  place by the given amount.
-\item[\texttt{Inflate(horizontalValue, verticalValue)}] expands (or, with negative values,
-  shrinks) the rectangle in place by the given amount on \emph{each} side --- a rectangle
-  inflated by \texttt{(10, 10)} grows by 20 total in width and height, not 10.
-\item[\texttt{Intersects(Rectangle)}] returns whether two rectangles overlap at all, with a
-  by-ref \texttt{bool\& result} twin.
-\item[\texttt{Intersect(value1, value2)}] returns the overlapping sub-rectangle of two inputs,
-  or \texttt{Rectangle::Empty} if they don't overlap; \texttt{Union(value1, value2)} returns
-  the smallest rectangle containing both inputs. Both are \texttt{static} and have a
-  \texttt{Rectangle\& result} output-parameter twin.
-\end{description}
-
-\begin{lstlisting}
-// Worked example: keep a moving sprite's bounding rectangle inside the
-// screen bounds, clamping rather than stopping outright.
-Rectangle spriteBounds(x, y, spriteWidth, spriteHeight);
-const Rectangle screenBounds(0, 0, screenWidth, screenHeight);
-
-if (!screenBounds.Contains(spriteBounds))
-{
-    spriteBounds.X = std::clamp(spriteBounds.X, 0, screenWidth  - spriteBounds.Width);
-    spriteBounds.Y = std::clamp(spriteBounds.Y, 0, screenHeight - spriteBounds.Height);
-}
-\end{lstlisting}
-
-\paragraph{A second worked example: Intersect and Union for a scissor/visible-tile test.}
-\texttt{Intersects} above only answers whether two rectangles overlap at all; the static
-\texttt{Intersect} / \texttt{Union} pair goes further, computing an actual resulting
-\cnaclass{Rectangle} --- the overlap region, or the smallest rectangle containing both inputs,
-respectively. A common use for \texttt{Intersect} specifically is clamping an arbitrary
-draw or scissor region down to what a render target or screen actually covers, so later code
-never has to special-case an out-of-bounds rectangle:
-
-\begin{lstlisting}
-// Worked example: clamp an arbitrary tile's draw rectangle to the visible
-// screen area before using it as a scissor/clip region, so a tile that is
-// only partially on-screen never causes an out-of-bounds draw.
-const Rectangle screenBounds(0, 0, screenWidth, screenHeight);
-const Rectangle tileBounds(tileX, tileY, tileWidth, tileHeight);
-
-const Rectangle visiblePortion = Rectangle::Intersect(tileBounds, screenBounds);
-if (visiblePortion.Width > 0 && visiblePortion.Height > 0)
-{
-    // visiblePortion is guaranteed to lie entirely within screenBounds.
-    DrawTile(tile, visiblePortion);
-}
-\end{lstlisting}
-
-\texttt{Union} solves the opposite problem --- given several tiles' individual bounds, find one
-rectangle that encloses all of them, useful for computing a single dirty-rectangle region to
-redraw after several small UI elements change in the same frame rather than clearing and
-redrawing the whole screen:
-
-\begin{lstlisting}
-Rectangle dirtyRegion = firstChangedWidget.Bounds;
-for (const Widget& widget : otherChangedWidgets)
-{
-    dirtyRegion = Rectangle::Union(dirtyRegion, widget.Bounds);
-}
-\end{lstlisting}
-
-\subsection{Full method reference: Point}
-
-Beyond the shared \texttt{Equals} / \texttt{GetHashCode} / \texttt{ToString} triad
-(\S\ref{sec:shared-debug-surface}) and the four component-wise operators already named above,
-\cnaclass{Point}'s entire public surface is exactly two constructors (\texttt{Point()},
-zero-initializing, and \texttt{Point(intcs x, intcs y)}) plus the static \texttt{getZeroProperty()}
-accessor backing the \texttt{Zero} constant --- there is no \texttt{Distance}, \texttt{Lerp}, or
-any of the interpolation family \cnaclass{Vector2} has, since a \cnaclass{Point}'s two
-\texttt{intcs} components are not meaningfully interpolated the way floating-point components
-are. This is deliberately the smallest type in the chapter.
-
-\begin{lstlisting}
-// Worked example: converting between a tile-grid coordinate (Point) and a
-// pixel-space draw rectangle -- the conversion every tile-based renderer
-// needs at least once per visible tile, per frame.
-const Point tileGridSize(32, 32);   // pixels per tile
-
-Point TileToPixel(Point tileCoordinate)
-{
-    return tileCoordinate * tileGridSize;   // component-wise Point * Point
-}
-
-Rectangle TileDrawBounds(Point tileCoordinate)
-{
-    const Point topLeft = TileToPixel(tileCoordinate);
-    return Rectangle(topLeft.X, topLeft.Y, tileGridSize.X, tileGridSize.Y);
-}
-\end{lstlisting}
-
-\section{Color: 141 named constants and one packed value}
-
-\cnaclass{Color} implements CNA's \texttt{Graphics::PackedVector::IPackedVectorT<UInt32>}
-and \texttt{System::IEquatable<Color>}, storing its four \texttt{bytecs} channels
-(\texttt{R}, \texttt{G}, \texttt{B}, \texttt{A}) packed into a single \texttt{PackedValue}
-(\texttt{UInt32}) with numeric form \texttt{AABBGGRR}; on a little-endian machine the four value
-bytes appear in memory as RGBA. This describes the packed integer, not the complete C\texttt{++}
-object layout --- a distinction
-Chapter~\ref{ch:design-philosophy} names explicitly as one of the ``behavior fidelity''
-details CNA is required to preserve exactly, since renderer code and any raw-bytes
-interoperability depends on it.
-
-Exactly 141 named XNA/X11 web-color static constants are declared and defined ---
-140 opaque values plus \texttt{Transparent}. There are only 139 distinct packed values because
-\texttt{Aqua}/\texttt{Cyan} and \texttt{Fuchsia}/\texttt{Magenta} are alias pairs. The list runs
-from \texttt{Transparent},
-\texttt{AliceBlue}, ..., \texttt{YellowGreen}, including \texttt{CornflowerBlue}, the
-traditional XNA project-template clear color already seen in
-Chapter~\ref{ch:first-game} --- each documented with its exact RGBA byte values. Construction
-accepts a \cnaclass{Vector4} (clamped to $[0,1]$, scaled to $[0,255]$), a \cnaclass{Vector3}
-(alpha forced to 255), three or four \texttt{float}s in $[0,1]$, or three or four
-\texttt{intcs} in $[0,255]$ (clamped) --- plus two \texttt{CNAEXT}-marked byte-based
-constructors explicitly documented as ``not part of the XNA 4.0 API. CNA convenience
-overload.'' \texttt{Lerp}, \texttt{FromNonPremultiplied}, and \texttt{Multiply(Color,
-float)} round out the static surface; a \texttt{CNAEXT} commutative \texttt{float * Color}
-operator is added alongside the standard \texttt{Color * float}, again explicitly documented
-as a CNA-only convenience not present in XNA/FNA.
-
-\cnaclass{Color} is nevertheless not a four-byte C\texttt{++} object: its virtual packed-vector
-interface gives it a vptr, and \texttt{sizeof(Color) == 24} at the pin. Use \texttt{PackedValue}
-or typed conversion rather than reinterpreting a \texttt{Color*} as pixel bytes. The ABI and GPU
-stream consequences are developed in Chapter~\ref{ch:geometry-color-layout}.
-
-\subsection{Full method and constructor reference: Color}
-
-\begin{description}
-\item[\texttt{Color(const Vector4\& color)}] \texttt{explicit} --- each component clamped to
-  $[0,1]$ then scaled to $[0,255]$.
-\item[\texttt{Color(const Vector3\& color)}] \texttt{explicit} --- alpha forced fully opaque
-  (255).
-\item[\texttt{Color(float r, float g, float b)} / \texttt{Color(float r, float g, float b,
-  float alpha)}] components in $[0,1]$; the three-argument form forces alpha to opaque.
-\item[\texttt{Color(intcs r, intcs g, intcs b)} / \texttt{Color(intcs r, intcs g, intcs b,
-  intcs alpha)}] components in $[0,255]$, clamped; same opaque-alpha default for the
-  three-argument form.
-\item[\texttt{Color(bytecs r, bytecs g, bytecs b)} / \texttt{Color(bytecs r, bytecs g, bytecs
-  b, bytecs alpha)}] \texttt{CNAEXT} --- explicitly documented as a CNA convenience overload,
-  not part of the XNA 4.0 API, for callers that already have byte-typed components on hand and
-  want to skip the implicit \texttt{intcs} conversion.
-\item[\texttt{R} / \texttt{G} / \texttt{B} / \texttt{A}] each a \texttt{bytecs} property pair
-  (get/set), reading and writing one channel of the packed \texttt{PackedValue} directly.
-\item[\texttt{ToVector3()} / \texttt{ToVector4()}] convert back to floating-point $[0,1]$
-  component form --- the inverse of the \cnaclass{Vector3} / \cnaclass{Vector4} constructors
-  above.
-\item[\texttt{Lerp(value1, value2, amount)}] linear interpolation between two colors,
-  component-wise, with \texttt{amount} clamped to $[0,1]$ (unlike the vector types'
-  \texttt{Lerp}, which extrapolates unclamped).
-\item[\texttt{FromNonPremultiplied(vector)} / \texttt{FromNonPremultiplied(r, g, b, a)}]
-  converts straight-alpha channels into premultiplied channel values suitable for CNA's default
-  \cnaclass{BlendState::AlphaBlend} pipeline. The \cnaclass{Color} type itself can hold either
-  convention; the consuming blend state determines the interpretation.
-\item[\texttt{Multiply(value, scale)}] scales all four channels (including alpha) by
-  \texttt{scale}; \texttt{CNAEXT operator*(float, const Color\&)} adds the commutative
-  scalar-first form alongside the standard \texttt{Color * float}.
-\end{description}
-
-\begin{lstlisting}
-// Worked example: why FromNonPremultiplied matters -- a naive Color
-// constructed directly from a straight-alpha source produces the wrong
-// blended result, since BlendState::AlphaBlend assumes premultiplied
-// alpha throughout.
-
-// WRONG: treats straight-alpha data as if it were already premultiplied.
-const Color wrong(200, 80, 40, 128);   // half-transparent orange, straight alpha
-
-// RIGHT: FromNonPremultiplied scales the color channels by alpha first,
-// producing channel values that blend correctly with CNA's premultiplied pipeline.
-const Color right = Color::FromNonPremultiplied(200, 80, 40, 128);
-// right's packed RGB channels are roughly half of wrong's -- (100, 40, 20)
-// scaled by the 128/255 alpha fraction -- while wrong's channels are left
-// at their original, too-bright straight-alpha values.
-\end{lstlisting}
-
-\section{MathHelper: constants and helpers, some public only because C\texttt{++} has no assembly visibility}
-
-\cnaclass{MathHelper} is static-only (its default constructor is \texttt{= delete}, tagged
-\texttt{CNAEXT}), providing \texttt{Pi} / \texttt{PiOver2} / \texttt{PiOver4} / \texttt{TwoPi}/%
-\texttt{E} / \texttt{Log10E} / \texttt{Log2E} as \texttt{constexpr float} constants, plus
-\texttt{MachineEpsilonFloat} computed once via a private \texttt{GetMachineEpsilonFloat()}.
-Its own header comment is unusually direct about a translation artifact: ``FNA marks the
-four members below as `internal'; C++ has no assembly-scope visibility, so they are public
-here. Other framework types (e.g.\ Vector2, Matrix) rely on them.'' Those four --- an integer
-\texttt{Clamp} overload, \texttt{WithinEpsilon}, \texttt{ClosestMSAAPower}, and
-\texttt{MachineEpsilonFloat} itself --- are effectively framework-internal helpers that
-simply have no way to be hidden from a caller in C\texttt{++} the way FNA hides them from
-other assemblies in C\#. \texttt{ClosestMSAAPower(intcs)} in particular is worth flagging as
-a graphics-relevant helper hiding in a math-only-looking class: it returns the closest valid
-MSAA sample-count power-of-two at or below the requested value, mirroring FNA's own internal
-MSAA helper, and is used wherever a renderer needs to clamp a requested multisample count to
-something the underlying graphics API actually supports.
-
-\subsection{Full method reference: MathHelper}
-
-Every method below operates on plain \texttt{float} (or, for the two integer-specific entries,
-\texttt{intcs}) scalars. The similarly named vector operations are independent implementations,
-not simple calls into \cnaclass{MathHelper}: their precision and edge behavior can differ.
-
-\begin{description}
-\item[\texttt{Barycentric(value1, value2, value3, amount1, amount2)}] the scalar form of the
-  same barycentric-coordinate conversion \S\ref{sec:vector-full-reference} described for
-  vectors --- called once per component when a vector overload needs it.
-\item[\texttt{CatmullRom(value1, value2, value3, value4, amount)}] scalar Catmull-Rom spline
-  interpolation through four control values.
-\item[\texttt{Clamp(value, min, max)}] the \texttt{float} overload; a second overload,
-  \texttt{Clamp(intcs value, intcs min, intcs max)}, does the same for integers --- both public
-  only because, per the header's own comment, C\texttt{++} has no way to hide a framework-internal
-  helper the way FNA hides it as C\# \texttt{internal}.
-\item[\texttt{Distance(value1, value2)}] the absolute difference between two scalars ---
-  the one-dimensional case of the vector types' own \texttt{Distance}.
-\item[\texttt{Hermite(value1, tangent1, value2, tangent2, amount)}] scalar Hermite spline
-  interpolation.
-\item[\texttt{Lerp(value1, value2, amount)}] scalar linear interpolation, unclamped (matching
-  the vector types' own \texttt{Lerp}, not \cnaclass{Color}'s clamped one).
-\item[\texttt{Max(value1, value2)} / \texttt{Min(value1, value2)}] scalar maximum/minimum.
-\item[\texttt{SmoothStep(value1, value2, amount)}] scalar smoothed interpolation.
-\item[\texttt{ToDegrees(radians)} / \texttt{ToRadians(degrees)}] the standard angle-unit
-  conversions --- used throughout this chapter's own worked examples (e.g.\
-  \texttt{MathHelper::ToRadians(30.0f)} in \S\ref{sec:worked-examples}'s \cnaclass{Matrix}
-  example).
-\item[\texttt{WrapAngle(angle)}] wraps an angle in radians into the range $(-\pi, \pi]$ ---
-  useful after accumulating a rotation over many frames, where the raw angle would otherwise
-  grow without bound.
-\item[\texttt{WithinEpsilon(floatA, floatB)}] returns whether two floats are closer than
-  \texttt{MachineEpsilonFloat} --- a narrow helper used by ray, curve, and collection edge cases.
-  No vector, matrix, or quaternion \texttt{Equals} method uses it; floating equality there is exact.
-\item[\texttt{ClosestMSAAPower(value)}] returns the largest power-of-two MSAA sample count at
-  or below \texttt{value} --- a graphics-specific helper (Chapter~\ref{ch:graphicsdevice}
-  covers where multisample count is actually consumed) that happens to live in this otherwise
-  purely mathematical class, again because FNA's own \texttt{internal} visibility has no C\texttt{++}
-  equivalent to hide it behind.
-\end{description}
-
-The same names therefore do not guarantee the same scalar semantics. \texttt{MathHelper::Hermite}
-and \texttt{CatmullRom} widen intermediates to \texttt{double}, and \texttt{Hermite} short-circuits
-near both endpoints; vector-local versions stay in \texttt{float} and do not short-circuit.
-\texttt{MathHelper::Clamp(value, min, max)} tests the maximum first, so an inverted range lets
-\texttt{min} win, while vector clamp uses nested \texttt{std::min/std::max} and lets \texttt{max}
-win. Their \texttt{Min}/\texttt{Max} NaN behavior differs for the same reason.
-
-\subsection{Degenerate inputs usually propagate non-finite values}
-
-The common primitives do not share a defensive exception policy. Normalizing a zero vector,
-plane, or quaternion produces NaNs; quaternion inversion and singular matrix inversion divide by
-zero; \texttt{CreateReflection} normalizes its input plane without validating a zero normal.
-Component-wise division is similarly unchecked. The notable explicit guards are projection
-factory arguments, not a general module policy. In particular, do not rely on a method's return
-type alone to signal failure: \texttt{Matrix::Invert} returns a matrix rather than a success flag.
-Chapter~\ref{ch:geometry-color-layout} follows the same rule through bounds and public layout.
-
-\begin{lstlisting}
-// Worked example: WrapAngle keeps an accumulated turn angle bounded, so a
-// character or camera that spins many times over doesn't hand an
-// ever-growing radian value to CreateRotationZ/CreateFromAxisAngle -- the
-// rotation itself is still correct unbounded, but trigonometric precision
-// (and any code that prints or compares the raw angle) degrades as the
-// magnitude grows.
-float facingAngle = 0.0f;
-
-// Each frame, after applying an arbitrary turn amount:
-facingAngle = MathHelper::WrapAngle(facingAngle + turnAmountThisFrame);
-// facingAngle now always lies within (-Pi, Pi], regardless of how many
-// full turns the character has actually made.
-\end{lstlisting}
-
-Read directly from \cnaclass{MathHelper}'s own implementation, \texttt{WrapAngle} is not a
-naive single \texttt{std::fmod}: it first checks whether the angle already lies within
-$(-\pi, \pi]$ and returns it unchanged if so (avoiding an unnecessary floating-point modulo
-for the overwhelmingly common case of an angle that was never out of range to begin with),
-and only falls through to \texttt{std::fmod(angle, TwoPi)} --- followed by one more
-boundary correction --- for an angle that actually needs wrapping.
-
-\section{Bounding volumes: Box, Sphere, Frustum}
+\section{Planes, rays, and bounding volumes}
 \label{sec:bounding-volumes}
 
-\cnaclass{BoundingBox}, \cnaclass{BoundingSphere}, and \cnaclass{BoundingFrustum} share a
-consistent overload pattern: \texttt{Contains} against every other bounding-volume type and
-against a raw \cnaclass{Vector3} returns \cnaclass{ContainmentType} (\texttt{Disjoint},
-\texttt{Contains}, or \texttt{Intersects}); \texttt{Intersects} against a \cnaclass{Plane}
-returns \cnaclass{PlaneIntersectionType} (\texttt{Front}, \texttt{Back}, or
-\texttt{Intersecting} --- the doc comments clarify that \texttt{Front} / \texttt{Back} mean
-the volume lies entirely within one half-space with no actual crossing, while
-\texttt{Intersecting} means the plane genuinely cuts through the volume); and
-\texttt{Intersects} against a \cnaclass{Ray} returns \texttt{std::optional<float>}. Both
-value-returning and output-ref forms exist throughout, matching the vector/matrix convention.
+\cnaclass{Plane} stores a normal and distance; \texttt{DotCoordinate} includes the distance term
+and classifies a point's side, whereas \texttt{DotNormal} tests a direction only.
+\cnaclass{Ray} stores an origin and direction and returns \texttt{std::optional<float>} for
+intersection distance. \cnaclass{BoundingBox}, \cnaclass{BoundingSphere}, and
+\cnaclass{BoundingFrustum} expose containment and intersection families.
 
-\cnaclass{BoundingBox} stores \texttt{Vector3 Min, Max} and a \texttt{CornerCount = 8}
-constant; \texttt{GetCorners()} has both a value-returning form and a fill-existing-vector
-form (documented as requiring the vector to already hold at least \texttt{CornerCount}
-elements). Exception families already diverge between these sibling types. Empty
-\texttt{CreateFromPoints} throws \cnaclass{ArgumentException} for \cnaclass{BoundingBox} but
-\texttt{std::invalid\_argument} for \cnaclass{BoundingSphere}; an undersized
-\texttt{GetCorners} destination throws \cnaclass{ArgumentOutOfRangeException} for the box but
-\texttt{std::out\_of\_range} for the frustum. Tests pin these differences, so a catch block for
-one bounding type is not a general geometry policy.
-
-\cnaclass{BoundingSphere} stores \texttt{Vector3 Center} and \texttt{float Radius}, with a
-\texttt{Transform(Matrix)} method whose doc comment is precise about a real geometric
-limitation: a sphere transformed by a shearing or non-uniform-scale matrix does not become an
-ellipsoid, because \cnaclass{BoundingSphere} has no representation for one. CNA transforms the
-center and multiplies the radius by the largest row-vector scale, producing a conservative sphere
-which encloses the distorted result.
-
-\cnaclass{BoundingFrustum} is the one bounding-volume type implemented as a C\texttt{++}
-\texttt{class} rather than a \texttt{struct}, because unlike the other two it owns real
-cached derived state: constructed from a single combined view-projection \cnaclass{Matrix},
-it privately caches an \texttt{std::array<Vector3, 8>} of corners and an
-\texttt{std::array<Plane, 6>} of the six extracted clip planes (\texttt{Near}, \texttt{Far},
-\texttt{Left}, \texttt{Right}, \texttt{Top}, \texttt{Bottom}, each exposed as a get-only
-\cnaclass{Plane} property), recomputed whenever its \texttt{Matrix} property is reassigned.
-Private helpers \texttt{CreateCorners()}, \texttt{CreatePlanes()}, a static
-\texttt{NormalizePlane(Plane\&)}, and a static \texttt{IntersectionPoint(...)} (finding a
-frustum corner as the intersection of three planes) implement this derivation; equality
-(\texttt{operator==} / \texttt{!=}) is defined purely in terms of the underlying \texttt{Matrix},
-not the cached corners/planes, since the latter are wholly determined by the former.
-
-\subsection{Full method reference: the shared bounding-volume operation set}
+\subsection{Operational summary}
 \label{sec:bounding-volumes-full-reference}
 
-Every entry below exists on all three types (\cnaclass{BoundingBox}, \cnaclass{BoundingSphere},
-\cnaclass{BoundingFrustum}) unless a type is named explicitly, each with a value-returning form
-and a by-ref output-parameter twin.
+\begin{center}
+\small
+\begin{tabular}{@{}p{0.22\textwidth}p{0.34\textwidth}p{0.33\textwidth}@{}}
+\toprule
+\textbf{Type} & \textbf{Useful operations} & \textbf{Boundary} \\
+\midrule
+\cnaclass{Plane} & point/direction dot tests, normalization, volume intersection, matrix or
+  quaternion transform & Matrix transform is defective at the pin; see below. \\
+\cnaclass{Ray} & box, sphere, plane, and frustum intersection & Tolerances differ by shape;
+  a zero direction is not a useful point query. \\
+\cnaclass{BoundingBox} & create from points/sphere, merge, corners, containment/intersection &
+  Touching and empty-input behavior follows individual implementations and exception types. \\
+\cnaclass{BoundingSphere} & create from points/box, merge, transform, containment/intersection &
+  A non-uniform transform remains a conservative sphere, not an ellipsoid. \\
+\cnaclass{BoundingFrustum} & matrix-derived planes/corners, containment/intersection &
+  Ray intersection currently checks origin containment rather than computing entry distance. \\
+\bottomrule
+\end{tabular}
+\end{center}
 
-\begin{description}
-\item[Volume \texttt{Contains} overloads] The \texttt{BoundingBox},
-  \texttt{BoundingSphere}, \texttt{const BoundingFrustum\&}, and \texttt{Vector3} overloads return a
-  \cnaclass{ContainmentType} --- \texttt{Disjoint} (no overlap at all), \texttt{Intersects}
-  (partial overlap), or \texttt{Contains} (the argument lies entirely within \texttt{*this}).
-\item[\texttt{Intersects(BoundingBox)} / \texttt{Intersects(BoundingSphere)} /
-  \texttt{Intersects(const BoundingFrustum\&)}] returns a plain \texttt{bool} --- true for
-  either partial or full overlap, collapsing \cnaclass{ContainmentType}'s three-way distinction
-  down to a simple yes/no.
-\item[\texttt{Intersects(Plane)}] returns \cnaclass{PlaneIntersectionType} ---
-  \texttt{Front} / \texttt{Back} (the whole volume lies entirely on one side, no actual crossing)
-  or \texttt{Intersecting} (the plane genuinely cuts through the volume).
-\item[\texttt{Intersects(Ray)}] returns \texttt{std::optional<float>}, matching \cnaclass{Ray}'s
-  own \texttt{Intersects} overloads from \S\ref{sec:quaternion-full-reference} above exactly
-  where implemented. \cnaclass{BoundingFrustum}'s main outside-ray case currently throws
-  \cnaclass{NotImplementedException}; only its already-inside fast path returns zero.
-\item[\texttt{GetCorners()}] (\cnaclass{BoundingBox} and \cnaclass{BoundingFrustum} only ---
-  \cnaclass{BoundingSphere} has no meaningful discrete corner set) returns the volume's eight
-  corners, either as a freshly-allocated \texttt{std::vector<Vector3>} or written into a
-  caller-supplied one that must already hold at least \texttt{CornerCount} (8) elements.
-\item[\texttt{CreateFromBoundingBox(box)} / \texttt{CreateFromPoints(points)} /
-  \texttt{CreateFromFrustum(frustum)}] (\cnaclass{BoundingSphere} only) --- three ways to
-  construct an enclosing sphere for a box, point cloud, or frustum. Point sets use a one-pass
-  Ritter-style approximation; this is not a minimum enclosing-sphere solver.
-\item[\texttt{CreateFromPoints(points)}] (\cnaclass{BoundingBox} too) --- the smallest
-  axis-aligned box enclosing an arbitrary point cloud.
-\item[\texttt{CreateFromSphere(sphere)}] (\cnaclass{BoundingBox} only) --- the smallest box
-  enclosing a given sphere.
-\item[\texttt{CreateMerged(original, additional)}] (\cnaclass{BoundingBox} and
-  \cnaclass{BoundingSphere}) --- the smallest volume of the same kind enclosing both inputs.
-\item[\texttt{Transform(matrix)}] (\cnaclass{BoundingSphere} only) --- applies translation and
-  uniform scale from a \cnaclass{Matrix}; per its own doc comment, a shearing or non-uniform
-  scale does not turn the sphere into an ellipsoid, since \cnaclass{BoundingSphere} cannot
-  represent one.
-\end{description}
+\subsection{Current geometry defects}
 
-The uniform surface hides two more incomplete containment implementations. The sphere-versus-
-frustum path declares but never accumulates its minimum-distance value, so it cannot report the
-intended disjoint case. The box-versus-frustum path tests whether the frustum's corners lie in the
-box, answering the reverse geometric question for partial configurations. None of these three
-sites carries a \texttt{TODO} or \texttt{FIXME}; Chapter~\ref{ch:geometry-color-layout} treats
-them as evidence that marker-only audits cannot establish semantic completeness.
+\begin{limitationnote}
+\textbf{Plane matrix transform.} The intended inverse-transpose path calls
+\texttt{Matrix::Transpose(transformedMatrix, transformedMatrix)}. That output-reference overload
+is not alias-safe: it overwrites fields that later reads still need. Identity and diagonal scale
+hide the error; a translation or other nonsymmetric inverse exposes it. Avoid
+\texttt{Plane::Transform(plane, matrix)} for nontrivial matrices at
+\CnaRevisionShort. The quaternion overload does not use this path.
+\end{limitationnote}
+
+\begin{limitationnote}
+\textbf{Frustum/ray intersection.} The pinned implementation classifies only the ray origin. An
+origin outside the frustum returns \texttt{nullopt}, even when its direction enters the volume;
+an origin inside returns zero. The remaining \texttt{Intersects} branch throws
+\cnaclass{NotImplementedException}. This is not a general ray/frustum intersection algorithm.
+\end{limitationnote}
+
+Ray/box, ray/plane, and ray/sphere paths also use different parallel and behind-origin
+tolerances. A zero-direction ray inside a box currently returns \texttt{nullopt}; validate and
+normalize picking directions before querying several shapes.
 
 \begin{lstlisting}
-// Worked example: frustum culling -- skip drawing any object whose
-// bounding sphere the camera frustum cannot possibly see.
-const BoundingFrustum cameraFrustum(view * projection);
-
-for (const SceneObject& object : sceneObjects)
+// Illustrative: choose the nearest successfully reported hit.
+const SceneObject* nearest = nullptr;
+float nearestDistance = std::numeric_limits<float>::max();
+for (const SceneObject& candidate : candidates)
 {
-    if (cameraFrustum.Intersects(object.GetBoundingSphere()))
+    if (const auto hit = pickRay.Intersects(candidate.GetBoundingBox());
+        hit && *hit < nearestDistance)
     {
-        object.Draw();
+        nearestDistance = *hit;
+        nearest = &candidate;
     }
-    // else: entirely outside the view frustum, skip drawing it this frame.
 }
 \end{lstlisting}
 
-\paragraph{A second worked example: CreateFromPoints, and why it isn't the tightest possible sphere.}
-The frustum-culling example above assumed a \cnaclass{BoundingSphere} already existed for each
-scene object; \texttt{CreateFromPoints(points)} is how one gets built in the first place, from
-a mesh's raw vertex positions at load time. Reading its implementation directly is worth doing
-before assuming it always returns the mathematically smallest enclosing sphere: it finds the
-three axis-aligned extreme pairs (minimum/maximum \texttt{X}, \texttt{Y}, and \texttt{Z}
-points), picks whichever pair is farthest apart as an initial diameter, and then only expands
-that sphere further to include any remaining outlier point --- a fast, single-pass
-approximation, not an exact minimum bounding sphere solver. For most mesh shapes the result is
-close enough that the distinction never matters at runtime; it is worth knowing precisely
-\emph{why} it can occasionally be looser than optimal, rather than assuming an unfamiliar
-result is a bug.
+\subsection{Transforming a bounding sphere}
+
+\cnaclass{BoundingSphere::Transform} transforms the center and scales the radius by the largest
+length of the matrix's three basis rows. Under a non-uniform scale $(2,3,4)$, a radius of $2$
+becomes $8$. The result encloses the transformed ellipsoid, which is safe for broad-phase
+culling but looser than an ellipsoid or oriented bound.
+
+\section{Integer geometry and Color}
+
+\cnaclass{Point} is the integer coordinate pair. \cnaclass{Rectangle} adds bounds, containment,
+intersection/union, offset, and inflation. Rectangle right and bottom edges are exclusive for
+point containment.
+
+\texttt{Rectangle::IsEmpty} means exactly \texttt{X == Y == Width == Height == 0}. A zero-area
+rectangle at another position is not empty by that property. Use
+\texttt{Width > 0 \&\& Height > 0} when the question is whether a region has area.
+
+\cnaclass{Color} stores byte channels and a packed \texttt{UInt32}. Its numeric packed form is
+\texttt{AABBGGRR}; on little-endian systems the four packed bytes appear as RGBA. That statement
+does not describe the layout of the polymorphic C\texttt{++} object itself, so renderer uploads
+must use the supported conversion path instead of reinterpreting an array of \cnaclass{Color}.
+
+\texttt{Color::FromNonPremultiplied} scales straight RGB channels by alpha for CNA's default
+premultiplied-alpha blend path:
 
 \begin{lstlisting}
-// Worked example: building a mesh's BoundingSphere once at load time from
-// its raw vertex positions, for later use in frustum-culling tests like the
-// one above.
-std::vector<Vector3> positions;
-positions.reserve(mesh.VertexCount());
-for (const VertexPositionNormalTexture& vertex : mesh.Vertices())
-{
-    positions.push_back(vertex.Position);
-}
-
-const BoundingSphere meshBounds = BoundingSphere::CreateFromPoints(positions);
+const Color straight(200, 80, 40, 128);
+const Color premultiplied =
+    Color::FromNonPremultiplied(200, 80, 40, 128);
 \end{lstlisting}
 
-\subsection{A BoundingBox-specific worked example: a spatial trigger volume}
+The type can hold either convention; the selected \cnaclass{BlendState} determines how the
+channels are interpreted. Named color constants are generated API surface, not evidence about
+blend behavior.
 
-The two worked examples above both exercise the operation set every bounding-volume type
-shares; \texttt{Contains(Vector3)} is worth a dedicated example of its own, since ``is this
-single point inside my volume'' (as opposed to ``do these two volumes overlap'') is exactly
-the shape of a gameplay trigger-volume check, and \cnaclass{BoundingBox} is the natural choice
-for an axis-aligned one (a room, a level boundary, a rectangular pickup-collection zone).
-Reading \texttt{BoundingBox::Contains(const Vector3\&)}'s own implementation directly confirms
-it is a plain per-axis range check --- three independent \texttt{Min} / \texttt{Max}
-comparisons, one per axis --- rather than anything more elaborate, which is worth knowing when
-deciding whether an axis-aligned box is precise enough for a given trigger shape or whether a
-\cnaclass{BoundingSphere} (or a full mesh test) is actually needed instead.
+\section{MathHelper and degenerate inputs}
+
+\cnaclass{MathHelper} collects angle constants, unit conversion, clamping, interpolation,
+distance, wrapping, and epsilon comparison. \texttt{Lerp} is unclamped; \texttt{SmoothStep}
+clamps its amount before applying the cubic curve. \texttt{WrapAngle} maps to a principal range
+around zero.
+
+Most lower-level math routines follow floating-point arithmetic instead of throwing on
+degenerate inputs. Zero-vector normalization, singular inversion, coincident look-at inputs, and
+invalid projection ranges can therefore yield infinities or NaNs. This policy is not uniform:
+some factory methods validate selected range conditions while adjacent operations do not.
+Validate at the boundary where bad values can affect gameplay, content, or a native API.
+
+\section{Curves}
+
+\cnaclass{Curve} evaluates an ordered \cnaclass{CurveKeyCollection}. Keys contain position,
+value, incoming/outgoing tangents, and smooth/step continuity. \texttt{Add} inserts by ascending
+position. \texttt{ComputeTangents} supports flat, linear, and smooth modes. Before and after the
+key span, \texttt{Constant}, \texttt{Linear}, \texttt{Cycle}, \texttt{CycleOffset}, and
+\texttt{Oscillate} choose clamping, extrapolation, wrapping, accumulated wrapping, or ping-pong
+behavior.
 
 \begin{lstlisting}
-// Worked example: a rectangular trigger volume -- e.g. "the player has
-// entered the boss arena" -- using BoundingBox::Contains(Vector3) against
-// the player's own position every frame.
-const BoundingBox bossArenaTrigger(
-    Vector3(-20.0f, 0.0f, -20.0f), Vector3(20.0f, 10.0f, 20.0f));
+Curve height;
+height.getKeysProperty().Add(CurveKey(0.0f, 10.0f));
+height.getKeysProperty().Add(CurveKey(2.0f, 40.0f));
+height.getKeysProperty().Add(CurveKey(4.0f, 10.0f));
+height.ComputeTangents(CurveTangent::Smooth);
+height.setPreLoopProperty(CurveLoopType::Constant);
+height.setPostLoopProperty(CurveLoopType::Constant);
 
-const ContainmentType containment = bossArenaTrigger.Contains(playerPosition);
-if (containment == ContainmentType::Contains && !bossFightAlreadyStarted)
-{
-    StartBossFight();
-}
+const float cameraHeight = height.Evaluate(elapsedSeconds);
 \end{lstlisting}
 
-\subsection{A BoundingFrustum-specific worked example: Contains versus Intersects for LOD selection}
+This compiles against the public shape when the math headers and namespace aliases used by the
+application are present; it is an illustrative fragment rather than a complete program.
 
-The frustum-culling worked example earlier in this section used
-\texttt{BoundingFrustum::Intersects}, which collapses \cnaclass{ContainmentType}'s three-way
-distinction down to a plain \texttt{bool} --- exactly right for a yes/no cull decision, but it
-throws away information a level-of-detail system can actually use.
-\texttt{BoundingFrustum::Contains(const BoundingSphere\&)} instead returns the full
-\cnaclass{ContainmentType}, and reading its implementation shows precisely how it is derived:
-it tests the sphere against each of the frustum's six planes in turn via
-\texttt{BoundingSphere::Intersects(Plane)}; if any single plane test comes back
-\texttt{PlaneIntersectionType::Front} (the sphere lies entirely outside that one plane), the
-whole test short-circuits immediately to \texttt{ContainmentType::Disjoint} without checking
-the remaining planes; otherwise, if any plane came back \texttt{Intersecting}, the final
-result is \texttt{ContainmentType::Intersects}; only when \emph{every} plane's test came back
-cleanly \texttt{Back} (entirely on the frustum's inside) does the object qualify as fully
-\texttt{Contains}. That three-way answer is exactly what a LOD system wants: an object fully
-\texttt{Contains}-ed by the frustum, with no partial clipping against any of its six planes,
-is a safe candidate for a cheaper ``don't bother sub-culling its individual meshes/lights''
-fast path that a merely-\texttt{Intersects}-ing (partially visible, potentially clipped)
-object is not.
+\subsection{Current curve deviations}
 
-\begin{lstlisting}
-// Worked example: skipping expensive per-submesh culling for an object
-// the frustum test already proved is *fully* visible, not merely
-// partially visible -- Intersects alone can't make this distinction.
-const ContainmentType containment = cameraFrustum.Contains(object.GetBoundingSphere());
+Three source-level findings matter for nontrivial key positions:
 
-if (containment == ContainmentType::Disjoint)
-{
-    // Entirely outside the frustum -- skip drawing it this frame, same as
-    // the plain Intersects-based cull earlier in this section.
-}
-else if (containment == ContainmentType::Contains)
-{
-    // Fully inside every one of the frustum's six planes -- safe to draw
-    // every submesh directly, with no further per-submesh frustum test.
-    object.DrawAllSubmeshesUnconditionally();
-}
-else   // ContainmentType::Intersects
-{
-    // Partially visible -- at least one submesh might still be entirely
-    // outside the frustum even though the object's overall bounds aren't,
-    // so it's worth the extra per-submesh test here.
-    object.DrawWithPerSubmeshCulling(cameraFrustum);
-}
-\end{lstlisting}
+\begin{itemize}
+  \item Step evaluation compares the absolute query position with \texttt{1.0f}, not with the
+        next key's position. Step intervals away from the canonical $[0,1]$ span can switch to the
+        next value too early or too late.
+  \item Post-loop linear extrapolation uses the \emph{first} key's outgoing tangent while
+        extending from the last key.
+  \item Smooth tangent computation uses materially different near-zero thresholds for incoming
+        and outgoing spans, so duplicate or nearly duplicate positions can produce asymmetric
+        tangents.
+\end{itemize}
 
-\subsection{A worked example: BoundingSphere::Transform under a non-uniform scale}
+Both XNB and CNJ readers can construct curves. Their file-format and resolution contracts live in
+Chapters~\ref{ch:xnb-type-readers} and~\ref{ch:cnj-format}; successful in-memory evaluation does
+not establish either loading route.
 
-\S\ref{sec:bounding-volumes}'s own prose above already states, from
-\cnaclass{BoundingSphere}\texttt{::Transform}'s doc comment, that a shearing or non-uniform
-scale does not turn the sphere into an ellipsoid, since \cnaclass{BoundingSphere} has no
-representation for one --- but it is worth reading the actual implementation to see precisely
-\emph{how} it handles a non-uniform scale, rather than assuming it simply breaks or silently
-produces a wrong result. It computes the squared length of each of the upper-left
-$3\times3$ sub-matrix's three rows independently, takes the \emph{largest} of the three, and
-scales the original radius by the square root of that largest value alone --- deliberately
-conservative, not merely wrong: the transformed sphere is guaranteed to still fully enclose
-the true (non-spherical) transformed shape, at the cost of being looser than necessary along
-the matrix's smaller-scaled axes.
-
-\begin{lstlisting}
-// Worked example: transforming a BoundingSphere by a non-uniform scale --
-// the resulting radius is scaled by the LARGEST of the three axis
-// factors, not an average or a per-axis distortion, so the sphere stays
-// a true bounding volume (if a loose one) rather than becoming wrong.
-const BoundingSphere original(Vector3::Zero, 1.0f);
-const Matrix nonUniformScale = Matrix::CreateScale(2.0f, 0.5f, 4.0f);
-
-const BoundingSphere transformed = original.Transform(nonUniformScale);
-// transformed.Radius comes out as exactly 4.0f -- the original radius (1)
-// times the largest single axis factor (4, the Z scale), not e.g. an
-// average of (2, 0.5, 4) or a per-axis-distorted ellipsoid approximation.
-\end{lstlisting}
-
-Knowing this precisely matters for a broad-phase collision or culling system that assumes a
-transformed \cnaclass{BoundingSphere} is always at least as large as the true transformed
-shape (safe for conservative culling) but not tighter than necessary (a performance, not a
-correctness, concern) --- both properties this implementation actually guarantees, once read
-directly rather than assumed from the type's name alone.
-
-\section{Curves: Curve, CurveKey, and their supporting enums}
-
-\cnaclass{Curve} holds an ordered \cnaclass{CurveKeyCollection} of \cnaclass{CurveKey} points
-and evaluates the resulting piecewise curve at an arbitrary position via
-\texttt{Evaluate(float) -> float}; \texttt{IsConstant} reports whether the curve has zero or
-one keys (in which case evaluation is trivially constant). Two independently-settable
-\cnaclass{CurveLoopType} properties, \texttt{PreLoop} and \texttt{PostLoop}, govern what
-happens when \texttt{Evaluate} is asked for a position before the first key or after the
-last one: \texttt{Constant} clamps to the boundary key's value, \texttt{Linear} extrapolates
-linearly, \texttt{Cycle} wraps the curve's own span, \texttt{CycleOffset} wraps \emph{and}
-adds the accumulated first/last-key value difference per cycle (useful for a monotonically
-increasing quantity like distance traveled along a looping path), and \texttt{Oscillate}
-ping-pongs direction each cycle. A private \texttt{GetCurvePosition(float) -> float},
-together with \texttt{GetNumberOfCycle(float) -> int}, implements this remapping before the
-underlying piecewise evaluation runs.
-
-Tangent handling is exposed at three granularities: \texttt{ComputeTangents(CurveTangent)}
-sets both in and out tangents for every key to the same \cnaclass{CurveTangent} mode;
-\texttt{ComputeTangents(CurveTangent in, CurveTangent out)} sets them independently for every
-key; and \texttt{ComputeTangent(keyIndex, ...)} (both single-mode and in/out-mode overloads)
-recomputes tangents for one specific key. The three \cnaclass{CurveTangent} modes are
-\texttt{Flat} (tangent forced to zero), \texttt{Linear} (tangent equal to the difference to
-the neighboring key's value), and \texttt{Smooth} (derived from both neighboring keys).
-The smooth path uses two radically different zero-span tests in the same function:
-\texttt{TangentIn} uses \texttt{MachineEpsilonFloat} (about $5.96\times10^{-8}$), while
-\texttt{TangentOut} uses \texttt{denorm\_min} (about $1.4\times10^{-45}$), a ratio of roughly
-$4\times10^{37}$. Duplicate or nearly duplicate positions can therefore produce asymmetric
-tangents even though the two branches appear structurally parallel.
-
-Each \cnaclass{CurveKey} carries an immutable \texttt{Position} (set only at construction),
-a mutable \texttt{Value}, mutable \texttt{TangentIn} / \texttt{TangentOut}, and a
-\cnaclass{CurveContinuity} (\texttt{Smooth} --- interpolate normally between this key and the
-next --- or \texttt{Step}, where any position between this key and the next simply returns
-this key's value, no interpolation). \cnaclass{CurveKeyCollection} keeps its keys sorted by
-position at all times --- its \texttt{Add} method is documented as ``adds a key while
-preserving ascending position order,'' i.e.\ an insertion-sorted add, not an append --- and
-adds the same \texttt{CNAEXT} C\texttt{++}-iterator convenience surface
-(\texttt{iterator} / \texttt{const\_iterator} / \texttt{begin} / \texttt{end} / \texttt{cbegin}/%
-\texttt{cend}) already seen on \cnaclass{GameComponentCollection} in
-Chapter~\ref{ch:game-loop}.
-
-\subsection{A worked example: loading a real Curve from .cnj content}
-
-Everything above describes \cnaclass{Curve} as an in-memory object a game builds by hand, but
-it also has real content-pipeline support --- both a genuine \texttt{.xnb}
-\texttt{CurveContentTypeReader} and a \texttt{.cnj} loose-file sidecar, following the same
-\texttt{ContentManager} resolution order Chapter~\ref{ch:content-and-assets} already
-establishes generically. A real \texttt{.cnj} fixture, quoted directly, shows every field
-this section describes in one place:
-
-\begin{lstlisting}
-{
-    "cnjVersion": 1,
-    "type": "Curve",
-    "preLoop": "Cycle",
-    "postLoop": "Oscillate",
-    "keys": [
-        { "position": 0.0, "value": 0.0, "tangentIn": 0.0, "tangentOut": 1.0, "continuity": "Smooth" },
-        { "position": 1.0, "value": 10.0, "tangentIn": 1.0, "tangentOut": 0.0, "continuity": "Step" }
-    ]
-}
-\end{lstlisting}
-
-\begin{lstlisting}
-Curve fade = contentManager.Load<Curve>("fade"); // resolves fade.cnj, no fade.xnb present
-float y = fade.Evaluate(0.5f); // Hermite-interpolated between the two keys above
-\end{lstlisting}
-
-Two details in this exact fixture are easy to misread without checking the real loader's own
-behavior. First, \texttt{preLoop} / \texttt{postLoop} govern positions \emph{outside} $[0,1]$
---- \texttt{Evaluate(-0.5f)} wraps via \texttt{Cycle} (\texttt{PreLoop}), and
-\texttt{Evaluate(1.5f)} ping-pongs via \texttt{Oscillate} (\texttt{PostLoop}); neither applies
-to \texttt{Evaluate(0.5f)} above, which falls inside the curve's own defined span and is
-governed purely by the two keys' tangents. Second, key~1's \texttt{continuity: "Step"} has no
-effect anywhere in this particular two-key curve at all: \cnaclass{CurveContinuity} on a key
-governs interpolation \emph{from that key to the next one}, and key~1 here is the last key ---
-there is no ``next'' key for its own continuity setting to apply to. A \texttt{Step}
-continuity only becomes visible with a third key added after it, at which point any position
-between key~1 and that third key would return key~1's flat \texttt{Value} with no
-interpolation, rather than blending toward the third key's value. A test fixture with unused
-fields like this is not a mistake in the fixture --- \texttt{CnjCurveTests.cpp}'s own real test
-asserts \emph{every} field decoded correctly, independent of whether that specific two-key
-curve happens to exercise it at evaluation time.
-
-\subsection{Full method reference: CurveKeyCollection}
-
-Beyond \texttt{Add} and the \texttt{CNAEXT} iterator surface already named above,
-\cnaclass{CurveKeyCollection} implements the same general-purpose ordered-collection surface
-\cnaclass{GameComponentCollection} does, read directly from its header:
-
-\begin{description}
-\item[\texttt{Count}] a get-only property returning the number of keys currently in the
-  collection.
-\item[\texttt{IsReadOnly}] a get-only property --- always \texttt{false} for a
-  \cnaclass{CurveKeyCollection} constructed normally; present to satisfy the same
-  generic-collection-interface shape XNA's own \texttt{ICollection<T>} expects, not because
-  a read-only \cnaclass{CurveKeyCollection} is ever actually produced anywhere in CNA.
-\item[\texttt{Item(index)} / \texttt{operator[](index)}] get/set access to one key by its
-  position in collection order (not by curve position) --- both a mutable and a
-  \texttt{const} overload exist for each.
-\item[\texttt{Clear()}] removes every key, leaving an empty collection.
-\item[\texttt{Clone()}] returns a full value copy of the collection --- distinct from a
-  reference/pointer copy, matching \cnaclass{CurveKeyCollection}'s own value-type semantics.
-\item[\texttt{Contains(item)}] returns whether an equal \cnaclass{CurveKey} (by its own
-  \texttt{Equals}, \S\ref{sec:shared-debug-surface}) already exists in the collection.
-\item[\texttt{CopyTo(array, arrayIndex)}] copies every key into a caller-supplied
-  \texttt{std::vector<CurveKey>}, starting at the given destination index --- the same
-  \texttt{ICollection<T>.CopyTo} shape XNA itself exposes.
-\item[\texttt{IndexOf(item)}] returns the collection-order index of an equal key, or a negative
-  sentinel if none is found.
-\item[\texttt{RemoveAt(index)}] removes the key at the given collection-order index.
-\end{description}
-
-\begin{lstlisting}
-// Worked example: a Curve driving a camera's height over a 4-second
-// flythrough, easing in and out rather than moving at constant speed.
-Curve heightCurve;
-heightCurve.getKeysProperty().Add(CurveKey(0.0f, 10.0f));
-heightCurve.getKeysProperty().Add(CurveKey(2.0f, 40.0f));
-heightCurve.getKeysProperty().Add(CurveKey(4.0f, 10.0f));
-heightCurve.ComputeTangents(CurveTangent::Smooth);
-heightCurve.setPreLoopProperty(CurveLoopType::Constant);
-heightCurve.setPostLoopProperty(CurveLoopType::Constant);
-
-// Each frame:
-const float cameraHeight = heightCurve.Evaluate(elapsedFlythroughSeconds);
-\end{lstlisting}
-
-\paragraph{A second worked example: the difference between Cycle and Oscillate.}
-The flythrough above deliberately used \texttt{CurveLoopType::Constant} for both
-\texttt{PreLoop} and \texttt{PostLoop} --- evaluating past either end simply holds the nearest
-key's value, appropriate for a one-shot camera move. A looping effect (an idle animation, a
-bobbing collectible) instead wants \texttt{Cycle} or \texttt{Oscillate}, and the difference
-between the two is easy to get backwards from the names alone:
-
-\begin{lstlisting}
-Curve bobHeight;
-bobHeight.getKeysProperty().Add(CurveKey(0.0f, 0.0f));
-bobHeight.getKeysProperty().Add(CurveKey(0.5f, 1.0f));
-bobHeight.ComputeTangents(CurveTangent::Smooth);
-
-// Cycle: repeats the same 0 -> 1 rise every 0.5 seconds -- a sawtooth-like
-// repeat, jumping from 1 straight back to 0 at each cycle boundary.
-bobHeight.setPostLoopProperty(CurveLoopType::Cycle);
-
-// Oscillate: ping-pongs instead -- 0 -> 1 -> 0 -> 1 -> ..., reversing
-// direction each cycle rather than jumping. The natural choice for a
-// bobbing/breathing effect, where Cycle would produce a visible snap.
-bobHeight.setPostLoopProperty(CurveLoopType::Oscillate);
-\end{lstlisting}
-
-\texttt{CycleOffset} is a third, easily-confused variant worth naming precisely: like
-\texttt{Cycle}, it repeats rather than ping-pongs, but it additionally accumulates the
-difference between the curve's first and last key value on every repeat --- the right choice
-for a monotonically increasing quantity sampled from a looping source curve (distance
-traveled along a repeating path segment, for instance), where \texttt{Cycle} alone would
-incorrectly reset back to the first key's value at every loop boundary.
-
-\section{Worked example: a real Matrix-driven world/view/projection chain}
+\section{Compiled world/view/projection example}
 \label{sec:worked-examples}
 
-Every later graphics chapter in this book assumes the reader already knows the
-World$\times$View$\times$Projection pattern this section makes concrete: a \texttt{World}
-matrix positions and orients one object, a \texttt{View} matrix positions the camera, and a
-\texttt{Projection} matrix maps the resulting camera-space geometry onto the screen. The
-program below builds all three from the factory methods in
-\S\ref{sec:matrix-full-reference} above --- \texttt{CreateRotationZ} composed with
-\texttt{CreateTranslation} for \texttt{World}, \texttt{CreateLookAt} for \texttt{View}, and
-\texttt{CreatePerspectiveFieldOfView} for \texttt{Projection} --- and hands all three straight
-to \cnaclass{BasicEffect} (Chapter~\ref{ch:stock-effects} covers the effect itself; here it is
-purely the vehicle for putting these three matrices to use).
+The retained source \path{tools/cna-screenshot-infra/math_rotation_demo.cpp} constructs a complete
+game, builds a world/view/projection chain, applies \cnaclass{BasicEffect}, and draws a colored
+triangle. Its central sequence is:
 
 \begin{lstlisting}
 const float angle = MathHelper::ToRadians(30.0f);
 const Matrix world = Matrix::CreateRotationZ(angle) *
-                      Matrix::CreateTranslation(Vector3(0.0f, 0.0f, 0.0f));
-
+    Matrix::CreateTranslation(Vector3::Zero);
 const Matrix view = Matrix::CreateLookAt(
     Vector3(0.0f, 0.0f, 3.0f), Vector3::Zero, Vector3::Up);
 const Matrix projection = Matrix::CreatePerspectiveFieldOfView(
@@ -1661,48 +405,31 @@ fx.World = world;
 fx.View = view;
 fx.Projection = projection;
 fx.Apply();
-
-const VertexPositionColor verts[3] = {
-    { Vector3( 0.0f,  0.8f, 0.0f), Color::Red },
-    { Vector3(-0.8f, -0.6f, 0.0f), Color(0, 220, 90, 255) },
-    { Vector3( 0.8f, -0.6f, 0.0f), Color(60, 140, 255, 255) },
-};
-VertexBuffer vb(dev, 3);
-vb.SetData(verts, 3);
-dev.SetVertexBuffer(&vb);
-dev.DrawPrimitives(PrimitiveType::TriangleList, 0, 1);
 \end{lstlisting}
-
-Figure~\ref{fig:ch07-matrix-rotation} is the real, unedited output of this exact program, built
-and run headlessly against CNA's \texttt{SOFTWARE} renderer (the same CPU rasterizer
-Chapter~\ref{ch:graphicsdevice}'s own worked example used --- see
-\S\ref{sec:worked-drawprimitives} there for what it is and why it's the realistic choice for a
-headless screenshot in this book's own build environment). The triangle's un-rotated vertices
-above point straight up; a real, working \texttt{Matrix::CreateRotationZ(30 degrees)} tilts it
---- the screenshot confirms the rotation is genuinely computed and applied, not merely
-specified in source and silently ignored.
 
 \begin{figure}[h]
 \centering
+\begin{figurealt}{Software-renderer matrix demonstration showing a colored three-dimensional object after world rotation, camera view, and projection transforms.}
 \includegraphics[width=0.4\textwidth]{images/ch07-matrix-rotation-software.png}
-\caption{Real, unedited output of the Matrix worked example above --- a triangle whose
-un-rotated vertices point straight up, rendered after a real
-\texttt{Matrix::CreateRotationZ(30\textdegree{})}, composed with a real
-\texttt{CreateLookAt} / \texttt{CreatePerspectiveFieldOfView} view/projection chain, rendered
-headlessly through CNA's \texttt{SOFTWARE} renderer.}
+\end{figurealt}
+\caption{Software-renderer output from the retained matrix demo. The image verifies the composed
+rotation, view, projection, effect application, draw, and pixel path on the pinned configuration.}
 \label{fig:ch07-matrix-rotation}
 \end{figure}
 
-\section{Evidence boundary for the math reference}
+\begin{evidencenote}
+The image is a pixel artifact for one complete path, not a conformance oracle for every math
+operation. The math test suite supplies analytic expectations at several tolerances, but this
+edition located no captured XNA numeric corpus covering composition order, singular inputs,
+corner ordering, or non-identity plane transforms. Porting tests should compare the original
+program's observable results: projected positions, collision classifications, curve samples, or
+captured reference values.
+\end{evidencenote}
 
-Absence from CNA's root \texttt{NEXT.md} is not proof that a math operation is complete. The
-pinned module records 818 flat GoogleTest definitions, using analytic expectations and three
-tolerance scales ($10^{-4}$, $10^{-5}$, and $10^{-6}$), but no captured XNA or MonoGame numeric
-oracle. Important conventions including matrix/quaternion composition order, $[0,1]$ depth,
-corner order, singular inputs, and non-identity plane transforms are not independently pinned.
+\section{Summary}
 
-That is why this chapter distinguishes source-derived behavior from verified conformance and why
-Chapter~\ref{ch:geometry-color-layout} records live gaps even when no marker names them. For a
-port, add tests at the original game's observable boundary --- projected screen positions,
-collision classifications, curve samples, or captured reference values --- instead of treating a
-familiar API name or a clean marker search as an oracle.
+CNA's math API is broadly XNA-shaped, but its useful contract is the combination of value
+semantics, row-vector composition, right-handed directions, and operation-specific edge cases.
+Keep clip-space $W$, do not reinterpret polymorphic values as packed GPU bytes, validate
+degenerate inputs, and avoid the current plane-matrix and frustum-ray paths where their missing
+behavior matters.

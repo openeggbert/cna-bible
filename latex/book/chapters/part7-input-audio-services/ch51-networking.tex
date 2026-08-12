@@ -1,538 +1,201 @@
 \chapter{Networking and Session Semantics}
 \label{ch:networking}
 
-CNA's \cnans{Microsoft::Xna::Framework::Net} namespace --- five enums and eighteen classes,
-mirroring the shape this book's ecosystem chapter already summarized --- is one of the
-clearest illustrations in this book of the gap between ``the API surface exists'' and ``the
-API surface does something real.'' Real networking is backed by ENet (vendored directly, as
-already noted earlier in this book), wrapped by an internal \texttt{ENetBackend}.
+CNA's \cnans{Microsoft::Xna::Framework::Net} surface combines one functional LAN route with
+several compatibility lifecycles. \texttt{SystemLink} uses the vendored ENet transport;
+\texttt{Local}, \texttt{LocalWithLeaderboards}, \texttt{PlayerMatch}, and \texttt{Ranked} do
+not. Code that only observes session objects can miss that distinction, so this chapter starts
+with it.
 
-\section{NetworkSession: caller-owned, and genuinely capable in ways FNA's stub is not}
+\section{Session types and ownership}
 
-\cnaclass{NetworkSession} is explicit about its own ownership model: \texttt{Create()} /
-\texttt{Find()} / \texttt{Join()} / \texttt{JoinInvited()} all return a caller-owned
-\cnaclass{NetworkSession}\texttt{*}; \texttt{Dispose()} releases the transport and every gamer the
-session owns, but does not delete the session object itself --- the caller must do that
-separately, matching the conventional \texttt{IDisposable} split between resource release and
-memory ownership. Two properties are worth calling out specifically because they are real in
-CNA in a way they are not in FNA at all: \texttt{AllowHostMigration}, where every surviving
-peer independently computes the identical new host (the lowest remaining wire ID, requiring
-no election round-trip) and reconnects via real LAN discovery; and
-\texttt{SimulatedLatency} / \texttt{SimulatedPacketLoss}, which really do delay or
-probabilistically drop \texttt{AppData} traffic on the receiving side, scoped specifically to
-application data rather than session-management traffic or host-relay hops. In FNA, both of
-these properties exist only as stored, inert values with no behavior behind them at all ---
-here, they are genuinely functional network-testing tools.
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{NetworkSessionType} & \textbf{Pinned-revision behavior} \\
+\midrule
+\texttt{SystemLink} & ENet host/join, LAN discovery, handshake, application-data relay,
+disconnect handling, simulated latency/loss, and host migration \\
+\texttt{Local} & Synthetic state and events; no transport or local data delivery \\
+\texttt{LocalWithLeaderboards} & Same synthetic lifecycle plus Chapter~\ref{ch:gamerservices}'s
+local persistence \\
+\texttt{PlayerMatch}, \texttt{Ranked} & Stubs; no matchmaking service \\
+\bottomrule
+\end{tabularx}
+\end{center}
 
-A subtle but load-bearing detail belongs right alongside those two: real XNA's own
-\texttt{GamerJoined} is documented to replay itself immediately upon subscription for every
-gamer already in the session at that point.  CNA now reproduces that contract through
-\texttt{EventHandler<T>::SetReplayHook}: adding a handler synchronously invokes it once for
-every gamer already in \texttt{AllGamers}, including the initial local gamer(s) established by
-\texttt{Create()} / \texttt{Join()} / \texttt{JoinInvited()}.  Mid-session joins still enter
-the ordinary network-event queue and therefore require the normal per-frame \texttt{Update()}
-pump; an extra \texttt{Update()} immediately after subscribing is neither required nor a way
-to obtain a second copy of the initial events.
+\texttt{Create}, \texttt{Find}, \texttt{Join}, and \texttt{JoinInvited} return a
+caller-owned \cnaclass{NetworkSession}\texttt{*}. \texttt{Dispose()} releases transport and
+owned gamer resources, but it does not delete the session object. The caller must perform both
+operations, normally through an owning smart pointer with explicit disposal where required.
+
+The game loop must call \texttt{Update()} each frame. Initial \texttt{GamerJoined} events are
+different: subscribing replays the handler synchronously for gamers already in
+\texttt{AllGamers}. Later joins arrive through the update queue.
 
 \begin{lstlisting}
-// Worked example: hosting a session and correctly receiving the local
-// gamer's initial GamerJoined event through replay-on-subscribe.
-NetworkSession* session = NetworkSession::Create(
-    NetworkSessionType::SystemLink, /* maxLocalGamers */ 1, /* maxGamers */ 8);
-    // the 8 above is NOT actually honored -- see the worked example below
+std::unique_ptr<NetworkSession> session(NetworkSession::Create(
+    NetworkSessionType::SystemLink, 1, 8));
 
 session->GamerJoined.Add(
-    [](System::Object* sender, const GamerJoinedEventArgs& args)
-    {
-        // This runs synchronously during Add() for gamers already present;
-        // later remote joins arrive from the ordinary Update() pump.
+    [](System::Object*, const GamerJoinedEventArgs& args) {
+        // Existing gamers replay now; later joins arrive from Update().
     });
 
-// ... in the game loop, every frame:
+// Once per game update:
 session->Update();
 \end{lstlisting}
 
-\section{Host migration, worked through in full}
+\begin{limitationnote}{The \texttt{maxGamers} compatibility quirk}
+The create path does not forward the caller's \texttt{maxGamers}. The constructed session
+reports the literal 69, preserving the FNA/XNA behavior recorded in the implementation. A game
+that needs an eight-player limit in the example above must enforce eight itself.
+\end{limitationnote}
 
-\texttt{AllowHostMigration}'s ``lowest remaining wire ID, no election round-trip'' claim above
-is worth unpacking into the actual algorithm, since it is a genuinely interesting piece of
-distributed-systems design for a library this size. The detection point is the same
-disconnect handler that already runs when any peer drops; when the disconnecting peer is
-specifically the host, \texttt{AllowHostMigration == false} preserves today's exact behavior
-(the session ends immediately), while \texttt{true} branches into a dedicated migration
-helper instead. Every surviving peer already knows the full roster --- gamertag, wire ID, and
-\texttt{IsHost} --- from the handshake messages exchanged when it originally joined, so no new
-negotiation message is needed at all: each survivor independently computes
-\texttt{new\_host = min(every other known wire ID)}, and if that ID belongs to one of its own
-local gamers, it promotes itself; otherwise, it knows it must reconnect to whichever peer now
-owns that ID. Both outcomes share the same cleanup step first --- every currently-known remote
-\cnaclass{NetworkGamer} is removed via a real \texttt{GamerLeave} event, and all of the
-session's internal wire-ID bookkeeping is cleared and reset to zero, so the next real handshake
-cannot collide with stale entries left over from the dead host's own numbering.
+\section{SystemLink transport}
 
-\begin{lstlisting}
-// Worked example: subscribing to the real HostChanged event that fires
-// once a promoted or reconnected peer's migration actually completes.
-session->HostChanged.Add(
-    [](System::Object* sender, const HostChangedEventArgs& args)
-    {
-        // args.getOldHostProperty() / getNewHostProperty() -- both real
-        // NetworkGamer pointers; getNewHostProperty() is only raised once
-        // a live NetworkGamer for the new host genuinely exists again.
-    });
-\end{lstlisting}
+The internal \texttt{ENetBackend} uses a star topology. Clients send application data to the
+host; the host relays it to the target. \cnaclass{NetworkGamer}\texttt{::Id} and
+\texttt{IsHost} are consistent across machines, unlike FNA's fixed zero/true placeholders.
+\texttt{RoundtripTime} reads ENet's peer measurement.
 
-The reconnecting side (every survivor that is \emph{not} promoted) has no direct channel to
-any other peer in this star topology, and the old host is gone, so the only way to find the
-new host's address is the same real LAN discovery \cnaclass{NetworkSession::Find()} already
-uses --- matched against the expected new host's already-cached gamertag --- followed by an
-ordinary reconnect through the exact same \texttt{ClientHello} / \texttt{ServerWelcome} handshake
-a fresh \texttt{Join()} performs. This is a deliberate, explicitly confirmed scope choice worth
-stating precisely: it is a full reconnect, not a live migration of existing sockets, so a
-reconnecting peer's remote-gamer roster is genuinely rebuilt from scratch (fresh
-\cnaclass{NetworkGamer} identities, real \texttt{GamerLeave} followed by real \texttt{GamerJoin}
-events) rather than preserved across the promotion.  Discovery is retried for at most three
-150~ms search windows to tolerate the promoted peer registering at nearly the same instant or
-an OS delivering a shared-port discovery datagram to another socket. If none finds the cached
-gamertag, migration falls through to the same immediate-end path
-\texttt{AllowHostMigration == false} always takes.
+LAN discovery uses UDP port 61190, protocol version 1, and a 150-ms search window. A finder sends
+broadcast and loopback queries, then deduplicates replies by connect port. The game session uses
+an OS-assigned ENet port; Emscripten reserves 61191 but cannot perform raw UDP browser discovery.
+\cnaclass{QualityOfService}'s network-backed construction reports discovery round-trip time;
+bandwidth remains unmeasured.
 
-\section{NetworkGamer: real per-machine identity where FNA hardcodes it}
+The protocol opcodes are \texttt{ClientHello=0x01}, \texttt{ServerWelcome=0x02}, gamer
+join/leave \texttt{0x03}/\texttt{0x04}, reserved host change \texttt{0x05}, state change
+\texttt{0x06}, and application data \texttt{0x10}. There are two ENet channels and at most 31
+peers. Up to 64 application sends may wait for handshake completion; the oldest is evicted on
+the 65th. Disconnect, gamer removal, and migration purge affected queued sends. An internal
+dropped-packet counter supports tests and diagnostics but is not part of
+\cnaclass{NetworkSession}'s public API.
 
-\cnaclass{NetworkGamer} / \cnaclass{LocalNetworkGamer}'s \texttt{Id} and \texttt{IsHost} are
-real, cross-machine-consistent values in CNA --- a genuine improvement over FNA's own
-documented upstream limitation, where \emph{every} gamer's \texttt{Id} is hardcoded to zero
-and \emph{every} gamer's \texttt{IsHost} is hardcoded to true, regardless of which machine is
-asking. \texttt{RoundtripTime} is wired to the real underlying ENet peer's own native
-round-trip-time tracking, not estimated or faked.
+Discovery packets are version-checked. Property indices must be in $[0,256)$, one-byte list
+counts reject values above 255, and completed peers that repeat a hello are disconnected.
+Host-only broadcasts from a non-host peer are also rejected. These checks assume that an
+untrusted client can reproduce the documented wire format.
 
-\section{Real versus stub, by NetworkSessionType}
+\section{Host migration}
 
-This is the single most useful table in this chapter, because it tells you directly whether
-a given multiplayer feature in a game you are porting (this book's migration chapter returns
-to this) will actually work:
+When \texttt{AllowHostMigration=false}, loss of the host ends the session. When it is true, all
+survivors choose the lowest remaining wire ID from their shared roster. No election packet is
+needed. The peer owning that ID promotes itself; the others rediscover its cached gamertag and
+perform a normal hello/welcome reconnect. Discovery is retried for three 150-ms windows.
+
+Migration clears remote gamers and wire-ID state first. Consequently, reconnecting peers see
+leave and join events and receive new \cnaclass{NetworkGamer} objects; sockets and object
+identity are not preserved. If the new host cannot be discovered, the session ends.
+
+\texttt{SimulatedLatency} and \texttt{SimulatedPacketLoss} affect received application data.
+They do not delay session-management packets or the host's relay hop. FNA stores these values
+without applying them; CNA uses them as transport-test controls.
+
+\section{Delivery guarantees}
+
+ENet can express three behaviors for XNA's five \cnaclass{SendDataOptions} values:
 
 \begin{center}
-\begin{tabular}{ll}
+\begin{tabular}{lll}
 \toprule
-\textbf{\cnaclass{NetworkSessionType}} & \textbf{Status} \\
+\textbf{XNA option} & \textbf{ENet flag} & \textbf{Observed guarantee} \\
 \midrule
-\texttt{SystemLink} & Real: hosting, joining, LAN discovery, AppData relay, disconnect \\
-                     & handling, host migration --- all genuinely networked over ENet \\
-\texttt{Local} & Synthetic lifecycle only: \texttt{SendData} delivers nothing \\
-\texttt{LocalWithLeaderboards} & Same non-delivery, plus locally persisted \\
-                                & leaderboards/achievements from Chapter~\ref{ch:gamerservices} \\
-\texttt{PlayerMatch} / \texttt{Ranked} & Documented stub --- no matchmaking backend exists \\
-                                        & to connect to, not an artificially withheld feature \\
+\texttt{None} & \texttt{UNSEQUENCED} & best effort, unordered \\
+\texttt{InOrder} & none & best effort, sequenced \\
+\texttt{Reliable} & \texttt{RELIABLE} & reliable and ordered \\
+\texttt{ReliableInOrder} & \texttt{RELIABLE} & reliable and ordered \\
+\texttt{Chat} & \texttt{RELIABLE} & reliable and ordered \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-Session invites are stubbed for the identical reason \texttt{PlayerMatch} / \texttt{Ranked}
-are: there is no online service behind them to implement against, not a deliberately
-Xbox-Live-exclusive feature CNA chose not to attempt.
+ENet's reliable channel is ordered, so CNA cannot reproduce ``reliable but unordered'' without
+adding another protocol. \texttt{Reliable} therefore receives the stronger ordered guarantee.
+\texttt{Chat} uses the same route by CNA policy.
 
-For all four synthetic types, no port is bound, \texttt{ConnectToHost} is a no-op, and
-\texttt{SendData} leaves no local data available.  Discovery differs by type:
-\texttt{Find(Local, ...)} rejects \texttt{Local} with \texttt{ArgumentException}, while
-\texttt{LocalWithLeaderboards}, \texttt{PlayerMatch}, and \texttt{Ranked} return an empty
-collection without the 150~ms network wait. Their useful behavior is session lifecycle:
-\texttt{StartGame}, \texttt{EndGame}, state changes, and events. Only \texttt{SystemLink}
-passes \texttt{RealNetworkingEnabled}.
+\section{Compatibility limits and asymmetries}
 
-\subsection{What remains a parity stub even in a real \texttt{SystemLink} session}
+Even in a \texttt{SystemLink} session, voice transport and invitations are absent.
+\texttt{EnableSendVoice()} and \texttt{SendPartyInvites()} do nothing; voice and private-slot
+properties retain false defaults. \texttt{NetworkMachine::RemoveFromSession()} throws
+\texttt{NotImplementedException}. Invite and TrueSkill/arbitration events are never raised.
+\texttt{JoinInvited()} creates a synthetic \texttt{PlayerMatch} lifecycle rather than joining
+a service-backed session.
 
-The functional ENet path should not be read as blanket completion of every XNA networking
-member.  Voice transport is absent: \texttt{LocalNetworkGamer::EnableSendVoice()} and
-\texttt{SendPartyInvites()} are no-ops, while \texttt{HasVoice}, \texttt{IsTalking},
-\texttt{IsMutedByLocalUser}, \texttt{IsGuest}, and \texttt{IsPrivateSlot} remain their default
-false values.  \texttt{NetworkMachine::RemoveFromSession()} always throws
-\texttt{NotImplementedException}.  The three arbitrated/unarbitrated/TrueSkill leaderboard
-events and the static \texttt{InviteAccepted} event are declared but never raised.  Invitations
-have no transport or service behind them; \texttt{JoinInvited()} merely constructs the same
-synthetic \texttt{PlayerMatch} lifecycle object described above.  These limits are independent
-of the real discovery, handshake, application-data, state-broadcast, and host-migration paths.
+Two inherited data-shape problems are visible to applications:
 
-\section{Real LAN discovery, concretely}
-
-\cnaclass{AvailableNetworkSession} / \texttt{AvailableNetworkSessionCollection} are populated by
-genuine ENet LAN discovery replies over a well-known UDP port, with broadcast and loopback
-fallback and OS-assigned ephemeral ports for the actual game-session transport once a session
-is joined. Several accessor methods on \cnaclass{AvailableNetworkSession} --- resolving the
-real connect address, port, and session type --- exist purely because CNA's own
-\texttt{Find()} genuinely discovers sessions over the network; they have no FNA counterpart
-at all, since FNA's own \texttt{Find()} never discovers anything real to begin with.
-\cnaclass{QualityOfService} correspondingly has two construction paths: one matching FNA's
-own acknowledged-incomplete, no-measurement stub exactly (byte-for-byte, for API parity), and
-a second that computes a real round-trip-time measurement from the discovery query/reply
-exchange itself --- bandwidth remains unmeasured in both cases, since no established peer
-connection exists yet at discovery time to measure it against.
-
-The discovery protocol uses UDP port 61190, version~1, and a 150~ms search window. A finder
-sends both broadcast and an explicit loopback query, then deduplicates replies by connect port.
-Ordinary hosts use an OS-assigned ENet port; Emscripten's fixed host port is 61191, but raw UDP
-discovery is a permanent browser no-op. Session transport allows 31 peers, two ENet channels,
-and 64 queued pre-handshake application sends.
-
-\subsection{Wire opcodes, topology, and hostile input}
-
-The complete application protocol is small: \texttt{ClientHello=0x01},
-\texttt{ServerWelcome=0x02}, join/leave broadcasts \texttt{0x03}/\texttt{0x04},
-\texttt{0x05} reserved for an unimplemented host-change broadcast,
-\texttt{StateChangeBroadcast=0x06}, and \texttt{AppData=0x10}. The topology is a star: clients
-talk to the host and the host relays application data to its target. Host migration instead
-promotes locally or rediscovers the new host by gamertag, retrying three 150~ms searches.
-
-Untrusted discovery packets are version-checked before deeper parsing. Property indices must
-be non-negative and below 256, preventing a crafted roughly two-billion-entry growth loop.
-List counts are one byte and encoding throws above 255 rather than wrapping. The threat model
-includes a custom ENet client speaking this inferable wire format; a non-host peer sending a
-host-only broadcast is logged and disconnected, as is a completed peer that repeats its hello.
-
-\section{Real bugs found and fixed}
-
-Several genuine, consequential bugs were found and fixed in this namespace's own history,
-worth naming because of what each reveals. \cnaclass{NetworkSession}'s own
-\texttt{Dispose()} could be called twice and use-after-free as a result --- fixed to be
-idempotent. The async \texttt{Begin*} family's callbacks were stored but, for a period, never
-actually invoked at all --- fixed to fire exactly once, correctly handling the case where the
-callback itself re-entrantly triggers another async call. Every \cnaclass{NetworkGamer} /
-\cnaclass{LocalNetworkGamer} a session ever created used to leak permanently, because nothing
-in the session's own lifecycle ever deleted them --- fixed by having \cnaclass{NetworkSession}
-take real ownership and free them in bulk on disposal. A local-gamer-ID collision bug could
-occur specifically after a remove-then-add sequence, because the ID was derived from the
-live collection's current size rather than a monotonically increasing counter --- fixed with a
-dedicated counter that never reuses a value. And application data sent before a peer's
-handshake had fully completed was silently and permanently dropped, despite being reachable
-through the ordinary public send API --- fixed with a small, bounded, per-session queue that
-flushes once both sender and target resolve a real wire ID, then further hardened in a later
-pass after a follow-up audit found the queue itself was never purged when a gamer left,
-disconnected, or a host migration occurred. The bound is a real, fixed constant --- 64 pending
-application-data sends per session, oldest evicted first once a 65th arrives before the same
-peer's handshake completes --- with every eviction, whether from overflow or from the later
-purge-on-disconnect fix, counted through an internal diagnostic counter
-(\texttt{CNA::Internal::Net::ENetBackend::GetDroppedAppDataCount()}) rather than only logged;
-this counter lives on the internal backend class, not on \cnaclass{NetworkSession}'s own public
-surface, so it is a tool for this project's own test suite and diagnostics, not something
-ordinary game code reads directly --- but it is worth knowing exists if you are ever debugging
-a mysteriously missing early packet during connection setup.
-
-A fifth, structurally distinct bug is worth naming on its own, since it lives one level below
-this namespace rather than inside it: every \texttt{GamerCollection<T>} specialization ---
-which includes \cnaclass{NetworkSession}'s own \texttt{AllGamers} / \texttt{LocalGamers} --- had
-an enumerator whose \texttt{MoveNext()} unconditionally dereferenced the underlying collection
-pointer after \texttt{Dispose()}, with no guard matching the one \texttt{getCurrent()} already
-had for exactly that situation.
+\begin{itemize}
+  \item \cnaclass{PacketWriter} writes \cnaclass{Color} as four bytes, while
+        \cnaclass{PacketReader}\texttt{::ReadColor()} expects four floats. They are not inverses.
+  \item \texttt{ReceiveData(PacketReader\&, NetworkGamer*\&)} fills and rewinds the reader but
+        returns zero because its local length is never updated. Gate it with
+        \texttt{IsDataAvailable}, or use the byte-vector overload for an accurate count.
+\end{itemize}
 
 \begin{lstlisting}
-// Worked example: the exact repro that surfaced the bug -- Dispose(),
-// then MoveNext(), with no intervening getCurrent() call at all.
-auto it = session->getAllGamersProperty().GetEnumerator();
-it.Dispose();
-it.MoveNext();   // used to dereference a null collection_ pointer here
-\end{lstlisting}
-
-Fixed by giving \texttt{MoveNext()} the identical \texttt{nullptr} check
-\texttt{getCurrent()} already performed, throwing the same
-\texttt{System::ArgumentOutOfRangeException} rather than crashing --- a small fix, but one that
-existing tests had never actually exercised, since every prior test disposed an enumerator and
-then called \texttt{getCurrent()}, never \texttt{MoveNext()}, on the disposed instance.
-
-An earlier cross-module audit flagged a real leak against
-\texttt{NetworkSession::BeginCreate}.  It is closed at the pin: every matching \texttt{End*}
-deletes the action before clearing the shared slot, and a live-instance regression test covers a
-complete create cycle.  The investigation still exposes a genuinely surprising architectural
-constraint worth preserving here.
-
-\subsection{One \texttt{Begin*} / \texttt{End*} slot, process-wide}
-
-\texttt{activeAction\_}, the internal object every \texttt{BeginCreate} / \texttt{BeginFind} /
-\texttt{BeginJoin} overload allocates to carry state across to its matching \texttt{End*} call,
-is declared \texttt{static} on the class --- not a per-instance member:
-
-\begin{lstlisting}
-NetworkSession::NetworkSessionAction* NetworkSession::activeAction_ = nullptr;
-\end{lstlisting}
-
-This means exactly one asynchronous session-lifecycle operation may be in flight at a time,
-\emph{across the entire process}, regardless of how many \cnaclass{NetworkSession} instances a
-game happens to be juggling --- not one slot per session. Every \texttt{Begin*} overload
-enforces this directly, throwing rather than silently queuing or overwriting a still-pending
-action:
-
-\begin{lstlisting}
-if (activeAction_ != nullptr || activeSession_ != nullptr)
-    throw /* ... */;
-activeAction_ = new NetworkSessionAction( /* ... */ );
-\end{lstlisting}
-
-Under the ordinary, correctly-paired usage every synchronous \texttt{Create()} /
-\texttt{Find()} / \texttt{Join()} convenience wrapper already follows --- call the matching
-\texttt{End*} once the operation completes --- this is not a leak at all:
-\texttt{EndCreate} / \texttt{EndFind} / \texttt{EndJoin} each call \texttt{delete activeAction\_;
-activeAction\_ = nullptr;} exactly once, real and verified by reading each \texttt{End*}
-directly. The single-slot design is a real, deliberate constraint worth knowing on its own
-terms even apart from the leak question: a game that tries to \texttt{BeginFind} a second
-session discovery while an earlier \texttt{BeginCreate} on a \emph{different}
-\cnaclass{NetworkSession} object has not yet been matched with its own \texttt{EndCreate} will
-hit this same guard and throw, a real cross-instance interaction a reader might not expect from
-an API that otherwise treats each \cnaclass{NetworkSession} as independent.
-
-The dated \texttt{NEXTaudio.md} note predates the Net fix.  Current source comments identify the
-original defect precisely: each \texttt{End*} used to assign \texttt{nullptr} without first
-deleting the heap-allocated \texttt{NetworkSessionAction}.  The pinned test
-\texttt{CreateDoesNotLeakNetworkSessionAction} compares the live-instance count before and after
-a full \texttt{Create()} cycle.  Separate LeakSanitizer reports caused by tests that call
-\texttt{Dispose()} but never \texttt{delete} the caller-owned session pointer remain test-code
-cleanup findings; they must not be used to reopen the corrected library leak.
-
-\subsection{A worked example: the double-\texttt{Dispose()} use-after-free, traced in full}
-
-The one-sentence summary above --- ``\texttt{Dispose()} could be called twice and use-after-free
-as a result'' --- undersells a genuinely instructive root-cause chain, found by an
-AddressSanitizer run that had nothing to do with networking at all (it was closing out an
-unrelated content-pipeline fuzz-testing task; this was simply the first time the whole suite had
-ever run under \texttt{-DCNA\_SANITIZE=address,undefined}). \texttt{ASan} reported a real
-\texttt{heap-buffer-overflow} inside \texttt{NetworkSession::Dispose()}'s own
-\texttt{ClearPacketQueue()} loop, surfaced by a real test
-(\texttt{ENetBackendTest.DisposeDisconnectsConnectedPeersPromptlyInsteadOfWaitingForTimeout})
-that was not written to test this bug at all --- it existed to confirm prompt disconnect
-behavior, and triggered the crash purely as a side effect of its own fixture's cleanup:
-
-\begin{lstlisting}
-// From modules/net/tests/CNA/Internal/Net/ENetBackendTests.cpp:
-{
-    SystemLinkSessionFixture host;               // constructs a real NetworkSession
-    host.session->Dispose();                     // (1) explicit Dispose(), by the test itself
-}   // (2) fixture destructor unconditionally calls session->Dispose() AGAIN, no guard
-\end{lstlisting}
-
-Tracing exactly what the first \texttt{Dispose()} call does explains why the second one
-crashes rather than being a harmless no-op. \texttt{Dispose()} clears each local gamer's packet
-queue (fine --- the gamer object is still alive at this point), tears down the transport, then
-calls \texttt{ownedGamers\_.clear()} --- which, since \cnaclass{NetworkSession} is the sole owner
-of every gamer it created (the chapter's own ownership split, above), genuinely
-\emph{destroys} the local \texttt{LocalNetworkGamer} object right there. Nothing at that point
-prunes the now-dangling raw pointer out of \texttt{localGamers\_} / \texttt{allGamers\_} ---
-only \texttt{RemoveGamer()} does that pruning, and \texttt{Dispose()} never calls it. The first
-call finishes by setting \texttt{isDisposed\_ = true}, but by then the damage is already
-structural: the collections still list a pointer to an object that no longer exists. The second
-\texttt{Dispose()} call --- triggered by the fixture's own destructor, with no
-\texttt{isDisposed\_} check of its own --- re-enters \texttt{ClearPacketQueue()}'s loop over
-\texttt{localGamers\_}, dereferences that same dangling pointer, and \texttt{ASan} catches the
-read.
-
-This is a genuine API-contract violation, not merely a test-fixture quirk worth special-casing
-away: real XNA's own \texttt{IDisposable} contract requires \texttt{Dispose()} itself to
-tolerate being called more than once, and any real caller pairing an explicit
-\texttt{Dispose()} call with a second, RAII-driven cleanup path --- exactly this fixture's own
-shape, and a perfectly ordinary one --- would hit the identical crash outside of a test binary.
-A follow-up, independent audit (\texttt{audit\_net.md}'s own Critical finding~1) went further
-and found the bug was not even confined to the double-call case: after \emph{only one}
-\texttt{Dispose()} call, a caller could already obtain a gamer collection containing the same
-kind of dangling pointer, simply by reading \texttt{PreviousGamers} (which
-\texttt{RemoveGamer()} populates with a departing --- possibly locally-owned --- gamer's raw
-pointer rather than dropping it) or \texttt{Host} (a raw \cnaclass{NetworkGamer} pointer with the
-identical exposure).
-
-The fix closes both the double-call guard and the single-call exposure together, deliberately
-placed inside \texttt{Dispose()} itself rather than pushed onto every caller to remember:
-
-\begin{lstlisting}
-void NetworkSession::Dispose()
-{
-    if (isDisposed_) return;   // the guard the destructor already had; Dispose() lacked it
-    // ... existing teardown ...
-    ownedGamers_.clear();
-    // Defense-in-depth (audit_net.md Critical finding 1): a *single* Dispose() call
-    // already left dangling pointers reachable through public collection properties.
-    localGamers_.Clear();
-    remoteGamers_.Clear();
-    allGamers_.Clear();
-    previousGamers_.Clear();   // RemoveGamer() populates this with raw pointers too
-    host_ = nullptr;
-    isDisposed_ = true;
-}
-\end{lstlisting}
-
-Three new regression tests close the gap the original crash slipped through (every prior test
-disposed an enumerator or session and then called a getter, never re-entered
-\texttt{MoveNext()} / \texttt{Dispose()} on an already-disposed instance):
-\texttt{DisposeCalledTwiceDirectlyIsSafeAndIdempotent} asserts \texttt{EXPECT\_NO\_THROW} on both
-calls with every gamer count still reading zero afterward; the aptly-named
-\texttt{DisposeClearsPreviousGamersSoNoDanglingPointerIsObservable} removes an owned local gamer
-first (so it genuinely migrates into \texttt{PreviousGamers}), then disposes \emph{once}, and
-confirms all four gamer-collection properties read back empty rather than exposing the dangling
-pointer; and \texttt{DisposeClearsHostProperty} confirms \texttt{Host} reads back
-\texttt{nullptr}. The original ASan repro test needed no changes at all --- it already exercised
-exactly this path, and now serves permanently as the regression guard: a full
-\texttt{-fsanitize=address} rerun of the exact same test reports zero heap-buffer-overflow or
-use-after-free errors.
-
-\section{A worked example: the \texttt{maxGamers} argument that this chapter's own opening example silently ignores}
-
-The very first worked example in this chapter, at the top, passes \texttt{maxGamers = 8} to
-\cnaclass{NetworkSession}'s own \texttt{Create()} --- and that value is never actually used.
-This is worth correcting explicitly, in its own section, rather than quietly editing the
-earlier example away, because the reason is a genuine, verified piece of API fidelity rather
-than a bug in this port, and it is exactly the kind of trap a reader porting real game code
-would otherwise hit directly. \texttt{Create(NetworkSessionType, int maxLocalGamers, int
-maxGamers)}, the simplest three-argument overload, forwards straight into the matching simplest
-\texttt{BeginCreate}
-overload --- whose own \texttt{maxGamers} parameter is unused in its entire body, marked with an
-explicit comment at the call site: FNA itself never uses this parameter in this overload,
-preserved as-is. The reason is not merely that this one overload discards it: the internal
-\texttt{NetworkSessionAction} object every \texttt{BeginCreate} overload constructs to carry
-state across to the matching \texttt{EndCreate} call has no field to store a caller-supplied
-\texttt{maxGamers} value in at all --- so \emph{every} \texttt{Create} / \texttt{BeginCreate}
-overload in the whole class, not just the simplest one, ultimately reaches the same
-\texttt{EndCreate}, which constructs the real \cnaclass{NetworkSession} with a literal, hardcoded
-\texttt{69} in the \texttt{maxGamers} constructor slot, with its own comment recording exactly
-why: \emph{``FNA hardcodes 69 here instead of forwarding the caller's original maxGamers
-argument.''} \texttt{69} is not an arbitrary placeholder --- it is independently documented,
-outside this project, as genuine historical Xbox~360/Windows XNA~4.0 behavior for this exact
-call shape, which is why the prior audit that reconfirmed this quirk concluded it should be
-preserved rather than corrected to ``do what the parameter name suggests.''
-
-\begin{lstlisting}
-// Worked example: the maxGamers argument is accepted, validated in some
-// overloads, and then never actually reaches the constructed session --
-// getMaxGamersProperty() below reads back 69, not 8, on every path.
-NetworkSession* session = NetworkSession::Create(
-    NetworkSessionType::SystemLink, /* maxLocalGamers */ 1, /* maxGamers */ 8);
-assert(session->getMaxGamersProperty() == 69);  // not 8 -- real, preserved XNA behavior
-\end{lstlisting}
-
-A game genuinely relying on a specific room-size cap --- to size a lobby UI, or to refuse a
-ninth join attempt at the application level rather than trusting the framework to enforce it ---
-cannot use this parameter for that purpose on any \texttt{Create} / \texttt{BeginCreate} overload
-in this class, and must track and enforce its own desired capacity separately, exactly as a game
-targeting real Xbox~360-era XNA~4.0 would have had to.
-
-\section{Two asymmetries, preserved rather than symmetrized}
-
-Two small API details are worth knowing specifically because they look like bugs and are
-not: \cnaclass{PacketReader} / \cnaclass{PacketWriter} read and write \cnaclass{Color} values
-asymmetrically --- as four floats on read, four bytes on write --- a known, preserved mismatch
-matching FNA's own upstream behavior exactly rather than a CNA-introduced inconsistency. And
-\cnaclass{NetworkSessionProperties}, a C\texttt{++} translation of a C\# list type whose
-single mutable indexer cannot distinguish a read access from a write access the way C\#'s
-separate getter/setter accessors can, triggers FNA's own ``auto-append past the end'' growth
-behavior on \emph{any} out-of-range access through its mutable overload, not only on an
-explicit write --- a documented, accepted structural deviation; a \texttt{const} reference
-gives genuinely bounds-checked reads instead.
-
-\begin{lstlisting}
-// Worked example: interoperating with Write(Color)'s actual four-byte
-// representation. ReadColor() is NOT its inverse: it expects 16 bytes.
 PacketWriter writer;
-writer.Write(playerTintColor);      // 4 bytes on the wire
+writer.Write(playerTintColor); // four bytes
 localGamer->SendData(writer, SendDataOptions::Reliable);
 
-// On the receiving end, in the game loop:
 std::vector<SharpRuntime::bytecs> rgba(4);
 NetworkGamer* sender = nullptr;
-while (localGamer->getIsDataAvailableProperty())
-{
-    const int count = localGamer->ReceiveData(rgba, sender);
-    if (count == 4)
-    {
+while (localGamer->getIsDataAvailableProperty()) {
+    int count = localGamer->ReceiveData(rgba, sender);
+    if (count == 4) {
         Color tint(rgba[0], rgba[1], rgba[2], rgba[3]);
     }
 }
 \end{lstlisting}
 
-This example deliberately uses the byte-vector receive overload too.  The
-\texttt{ReceiveData(PacketReader\&, NetworkGamer*\&)} overload does fill and rewind its
-reader when a packet is available, but --- preserving an FNA bug --- its local length variable
-is never updated and it returns zero even after consuming a packet.  Consequently a loop whose
-condition is \texttt{ReceiveData(reader, sender) > 0} never executes its body.  If a port must
-use that overload, gate each call with \texttt{IsDataAvailable} and treat the reader contents,
-not the return value, as the successful-delivery signal; for new code, the vector overload above
-has an honest byte count.
+The mutable \cnaclass{NetworkSessionProperties} indexer also grows the collection on an
+out-of-range access because C++ cannot distinguish read and write through the translated
+mutable reference. Use a \texttt{const} reference for bounds-checked reads.
 
-\section{\cnaclass{SendDataOptions}: five values, three real delivery guarantees}
+\section{Asynchronous lifecycle constraint}
 
-The Color-asymmetry worked example above uses \texttt{SendDataOptions::Reliable} without
-explaining what that value actually buys over the remaining four --- worth doing directly, since
-\cnans{Microsoft::Xna::Framework::Net}'s own \cnaclass{SendDataOptions} enum has five values but
-\texttt{ENetBackend} genuinely only has three distinct delivery behaviors underneath them, for a
-real, documented reason rooted in what ENet itself can express. Reading
-\texttt{NetPacketCodec::SendDataOptionsToEnetFlags()} directly, and the doc comment right above
-it in \texttt{NetPacketCodec.hpp}, shows the exact mapping:
+All session \texttt{Begin*}/\texttt{End*} pairs share one static
+\texttt{NetworkSessionAction*}. Only one create, find, or join operation can be outstanding in
+the process, even across different sessions. A second \texttt{Begin*} throws until the matching
+\texttt{End*} deletes and clears the shared action. The operations are positioned to complete
+synchronously because their work occurs in the matching \texttt{End*} path.
 
-\begin{lstlisting}
-uint32_t NetPacketCodec::SendDataOptionsToEnetFlags(SendDataOptions options)
-{
-    switch (options)
-    {
-        case SendDataOptions::None:
-            return ENET_PACKET_FLAG_UNSEQUENCED;
-        case SendDataOptions::InOrder:
-            return 0;
-        case SendDataOptions::Reliable:
-        case SendDataOptions::ReliableInOrder:
-        case SendDataOptions::Chat:
-            return ENET_PACKET_FLAG_RELIABLE;
-    }
-    return ENET_PACKET_FLAG_RELIABLE;
-}
-\end{lstlisting}
+This design once depended on
+\texttt{GamerServicesDispatcher::}\allowbreak\texttt{UpdateAsync()} returning false,
+which it does not after initialization. The resulting busy loop and its isolated regression
+harness are described in Section~\ref{sec:gamerservices-hang}.
 
-\texttt{None} requests ENet's \texttt{UNSEQUENCED} flag explicitly --- true best-effort, packets
-may be dropped or arrive out of order, the only \cnaclass{SendDataOptions} value that does.
-\texttt{InOrder} maps to a bare \texttt{0}: ENet's plain unreliable send is already sequenced
-per-channel and never delivered out of order on its own, so the empty flag set is an exact match
-for ``in order, but not guaranteed to arrive'' rather than an oversight. The interesting case is
-the other three: \texttt{Reliable}, \texttt{ReliableInOrder}, and \texttt{Chat} all collapse onto
-the identical \texttt{ENET\_PACKET\_FLAG\_RELIABLE} flag, because ENet's reliable delivery
-channel is \emph{inherently} ordered --- there is no ENet primitive for ``guaranteed to arrive,
-but not necessarily in order,'' the specific combination real XNA's own \texttt{Reliable} (as
-opposed to \texttt{ReliableInOrder}) documents. Rather than fake an unordered-reliable mode with
-extra bookkeeping ENet does not need, the mapping accepts the collapse: any game that requests
-plain \texttt{Reliable} gets \texttt{ReliableInOrder}'s exact behavior for free, a strictly
-stronger guarantee than what it asked for, never a weaker one. \texttt{Chat} is a separate,
-explicit judgment call rather than a parity match --- FNA itself never implements real delivery
-for this value at all, so there is no existing behavior to preserve; routing it onto
-\texttt{RELIABLE} instead of silently dropping chat text was a deliberate choice, confirmed by a
-real, dedicated test:
+\section{Lifetime hardening}
 
-\begin{lstlisting}
-// From the real test suite (NetPacketCodecTests.cpp) -- confirms all five
-// mappings directly, including the three-way collapse onto RELIABLE.
-EXPECT_EQ(SendDataOptionsToEnetFlags(SendDataOptions::None),
-          static_cast<uint32_t>(ENET_PACKET_FLAG_UNSEQUENCED));
-EXPECT_EQ(SendDataOptionsToEnetFlags(SendDataOptions::InOrder), 0u);
-EXPECT_EQ(SendDataOptionsToEnetFlags(SendDataOptions::Reliable),
-          static_cast<uint32_t>(ENET_PACKET_FLAG_RELIABLE));
-EXPECT_EQ(SendDataOptionsToEnetFlags(SendDataOptions::ReliableInOrder),
-          static_cast<uint32_t>(ENET_PACKET_FLAG_RELIABLE));
-EXPECT_EQ(SendDataOptionsToEnetFlags(SendDataOptions::Chat),
-          static_cast<uint32_t>(ENET_PACKET_FLAG_RELIABLE));
-\end{lstlisting}
+\begin{historynote}{Defects found under integration and sanitizers}
+The network module has corrected the following distinct failures:
 
-The practical upshot for a game being ported: choosing between \texttt{Reliable} and
-\texttt{ReliableInOrder} on this backend is purely a documentation choice about intent, not a
-performance or behavior trade-off the way it would be on a transport that actually offers both
-independently --- pick whichever name more accurately describes what the calling code needs, since
-both compile down to identical wire behavior today. A future backend swap (a raw UDP
-implementation, say, that genuinely can deliver reliable-but-unordered) is the only scenario where
-the distinction would start to matter again.
+\begin{itemize}
+  \item \texttt{Dispose()} could run twice, traverse gamer pointers freed by the first call,
+        and trigger a sanitizer-detected use-after-free;
+  \item one disposal left raw pointers visible through gamer collections and \texttt{Host};
+  \item session-created gamer objects leaked because the session did not own their destruction;
+  \item asynchronous callbacks were stored but not invoked, including reentrant replacement;
+  \item \texttt{End*} cleared the shared action without deleting it;
+  \item local IDs derived from collection size collided after remove/add;
+  \item pre-handshake application data was dropped, then a first queue fix failed to purge
+        entries when peers left;
+  \item a disposed \texttt{GamerCollection} enumerator's \texttt{MoveNext()} dereferenced a null
+        collection even though \texttt{Current} already guarded the same state.
+\end{itemize}
 
-\section{Status}
+The current \texttt{Dispose()} is idempotent, clears all gamer collections and \texttt{Host},
+and releases owned gamer objects. Focused tests cover double disposal, post-disposal exposure,
+action counts, callbacks, ID allocation, and queue eviction. AddressSanitizer was the observation
+point for the original double-dispose failure; ordinary unit success alone had not exposed it.
+\end{historynote}
 
-The namespace's own primary hardening plan is fully checked off. Three independent
-post-completion audits each found that an earlier ``done'' declaration had overstated
-reality --- mostly around Avatar-adjacent rendering concerns (Chapter~\ref{ch:avatar}) rather
-than this namespace's own networking logic --- and the specific networking-side gap those
-audits did surface (the pre-handshake application-data lifecycle above) is now fixed and
-test-confirmed, with a fourth, final audit confirming the networking side as genuinely
-settled. The current net module contains 293 statically counted test definitions. A project-wide
-total would additionally need a named configuration and counting unit, as
-Chapter~\ref{ch:counting-discipline} explains. Cross-machine delivery is proven by an
-out-of-process two-instance ENet harness, while
-discovery, codec hardening, policy, simulated latency/loss, and the deliberately preserved
-\cnaclass{Color} asymmetry have focused tests. The history's more durable lesson is that each
-``final'' audit found a different layer---lifetime, protocol, hostile input, or process
-interaction---so a green feature checklist was repeatedly treated as a new claim to attack,
-not as proof that further audit was unnecessary.
+\section{Evidence status}
+
+Codec, hostile-input, policy, ownership, simulated loss/latency, and compatibility behaviors
+have focused tests. An out-of-process, two-instance ENet harness establishes cross-process
+SystemLink delivery on the recorded host. It does not establish Internet matchmaking, voice,
+browser UDP discovery, or delivery on an untested platform. Host migration is runtime-observed
+through the local discovery/reconnect route; it preserves neither sockets nor gamer-object
+identity.

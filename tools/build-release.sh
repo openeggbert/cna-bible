@@ -34,11 +34,12 @@ pdf="$book_dir/main.pdf"
 lock_helper="$repo_root/tools/book-lock.sh"
 [ -r "$lock_helper" ] || { printf 'ERROR: missing tools/book-lock.sh\n' >&2; exit 1; }
 . "$lock_helper"
-source_date_epoch=1786529214
-expected_bytes=3314744
-expected_sha256=7c877ef20bdb20042bdd32483b2e79cb07e81dec7a8d86dc24f6d29d4a04b2af
-expected_latex_tree=406104d29871dab11757fdd72ded5d9fbc7fc9f1
-expected_pdf_date=D:20260812100654Z
+release_profile="$repo_root/tools/release-profile.sh"
+[ -r "$release_profile" ] || {
+    printf 'ERROR: missing tools/release-profile.sh\n' >&2
+    exit 1
+}
+. "$release_profile"
 
 # Preflight the union of release-build and complete-verifier dependencies before invoking TeX.
 # Otherwise an absent PDF parser can waste a full fixed-date rebuild and fail only at the final

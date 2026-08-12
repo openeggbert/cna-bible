@@ -1,0 +1,26 @@
+\begin{figure}[tbp]
+\centering
+\begin{figurealt}{CNA source includes a System or SharpRuntime header. Its owning CNA CMake target declares direct namespaced sharp-runtime components. The sharp-runtime registry materializes static, interface, and alias targets and propagates their declared transitive link closure. A normal embedded CNA configure makes all components available, while each CNA target keeps a narrow link interface.}
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[node distance=9mm and 13mm]
+  \node[cna public] (source) {CNA source header use};
+  \node[cna internal, right=of source] (cnatarget) {owning CNA module target};
+  \node[cna public, right=of cnatarget] (direct) {direct \texttt{SharpRuntime::*}\\components};
+  \node[cna internal, right=of direct] (registry) {component registry\\41 directories / 44 names};
+  \node[cna internal, right=of registry] (kind) {30 static + 13 interface\\+ 1 alias};
+  \node[cna internal, below=of registry] (closure) {declared transitive\\dependency closure};
+  \node[cna public, right=of kind] (program) {final CNA program};
+  \draw[cna flow] (source) -- (cnatarget);
+  \draw[cna flow] (cnatarget) -- (direct);
+  \draw[cna flow] (direct) -- (registry);
+  \draw[cna flow] (registry) -- (kind);
+  \draw[cna flow] (registry) -- (closure);
+  \draw[cna flow] (kind) -- (program);
+  \draw[cna flow] (closure) -- (program);
+\end{tikzpicture}}
+\end{figurealt}
+\caption{How CNA consumes modular sharp-runtime. Component availability and a target's declared
+link interface are different questions.}
+\label{fig:sharp-components}
+\end{figure}
+

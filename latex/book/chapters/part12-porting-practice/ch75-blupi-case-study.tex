@@ -2,107 +2,66 @@
 \index{Speedy Blupi}\index{Planet Blupi}\index{case study}
 \label{ch:blupi-case-study}
 
-Every gap and capability this book has described for \texttt{free-direct}
-(Chapter~\ref{ch:freedirect-deep-dive}, and the \texttt{FREEDIRECT} renderer chapter earlier in this book) was
-shaped by two real, specific legacy Windows games: \emph{Speedy Blupi} (via the sibling
-\texttt{free-eggbert} repository) and \emph{Planet Blupi}. This chapter is a worked example of
-the migration methodology from Chapter~\ref{ch:migration-guide}, applied to a completed
-compatibility layer and a separately documented native-CNA feasibility study. The games really
-run through \texttt{free-direct}; the direct CNA port remains a proposal, not a completed port.
-Together they demonstrate what a genuine call-site audit looks like in practice.
+Two legacy Windows games shaped \texttt{free-direct}'s scope: \emph{Speedy Blupi} (through the
+sibling \texttt{free-eggbert} repository) and \emph{Planet Blupi}. Both run through the
+compatibility layer. A separate native-CNA feasibility study remains a proposal. The distinction
+lets this chapter compare an implemented migration bridge with a source-audited port plan.
 
-\section{The methodology: grep both games first, then decide}
+\section{Call-site-driven scope}
 
-The single most important fact about how \texttt{free-direct} took shape is procedural: its
-subsystem decisions are backed by reproducible audits against the target
-games' actual source, at named, dated commits, not by guessing at what a DirectDraw-era game in
-general might need. DirectDraw and DirectSound use both games; DirectPlay is driven only by
-Free Eggbert because Planet Blupi never calls it. This produced numbers precise enough to build an
-API surface around: \emph{free-eggbert} calls \texttt{Blt} four times and \texttt{BltFast} six
-times; \emph{Planet Blupi} calls \texttt{Blt} three times and \texttt{BltFast} five times. One
-\texttt{Blt} call site in each game is the once-per-frame back-buffer-to-primary present
-operation---the hottest DirectDraw route identified by the call-site audit---which is exactly why
-Chapter~\ref{ch:freedirect-deep-dive}'s account of DirectDraw support describes it as the most
-complete of the library's three subsystems: it was the subsystem under the most direct,
-continuous pressure from real gameplay.
+\texttt{free-direct}'s subsystem boundaries come from audits of the two games at named commits.
+Both use DirectDraw and DirectSound; only Free Eggbert uses DirectPlay. \emph{free-eggbert} calls
+\texttt{Blt} four times and \texttt{BltFast} six times; \emph{Planet Blupi} calls them three and
+five times. In each game, one \texttt{Blt} performs the once-per-frame back-buffer-to-primary
+present. This call-site pressure explains why Chapter~\ref{ch:freedirect-deep-dive} describes
+DirectDraw as the most developed of the library's three subsystems.
 
-\subsection{A worked lesson in what a call-site count actually means}
+\subsection{Raw occurrences versus interface calls}
 
-A later, independent re-count of the same two games' source, run for a different purpose,
-reports strikingly different totals for the identical method name --- eighteen
-\texttt{BltFast} occurrences in \emph{free-eggbert}, seventeen in \emph{Planet Blupi} --- and
-it is worth resolving that apparent contradiction directly, by hand, rather than letting two
-correct-sounding numbers sit unreconciled: it is a real, instructive lesson in what a raw
-grep actually counts versus what an API-surface audit needs to know. Re-grepping both games'
-own source confirms both numbers are genuinely correct, because they are answering two
-different questions. The larger count is every literal occurrence of the identifier
-\texttt{BltFast} at all --- two header declarations, two definitions of \emph{each game's
-own} \cnaclass{CPixmap::BltFast} convenience wrapper, and every call site, wrapper calls
-included. The smaller count (six and five, matching the numbers this chapter already cites)
-is narrower and, for the purpose of designing \texttt{free-direct}'s own API surface,
-the actually relevant one: calls that reach the real \texttt{IDirectDrawSurface::BltFast}
-interface method directly, the boundary \texttt{free-direct} itself has to implement. The
-remaining occurrences --- eight per game --- call each game's \emph{own}
-\cnaclass{CPixmap::BltFast} wrapper method instead, which itself makes exactly one of the six
-(or five) real interface calls internally; counting those wrapper call sites again would
-double-count the same underlying interface traffic. Both numbers are real and independently
-verifiable; the discrepancy is a difference in what each was scoped to measure, not an error
-in either one --- worth internalizing before treating any single grep count as ``the'' call-site
-number for an API surface audit.
+A later recount reports eighteen \texttt{BltFast} occurrences in \emph{free-eggbert} and
+seventeen in \emph{Planet Blupi}. That population includes header declarations, definitions of
+each game's \cnaclass{CPixmap::BltFast} wrapper, and calls to both the wrapper and the DirectDraw
+interface. The six and five counts include only calls that reach
+\texttt{IDirectDrawSurface::BltFast}, the boundary implemented by \texttt{free-direct}. The other
+eight calls per game enter the local wrapper, which then makes one of those interface calls.
+Counting both levels would count the same traffic twice. Call-site totals therefore need an
+explicit population definition.
 
 \section{A pixel-format mismatch that never became a visible bug}
 \label{sec:blupi-pixel-format-mismatch}
 
-Both games request a display mode with an explicit bit depth --- \emph{free-eggbert}
-requesting either 8-bit or 16-bit depending on a runtime flag, \emph{Planet Blupi} hardcoding
-8-bit --- and \texttt{free-direct}'s own \texttt{SetDisplayMode} silently ignores the
-requested depth entirely, always creating a 32-bit primary surface regardless. This looks, on
-paper, like exactly the kind of silent parameter-drop bug this book has flagged repeatedly
-elsewhere (Chapter~\ref{ch:spritebatch}'s ignored transform matrix, for instance). Here,
-though, it never manifested as a visible problem, because every offscreen surface each game
-actually draws through takes the identical, separately-hardcoded 32-bit path --- the mismatch
-between what was requested and what was delivered is real, but it is internally consistent
-across the whole rendering pipeline, so nothing ever observes the difference. This is worth
-remembering as a category distinct from an actual bug: a real, confirmed deviation from a
-literal request, verified harmless by checking every consumer of the value, not merely
-assumed harmless.
+Both games request an explicit display depth: \emph{free-eggbert} selects 8 or 16 bits through a
+runtime flag, while \emph{Planet Blupi} requests 8 bits. \texttt{free-direct}'s
+\texttt{SetDisplayMode} ignores that value and creates a 32-bit primary surface. The deviation
+does not affect these two games because their offscreen surfaces follow a separate, hard-coded
+32-bit path. Every observed producer and consumer therefore agrees on the delivered format.
+This is a verified harmless deviation for the audited callers, not a general guarantee about
+ignoring pixel-format requests.
 
-\section{Color keying: real code, exercised by a narrower case than it supports}
+\section{Color keying: implementation broader than observed use}
 
-\emph{Planet Blupi} uses source color-keying at exactly two call sites, both routed through a
-shared caching helper, and both constructing what is actually a \emph{degenerate} color-key
-range --- a single value, not a genuine low-to-high range --- matched against white via a
-real \texttt{GetDC} / \texttt{SetPixel} / \texttt{Lock} round trip rather than a hardcoded palette
-index. \texttt{free-direct}'s color-keying implementation itself supports the fuller, ranged
-case; the real games it was built against simply never exercise that fuller capability, which
-is worth knowing if you are evaluating this library for a third game that might.
+\emph{Planet Blupi} uses source color-keying at two call sites through one caching helper. Both
+construct a single-value range and match white through a \texttt{GetDC} / \texttt{SetPixel} /
+\texttt{Lock} round trip, not through a fixed palette index. \texttt{free-direct} implements
+low-to-high ranges, but the audited games exercise only the single-value case. A third game would
+need separate evidence for ranged behavior.
 
-\section{A live-gameplay dependency on GetDC, not just a compatibility nicety}
+\section{GetDC as a gameplay dependency}
 
-\texttt{GetDC} / \texttt{ReleaseDC} might look, from the outside, like a minor GDI-interop
-convenience rarely exercised by a real game. The audit found the opposite for
-\emph{Planet Blupi} specifically: its own \texttt{IsIconPixel} function --- a live,
-per-mouse-click gameplay hit-test, not a one-time setup call --- depends on
-\texttt{GetDC} / \texttt{ReleaseDC} working correctly on both 32-bit surfaces (handled as a
-direct, zero-copy wrap) and 8-bit surfaces (expanded through a temporary palette-converted
-buffer). This single finding is why \texttt{free-direct}'s own \texttt{GetDC} support had to
-be functionally real rather than a thin stub --- a case where a call that looks incidental
-from the API surface alone turns out to gate real, moment-to-moment gameplay logic once you
-actually check what calls it and why.
+\emph{Planet Blupi}'s \texttt{IsIconPixel} performs a per-click gameplay hit test through
+\texttt{GetDC} / \texttt{ReleaseDC}. The implementation must handle both a zero-copy 32-bit wrap
+and an 8-bit surface expanded into a temporary palette-converted buffer. An API that appears to
+be incidental GDI interoperation therefore sits on an active gameplay path.
 
 \section{A performance audit adds exact costs to the same call sites}
 
-A later, dedicated performance audit of \texttt{free-direct}'s DirectDraw implementation
-went further than call-site counting alone: it benchmarked the then-current compiled library
-directly (headlessly, via \texttt{SDL\_VIDEODRIVER=dummy}) rather than reasoning from
-Big-O alone, and the resulting numbers sharpen exactly the call sites this chapter has
-already named. \texttt{BltFast} has no destination-size parameter at all in the real
-DirectDraw~3 API --- every call is 1:1 by construction, never capable of scaling --- and
-every one of the confirmed real \texttt{BltFast} call sites in both games
+A later performance audit benchmarked the compiled library headlessly with
+\texttt{SDL\_VIDEODRIVER=dummy}. DirectDraw~3's \texttt{BltFast} has no destination-size
+parameter, so it cannot scale. Every audited \texttt{BltFast} interface call in both games
 (\emph{free-eggbert}: \texttt{pixmap.cpp:406,574,580,612,1762,1818}; \emph{Planet Blupi}:
-\texttt{pixmap.cpp:395,401,433,1235,1291}) is therefore provably non-scaling. At the time of
-measurement, the shared blit engine behind both \texttt{Blt} and \texttt{BltFast} still computed
-a per-pixel integer division and bit-depth branch even on a 1:1 copy. It measured
+\texttt{pixmap.cpp:395,401,433,1235,1291}) is consequently 1:1. At the time of measurement, the
+shared blit engine still performed a per-pixel integer division and bit-depth branch for these
+copies. It measured
 \textbf{29 times slower than a raw \texttt{memcpy}} of the identical byte count at an optimized
 build (0.715~ms versus 0.0244~ms for one 640$\times$480 32-bit blit), and \textbf{206 times slower}
 under the then-default unoptimized configuration.
@@ -126,132 +85,86 @@ at runtime and performs per-row \texttt{memcpy} when format and color-key condit
 followed by the required opaque-alpha fixup. The recorded follow-up benchmark reduced the same
 Release case from 0.715~ms to 0.466~ms, or from 29.4 to 14.8 times the raw-copy reference. The
 remaining gap is mostly the alpha pass; the original 205.8-times row no longer describes a plain
-standalone configure. This sequence is worth preserving because it shows the full evidence loop:
-measure a call-site-backed cost, remediate it, then retain both the before and after results.
+standalone configure. The two measurements preserve the before-and-after evidence instead of
+presenting the discovery result as current performance.
 
-Not every \texttt{Blt}-family call site is pure waste, though, and the audit is careful to
-say so: \emph{free-eggbert}'s \texttt{CPixmap::Display()} (\texttt{pixmap.cpp:1509--1516}),
-the once-per-frame full-screen present blit this chapter's opening section already singled
-out as the hottest DirectDraw route, is the one confirmed call site where the scaling
-math is doing genuinely necessary work --- its destination rect comes from the real window's
-client area while its source rect is the fixed internal game resolution, and the two differ
-whenever the window size doesn't exactly match. The implemented 1:1 fast path therefore keeps
-that check as a runtime comparison of actual rect sizes rather than assuming that presentation is
-always unscaled. The same call-site audit also turned up a piece of
-confirmed dead code on the game side of the boundary: \emph{free-eggbert}'s
+One \texttt{Blt}-family call does require scaling: \emph{free-eggbert}'s
+\texttt{CPixmap::Display()} (\texttt{pixmap.cpp:1509--1516}) presents the fixed internal
+resolution into the window client area. The 1:1 fast path therefore compares the two rectangles
+at runtime. The audit also found dead code on the game side: \emph{free-eggbert}'s
 \texttt{CPixmap::DrawMap(int, RECT, RECT)} (\texttt{pixmap.cpp:640}) has exactly one
-\texttt{Blt()} call inside it, but grepping the entire \emph{free-eggbert} source tree for
-its own three-argument call signature finds zero callers anywhere --- the function is real,
-compiled code that the reconstructed source simply never reaches.
+\texttt{Blt()} call, but no callers of its three-argument signature in the inspected source.
 
 \section{Interfaces never exercised at all}
 
-The audit's negative findings are as informative as its positive ones. A full-source grep for
-\texttt{QueryInterface} across both games combined found exactly one real call site in
-total --- and it belongs to a DirectPlay object, not a DirectDraw one, which is a direct,
-concrete reason \texttt{free-direct}'s own \texttt{QueryInterface} implementation across all
-four DirectDraw classes is a uniform, hard \texttt{DDERR\_UNSUPPORTED} stub: there was no real
-call site anywhere to build a working implementation against. Similarly, \emph{Planet Blupi}
-has zero DirectPlay usage of any kind, confirmed by grep --- every DirectPlay design decision
-in \texttt{free-direct}'s own history (Chapter~\ref{ch:freedirect-deep-dive}) is driven
-exclusively by \emph{free-eggbert}'s own usage, since the other game simply never touches
-that subsystem at all.
+Across both games, the only \texttt{QueryInterface} call belongs to a DirectPlay object. None
+targets the four DirectDraw classes, whose \texttt{free-direct} implementations return
+\texttt{DDERR\_UNSUPPORTED}. \emph{Planet Blupi} contains no DirectPlay use, so the DirectPlay
+scope described in Chapter~\ref{ch:freedirect-deep-dive} comes entirely from
+\emph{free-eggbert}.
 
-\section{DirectSound: a real struct-layout hazard, found before it could cause silence}
+\section{DirectSound structure-layout hazard}
 
-Both games always populate a \texttt{PCMWAVEFORMAT} structure, not the larger
-\texttt{WAVEFORMATEX} structure a more modern DirectSound caller might use --- and this
-distinction is why \texttt{free-direct}'s own sound-buffer descriptor deliberately types its
-format field as a raw \texttt{void*} rather than a concrete struct pointer, and always
-interprets it as \texttt{PCMWAVEFORMAT} specifically: the two struct layouts place
-\texttt{wBitsPerSample} at different byte offsets, and reading the wrong layout would silently
-read two bytes of structure padding as the bits-per-sample field for every single sound in
-both games --- a real, if narrowly averted, silent-audio-corruption risk, caught by checking
-what the real games actually populate before choosing an interpretation. A second, confirmed,
-call-site-driven fact rounds this out: both games call \texttt{SetPan()} only on mono sound
-effects. That explains why the intended contract was documented as mono-only, but it does not
+Both games populate \texttt{PCMWAVEFORMAT}, not the larger \texttt{WAVEFORMATEX}. The layouts
+place \texttt{wBitsPerSample} at different offsets; interpreting the caller's pointer as
+\texttt{WAVEFORMATEX} would read padding as the sample depth. \texttt{free-direct} therefore
+stores a raw \texttt{void*} and interprets these audited calls as \texttt{PCMWAVEFORMAT}.
+Both games also call \texttt{SetPan()} only on mono effects. That explains why the intended
+contract was documented as mono-only, but it does not
 make current panning audible. The implementation computes left/right gains and discards them;
 only the ordinary volume gain reaches SDL. The tests prove clamping, return values, and no-crash
 behavior, not an audible stereo split.
 
-\section{Dead code, confirmed rather than assumed}
+\section{Dead and unexercised paths}
 
-Not every finding required a design decision --- some just needed confirming that a code path
-genuinely never runs. \emph{free-eggbert} contains a complete alternate, BASS-library-backed
-sound implementation, gated behind a compile-time flag hardcoded to false with no build
-override anywhere --- confirmed dead by reading the actual gate, not merely by its
-appearance. Both games separately contain a wave-loading source file that is never
-\texttt{\#include}d anywhere except by itself, and both call a sound-playback method whose
-looping-flags parameter always receives a literal zero at every real call site --- independently
-confirming, from the calling side, that DirectSound looping support genuinely cannot be
-reached by either game today, the same conclusion Chapter~\ref{ch:freedirect-deep-dive}
-already drew from the library's own implementation side.
+\emph{free-eggbert}'s alternate BASS-backed sound implementation is behind a compile-time flag
+fixed to false with no build override. Each game also contains a wave-loading source file that
+only includes itself. Finally, every inspected call to the sound-playback method passes zero for
+the looping flags. This caller-side result agrees with Chapter~\ref{ch:freedirect-deep-dive}'s
+implementation-side conclusion that the two games cannot reach DirectSound looping.
 
-A later hardening pass ran the identical ``confirm, don't assume'' discipline against two
-further, more specific questions, each resolved the same way: grep both real games first, then
-let the answer decide whether new surface is worth adding at all. \texttt{GetCurrentPosition}
---- a real DirectSound method \texttt{free-direct}'s own header does not currently
-declare at all, only its counterpart \texttt{SetCurrentPosition} --- turned up zero real call
-sites in either game's own source once the vendored DirectX~3 SDK headers were excluded from the
-search; every match was the SDK's own interface declaration, never an actual call. The explicit
-decision that followed is the same discipline this whole chapter has illustrated repeatedly:
-\emph{do not implement \texttt{GetCurrentPosition} speculatively}, since neither target game
-would exercise it, and revisit only if a future game genuinely calls it. A second, separate
-audit asked whether either
-game ever blits directly between an 8-bit paletted surface and a 32-bit surface --- as opposed
-to the already-documented palette-to-RGBA32 conversion that happens at present time --- and
-found zero matches for either game explicitly requesting an 8-bit \texttt{CreateSurface} pixel
-format at all; combined with the already-known fact that \texttt{SetDisplayMode} always creates
-a 32-bit primary surface regardless of what was requested
-(\S\ref{sec:blupi-pixel-format-mismatch} above), every surface either game creates in practice
-ends up 32-bit, meaning a mixed-depth blit simply cannot occur for either target. Rather than adding new error-return behavior for \texttt{BlitFrom}'s own silent,
-no-op mixed-depth fallthrough --- a case with no real call site to justify hardening against ---
-the decision was to leave the existing silent behavior exactly as it is and document why, the
-same ``do not add surface no real caller exercises'' discipline applied a second time to a
-different subsystem.
+Two narrower searches bounded possible additions. Excluding vendored DirectX~3 SDK headers,
+neither game calls \texttt{GetCurrentPosition}; \texttt{free-direct} declares only its
+\texttt{SetCurrentPosition} counterpart. The method remains unimplemented until a target caller
+requires it. Neither game explicitly requests an 8-bit \texttt{CreateSurface} format either.
+Together with the 32-bit primary path in \S\ref{sec:blupi-pixel-format-mismatch}, this means the
+audited games do not exercise \texttt{BlitFrom}'s silent mixed-depth fallthrough. That behavior
+remains a limitation, even though adding a new error route was outside the target-driven scope.
 
-\section{Beyond \texttt{free-direct}: what a full, native CNA port would actually require}
+\section{Native-CNA port feasibility}
 
-Everything this chapter has covered so far is about \texttt{free-direct} itself --- the
-DirectDraw/DirectSound/DirectPlay compatibility shell both games currently run through. A
-separate, later \texttt{cna.md} in the inspected \emph{free-eggbert} working tree (dated
-2026-07-16, a full feasibility analysis rather than an implementation) asks a different
-question entirely: what would it take to port \emph{Free Eggbert} directly onto CNA's own
+The preceding evidence concerns the \texttt{free-direct} compatibility shell. A later
+\texttt{cna.md} in the inspected \emph{free-eggbert} working tree, dated 2026-07-16, studies a
+different question: what would it take to port \emph{Free Eggbert} directly onto CNA's
 \cnaclass{Game} / \cnaclass{GraphicsDevice} / \cnaclass{SpriteBatch} surface, replacing
 \texttt{free-direct} (and \texttt{free-api} beneath it) rather than merely running through it?
 That 30{,}145-byte document was untracked, so it is supplemental evidence outside Appendix~
 \ref{ch:repo-map}'s immutable Git pins; the exact inspected copy has SHA-256
 \texttt{87b1e3de041cdbe2af85c8c4b4faf6e74f0e518f9ff72f851f339e5419ceadb3}.
-This is worth a dedicated look, since it reframes everything above as a migration
+It reframes the compatibility layer as a migration
 \emph{bridge}, not a migration \emph{destination} --- a distinction the analysis itself states
 plainly: ``a CNA application using the \texttt{FREEDIRECT} renderer has adopted the XNA-facing API, but
 it still transitively depends on \texttt{free-direct}.''
 
-\subsection{Scope, grounded in a direct line count, not an estimate}
+\subsection{Scope from a direct line count}
 
-The analysis's own executive conclusion corrects an assumption a reader might otherwise bring
-to a DirectDraw-era decompiled game: \emph{Free Eggbert} is already C++, not a language the
-port would need to translate out of. It measures roughly 31{,}800 lines of real C++ source and
-headers directly (a subsequent recount in the same document narrows this to 31{,}773 across
+\emph{Free Eggbert} is already C++; the port does not require a language translation. The
+analysis measures roughly 31{,}800 lines of C++ source and headers (a later recount in the same
+document gives 31{,}773 across
 \texttt{src/*.cpp} and \texttt{include/*.hpp}), with more than 21{,}000 of those lines --- the
-majority --- being simulation, world, object, and event logic rather than DirectX plumbing.
-That imbalance is the whole rationale for the analysis's central recommendation: rewrite the
-platform-services layer (graphics, input, audio, video, files, networking) and leave the
+majority --- in simulation, world, object, and event logic. It therefore recommends rewriting the
+platform-services layer (graphics, input, audio, video, files, networking) while leaving the
 existing simulation/data layer (\texttt{decblupi}, \texttt{decmove}, \texttt{decblock},
-\texttt{decdesign}, \texttt{decio}, the game's own tables) recognizably intact, since rewriting
-the part that already works correctly would only remove the ability to compare old and new
-behavior directly.
+\texttt{decdesign}, \texttt{decio}, and the game's tables) recognizable. Preserving that layer
+also preserves a direct comparison point for old and new behavior.
 
-\subsection{The one API-surface decision the whole plan hinges on}
+\subsection{Preserving the CPixmap boundary}
 
-The analysis's most concrete recommendation is a narrow one: keep \cnaclass{CPixmap}'s own
-public shape exactly as it is --- the same 98 direct call sites this chapter's opening section
-already grounds in a real audit --- and replace only what sits behind it, with
+The analysis recommends retaining \cnaclass{CPixmap}'s public shape across its 98 direct call
+sites and replacing only its implementation, with
 \cnaclass{Texture2D} / \cnaclass{RenderTarget2D} / \cnaclass{SpriteBatch} objects standing in for
-DirectDraw surfaces. This is a deliberate choice to isolate the migration's actual risk (does
-the new rendering path produce the same pixels?) from an unrelated one (does touching 98 call
-sites introduce new logic bugs?) by not touching those call sites' own signatures at all in the
-first pass. \texttt{SetTransparent2}'s existing color-key-\emph{range} semantics are singled
+DirectDraw surfaces. This separates rendering equivalence from the risk of editing 98 call
+sites. \texttt{SetTransparent2}'s color-key-\emph{range} semantics are singled
 out as the one piece of that surface CNA's current \texttt{.cnj} metadata cannot express
 directly (it represents a single exact RGB value, not an inclusive range), so a
 \emph{Free Eggbert}-specific loader would need to read pixels and zero alpha across the
@@ -259,22 +172,17 @@ requested range by hand via \texttt{GetData} / \texttt{SetData} --- described as
 ``straightforward'' precisely because the asset sheets involved are small, not because the
 technique is trivial in general.
 
-\subsection{A worked example: the 50ms decision a default-configured port would silently get wrong}
+\subsection{Preserving the 50ms simulation cadence}
 
-One finding is concrete enough to state as a number rather than a caveat. \emph{Free Eggbert}
-currently updates from a 50ms multimedia timer --- a fixed 20Hz simulation cadence --- while
-CNA's own \cnaclass{Game} defaults to roughly a 16.67ms (60Hz) fixed timestep. A port that
-constructs a \cnaclass{GraphicsDeviceManager} / \cnaclass{Game} pair without explicitly setting
-\texttt{TargetElapsedTime} would silently run the simulation three times too fast --- not a
-crash, not a visible error, just a game that plays faster than the original at every single
-difficulty level simultaneously, exactly the kind of quietly-wrong default this book has
-already catalogued more than once (Chapter~\ref{ch:game-loop}'s own \cnaclass{GameTime}
-coverage). The existing F5--F8 in-game speed controls compound this: the analysis recommends
+\emph{Free Eggbert} updates from a 50ms multimedia timer, a fixed 20Hz simulation cadence. CNA's
+\cnaclass{Game} defaults to roughly 16.67ms (60Hz). Without an explicit
+\texttt{TargetElapsedTime}, the port would advance the simulation about three times too fast; see
+Chapter~\ref{ch:game-loop} for the timing contract. The existing F5--F8 speed controls add another
+constraint. The analysis recommends
 representing them as multiple fixed 50ms simulation steps per rendered frame (2/4/8 steps)
-rather than shortening \texttt{TargetElapsedTime} itself, since repeated fixed-size steps stay
-deterministic in a way a variable target elapsed time does not.
+instead of shortening \texttt{TargetElapsedTime}, preserving fixed-size simulation steps.
 
-\subsection{The MIDI gap, and why it is a real gap rather than a missing file format}
+\subsection{MIDI integration gap}
 
 The ten inspected music files are Standard MIDI data, and CNA's own \cnaclass{Song} loader does
 not register \texttt{.mid}. The feasibility analysis correctly identifies that public integration
@@ -284,66 +192,45 @@ have a synthesis route, subject to a usable Timidity instrument configuration. W
 a supported \cnaclass{Song}/Content extension mapping, asset/instrument policy, and retained test
 showing that this route works in CNA rather than merely compiling below it.
 
-The analysis lays out three real options rather than picking one prematurely: pre-render every
+The analysis gives three options: pre-render every
 track to OGG/FLAC against a chosen SoundFont ahead of time (lowest implementation risk, but a
 licensing/distribution question for the rendered assets and the SoundFont itself); expose and
 verify a reusable CNA-level MIDI route over the available decoder (cleaner for future games, but
 scope beyond what one port should decide unilaterally); or keep a
 \emph{Free Eggbert}-specific MIDI service bridging through \texttt{free-api}'s own existing
-TinySoundFont path while every other subsystem moves to CNA. The analysis's own recommendation
-is explicitly staged, not a single final answer: option three (the game-specific bridge) for an
+TinySoundFont path while every other subsystem moves to CNA. Its staged recommendation uses the
+game-specific bridge for an
 initial, behavior-preserving port, option one (pre-rendered assets) for a final low-maintenance
 release if asset policy permits it, and option two (a real CNA-level MIDI path) only if neither
-of the other two is acceptable --- a genuine three-way tradeoff stated as such rather than
-collapsed into a false single recommendation.
+of the other two is acceptable.
 
-\subsection{A real reconstruction-fidelity bug, found by reading the networking code, not by running it}
+\subsection{Networking reconstruction defect}
 
-The networking section of the analysis surfaces a finding worth stating precisely because of
-what it implies about trusting the current decompiled reconstruction as a behavioral
-specification at all: \texttt{CNetwork::Receive} reads incoming data into a local, 500-byte
-stack buffer but never actually copies that buffer into the caller-supplied destination
---- a real, confirmed defect in the \emph{existing} reconstructed code, found by reading the
-function's own body, not by tracing a runtime failure. The analysis draws the correct,
-conservative conclusion from this rather than either ignoring it or silently ``fixing'' it as
-part of a compatibility port: ``the current reconstruction is not a reliable behavioral
-specification'' for networking specifically, so any future multiplayer work needs a versioned
-wire format and explicit two-process tests built against \emph{intended} behavior, not against
-whatever this specific decompiled function happens to currently do.
+\texttt{CNetwork::Receive} reads into a local 500-byte stack buffer but never copies the data to
+the caller's destination. This source-proven defect makes the current decompiled reconstruction
+an unreliable behavioral specification for networking. Future multiplayer work needs a
+versioned wire format and two-process tests against intended behavior, not an attempt to preserve
+this function's omission.
 
-\subsection{Renderer progression, and a licensing fact this book has not otherwise stated}
+\subsection{Renderer progression and licensing boundary}
 
-The analysis's own recommended renderer sequence closes the loop back to this book's own
-Part~\ref{part:renderers}
-coverage precisely: start on \texttt{SDL\_RENDERER} for the first portable 2D implementation
-(focused 2D validation, no unrelated 3D surface to reason about); build the identical port
-against \texttt{FREEDIRECT} specifically \emph{because} it depends on \texttt{free-direct} and
-therefore gives a real differential bridge between the old and new public APIs during
-migration, exactly the role this whole chapter has already documented \texttt{free-direct}
-filling; then validate the current public \texttt{OPENGLES3} identity independently before
-claiming true framework-level portability, rather than trusting a single renderer's result. The
+The recommended sequence starts on \texttt{SDL\_RENDERER} for focused portable 2D validation,
+then builds the same port against \texttt{FREEDIRECT} as a differential bridge between the old
+and new public APIs. An independent \texttt{OPENGLES3} run supplies evidence beyond one renderer.
+Part~\ref{part:renderers} describes those identities and their implementation routes. The
 feasibility document predates the renderer naming migration and calls this identity
 \texttt{EASYGL}; it names the same shared implementation family, not a still-selectable public
-value. \texttt{FREEDIRECT} is explicitly framed
-as a migration tool to be discarded, not a destination: a build still linking \texttt{FREEDIRECT} has
-adopted CNA's API surface but has not actually removed the DirectDraw-era dependency this whole
-port exists to retire.
+value. \texttt{FREEDIRECT} is a migration tool, not the target architecture: a build linking it
+has adopted CNA's public API but retains the DirectDraw-era dependency.
 
-One further fact belongs in this book precisely because no earlier chapter states it: \emph{Free
-Eggbert} declares GPL-3.0, while CNA itself declares Ms-PL. The analysis is explicit that
-combining and distributing the two in one linked program is a licensing question requiring
-review before any such port is treated as release-ready, and just as explicit that the document
-itself does not attempt to make that legal determination --- a boundary worth preserving here
-rather than glossing over, since this book is equally not the place to resolve it.
+\emph{Free Eggbert} declares GPL-3.0, while CNA declares Ms-PL. Combining and distributing them
+in one linked program requires a licensing review. Neither the feasibility document nor this
+book makes that legal determination.
 
-\section{What this case study demonstrates about porting more generally}
+\section{Porting implications}
 
-The lesson this chapter offers Chapter~\ref{ch:migration-guide}'s more general advice is
-specific: a compatibility layer built to genuinely support two real games, verified by
-grepping those games' own source rather than reasoning abstractly about what a game of that
-era might do, ends up both narrower and more solid than a layer built to a hypothetical full
-specification would be. It correctly implements exactly the DirectDraw/DirectSound/DirectPlay
-surface \emph{Speedy Blupi} and \emph{Planet Blupi} actually touch, including at least two
-places (\texttt{GetDC}'s live gameplay dependency, the \texttt{PCMWAVEFORMAT} layout hazard)
-where a more generic, spec-first implementation might have gotten a plausible-looking detail
-wrong precisely because it was never checked against a real, demanding caller.
+The call-site method produces a narrower compatibility layer than a speculative full-surface
+implementation, but one aligned with the two target games. It exposed details that an API-only
+reading could miss, including \texttt{GetDC}'s gameplay role and the
+\texttt{PCMWAVEFORMAT} layout requirement. For a native CNA port, the same method identifies
+stable seams, timing assumptions, evidence gaps, and licensing questions before code is moved.

@@ -1,16 +1,19 @@
 \chapter{Oracles: What Does ``Correct'' Mean?}
 \label{ch:oracles}
 \label{ch:testing-philosophy}
-\index{test oracle}\index{pixel oracle}\index{differential testing}\index{golden-image test}
+\index{test oracle}\index{pixel oracle}\index{pixel testing!oracle scope}\index{differential testing}\index{golden-image test}
 
 A test input and an observed output do not yield a verdict until something defines the expected
 result.  CNA uses several such oracles: pixels captured from the real XNA runtime, numeric values
 from FNA, renderer-to-renderer comparisons, independently recomputed mathematics, and looser
 project-owned golden images.  Their authority and tolerances are deliberately different.
 
-\section{The real-XNA image corpus}
+\input{figures/fig-verification-vector.tex}
 
-\texttt{tools/xna-oracle} contains 39 declarative scenes and 39 matching 256-by-256 RGBA8 PNGs.
+\section{The captured-XNA image corpus}
+
+\texttt{tools/xna-oracle} contains \XnaOracleSceneCount{} declarative scenes and the same number
+of matching 256-by-256 RGBA8 PNGs.
 The references were captured once by hand from the real XNA~4.0 runtime under Wine.  The C\#
 runner source is checked in; its compiled executable, XNA runtime, and private 32-bit Wine prefix
 are not.  Those external pieces are needed to regenerate references, not to compare a current CNA
@@ -24,7 +27,8 @@ rather than globally weakening the corpus.
 
 The governing rule is stricter than ``looks similar'': an increased tolerance needs a documented
 scene-specific reason, because silent tolerance growth turns an authenticity project into a
-parity project.  D3D9's registered hard gate runs all 39 scenes at tolerance zero.  FNA3D's
+parity project. D3D9's registered hard gate runs all \XnaOracleSceneCount{} scenes at tolerance
+zero. FNA3D's
 registered corpus test is presently a render-survival gate, not a pixel-equality gate.  EasyGL
 and OpenGL ES~1 runners are manual measurements rather than CTests.
 

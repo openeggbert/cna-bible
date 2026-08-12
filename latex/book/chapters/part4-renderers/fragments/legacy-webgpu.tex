@@ -46,7 +46,7 @@ Chapter~\ref{ch:spritebatch} drew from SDL\_Renderer's ignored-transform-matrix 
 rendering pipeline can look entirely correct in every way a human screenshot review checks,
 and still be measurably wrong.
 
-\section{3D: real depth testing, a real gap found while adding it}
+\section{3D depth testing and the gap it exposed}
 
 The first 3D draw path (\texttt{DrawColoredPrimitives} / \texttt{DrawIndexedColoredPrimitives})
 was verified with a genuine near/far depth-ordering test rather than trusting draw order
@@ -59,7 +59,7 @@ for line from EasyGL's own GLSL implementation) and skinned variants of both
 \cnaclass{SkinnedEffect} and \texttt{PbrEffect} (bone-palette skinning up to 72 bones, again
 ported directly from EasyGL) were added and both pass their dedicated test suites in full.
 
-\subsection{A worked example: PbrEffect, a CNAEXT metallic-roughness material}
+\subsection{PbrEffect: a CNAEXT metallic-roughness material}
 
 \cnaclass{PbrEffect} is worth a concrete look before moving on, since --- unlike every stock
 effect in Chapter~\ref{ch:stock-effects} --- it has no real-XNA counterpart at all: real XNA
@@ -142,7 +142,7 @@ the next frame detects its physical size and reconfigures the surface, but neith
 format enum participates.
 \end{sourcenote}
 
-\subsection{A worked example: the closed render-target-size trap}
+\subsection{The corrected render-target-size trap}
 
 The former sprite-geometry bug is worth walking through because it produced no error of any
 kind --- only a subtly wrong result:
@@ -169,7 +169,7 @@ non-identity SpriteBatch transform, texture orientation, and a $48\times48$ cube
 pixels inside the old half-scale rectangle but outside the correct one must remain black. The
 old practical prohibition on differently-sized targets is therefore no longer needed.
 
-\subsection{A worked example: \texttt{RenderTargetCube} and its former silent cast failure}
+\subsection{RenderTargetCube and its former silent cast failure}
 
 \cnaclass{RenderTargetCube} support (Task WEBGPU-114) landed after the plain
 \cnaclass{RenderTarget2D} path above, and reused most of its design directly: one shared
@@ -254,7 +254,7 @@ documented honestly rather than silently: mip-chain regeneration throws for
 \texttt{MultiSampleCount} is accepted and ignored, always reporting \texttt{0} honestly rather
 than silently pretending to honor a request it cannot fulfil.
 
-\subsection{Why block-compressed texture upload stays open: a real investigation, not a shrug}
+\subsection{Why block-compressed texture upload remains open}
 
 The ``no renderer anywhere in the project does real block-compressed texture upload'' gap named
 below is worth a fuller account on this renderer specifically, because it was genuinely

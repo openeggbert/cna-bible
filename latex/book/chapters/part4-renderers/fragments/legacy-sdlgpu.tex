@@ -50,7 +50,7 @@ directory (23 files today, one pair per stock effect --- \texttt{colored3d},
 \texttt{alpha\_test3d}, \texttt{dual\_texture3d}, \texttt{env\_map3d}, \texttt{lit\_textured3d},
 \texttt{pbr3d} / \texttt{pbr\_skinned3d}, \texttt{skinned3d} / \texttt{skinned\_colored3d}, and more).
 
-\subsection{A worked example: the Y-flip bug a real screenshot caught}
+\subsection{The screenshot that exposed a Y-flip}
 
 This renderer's own first real milestone --- a textured, tinted, rotated, multi-flip sprite
 scene surviving a resize --- is a concrete instance of a theme this book returns to
@@ -66,7 +66,7 @@ tool kept permanently in the tree (\texttt{modules/renderers/sdl-gpu/examples/\a
 ``keep the diagnostic, don't throw it away once the bug is fixed'' precedent
 Chapter~\ref{ch:direct3d-backends} already covers for \texttt{cna\_diag\_d3d12\_swapchain}).
 
-\section{SkinnedEffect's storage-buffer workaround: a real, undocumented push-uniform cap}
+\section{SkinnedEffect's storage-buffer workaround and push-uniform limit}
 
 Wiring \cnaclass{SkinnedEffect} through this renderer surfaced a genuine hardware/driver
 constraint rather than a CNA design choice: \texttt{SDL\_PushGPUVertexUniformData}, the
@@ -83,7 +83,7 @@ close to the cap. This is exactly the kind of real, hardware-shaped constraint t
 every renderer chapter to name precisely rather than paper over with ``uniforms are uploaded
 per draw'' as if the mechanism were uniform across every payload size.
 
-\section{Custom ShaderEffect: a real runtime compile, built without the dev package installed}
+\section{Custom ShaderEffect runtime compilation without a development package}
 
 Custom \cnaclass{ShaderEffect} support (Chapter~\ref{ch:shader-fx-gap}) is real on this renderer
 too, and its own implementation is worth knowing about for a reason beyond the feature itself.
@@ -245,7 +245,7 @@ choice, not a claim that games should globally disable synchronization: it uses 
 property a game would use, at the phase of the lifecycle where CNA will not subsequently replace
 it.
 
-\section{Validation mode turned two tolerated violations into real fixes}
+\section{Two violations exposed by validation mode}
 
 This renderer now passes SDL\_gpu's \texttt{debug\_mode} flag from CNA's ordinary build mode:
 debug builds request validation and release builds do not. That deliberately modest toggle paid
@@ -275,7 +275,7 @@ per-face behavior. This sequence is why validation must be treated as evidence w
 first exposed tolerated violations, then forced the design back to the actual public resource
 contract rather than merely suppressing their diagnostics.
 
-\section{Render targets: a real use-after-free, closed before it ever shipped}
+\section{A pre-release render-target use-after-free}
 
 \cnaclass{RenderTarget2D} and \cnaclass{RenderTargetCube} support (with real multisampling and
 mip regeneration) surfaced a genuine lifetime hazard while its own test was still being written,
@@ -331,7 +331,7 @@ releases each queued handle through \texttt{SDL\_ReleaseGPUTexture()}. SDL may s
 physical memory internally; CNA's narrower rule is that a recording cannot release a handle
 which an unsubmitted command still names.
 
-\section{MRT is a real shader capability, not merely a multi-clear convenience}
+\section{MRT as a shader capability}
 
 \cnaclass{GraphicsDevice::SetRenderTargets()} makes the first
 \cnaclass{RenderTarget2D} the primary target and records every later target as one simultaneous
@@ -379,7 +379,7 @@ FNA predicate \texttt{usage != DiscardContents} and therefore preserves like Pre
 and depth/stencil usage fixtures assert that policy explicitly. See
 \S\ref{sec:backend-rendertarget-usage-matrix}.
 
-\subsection{A worked example: \cnaclass{Texture3D}'s own \texttt{cycle=true} orphaned-write bug}
+\subsection{Texture3D's \texttt{cycle=true} orphaned-write defect}
 
 \cnaclass{Texture3D} support on this renderer --- sub-volume upload/readback plus mipmap generation
 --- surfaced a real data-corruption bug of exactly the kind this book keeps returning to: code that compiles cleanly, throws

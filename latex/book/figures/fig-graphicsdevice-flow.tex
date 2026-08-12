@@ -1,0 +1,29 @@
+\begin{figure}[tbp]
+\centering
+\begin{figurealt}{A game or GraphicsDeviceManager calls the public GraphicsDevice API. GraphicsDevice validates and stores public state, forwards operations through IGraphicsRenderer, and receives renderer-owned resource implementations from factories. The selected implementation family then calls a native API, CPU rasterizer, DOM, or trace route.}
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[node distance=10mm and 12mm]
+  \node[cna public] (game) {game / \texttt{GraphicsDeviceManager}};
+  \node[cna public, right=of game] (device) {\texttt{GraphicsDevice}\\public contract};
+  \node[cna internal, right=of device] (state) {validation, state,\\resource tracking};
+  \node[cna internal, right=of state] (iface) {\texttt{IGraphicsRenderer}\\virtual contract};
+  \node[cna internal, right=of iface] (family) {selected implementation\\family + factories};
+  \node[cna public, right=of family] (api) {native API / CPU /\\DOM / trace};
+  \node[cna internal, below=of state] (resource) {public graphics resource};
+  \node[cna internal, below=of family] (backend) {renderer-owned resource};
+  \draw[cna flow] (game) -- (device);
+  \draw[cna flow] (device) -- (state);
+  \draw[cna flow] (state) -- (iface);
+  \draw[cna flow] (iface) -- (family);
+  \draw[cna flow] (family) -- (api);
+  \draw[cna flow] (device) -- node[cna label,left]{creates / tracks} (resource);
+  \draw[cna flow] (family) -- node[cna label,right]{factory} (backend);
+  \draw[cna flow] (backend) -- node[cna label]{owned by} (resource);
+\end{tikzpicture}}
+\end{figurealt}
+\caption{The renderer-independent call and resource path. A public call reaching
+\texttt{IGraphicsRenderer} is still weaker evidence than family engagement or a correct native
+result.}
+\label{fig:graphicsdevice-flow}
+\end{figure}
+

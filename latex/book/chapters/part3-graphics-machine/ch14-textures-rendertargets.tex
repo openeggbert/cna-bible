@@ -1,15 +1,14 @@
 \chapter{Textures and Render Targets}
 \label{ch:textures-rendertargets}
+\index{disposal!graphics resources}
 
-This chapter is the one in Part~\ref{part:graphics-machine} where the gap between ``the API exists'' and ``the API
-does what it says on every renderer'' is widest. \cnaclass{Texture2D} is close to fully
-faithful; \cnaclass{Texture3D} and \cnaclass{TextureCube} carried a real, load-bearing
-structural deviation from FNA for a stretch of this project's history, closed since (see
-\S\ref{sec:texture3d-inheritance}) but worth the full account of what changed and what did
-not; and render targets --- once the sharpest per-renderer divergence in the whole Graphics
-namespace, before a wave of later fixes closed most of it, covered in full below --- still
-carry two genuinely open gaps of their own. All three are covered here together, with the
-specific per-renderer facts intact rather than smoothed into ``mostly works.''
+Texture and render-target APIs are shared, but their native formats, readback paths, mipmaps,
+multisampling, and attachment behavior differ substantially by renderer family.
+\cnaclass{Texture2D} has the broadest coverage. \cnaclass{Texture3D} and
+\cnaclass{TextureCube} now share the expected base type but retain narrower shader and renderer
+evidence. Render targets still have named gaps. This chapter keeps those scopes separate.
+
+\input{figures/fig-resource-lifetime.tex}
 
 \section{Texture: a shared Color gate with one renderer-specific branch}
 
@@ -30,31 +29,28 @@ exception is therefore specific to two 2D resource classes, not permission to in
 support from the enum alone. Separately, the portable \texttt{Texture2D::FromStream} DDS route
 recognizes DXT1/3/5 and CPU-decompresses them to RGBA8 before ordinary upload.
 
-\section{A structural deviation that closed since this chapter's own first pass}
+\section{Texture3D and TextureCube: current structure and history}
 \label{sec:texture3d-inheritance}
 
-Real XNA's \texttt{Texture3D} and \texttt{TextureCube} both inherit \texttt{Texture}, which
-is what lets any of them sit in \texttt{GraphicsDevice.Textures[slot]} and be bound to a
-custom shader like an ordinary 2D texture. An earlier pass of this chapter reported that
-CNA's \cnaclass{Texture3D} and \cnaclass{TextureCube} did \textbf{not} inherit
-\cnaclass{Texture} at all, tracked as Task~863 --- reading the real headers directly today
-shows that claim is stale: \texttt{Texture3D.hpp} and \texttt{TextureCube.hpp} both now
-declare \texttt{class Texture3D : public Texture} / \texttt{class TextureCube : public
-Texture}, matching real XNA exactly. \texttt{Texture3DTests.cpp}'s own regression coverage
-names precisely what this fix restores --- assignment into a \cnaclass{TextureCollection}
-(\texttt{GraphicsDevice.Textures[slot] = texture3D}), a real compile-time impossibility
-before Task~863 closed, plus a correctness follow-on: \texttt{Texture3D::Dispose(bool)} now
-calls through to \texttt{Texture::Dispose(bool)} after releasing its own renderer handle, so
-disposing a bound \cnaclass{Texture3D} correctly unbinds it from
-\texttt{GraphicsDevice.Textures} / \texttt{VertexTextures}, the same unbind-on-dispose contract
-\cnaclass{Texture2D} already honored and \cnaclass{Texture3D} previously skipped entirely.
+The pinned headers declare both \texttt{Texture3D} and \texttt{TextureCube} as
+\cnaclass{Texture} subclasses, as XNA does. Regression coverage assigns a
+\cnaclass{Texture3D} to \texttt{GraphicsDevice.Textures[slot]} and checks that disposal releases
+the renderer handle and unbinds the resource from the device's pixel and vertex texture
+collections.
+
+\begin{historynote}
+Earlier revisions did not derive these classes from \cnaclass{Texture}; assignment to a
+\cnaclass{TextureCollection} could not compile, and \cnaclass{Texture3D} skipped the base
+unbind-on-dispose path. An earlier manuscript pass described that state. The current contract
+above replaces it, while the regression preserves the reason for the change.
+\end{historynote}
 
 The practical consequence this earlier pass described --- ``a custom
 \cnaclass{ShaderEffect} has no way to bind a \cnaclass{Texture3D} or \cnaclass{TextureCube}''
 --- is also closed, and by a more direct route than the generic texture-slot mechanism the
 class-hierarchy fix alone would suggest: \cnaclass{ShaderEffect} gained dedicated
-\texttt{SetTexture(int, TextureCube\&)} (Task~1081) and \texttt{SetTexture(int, Texture3D\&)}
-(Task~863) overloads, each binding straight to the matching GL texture target
+\texttt{SetTexture(int, TextureCube\&)} and \texttt{SetTexture(int, Texture3D\&)}
+overloads, each binding straight to the matching GL texture target
 (\texttt{glBindTexture(GL\_TEXTURE\_CUBE\_MAP, ...)} / \texttt{GL\_TEXTURE\_3D}) rather than
 routing through the ordinary 2D texture-slot path. This is EasyGL-only as of this writing ---
 the other nine renderers were explicitly deferred, per the same task's own scope note --- so
@@ -77,12 +73,10 @@ partial (level, rectangle, start index, element count) forms, all \cnaclass{Colo
 \texttt{CreateFromPixels}) that exist for interop with CNA's own content-pipeline and testing
 code rather than for game code.
 
-\subsection{A worked example: building a texture from raw pixel data}
+\subsection{Building a texture from raw pixel data}
 
-Every one of the API traits described above is visible in one small, real pattern: building a
-procedural texture entirely from \cnaclass{Color} data, with no file on disk at all --- a
-checkerboard, grounded directly in the real constructor and \texttt{SetData} / \texttt{GetData}
-signatures in \texttt{Texture2D.hpp}:
+The following procedural checkerboard uses the constructor and \texttt{SetData} /
+\texttt{GetData} signatures from \texttt{Texture2D.hpp}:
 
 \begin{lstlisting}
 const int size = 64;
@@ -194,7 +188,7 @@ every renderer automatically generates a mip chain after a level-0 upload.
 out-of-range face throws \texttt{std::out\_of\_range} at the public API layer, a safety check
 real XNA never performs at all.
 
-\subsection{A worked example: six faces, six SetData calls}
+\subsection{Six faces, six SetData calls}
 
 \cnaclass{TextureCube}'s constructor takes a single face size (every face is square and
 identical in size, per the real XNA contract) plus \texttt{mipMap} and \texttt{format} --- and,
@@ -238,7 +232,7 @@ TextureCube\&)} directly, or, since \cnaclass{TextureCube} now inherits \cnaclas
 through the ordinary \texttt{GraphicsDevice.Textures[slot]} assignment every 2D texture in
 this chapter already uses.
 
-\subsection{A worked example: sampling a volume texture from a custom shader}
+\subsection{Sampling a volume texture from a custom shader}
 \label{sec:texture3d-shader-example}
 
 \texttt{modules/renderers/easygl/examples/\allowbreak{}easygl\_shadereffect\_texture3d\_test.cpp} is the real, EasyGL-only test
@@ -274,7 +268,7 @@ texture-unit-0/\texttt{GL\_TEXTURE\_3D} binding pointing at the decoy rather tha
 intended volume --- the two-slice colour check only passes for the right reason (a genuine,
 per-call rebind) if disabling the \texttt{SetTexture()} call would make it fail.
 
-\subsection{A worked example: rendering into one RenderTargetCube face}
+\subsection{Rendering into one RenderTargetCube face}
 
 \cnaclass{GraphicsDevice} has a dedicated overload for exactly this purpose ---
 \texttt{SetRenderTarget(RenderTargetCube*, CubeMapFace)} --- distinct from the plain
@@ -408,8 +402,8 @@ still open, and what is now fixed:
   \item[Cube sampling.] Sampling a \cnaclass{RenderTargetCube} face after rendering into it,
         then unbinding, works correctly on \textbf{EasyGL}. \textbf{Vulkan} now works in both
         discriminating
-        regressions --- Task~875's clear-only case explicitly records the target, while
-        Task~876's original render-all-faces/then-sample test no longer reproduces the black
+        regressions: the clear-only case explicitly records the target, while the original
+        render-all-faces/then-sample test no longer reproduces the black
         result (the exact fixing commit was not retroactively isolated).
         \textbf{BGFX}: fixed --- the unconditional \texttt{static\_cast} that once read a
         framebuffer-pool handle where a texture-pool handle was expected

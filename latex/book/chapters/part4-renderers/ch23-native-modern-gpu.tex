@@ -23,18 +23,16 @@ Identity & Extended draw route & RT2D / MRT & Query & Shader boundary \\
 \bottomrule
 \end{longtable}
 
-The table states behavior, not merely capability bits.  \texttt{SDL\_GPU} inherits the base
+The table states observed behavior as well as capability bits. \texttt{SDL\_GPU} inherits the base
 null query while the default capability policy reports support.  \texttt{WEBGPU} likewise
 reports MRT and query support, but rejects more than one target and has no real query object.
 Those are contract defects tracked by the audit, not reasons to promote a no-throw smoke test
 to feature evidence.
 
-Vulkan is CNA's second-most-mature renderer by the project's own account, and the renderer
-whose history best illustrates a recurring theme in this Part: a class of bug where an
-interface method accepts every parameter it is supposed to, but the implementation behind it
-quietly discards most of them.
+The Vulkan history illustrates a recurring defect shape: an interface accepts a complete state
+packet while the implementation consumes only part of it.
 
-\section{Recorded Vulkan campaign baseline}
+\section{Historical Vulkan campaign baseline}
 
 The recorded Vulkan validation campaign reported 4{,}371 passes in a 4{,}373-case configured
 population, with two hardware-dependent skips; its renderer-specific \texttt{ctest} population
@@ -44,24 +42,24 @@ The single remaining failure, \texttt{Vulkan\_DepthBias}, is a narrow one: only 
 extreme tested magnitude of depth bias produces no observable effect
 (\S\ref{sec:vulkan-depthbias}), a symptom shared with an equivalent finding on
 \texttt{D3D9}. Historically this renderer also carried five failing \cnaclass{BlendState}
-tests and three segfaulting skinned-model content tests --- both fully resolved, with no
-test exclusions needed to reach the otherwise clean campaign baseline.
+tests and three segfaulting skinned-model content tests. Both were closed before the recorded
+campaign baseline, without test exclusions.
 
-\section{BlendState: from ``almost entirely fake'' to fully real}
+\section{BlendState: native mapping and historical defect}
 
 The single most serious historical bug on this renderer, in the project's own words, is that
 its blend-state implementation was ``almost entirely fake'': one hardcoded blend equation was
 applied regardless of what \cnaclass{BlendState} actually requested, confirmed failing across
-five independent pixel tests before the fix. The fix replaced this with a genuine
+five independent pixel tests before the fix. The fix replaced this with a
 per-\cnaclass{Blend} / \cnaclass{BlendFunction} mapping, applied consistently across all nine
 of this renderer's own pipeline-creation call sites --- meaning the fix had to be threaded
 through every place a graphics pipeline object gets built, not just one central function.
 
-\section{Stencil testing: the same ``discarded parameters'' bug shape}
+\section{Stencil testing: another discarded-parameter defect}
 
 \cnaclass{DepthStencilState} (Chapter~\ref{ch:state-objects}) had an almost identical
-history. The renderer's own state-application entry point accepted fifteen parameters but
-genuinely stored only two of them (the depth-enable and depth-write flags) --- every
+history. The renderer's state-application entry point accepted fifteen parameters but
+stored only two of them (the depth-enable and depth-write flags) --- every
 stencil-related parameter passed through the call was simply discarded, and the pipeline's
 own stencil-test-enable flag was never set at all, on any pipeline. Five separate,
 independently-run checks (the enable flag itself, the stencil masks, front-face operations,
@@ -75,14 +73,13 @@ the audited exception. A second, smaller bug found in the same investigation: de
 format selection tried a stencil-\emph{less} format before it tried any stencil-capable
 alternative.
 
-\section{OcclusionQuery: from never-wired to a genuinely discriminating query}
+\section{OcclusionQuery: current contract and render-pass limit}
 
-Before its fix, occlusion queries on this renderer were not merely inaccurate --- they were
-never connected to anything at all. This renderer defers 3D and 2D draws into a pending-batch
+Before its fix, occlusion queries on this renderer were disconnected from draw submission. The
+renderer defers 3D and 2D draws into a pending-batch
 snapshot, recorded into real Vulkan commands only once per frame, well after
 \texttt{Begin()} / \texttt{End()} had already returned synchronously; queries therefore always
-reported zero, regardless of what was actually visible. The fix required resolving three
-genuinely non-obvious design questions: how to tag an individual pending draw with the query
+reported zero regardless of visibility. The fix resolved three design questions: how to tag an individual pending draw with the query
 that should observe it; whether a single query may legitimately span multiple draw calls
 (resolved: yes, as long as they share one render pass, tracked via contiguous-run detection,
 with an explicit, documented limitation that a query spanning a render-pass \emph{boundary}
@@ -94,7 +91,7 @@ none --- plus a genuine multi-draw-span case (two non-overlapping half-quads ins
 \texttt{Begin} / \texttt{End} span, summing correctly), discriminating for real in this
 project's own software Vulkan implementation.
 
-\subsection{A worked example: using an OcclusionQuery correctly on this renderer}
+\subsection{Using OcclusionQuery on Vulkan}
 
 The real \cnaclass{OcclusionQuery} surface is small --- \texttt{Begin()}, \texttt{End()},
 \texttt{getIsCompleteProperty()}, \texttt{getPixelCountProperty()} --- and the standard
@@ -104,51 +101,43 @@ visibility-culling pattern is exactly what the verification above tested directl
 OcclusionQuery query(getGraphicsDeviceProperty());
 
 query.Begin();
-DrawBoundingProxyGeometry(occluderCandidate); // a cheap stand-in, not the real detailed mesh
+DrawBoundingProxyGeometry(occluderCandidate); // a cheap stand-in for the detailed mesh
 query.End();
 
-// One or more frames later, once rendering has actually reached the GPU:
+// One or more frames later, after the GPU result is available:
 if (query.getIsCompleteProperty() && query.getPixelCountProperty() > 0) {
-    DrawFullDetailMesh(occluderCandidate); // visible -- worth the real draw cost
+    DrawFullDetailMesh(occluderCandidate);
 }
 \end{lstlisting}
 
-The one genuine gotcha this renderer's own verification surfaced, worth restating as a rule
-rather than only as a finding: a single query's \texttt{Begin()} / \texttt{End()} span may
-legitimately cover \emph{multiple} draw calls (useful for querying a whole cluster of small
-objects with one query instead of one per object), but only as long as every draw in that span
-stays within one render pass. A query spanning a render-pass boundary --- switching render
-targets, or anything else that closes and reopens a Vulkan render pass mid-span --- is not
-correctly summed on this renderer today. A conservative rule that avoids the gap entirely:
-never let a render-target switch happen between an \cnaclass{OcclusionQuery}'s \texttt{Begin()}
-and \texttt{End()}.
+A query may cover several draws within one render pass. The pinned Vulkan route does not sum a
+query correctly across a render-pass boundary. Keep render-target changes outside an
+\cnaclass{OcclusionQuery}'s \texttt{Begin()} / \texttt{End()} span.
 
 \section{Remaining limitation}
 \label{sec:vulkan-depthbias}
 
-Exactly one genuine, unresolved gap remains on this renderer at the pinned revision: an
-isolated \cnaclass{RasterizerState.DepthBias} extreme-magnitude sub-case, where real hardware
-bias produced no observable effect at any tested magnitude in this project's own sandboxed
-environment --- suspected to be an environment or driver limitation shared with an equivalent
-finding made independently on \texttt{D3D9} (Chapter~\ref{ch:direct3d-backends}), rather than
-a Vulkan-specific defect.
+One unresolved observation remains: the extreme-magnitude
+\cnaclass{RasterizerState.DepthBias} case produced no visible bias in the recorded environment.
+The same result occurred on D3D9 (Chapter~\ref{ch:direct3d-backends}), so the evidence does not
+attribute it to Vulkan rather than the shared driver environment.
 
-\section{Two distinct render-target black-render bugs, both now closed}
+\section{Two corrected render-target black-frame defects}
 \label{sec:vulkan-rendertarget-black}
 
-The repository's still-stale \texttt{docs/rendertarget-support.md} describes two confirmed
-black-render defects as open. The live plan, source, and tests close both. Preserving the
-mechanisms still matters because the first is part of the current clear architecture and the
-second is a useful lesson in re-verifying an old diagnosis.
+\begin{historynote}
+\texttt{docs/rendertarget-support.md} still lists two black-frame defects as open. The pinned
+source and regressions close both; the document is historical.
+\end{historynote}
 
-Task~875 was not specific to cube targets. \texttt{VulkanRenderer::Clear()} once changed
-only global clear scalars, while render passes were collected solely from real draw calls. A
+The first defect was not cube-specific. \texttt{VulkanRenderer::Clear()} once changed only
+global clear values, while command recording discovered passes solely from draw calls. A
 clear-only target therefore never entered command recording:
 
 \begin{lstlisting}
 device.SetRenderTarget(&probe, CubeMapFace::PositiveZ);
 device.Clear(Color::CornflowerBlue);
-device.SetRenderTarget(nullptr); // no intervening draw: the former Task 875 trigger
+device.SetRenderTarget(nullptr); // no intervening draw: the former failure trigger
 \end{lstlisting}
 
 The first repair added a deduplicated target list so a clear could create a pass without a
@@ -159,19 +148,17 @@ recording discovers clear-only segments from that stream itself. The dedicated c
 \cnaclass{RenderTarget2D} regression still fills two targets without a draw and samples both,
 while the newer ordered-clear suite proves this is no longer merely a pass-existence fix.
 
-Task~876 was the separate all-six-faces path: real SpriteBatch content was rendered into a
+The second regression renders SpriteBatch content into all six faces of a
 \cnaclass{RenderTargetCube}, unbound, then sampled through \cnaclass{EnvironmentMapEffect}.
-The same original regression now produces the exact expected blue centre across five repeated
-runs plus its registered test invocation. No weakened replacement test was substituted.
-The project did not retroactively bisect which intervening change fixed it; the substantial
-Task~907 cube-view/layout rework is the leading inference, but its most obvious transition fix
-is mip-count-gated while this regression uses one level. The honest current conclusion is
-therefore ``verified closed, precise historical fixing commit unknown,'' not ``still open.''
+The original regression now produces the expected blue center across five repeated runs and its
+registered invocation. The project did not bisect the fixing commit. A later cube-view/layout
+rewrite is a plausible cause, but the relevant transition is mip-count-gated while this fixture
+uses one level. The defect is verified closed; its fixing commit is unknown.
 
 \section{Clear is aspect-selective and issue-ordered}
 
-Task~871 first established that colour, depth, and stencil values reach real Vulkan
-attachments. \texttt{REMED-GFX-129} then closed the more demanding contract: every public
+Focused attachment tests establish that colour, depth, and stencil values reach Vulkan.
+\texttt{REMED-GFX-129} closes the ordering contract: every public
 clear is now an ordered command at its exact position among SpriteBatch and 3D draws, with
 independent target/depth/stencil flags. A leading clear on a discard cycle may fold into the
 render-pass load action; a clear after any draw is emitted as \texttt{vkCmdClearAttachments}
@@ -209,56 +196,37 @@ skewed picture of a renderer whose overall health is, in fact, good.
 
 \section{Notable feature-matrix specifics}
 
-A cube-map render target's MSAA support is real but indirect: rather than a genuinely
-multisampled cube attachment, it is implemented as an ordinary (non-cube) multisampled 2D
-texture array paired with a separately cube-flagged resolve texture. Multiple render targets
-are capped at four by shared, cross-renderer code mirroring FNA's own
-\path{MAX_RENDERTARGET_BINDINGS} constant --- notably \emph{not} because Vulkan's own
-device capability is the limiting factor, since a typical device supports eight. Uploading
-\texttt{Texture2D} data at a mip level above zero is now real: the image and view allocate
-the public level count, a level-specific barrier and staged copy update the requested
-subresource, and the dedicated minification test samples its authored color. The former
-silent no-op recorded earlier in this chapter's source history was fixed by Task~925; see
-Chapter~\ref{ch:backend-architecture}, \S\ref{sec:texture2d-update-matrix}, for the current
-cross-renderer matrix and proof boundary. Forwarding a real, non-\texttt{Color}
-\cnaclass{SurfaceFormat} shares the identical blocked/architectural
-limitation already covered for EasyGL in Chapter~\ref{ch:easygl-backend} --- both renderers
-are blocked by the same upstream \texttt{Texture::ValidateFormat} contract, not by anything
-Vulkan-specific.
+A cube-map render target's MSAA route uses a multisampled 2D texture array and a separately
+cube-flagged resolve texture. Multiple render targets are capped at four by shared code mirroring
+FNA's \path{MAX_RENDERTARGET_BINDINGS}; the cap does not come from Vulkan's device limit.
+\texttt{Texture2D} uploads above mip level zero allocate and update the requested subresource,
+and a minification test samples its authored color. Chapter~\ref{ch:backend-architecture},
+\S\ref{sec:texture2d-update-matrix}, gives the cross-renderer proof boundary. Non-
+\texttt{Color} formats remain blocked by the shared \texttt{Texture::ValidateFormat} contract
+described in Chapter~\ref{ch:easygl-backend}, not by a Vulkan-specific refusal.
 
-\section{Three tracked gaps, checked against live source rather than trusted from the doc}
+\section{Render-target mipmaps, MSAA, and viewport}
 
-This project's own \texttt{docs/rendertarget-support.md} --- the same document
-\S\ref{sec:vulkan-rendertarget-black} already drew Tasks~875/876 from --- lists three further
-tracked tasks for this renderer as still open: real GPU mip generation for a render target
-(Task~878), real render-target MSAA (Task~879), and any actual GPU effect from a custom
-sub-region \cnaclass{Viewport} at all (Task~880, ``zero wiring on any renderer''). Reading
-\texttt{VulkanRenderer.cpp} directly, rather than trusting that document's own status
-column, finds all three already resolved --- each superseded by a later task number
-(\texttt{Task~903} / \texttt{907}) whose own comments the doc was never updated to reflect, one
-more real instance of the recurring ``a status that looked settled turned out to be stale''
-pattern this book has run into more than once. \texttt{VulkanRenderTargetRenderer::%
-MaybeGenerateMips()} runs a real, per-level \texttt{vkCmdBlitImage} cascade against a render
-target's just-rendered (and, if applicable, just-MSAA-resolved) level-0 content immediately
-after its render pass ends --- the direct Vulkan equivalent of EasyGL's own
-\texttt{glGenerateMipmap}-on-unbind. Render-target MSAA is real for both
-\cnaclass{RenderTarget2D} and \cnaclass{RenderTargetCube} (the cube case exactly as described
-above). And \texttt{SetViewport()} genuinely reaches \texttt{vkCmdSetViewport} at
-command-buffer-record time. The first repair covered the backbuffer only;
-\texttt{REMED-GFX-062} then snapshots the active viewport into every SpriteBatch batch and 3D
-draw and applies that captured value while replaying the draw's own render-target segment.
-Custom sub-regions now work on the backbuffer and \cnaclass{RenderTarget2D}, rather than
-collapsing to a full-target reset or to the final live value at \texttt{Present()} time.
-Dedicated target and shared deferred-capture pixel tests cover both scopes and multiple
-viewport changes inside one unflushed bind cycle.
+\begin{historynote}
+\texttt{docs/rendertarget-support.md} lists render-target mip generation, MSAA, and custom
+viewport effects as open for Vulkan. All three are implemented at the pin; those status rows
+predate the current source and tests.
+\end{historynote}
 
-Scissor follows the same per-command rule. Each queued draw retains both the rectangle and
-\texttt{ScissorTestEnable}; replay clamps an enabled rectangle to the current target and
-expands disabled or degenerate state to its full extent before \texttt{vkCmdSetScissor}. The
-target-scissor fixture and cross-renderer deferred-scissor oracle prove that a later rectangle,
-target switch, or ordinary full-state restore cannot retroactively unclip earlier queued
-draws. The pass-opening full-target viewport/scissor calls remain valid defaults, but every
-real draw overrides them from its own snapshot.
+\texttt{VulkanRenderTargetRenderer::MaybeGenerateMips()} runs a per-level
+\texttt{vkCmdBlitImage} cascade against resolved level-0 content after the render pass.
+Render-target MSAA covers both \cnaclass{RenderTarget2D} and \cnaclass{RenderTargetCube}. Each
+SpriteBatch batch and 3D draw captures the active viewport and applies it while replaying its
+render-target segment. Custom sub-regions therefore work on the backbuffer and
+\cnaclass{RenderTarget2D} without collapsing to the final value at \texttt{Present()} time.
+Dedicated target and deferred-capture pixel tests cover both scopes and multiple viewport changes
+inside one unflushed bind cycle.
+
+Scissor follows the same per-command rule. Each queued draw retains the rectangle and
+\texttt{ScissorTestEnable}; replay clamps an enabled rectangle to the current target and expands
+disabled or degenerate state to its full extent before \texttt{vkCmdSetScissor}. The target and
+deferred-scissor oracles establish that later state cannot retroactively unclip earlier queued
+draws. Pass-opening full-target state is a default; each draw replaces it with its snapshot.
 
 \section{How a swapchain gets built: format, color space, and present mode}
 \label{sec:vulkan-swapchain}
@@ -336,11 +304,10 @@ if (swapInterval_ == 0) {         // Immediate: tearing allowed, lowest latency
 // swapInterval_ == 1 (Default/One): FIFO unconditionally -- always available, real VSync
 \end{lstlisting}
 
-Two things about this chain are worth internalizing rather than skimming past. First,
 \texttt{FIFO} is the only present mode the Vulkan specification \emph{guarantees} every
 conformant implementation supports --- choosing it as the unconditional starting value, and as
 every fallback's own final fallback, is what makes swapchain creation itself never fail for
-lack of an exotic present mode, on any device. Second, \texttt{PresentInterval::Two}'s mapping
+lack of an exotic present mode. \texttt{PresentInterval::Two}'s mapping
 to \texttt{FIFO\_RELAXED} is a deliberately different request from \texttt{Immediate}'s: FIFO
 Relaxed still waits for vsync when the application is keeping up, and only presents
 immediately (accepting a single tear) on the specific frame where the application would
@@ -444,7 +411,7 @@ before \texttt{ReadBackbuffer} maps \texttt{readbackStagingMem\_} and reads it d
 \texttt{SubmitFrame(true)} deliberately skipped --- late, but still exactly once, so no frame
 is silently dropped from the screen because it was read back.
 
-\subsection{Two further real findings from the same read path}
+\subsection{Two additional readback findings}
 
 Reading \texttt{ReadBackbuffer()}'s own surrounding logic in full surfaces two further details
 worth knowing, neither one hypothetical:
@@ -476,7 +443,7 @@ layout every other renderer and \cnaclass{Color} itself use --- \texttt{ReadBack
 swap only when the format is actually BGRA, rather than assuming one fixed byte order across
 every device this renderer might run on.
 
-\section{A real, hittable ceiling: 512 live descriptor sets, shared across two resource types}
+\section{The 512-live-descriptor-set ceiling}
 \label{sec:vulkan-descriptor-ceiling}
 
 Every \cnaclass{Texture2D} and every \cnaclass{RenderTarget2D} constructed on this renderer
@@ -529,7 +496,7 @@ realistic way to reach this ceiling in practice --- worth knowing as a real, ren
 constraint before assuming texture/render-target counts that work fine on EasyGL port
 unchanged to Vulkan.
 
-\section{A documented, not a hidden, coverage gap}
+\section{Coverage gap}
 
 One honest gap in \emph{testing}, not rendering: at the pinned revision there is no dedicated
 pixel test for \cnaclass{SpriteBatch}'s sort-mode/rotation/scale/crop/flip behavior, for

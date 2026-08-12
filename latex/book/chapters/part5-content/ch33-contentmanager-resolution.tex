@@ -1,1058 +1,339 @@
-\chapter{Loading an Asset: ContentManager and Resolution}
+\chapter[ContentManager and Asset Resolution]{ContentManager and Asset \mbox{Resolution}}
 \label{ch:contentmanager-resolution}
 \label{ch:content-and-assets}
 
-Real XNA's content model and CNA's are different, and --- unlike most of the gaps in this
-book --- the story here has genuinely changed over the project's own history rather than
-settling once. This chapter covers where it stands now: two real, actively-maintained content
-formats, tried in a specific order, each with its own reasoning.
+\cnaclass{ContentManager} maps a logical name and requested C\texttt{++} type to an XNB object,
+a CNJ object, or a native loose asset. Its most important rule is selection, not decoding: the
+first existing candidate is terminal even if the selected reader later rejects it. This chapter
+owns path choice, caching, and manager lifetime. Chapters~\ref{ch:xnb-container} and
+\ref{ch:xnb-type-readers} own XNB; Chapter~\ref{ch:cnj-format} owns CNJ.
 
-\section{Real XNA's own model, briefly}
+\input{figures/fig-content-resolution.tex}
 
-Real XNA never ships raw asset files inside a game. An offline content-pipeline build step
-compiles every texture, model, font, and effect into a proprietary binary format ---
-\texttt{.xnb} --- which \texttt{ContentManager::Load<T>()}\index{ContentManager::Load<T>} loads at runtime. FNA
-reimplements a real \texttt{.xnb} reader, precisely so unmodified, historical XNA content
-keeps working unchanged.
+\section{The resolution algorithm}
 
-\section{The two runtime formats}
-
-ContentManager resolves XNB and CNJ through one public \texttt{Load<T>()} surface, but their
-internals are intentionally separate. Chapter~\ref{ch:xnb-container} covers the binary envelope
-and compression, Chapter~\ref{ch:xnb-type-readers} covers its object graph, and
-Chapter~\ref{ch:cnj-format} covers CNA's JSON format. This chapter stays at the façade: path
-choice, cache ownership, lifetime, and extension dispatch.
-
-\section{The resolution order, precisely}
-
-The earlier short three-way description is useful, but it hides two consequential facts: a
-candidate that exists is selected \emph{before} CNA knows whether its reader can consume it, and
-there is no retry with a lower-priority candidate after that reader fails. On a cache miss, the
-generic template and each of the \cnaclass{Texture2D}, \cnaclass{SoundEffect}, and
-\cnaclass{TextureCube} specializations use the same selection sequence. Written directly from
-\texttt{ContentManager.hpp}, with \texttt{base = BuildAssetPath(assetName)}, it is:
+On a cache miss, let \texttt{base = BuildAssetPath(assetName)}. The generic
+\texttt{Load<T>} path and the Texture2D, SoundEffect, and TextureCube specializations follow this
+order:
 
 \begin{lstlisting}
 if (exists(base + ".xnb"))
-    return LoadXnbAsset<T>(base + ".xnb");  // before a local reader is even required
+    return LoadXnbAsset<T>(base + ".xnb");
 
-reader = the per-manager LooseFileContentTypeReader<T>;
+reader = registered LooseFileContentTypeReader<T>;
 if (exists(base))
-    return reader.Read(base, content);       // literal path wins among loose candidates
+    return reader.Read(base, content);
 if (exists(base + ".cnj"))
     return reader.Read(base + ".cnj", content);
-for (const auto& ext : reader.GetExtensions())
-    if (exists(base + ext))
-        return reader.Read(base + ext, content); // first listed existing extension wins
-return reader.Read(base, content);           // reader reports the eventual missing/invalid path
+for (const auto& extension : reader.GetExtensions())
+    if (exists(base + extension))
+        return reader.Read(base + extension, content);
+return reader.Read(base, content); // preserve the reader's diagnostic
 \end{lstlisting}
 
-The first successful generic result then enters its strong type-plus-normalized-name cache;
-\cnaclass{Texture2D} records its weak renderer entry; and move-only \cnaclass{SoundEffect} and
-\cnaclass{TextureCube} perform the sequence on every call. Those cache rules were covered above,
-but they matter here because a later call for a cached name does not re-evaluate newly created,
-removed, or repaired candidates.
+\begin{contractnote}
+Existence selects a candidate; successful decoding does not. A malformed XNB, invalid CNJ,
+corrupt literal file, directory, or rejected first native extension stops the load. CNA does not
+retry a lower-priority sibling.
+\end{contractnote}
 
-\subsection{A candidate is terminal; it is not a successful probe}
+The XNB probe appends \texttt{.xnb} to the complete name. Therefore
+\texttt{Load<Texture2D>("art/logo.png")} first tests \texttt{art/logo.png.xnb}, then the literal
+PNG. To parse \texttt{art/logo.xnb} as XNB, pass \texttt{"art/logo"}. Passing the suffix itself
+tests \texttt{logo.xnb.xnb}; if absent, the loose reader receives the original XNB file.
+Dots in logical names have no special meaning.
 
-The first line has deliberately stronger meaning than ``try XNB first.'' It appends
-\texttt{.xnb} to the complete logical name regardless of whether that name already has a dot or
-an extension. Thus \texttt{Load<Texture2D>("art/logo.png")} tests
-\texttt{art/logo.png.xnb} first, then (if no such file exists) reads the literal PNG. Conversely,
-the usual way to load \texttt{art/logo.xnb} as XNB is
-\texttt{Load<Texture2D>("art/logo")}. Passing \texttt{"art/logo.xnb"} tests
-\texttt{art/logo.xnb.xnb}; if that second file is absent, it hands the original XNB bytes to the
-ordinary loose Texture2D reader instead of invoking the XNB parser. A dot in a logical name is
-not special to the resolver: \texttt{"Flag.en-US"} quite intentionally permits
-\texttt{Flag.en-US.xnb}, \texttt{Flag.en-US.cnj}, and reader extensions.
-
-If the suffixed XNB exists, the manager immediately opens, parses, decompresses, and dispatches
-it by its own type-reader table. A malformed header, unsupported LZ4 compression, unregistered
-XNB reader, failed LZX decode, or root-object type mismatch is therefore terminal; CNA does not
-then try \texttt{base}, \texttt{base.cnj}, or a native extension. This happens even when the
-manager has no local \texttt{LooseFileContentTypeReader<T>}: XNB dispatch is process-wide and
-file-driven, as the registration section established. The focused XNB test proves a valid
-\texttt{fixture.xnb} wins over a same-named \texttt{fixture.cnj}; no located test deliberately
-places a broken XNB beside a healthy lower-priority candidate, but the control flow makes the
-no-fallback result direct.
-
-The same terminal rule applies below XNB. \texttt{exists(base)} accepts a literal file without
-asking whether its extension belongs to \texttt{reader.GetExtensions()}; then the unconditional
-\texttt{base.cnj} check runs before that reader's native list. Once either file exists,
-\texttt{reader.Read()} is called exactly once. A bad \texttt{.cnj}, a corrupt image, a directory,
-or a custom reader which rejects the selected path does not cause a second probe. The final bare
-path is not a success indication either: it is deliberately returned to the reader so that its
-own open/decode diagnostic is preserved. Consequently, the header's short statement that reader
-extensions are tried ``if assetName has no file extension'' is only a user-facing convention, not
-the literal algorithm: extension candidates are appended after any missing literal name,
-including one containing dots.
-
-\subsection{Literal files and \texttt{.cnj} sidecars are selected by the name you pass}
-
-The ordering between the two loose candidates is easy to misread. An extensionless call such as
-\texttt{Load<Texture2D>("sprites/hero")} chooses \texttt{sprites/hero.cnj} before
-\texttt{sprites/hero.png}; that lets a valid sidecar override the default native decode. An
-explicit existing literal call chooses the literal first instead:
+A literal path wins over its sidecar. With \texttt{hero.png} and \texttt{hero.cnj} present:
 
 \begin{lstlisting}
-// Given hero.png and hero.cnj (whose sourceFile is hero.png):
-Texture2D native  = content.Load<Texture2D>("sprites/hero.png"); // literal PNG
-Texture2D sidecar = content.Load<Texture2D>("sprites/hero");     // hero.cnj, then its sourceFile
+auto native  = content.Load<Texture2D>("sprites/hero.png");
+auto sidecar = content.Load<Texture2D>("sprites/hero");
 \end{lstlisting}
 
-This is not merely explanatory: \texttt{CnjCacheIsolationTests} loads precisely that pair and
-observes that the second result has the sidecar color-key transformation while the explicit PNG
-retains its original pixels. The two calls also have distinct textual Texture2D cache keys.
-There is no general ``an explicit extension disables XNB'' rule, however: the extra
-\texttt{hero.png.xnb} check still occurs before the literal PNG.
+The first call selects the literal PNG after the extra XNB probe. The second selects
+\texttt{hero.cnj} before the native-extension list. A CNJ \texttt{sourceFile} then starts a
+checked nested load; it is not a direct decoder bypass.
 
-The global \texttt{.cnj} probe does not consult the reader's extension list. A custom reader
-whose \texttt{GetExtensions()} returns only \texttt{.foo} will still receive
-\texttt{name.cnj} when that file exists, and must either understand or reject it. Built-in
-readers make different choices after receiving it: texture, sound, and cube readers recognize a
-\texttt{sourceFile} envelope; self-contained readers validate their own expected CNJ type; and
-a reader which treats its path as a native stream has no automatic JSON adapter. A CNJ
-\texttt{sourceFile} is a new, safely checked logical \texttt{Load} call, so it starts this whole
-sequence again (including an XNB sibling of the source file), rather than being a direct native
-file-open bypass.
+\subsection{Native extension order}
 
-\subsection{The built-in native-extension matrix is ordered and type-specific}
+\begin{center}
+\small
+\begin{tabular}{@{}p{0.25\textwidth}p{0.62\textwidth}@{}}
+\toprule
+\textbf{Requested type} & \textbf{Ordered native candidates after literal and CNJ} \\
+\midrule
+\cnaclass{Texture2D} & \texttt{.png}, \texttt{.jpg}, \texttt{.jpeg}, \texttt{.bmp},
+  \texttt{.gif}, \texttt{.tga}, \texttt{.tif}, \texttt{.tiff}, \texttt{.qoi} \\
+\cnaclass{TextureCube} & \texttt{.dds} \\
+\cnaclass{SoundEffect} & \texttt{.wav} \\
+\cnaclass{Song} & \texttt{.mp3}, \texttt{.ogg}, \texttt{.wav}, \texttt{.flac},
+  \texttt{.opus}, \texttt{.aac}, \texttt{.wma} \\
+\cnaclass{Video} & \texttt{.mp4}, \texttt{.ogv}, \texttt{.webm}, \texttt{.mkv},
+  \texttt{.avi}, \texttt{.mov}; loose reader excluded on Emscripten, Android, and MinGW \\
+\cnaclass{Model} & \texttt{.cnj}, \texttt{.gltf}, \texttt{.glb}; the first entry is redundant
+  with the manager-level CNJ probe \\
+\cnaclass{SpriteFont}, \cnaclass{Effect}, \cnaclass{AnimationClipEXT}, \cnaclass{Curve} &
+  self-contained \texttt{.cnj} \\
+\bottomrule
+\end{tabular}
+\end{center}
 
-Only after a missing literal and a missing \texttt{.cnj} does the reader's own ordered list
-matter. The current built-ins are deliberately not one universal ``asset extension'' registry:
+The global CNJ probe runs even when a reader does not advertise or understand CNJ. In particular,
+the current loose \cnaclass{Song} and \cnaclass{Video} readers treat the selected path as media.
+An extensionless name with a same-named \texttt{.cnj} therefore feeds JSON to the media object
+instead of falling through to the native audio/video file. Pass the explicit media filename for
+those types; a generic media-sidecar contract does not exist at the pin.
 
-\begin{description}
-\item[\cnaclass{Texture2D}] \texttt{.png}, \texttt{.jpg}, \texttt{.jpeg}, \texttt{.bmp},
-\texttt{.gif}, \texttt{.tga}, \texttt{.tif}, \texttt{.tiff}, then \texttt{.qoi}.
-\item[\cnaclass{TextureCube}] \texttt{.dds} only; \texttt{std::shared\_ptr<Texture3D>} has
-only self-contained \texttt{.cnj}, not a native volume-image format.
-\item[\cnaclass{SoundEffect}] \texttt{.wav}; \cnaclass{Song} uses \texttt{.mp3},
-\texttt{.ogg}, \texttt{.wav}, \texttt{.flac}, \texttt{.opus}, \texttt{.aac}, and
-\texttt{.wma}, in that order.
-\item[\cnaclass{Video}] \texttt{.mp4}, \texttt{.ogv}, \texttt{.webm}, \texttt{.mkv},
-\texttt{.avi}, then \texttt{.mov}; its loose reader is not registered in Emscripten, Android,
-or MinGW builds.
-\item[\cnaclass{Model}] \texttt{.cnj}, \texttt{.gltf}, then \texttt{.glb}. The leading
-\texttt{.cnj} is redundant after the manager's global sidecar probe, but does not alter the
-result: a same-named CNJ beats glTF/GLB, while the runtime-glTF test proves a missing CNJ falls
-through to \texttt{basic.gltf}.
-\item[\cnaclass{SpriteFont}, \cnaclass{Effect}, \cnaclass{AnimationClipEXT}, and
-\cnaclass{Curve}] self-contained \texttt{.cnj} only. The CNAEXT
-\cnaclass{SkinnedModelEXT} reader instead declares \texttt{.skinnedmodel.json}.
-\end{description}
+\section{RootDirectory and containment}
 
-The list is an existence priority, not a content-sniffing policy. For example, when both a
-\texttt{music.wav} and \texttt{music.ogg} exist, \cnaclass{Song} chooses the WAV even if its
-decoder later rejects it; it does not retry Ogg. A \cnaclass{Model} likewise chooses a present
-\texttt{.gltf} before \texttt{.glb}. The focused resolver tests cover a healthy native texture,
-a healthy CNJ texture, the CNJ-over-native extension precedence, and the missing-CNJ glTF path.
-They do not cover explicit-XNB names, an invalid sidecar beside a healthy native file, literal
-files with unsupported extensions, directory candidates, or first-extension failure followed by
-a valid later extension. Applications that need such recovery must choose and validate a concrete
-path themselves, then expose it through a reader whose contract supplies that policy.
-
-\subsection{\texttt{RootDirectory} is a base, not a sandbox or cache namespace}
-
-The word ``root'' is a convenience, not a containment guarantee. CNA's
-\texttt{BuildAssetPath()} returns the raw asset name when the root is empty and otherwise uses
-\texttt{std::filesystem::path(\allowbreak{}rootDirectory) / assetName}, without rejecting an absolute name,
-normalizing dot segments, canonicalizing a symlink, or checking that the result remains below the
-configured directory. On the usual path rules, the important cases are:
+\texttt{RootDirectory} is a base path, not a sandbox. \texttt{BuildAssetPath} joins it with the
+logical name but does not reject absolute paths, canonicalize dot segments, or check symlinks:
 
 \begin{lstlisting}
 root = "Content"
-"sprites/logo"     -> "Content/sprites/logo"
-"../shared/logo"   -> "Content/../shared/logo"  // filesystem traversal can escape
-"/srv/game/logo"   -> "/srv/game/logo"          // absolute right side replaces the base
+"sprites/logo"   -> "Content/sprites/logo"
+"../shared/logo" -> "Content/../shared/logo"
+"/srv/logo"      -> "/srv/logo"
 \end{lstlisting}
 
-An application may deliberately choose an absolute \texttt{RootDirectory} or direct file name,
-but it must not treat either as a security boundary. A caller-controlled \texttt{assetName}, a
-native file symlink below the root, or an in-root path containing \texttt{..} can reach outside
-it. FNA likewise permits a rooted \texttt{RootDirectory} and its raw-asset fallback tries the
-caller-given name, so strict root confinement is not an XNA/FNA compatibility promise. If content
-names come from untrusted data, validate a relative, canonicalized allow-list before calling
-\texttt{Load}; CNA's ordinary resolver is not that validation layer.
+Top-level names must therefore be trusted or validated by the application. Internal references
+have narrower rules:
 
-Its cache keys are a separate, purely textual rule. \texttt{NormalizeKey()} changes backslashes
-to slashes and lowercases every character, but does not include \texttt{RootDirectory}, remove
-\texttt{.}/\texttt{..}, resolve an extension, or canonicalize the filesystem. Thus
-\texttt{"Sprites\\Logo"} and \texttt{"sprites/logo"} intentionally share a key, while
-\texttt{"textures/../logo"} and \texttt{"logo"} can name the same file yet occupy two cache
-entries. Conversely, on a case-sensitive filesystem two distinct files named \texttt{Logo} and
-\texttt{logo} collapse to one cache identity, with the first loaded value winning. The generic
-cache also keys by requested C\texttt{++} type; Texture2D has the same textual rule in its own
-weak cache; move-only SoundEffect and TextureCube have no cache to alias.
+\begin{itemize}
+  \item CNJ \texttt{sourceFile} rejects absolute paths, traversal and symlink escape, another
+        CNJ, and implicit sidecar cycles.
+  \item \cnaclass{ContentReader::ReadExternalReference<T>} rejects absolute, drive, UNC, and
+        normalized above-root paths.
+  \item XNB Song and Video readers contain companion files within the content root. For an
+        explicitly loaded external XNB, the XNB's own directory becomes the authorized bundle
+        root.
+\end{itemize}
 
-Changing the root is consequently not a content switch for assets already looked up under the
-same logical name. The setter only stores a new string, so this sequence returns the Theme A
-model twice until eviction:
+These checks compare canonicalized paths before the eventual open; they are not a race-proof
+open-by-handle policy. Chapter~\ref{ch:content-robustness} records the TOCTOU boundary.
 
-\begin{lstlisting}
-content.setRootDirectoryProperty("ThemeA");
-Model themeA = content.Load<Model>("hero");
+\subsection{Cache identity is textual}
 
-content.setRootDirectoryProperty("ThemeB");
-Model stillThemeA = content.Load<Model>("hero"); // generic cache key is still "hero"
+\texttt{NormalizeKey} converts backslashes to slashes and lowercases bytes. It does not include
+the root, resolve dot segments, or canonicalize a file. Consequences include:
 
-content.Unload();
-Model themeB = content.Load<Model>("hero");
-\end{lstlisting}
+\begin{itemize}
+  \item \texttt{Sprites\textbackslash Logo} and \texttt{sprites/logo} share a cache key;
+  \item \texttt{textures/../logo} and \texttt{logo} may name one file but occupy two entries;
+  \item two case-distinct files on a case-sensitive filesystem collapse to one logical key;
+  \item changing \texttt{RootDirectory} does not invalidate an already cached logical name.
+\end{itemize}
 
-The same setter does not clear the separately lazy content manifest, so
-\texttt{GetContentManifest()} can also describe the old root until an explicit
-\texttt{RefreshContentManifest()}. This applies independently of the cache cases above; it is
-not a hot-reload mechanism. No located test changes \texttt{RootDirectory}, probes aliasing, or
-loads an absolute/traversing asset name.
+Call \texttt{Unload} before intentionally reusing names under a new root.
 
-Paths supplied \emph{inside} content need to be distinguished from this broad top-level rule. A
-\texttt{.cnj} \texttt{sourceFile} rejects an absolute field, traversals, symlink escapes, another
-\texttt{.cnj}, and implicit sidecar cycles by comparing weakly-canonical paths.
-\texttt{ContentReader::ReadExternalReference<T>()} separately rejects absolute, drive, and UNC
-spellings plus a logical relative path that normalizes above the content root. Song and Video XNB
-readers use the shared filesystem-containment helper for their embedded media path and validate the
-selected extension-probe result a second time, so a symlinked \texttt{.ogg}/\texttt{.ogv}
-alternative cannot bypass the first check. For an explicitly loaded XNB outside the configured
-root, the XNB's containing directory is the authorized external-bundle root: contained companions
-remain loadable, but the bundle cannot escape its own directory. Focused tests exercise traversal,
-absolute paths, symlinked extension candidates, normalized in-root references, cache retry, and
-the explicit-bundle case. The checks are not a race-proof open operation; the TOCTOU qualification
-is recorded in Chapter~\ref{ch:content-robustness}.
-
-\section{Direct loading: the shape of Chapter~\ref{ch:first-game}'s smallest program}
+\section{Direct and managed loading}
 \label{sec:direct-loading}
 
-The one-line construction in Chapter~\ref{ch:first-game}'s minimal game ---
-\texttt{Texture2D("assets/logo.png", getGraphicsDeviceProperty())} --- is the third, simplest
-path this chapter describes: \texttt{"assets/logo.png"} is a literal, directly loadable file
-path, resolved without any \texttt{.cnj} involvement when the literal exists. It remains the
-simplest path for a small, from-scratch CNA project. The resolver does still probe the distinct
-\texttt{"assets/logo.png.xnb"} candidate first; it falls through to the literal file when that
-compiled sibling is absent, not after probing a sidecar or every native extension.
-
-\section{ContentManager: constructing it and calling Load}
-
-The class every asset ultimately passes through, read directly from
-\texttt{ContentManager.hpp}, has three constructors: \texttt{explicit
-ContentManager(IServiceProvider*)}; a second form additionally taking
-\texttt{const std::string\& rootDirectory}; and a \texttt{CNAEXT}-tagged no-argument
-\texttt{ContentManager()} that defaults \texttt{RootDirectory} to \texttt{"Content"} --- plus
-the small set of methods a game actually calls day to day:
+A direct texture constructor with a concrete path remains useful for a small program:
 
 \begin{lstlisting}
-// A Game already owns one ContentManager; LoadContent(), after Initialize(),
-// is where a real game normally reaches for it:
-ContentManager& content = getContentProperty();
-content.setRootDirectoryProperty("Content");
-
-auto logo = content.Load<Texture2D>("sprites/logo");   // no extension in the name
-auto font = content.Load<SpriteFont>("fonts/hud");
-
-content.Unload();  // evicts this manager's caches; retained asset values remain valid
+Texture2D logo("assets/logo.png", getGraphicsDeviceProperty());
 \end{lstlisting}
 
-\texttt{Load<T>(const std::string\& assetName) -> T} is a template, not a virtual dispatch ---
-the name may be extensionless or an existing literal file. On a cache miss it first probes the
-name-plus-\texttt{.xnb}, then the literal, then name-plus-\texttt{.cnj}, and only then its
-type-specific native-extension list; the preceding section gives the terminal-candidate rule.
-Two
-\texttt{CNAEXT} extension points exist for cases the built-in readers don't cover:
-\texttt{RegisterTypeReader<T>} (taking a
-\texttt{std::unique\_ptr<LooseFileContentTypeReader<T>>}) for a whole new
-loose-file type, and \texttt{RegisterCnjLoader<T>(name, CnjLoaderFn<T>)} for a new named
-\texttt{.cnj} ``type'' string resolving to an existing C\texttt{++} type --- the mechanism
-\S\ref{sec:cnj} already named as the reason a game never needs to invent its own ad-hoc JSON
-format for a custom asset type.
+\cnaclass{Game} instead exposes its configured manager in \texttt{LoadContent}:
 
-\subsection{\texttt{Load<T>()} has a success-only cache write, not one universal failure type}
+\begin{lstlisting}
+ContentManager& content = getContentProperty();
+content.setRootDirectoryProperty("Content");
+auto logo = content.Load<Texture2D>("sprites/logo");
+auto font = content.Load<SpriteFont>("fonts/hud");
+\end{lstlisting}
 
-The short Doxygen promise that \texttt{Load<T>()} ``throws \texttt{ContentLoadException} if the
-asset cannot be loaded'' is a useful description of many deliberately validated content errors,
-but it is not a complete C\texttt{++} exception contract. The template begins by rejecting a
-disposed manager with \texttt{std::runtime\_error}; it does not reject an empty
-\texttt{assetName} at all. An empty name therefore follows the ordinary resolution logic and its
-eventual exception depends on the selected reader (or, with no reader for \texttt{T}, becomes the
-ordinary ``no reader registered'' \texttt{ContentLoadException}). This differs from current FNA,
-whose public \texttt{Load<T>} rejects a null or empty name with
-\texttt{ArgumentNullException} and a disposed manager with \texttt{ObjectDisposedException}
-before it looks in its cache.
+\texttt{RegisterTypeReader<T>} installs one loose reader for a C\texttt{++} type.
+\texttt{RegisterCnjLoader<T>} installs named CNJ factories that produce a type without a
+pre-existing reader. Both are CNAEXT surfaces; complete registration before loading begins.
 
-CNA does deliberately normalize many content-domain failures to
-\texttt{ContentLoadException}: an absent or null per-manager reader, a malformed XNB header,
-unsupported compression or reader version, an unregistered XNB reader name, invalid type-reader
-or shared-resource indices, malformed \texttt{.cnj} envelopes, and a known wrong \texttt{.cnj}
-type all take that route. The focused XNB tests exercise malformed magic, both unsupported
-compression-flag forms, an unregistered reader, and a declared file length larger than the real
-file; the focused CNJ tests exercise envelope and type validation. Those tests establish useful
-diagnostics for bad content, not a catch-all conversion layer around every operation below
-\texttt{Load<T>()}.
+\section{Caching and ownership}
 
-Several meaningful failures intentionally remain their original C\texttt{++} exception. A
-missing native image reached through either a direct texture load or a \texttt{.cnj}
-\texttt{sourceFile} reaches the image decoder and throws \texttt{std::runtime\_error}; the
-dedicated source-file test asserts that exact propagation. A real XNB \cnaclass{Song} whose
-embedded companion media file cannot be found reaches the public load call as
-\texttt{System::IO::FileNotFoundException}, likewise covered end to end. A custom loose reader
-or a \texttt{RegisterCnjLoader} factory is ordinary application C\texttt{++} code and is called
-without a wrapper, so an exception it throws is also the exception its caller sees. Finally, XNB
-root-object dispatch uses \texttt{std::any\_cast<T>}; asking for a \texttt{T} different from the
-root reader's actual result can therefore surface \texttt{std::bad\_any\_cast}, and truncated
-reader payloads can surface \texttt{System::IO::EndOfStreamException}. Neither a root-type
-mismatch, an empty name, a throwing custom callback, nor a failed-then-retried load has a located
-\texttt{ContentManager} integration test yet.
+Successful generic loads enter a strong cache keyed by requested type and normalized logical
+name. The write occurs only after a reader returns, so a failed top-level load can be retried.
+Specializations differ:
 
-\Needspace{10\baselineskip}
-Callers that want one diagnostic boundary should make it explicitly rather than assuming the
-content exception is exhaustive:
+\begin{center}
+\small
+\begin{tabular}{@{}p{0.24\textwidth}p{0.31\textwidth}p{0.34\textwidth}@{}}
+\toprule
+\textbf{Type} & \textbf{Manager state} & \textbf{Ownership consequence} \\
+\midrule
+Ordinary copyable \texttt{T} & Strong \texttt{std::any} value & Repeated loads return copies of
+  the cached value; caller-held shared handles can outlive eviction. \\
+\cnaclass{Texture2D} & Weak renderer and optional pixel shadow & A live returned texture keeps
+  its renderer alive; after eviction, a new load can construct a new renderer. \\
+\cnaclass{SoundEffect}, \cnaclass{TextureCube} & No manager cache & Move-only values are decoded
+  independently on each call. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\texttt{Unload} clears only the generic and texture caches. It does not dispose caller-held
+values, clear readers, reset the root/device/provider, or refresh the manifest.
+\texttt{Dispose} calls \texttt{Unload} once and marks the manager; later loads throw
+\texttt{std::runtime\_error}. The default C\texttt{++} destructor does not call that public
+method.
+
+Nested reader activity is not transactional. A reader can cache dependencies and then fail,
+leaving those successful nested entries. There is no provisional key or cycle detector, so a
+recursive load of the same uncached type/name can recurse until stack exhaustion.
+
+\subsection{Game content assignment copies state}
+
+\cnaclass{Game}\texttt{::setContentProperty(const ContentManager\&)} performs memberwise assignment into
+the existing manager. It copies caches, readers, manifest, disposed state, and raw service/device
+pointers; it does not replace a managed-object reference as FNA does. Assigning a standalone
+manager can overwrite Game's valid graphics-device pointer with null. Configure the existing
+manager in place when only the root should change:
+
+\begin{lstlisting}
+auto& content = getContentProperty();
+content.setRootDirectoryProperty("OtherContent");
+\end{lstlisting}
+
+\section{Failure and concurrency boundaries}
+
+\texttt{ContentLoadException} covers many validated content errors, including malformed XNB/CNJ
+data, absent reader registration, bad reader indices, and unsupported reader versions. It is not
+a universal wrapper. Depending on the selected path, callers can also see
+\texttt{std::runtime\_error}, \cnaclass{FileNotFoundException},
+\cnaclass{EndOfStreamException}, \texttt{std::bad\_any\_cast}, or an exception from custom
+reader code. Empty names are not rejected up front.
 
 \begin{lstlisting}
 try {
     auto level = content.Load<GameLevelData>("levels/intro");
     StartLevel(level);
 } catch (const ContentLoadException& error) {
-    ShowContentDiagnostic(error.what());      // validated content-format/configuration problem
+    ShowContentDiagnostic(error.what());
 } catch (const std::exception& error) {
-    ReportUnexpectedAssetFailure(error.what()); // decoder, companion file, or custom reader
+    ReportAssetFailure(error.what());
 }
 \end{lstlisting}
 
-There is one reassuringly narrow cache rule, with an important qualification. The generic
-\texttt{loadedAssets\_} entry is assigned only after \texttt{LoadXnbAsset()} or the loose
-reader has returned a \texttt{T}; a failed top-level read therefore does not poison that
-type-plus-normalized-name entry, and the next call attempts the read again. Texture2D follows
-the same ``result first, weak-cache write second'' order, while move-only SoundEffect and
-TextureCube have no manager cache at all. This is not a transaction for arbitrary reader code:
-a reader may successfully call \texttt{cm.Load} for another asset before it later fails, thereby
-caching that nested asset, and an expired Texture2D weak entry is erased before its replacement
-load is attempted. Applications needing all-or-nothing multi-asset loading must hold and publish
-their own aggregate only after every individual load succeeds; \texttt{ContentManager} has no
-loading sentinel, rollback, or cycle-detection protocol.
+The manager's maps, manifest vector, strings, pointers, and disposed flag are unsynchronized.
+Concurrent load/unload/registration/root/manifest operations can form C\texttt{++} data races.
+Single-threaded reentrancy also has hazards: self-loading cycles have no sentinel, and a reader
+that replaces its own registration can destroy the active object. Register and configure first,
+serialize manager mutation through one owner, and publish completed assets to workers.
 
-\subsection{One manager assumes serialized operations and stable reader registration}
+\section{Provider, ResourceContentManager, and TitleContainer}
 
-The same absence of a loading sentinel is also a concurrency contract. A live
-\texttt{ContentManager} contains ordinary \texttt{std::unordered\_map}s for generic assets,
-weak textures, loose readers, and named CNJ factories; an ordinary \texttt{std::vector} and
-boolean for its lazy manifest; a \texttt{std::string} root; and non-atomic raw device/provider
-pointers plus a non-atomic disposed flag. Neither the header nor implementation contains a mutex,
-atomic guard, reader/writer lock, or ``currently loading'' table around any of them. Thus two
-threads which overlap a cache miss, \texttt{Load()} and \texttt{Unload()}, load and registration,
-manifest refresh and manifest inspection, or a root/device/disposal change and a load have an
-unsynchronized read/write of ordinary C\texttt{++} state. That is a data race and undefined
-behavior, not merely a chance of decoding an asset twice. Even a cache hit should not be promoted
-to a supported parallel-load API: it still observes the unsynchronized manager state and may
-reconstruct or use a graphics renderer whose own thread-affinity contract is separate.
-
-Current FNA does not supply a contrary per-manager guarantee. Its public \texttt{Load<T>} reads
-and writes an ordinary \texttt{Dictionary<string, object>} without a manager-level lock; the
-\texttt{ContentManagerLock} in its source protects only FNA's static weak list of managers. The
-two implementations differ in their formats and exception types, but neither source establishes
-``call one ContentManager from arbitrary loading threads'' as an XNA/FNA compatibility promise.
-No located CNA content test starts a thread, uses a sanitizer race detector, or overlaps any of
-these operations.
-
-There are important single-threaded reentrancy cases too. A custom CNJ factory or loose reader
-receives \texttt{ContentManager\&} and can call it again. A different nested asset may load and
-remain cached even if the outer reader later throws. A nested request for the same uncached
-\texttt{(T, normalizedName)} finds no provisional entry, recursively enters the same reader, and
-has no cycle check to stop eventual stack exhaustion. Calling \texttt{Unload()} from such a
-reader clears the maps at that instant, but the suspended outer \texttt{Load<T>} writes its own
-result into the cache after \texttt{Read()} returns; calling \texttt{Dispose()} there similarly
-sets the disposed guard only after clearing, while the already-running outer call can still return
-and write its result. Neither operation is a reentrant cancellation barrier.
-
-Reader replacement is narrower and more dangerous. \texttt{Load<T>} obtains a raw pointer to the
-\texttt{shared\_ptr} held inside its type-reader map, dereferences it, and calls \texttt{Read()}
-without retaining another local \texttt{shared\_ptr}. If that reader calls
-\texttt{RegisterTypeReader<T>} for its own \texttt{T}, the map assignment can destroy the reader
-object while its member function is still executing. This is an untested lifetime hazard even on
-one thread, not a supported hot-swap mechanism. A normal registration replacement outside an
-active read remains subject to the earlier cache rule: it affects only a later cache miss after
-\texttt{Unload()}.
-
-The reliable application discipline is consequently deliberately boring: finish all reader
-registration and graphics-device/root configuration before the loading phase; serialize every
-mutable manager operation (Load, Unload, Dispose, registration, root/device changes, and manifest
-refresh) through one owner thread or a reentrancy-aware loading coordinator; never replace a
-reader from its own callback; and make recursive references acyclic with different logical names.
-Publish fully loaded asset values to worker threads afterwards rather than sharing the manager as
-a general concurrent cache. A plain non-recursive external mutex around every public call is not
-automatically sufficient, because legitimate nested loads would deadlock and it cannot make a
-self-replacing active reader safe.
-
-\subsection{A service provider is stored, not consulted, in current CNA}
-
-The two \texttt{IServiceProvider*} constructors look deliberately XNA-shaped, but their live
-CNA contract is narrower than their header comment suggests. Both constructors merely store the
-raw pointer, retain the field's \texttt{"Content"} root default unless the caller supplies a
-root, and register the built-in readers. \texttt{getServiceProviderProperty()} simply returns
-that stored address. There is no \texttt{IServiceProvider::GetService()} call anywhere in
-\texttt{ContentManager.cpp}: registering an \texttt{IGraphicsDeviceService} in a
-\texttt{GameServiceContainer} does \emph{not} make a standalone manager discover a graphics
-device. The current Doxygen promise that the provider is ``used to resolve graphics and other
-services'' is therefore stale implementation documentation, not an additional setup route.
-
-FNA has the opposite lazy dependency rule. Its public constructors reject a null provider; the
-first code path that needs a graphics device asks \texttt{ServiceProvider} for
-\texttt{IGraphicsDeviceService}, throws \texttt{ContentLoadException("No Graphics Device
-Service")} if it is absent, and caches the returned device. CNA accepts
-\texttt{ContentManager(nullptr)} --- many parser-only tests intentionally use it --- but a
-GPU-backed reader must instead find the device previously set by CNA's explicit method. The
-direct video-reader test makes this boundary especially clear: its successful fixture first calls
-\texttt{setGraphicsDevice(gd)}, while its paired no-device case throws
-\texttt{ContentLoadException}; neither case asks a provider.
-
-For a standalone manager, retain the explicit association even if a service container is useful
-to the rest of the application:
+The \texttt{IServiceProvider*} constructors retain a raw pointer, but the pinned
+\cnaclass{ContentManager} never calls \texttt{GetService}. A GPU-backed standalone manager needs
+an explicit device:
 
 \begin{lstlisting}
-GameServiceContainer services;
-ContentManager assets(&services, "Content"); // retrievable metadata; no lookup occurs
-assets.setGraphicsDevice(device);             // required before a GPU-backed Load
-
+ContentManager assets(&services, "Content");
+assets.setGraphicsDevice(device);
 auto logo = assets.Load<Texture2D>("sprites/logo");
 \end{lstlisting}
 
-\texttt{setGraphicsDevice()} records only another raw address; it neither transfers ownership
-nor follows later service-container registrations. A reader which never asks
-\texttt{getGraphicsDeviceInternal()} can work without this call, but that is a property of that
-specific reader, not evidence that service resolution occurred. Conversely, model, texture,
-effect, font, or video paths may ask for the device during their own construction, so attach it
-before the first such load and keep it alive for the manager's use. \texttt{Game} avoids the
-standalone trap by a different route: it default-constructs \texttt{Content\_} with no provider
-and immediately calls \texttt{Content\_.setGraphicsDevice(GraphicsDevice\_)} in its constructor.
-\texttt{ResourceContentManager} does not repair this difference; its provider-taking constructor
-only delegates to the same base constructor and its embedded-resource stream operation remains a
-documented CNA stub. No located test supplies a non-null provider to \texttt{ContentManager} or
-proves provider-based device discovery.
+\cnaclass{Game} performs that association for its own manager. Both pointers remain borrowed.
 
-\subsection{\cnaclass{ResourceContentManager} is a surface-only stub, not an alternate content root}
+\cnaclass{ResourceContentManager} is a surface stub. Its protected \texttt{OpenStream} ignores
+the asset name and throws \texttt{std::runtime\_error}; inherited \texttt{Load<T>} does not call
+that virtual method. The class therefore loads ordinary files only through its base behavior and
+does not provide embedded resources.
 
-The similarly named derived class deserves a sharper warning than that final sentence gives it.
-In current CNA it is \emph{not} a working way to load an embedded asset and it is not a stream
-back-end selected by ordinary \texttt{Load<T>()}. Its whole C\texttt{++} surface is one public
-constructor, \texttt{ResourceContentManager(IServiceProvider*)}, and one protected virtual
-\texttt{OpenStream} overload taking a const string reference. The constructor stores the same raw,
-unconsulted provider through \cnaclass{ContentManager}; it accepts null, supplies no resource
-object or resource name, retains the base \texttt{"Content"} root, and has no member state of its
-own. Its only method ignores \texttt{assetName} and unconditionally throws:
-
-\begin{lstlisting}
-throw std::runtime_error(
-    "ResourceContentManager::OpenStream is not implemented in CNA.");
-\end{lstlisting}
-
-That exception is intentionally not \cnaclass{ContentLoadException}; it reports an unimplemented
-API surface, not a missing or malformed asset. Since the method is protected, ordinary game code
-cannot call it directly. A derived class may call or override it, but that alone cannot turn the
-object into a content source.
-
-The reason is visible in the complete CNA call graph: no source path calls the derived class's
-\texttt{OpenStream()}, and none of \cnaclass{ContentManager}'s generic or specialized
-\texttt{Load} paths calls a virtual stream hook. They use the filesystem candidate sequence from
-\S8.4 and open their own file streams directly.
-Thus a \texttt{ResourceContentManager} instance can still load an ordinary loose file exactly as
-its base class can (subject to the same reader, root, device, cache, and disposal rules), because
-that inherited load does \emph{not} reach the throwing method. Conversely, overriding
-\texttt{OpenStream()} in a subclass does not redirect an inherited \texttt{Load<T>()}; those
-templates are not virtual stream consumers. A subclass would need a separate loading API or an
-intentional change to the base loading architecture.
-
-This is materially unlike the current FNA/XNA-shaped implementation. FNA requires both an
-\texttt{IServiceProvider} and a non-null \texttt{System.Resources.ResourceManager}; its override
-looks up the exact logical resource name, accepts only a \texttt{byte[]} value, and returns a
-buffer-visible \texttt{MemoryStream}. Missing or non-binary entries become
-\texttt{ContentLoadException}. FNA's ordinary \texttt{ReadAsset<T>()} reaches the virtual
-\texttt{OpenStream()} first (then its own raw-file fallback), so its
-\cnaclass{ResourceContentManager} really does participate in normal \texttt{Load<T>()}. CNA has
-neither the required resource-manager constructor nor that virtual dispatch seam; its earlier
-API-coverage document correctly labels the class a stub, despite the class itself compiling.
-
-No CNA test constructs this class, calls the throwing method through a test-only derived probe,
-or proves that inherited loose loads bypass it. Treat embedded-resource support as
-\texttt{needs\_human}, not as an opportunistic reader-registration task: a real C\texttt{++}
-implementation must choose an embedded-resource abstraction and ownership model, decide whether
-to add the FNA-compatible resource-manager constructor or a deliberately CNAEXT equivalent, wire
-the base loader through a stream abstraction without regressing live filesystem behavior, and add
-binary/missing/non-binary/lifetime tests. Until that public architectural decision is made, use an
-ordinary \cnaclass{ContentManager} for CNA's supported loose, CNJ, and XNB paths rather than
-instantiating this subclass for a capability it does not provide.
-
-\subsection{\cnaclass{TitleContainer} is an independent direct-file helper, not a ContentManager stream hook}
+\subsection{TitleContainer}
 \label{sec:title-container-contract}
 
-\cnaclass{TitleContainer} has a much smaller, separate job from either content-manager class:
-its sole public operation is the static \texttt{OpenStream} function. It normalizes every
-backslash in the supplied name to a forward slash, resolves a non-rooted name against the
-process-global \cnaclass{TitleLocation}, and returns a uniquely owned read stream. It does not
-know a requested asset type, an XNB reader, a content root, or a resource manager. In particular,
-a repository-wide source search finds no call from either content-manager class to
-\cnaclass{TitleContainer}; ordinary \cnaclass{ContentManager} \texttt{Load<T>()} calls continue
-to form candidates from their own \texttt{RootDirectory} and open filesystem streams directly.
-Changing CNA's title-location setter therefore does not redirect a game's content load, and
-changing a content root does not redirect \texttt{OpenStream()}.
+\cnaclass{TitleContainer::OpenStream} is an independent direct-file helper. It converts
+backslashes, resolves relative names against the process-global \cnaclass{TitleLocation}, and
+returns a read stream. ContentManager does not call it. The CNAEXT title-location setter is
+mutable global configuration and is unsynchronized.
 
-The default title base is initialized once, on the first getter: CNA asks SDL3 for its application
-base path and falls back to the then-current working directory only when SDL supplies no path. SDL3
-documents that returned base-path pointer as a cached, const pointer; copying it into the CNA
-string does \emph{not} create an SDL allocation which this code must free. The chosen string then
-remains fixed even if the working directory changes. CNA additionally exposes a CNAEXT public
-setter which accepts any string without existence, absoluteness, or canonicalization checks. Both
-accessor spellings return a const reference to that one mutable static string, so a later setter
-can invalidate a held reference; neither initialization nor setting has synchronization. Configure
-a custom title base once, before other threads obtain paths, and retain a copy rather than a
-returned reference if another component might reconfigure it. Current FNA instead exposes an
-internal, getter-only title-location property delegated to its platform layer, so CNA's setter is
-a C\texttt{++}-specific test/launcher extension, not portable XNA application surface.
+Resolution is lexical rather than contained: parent segments, absolute paths, and symlinks can
+leave the title directory. Android adds an SDL asset fallback and copies the loaded bytes into a
+\cnaclass{MemoryStream}. The helper is suitable for application-controlled paths, not untrusted
+filenames or content-root redirection.
 
-Resolution is lexical rather than a containment or security policy. A rooted name becomes a
-lexically normalized C\texttt{++} filesystem path directly; a relative name is appended to the
-title base and then lexically normalized. On Windows, a drive letter followed by a slash is also
-rooted; on every build, an initial slash is rooted. No canonicalization, prefix check, or symlink
-check follows. Thus \texttt{"../outside.dat"} can leave the configured title directory, and a
-symlink inside it can reach elsewhere. An empty name resolves to the base directory itself. This
-helper is appropriate for trusted application-controlled paths, not for confining a user-supplied
-filename. Its backslash conversion is a convenience for a logical relative name, not an
-authorization check.
+\section{Content manifest}
 
-On ordinary platforms CNA first performs a filesystem existence check on the resolved path, then
-opens a read-only stream. A missing path produces a generic runtime error that names the resolved
-filename. Filesystem-status failures and an existing directory or unreadable file can instead
-expose their filesystem or stream exception. The helper logs both the original name and the fully
-resolved path at Info level, which is useful while packaging but can disclose a local installation
-path in ordinary logs. Android adds an intentionally separate fallback: when the normal filesystem
-check fails, it asks SDL to load the normalized relative name first and then the resolved name. Its
-returned data are copied into
-\cnaclass{MemoryStream} before the SDL buffer is freed, so the stream does not borrow SDL memory.
-That Android-only conversion narrows \texttt{size\_t} to CNA's signed \texttt{intcs} without a
-range check, however; an asset larger than that maximum is outside its established safe contract.
+\texttt{GetContentManifest} lazily scans the root and returns a reference to manager-owned rows.
+\texttt{RefreshContentManifest} rebuilds them. A row records a logical path, XNB/CNJ presence,
+native extensions, and---for readable uncompressed XNBs---reader names.
+\texttt{GetXnbReaderUsageSummary} aggregates those names and reports whether the global registry
+currently contains each key.
 
-This differs in both shape and failure boundary from current FNA's direct
-\texttt{File.OpenRead}: FNA has no public mutable title location and lets the managed file API
-choose its normal file/directory/access exception. It also reinforces why
-\cnaclass{TitleContainer} cannot repair the embedded-resource stub in \S8.6: it supplies a
-one-off direct stream for an application path, while CNA's inherited content loads do not consult
-any stream hook at all.
+The manifest is diagnostic only:
 
-The four focused CNA tests establish much less than their names imply. The relative and absolute
-cases assert only that a non-null stream is returned, not that the expected bytes can be read. The
-test labelled ``normalizes backslashes'' actually passes \texttt{"sub/file.txt"}, with a forward
-slash, so it never exercises the conversion it describes. The missing-file case checks only the
-broad \texttt{std::runtime\_error}. No located test covers parent traversal, symlinks, an empty
-or directory name, access failures, the resulting log text, Android asset loading or its size
-limit, initial SDL/fallback selection, title-location reference lifetime, or concurrent global
-mutation. The tests also set the global title path to fixed temporary names without restoring it.
-Treat it as shared process configuration and isolate it in any new tests; do not treat these four
-happy-path probes as a sandbox or platform-packaging test.
+\begin{itemize}
+  \item Load performs fresh filesystem probes and never consults it.
+  \item Presence does not establish a valid file, compatible reader, device, or loadable graph.
+  \item Compressed or malformed XNBs can appear with an empty reader-name list.
+  \item Directory and hash-map iteration make row and summary order unstable.
+  \item Missing or inaccessible trees can yield an empty or partial snapshot without a public
+        scan-status result.
+  \item Refresh can invalidate held element references and iterators; copy before sorting or
+        retaining the data.
+\end{itemize}
 
-\subsection{\texttt{Unload()} evicts manager caches; it is not a universal asset destructor}
+\texttt{Unload}, disposal, and root changes do not automatically refresh this separate snapshot.
 
-The shortened comment in many XNA examples --- ``unload the content'' --- is useful only if its
-ownership boundary is kept explicit. CNA's live \texttt{ContentManager::Unload()} has exactly two
-operations: it clears the generic \texttt{loadedAssets\_} map and the special
-\texttt{textureCache\_} map. It does not walk the returned objects and call a common
-\texttt{Dispose()} method, because the map holds type-erased C\texttt{++} values rather than one
-uniform managed-object base. Nor does it clear reader registrations, the root directory, graphics
-device pointer, or the separately maintained content-manifest snapshot. It is an eviction of this
-manager's lookup state, not an instruction to invalidate every value a game has already received.
-
-For ordinary copyable \texttt{T}, the generic cache key is the pair of \texttt{typeid(T)} and the
-normalized logical asset name. A second matching \texttt{Load<T>()} returns the stored
-\texttt{std::any} value; clearing the map drops only the manager's copy. A caller-held
-\texttt{std::shared\_ptr} consequently keeps its model, effect, or other shared object alive after
-\texttt{Unload()}. The real avatar wardrobe-hotswap example depends on precisely this rule: it
-keeps its current \texttt{SkinnedModelEXT} in a member, calls \texttt{Unload()} to evict the old
-base-avatar lookup, then loads a fresh base asset without dangling the model/renderer it is still
-using during the transition.
-
-Three specializations are deliberately different from that generic strong cache:
-
-\begin{description}
-  \item[\cnaclass{Texture2D}.] Its table contains only weak references to the GPU renderer and
-    optional CPU pixel shadow. Keeping a returned \texttt{Texture2D} value alive keeps that
-    renderer alive; dropping all such values lets it free even if the content manager itself is
-    still alive. \texttt{Unload()} removes the weak lookup entry as well. The focused real-XNB
-    test intentionally retains its first texture through \texttt{Unload()}, then proves the
-    next load builds a \emph{different} renderer; it does not assert that the retained first
-    texture became invalid, because it did not.
-  \item[\cnaclass{SoundEffect} and \cnaclass{TextureCube}.] Both types are move-only, so neither
-    can enter the generic \texttt{std::any} cache. Every \texttt{Load} decodes a fresh,
-    independently owned instance; \texttt{Unload()} has no manager cache entry through which to
-    release either one. For \cnaclass{SoundEffect}, this avoids one caller's disposal cascade
-    silently affecting another caller's playback.
-\end{description}
-
-The cache tests establish two concrete, bounded facts: overwriting a generic XNB on disk is
-invisible to a second load until \texttt{Unload()} clears its cache, while a retained
-\texttt{Texture2D} gets a newly constructed renderer on the post-unload load. They do not test a
-complete cross-type shutdown protocol, and no located test exercises content-manager destruction
-or a load attempted after disposal.
-
-\texttt{Dispose()} itself simply calls \texttt{Unload()} once and then makes later
-\texttt{Load<T>()} calls throw \texttt{std::runtime\_error}; a later \texttt{Unload()} does not
-clear that disposed guard or make the manager reusable. The C\texttt{++} destructor is defaulted,
-not an implicit call to this public method. This is why an application needing the explicit cache
-eviction point should call \texttt{Unload()} deliberately, and why a game which wants the
-post-disposal contract described in Chapter~\ref{ch:game-loop} must call \texttt{Game::Dispose()}
-rather than rely solely on scope exit. The manifest is intentionally independent again:
-\texttt{GetContentManifest()} returns its old point-in-time scan after an unload until
-\texttt{RefreshContentManifest()} is requested; neither method checks the disposed flag in the
-current source. Treat those \texttt{CNAEXT} methods as diagnostics, not as a cache-lifetime API.
-
-\subsection{\texttt{Game::Content} replacement copies a manager; it does not replace one}
-
-There is one deceptively ordinary setter in \cnaclass{Game} whose C\texttt{++} translation has a
-much stronger consequence than its C\# name suggests. Game constructs its member
-\texttt{Content\_}, then calls \texttt{Content\_.setGraphicsDevice(GraphicsDevice\_)}. Its public
-\texttt{setContentProperty(const ContentManager\& value)} is only this assignment:
-
-\begin{lstlisting}
-void Game::setContentProperty(const ContentManager& value)
-{
-    Content_ = value;
-}
-\end{lstlisting}
-
-\texttt{ContentManager} declares no copy or assignment operation of its own, so C\texttt{++}
-generates memberwise copying here. The root directory, disposed flag, manifest snapshot, generic
-asset values, weak texture entries, and reader/loader tables are all copied; a reader table holds
-shared pointers, while its graphics-device and service-provider fields are raw pointers copied as
-raw addresses. This is not a transfer of manager identity or ownership. In particular, assigning
-a newly constructed standalone \texttt{ContentManager} overwrites Game's already-configured
-graphics-device pointer with null; the next \texttt{Load<Texture2D>()} or
-\texttt{Load<TextureCube>()} reaches \texttt{getGraphicsDeviceInternal()} and throws. Assigning a
-manager configured for a different device instead leaves Game's content pointing at that external
-device, which can become dangling if its owner goes away. Assigning a disposed manager transfers
-the disposed flag too, so all subsequent loads fail immediately.
-
-Current FNA makes a materially different operation: its \texttt{Game.Content} property rejects
-null, then stores the supplied \texttt{ContentManager} reference. No cache or raw device pointer
-is cloned. CNA's reference parameter naturally cannot be null, but its assignment is still not
-the same replacement operation. A repository-wide search found no CNA call site for this setter
-and no test that copies a content manager, replaces a game's content, checks an assigned device,
-or assigns a disposed manager. Treat it as an untested compatibility boundary rather than an
-ordinary way to switch content roots.
-
-For the common configuration task, preserve Game's existing manager and configure it in place:
-
-\begin{lstlisting}
-auto& content = getContentProperty();
-content.setRootDirectoryProperty("OtherContent"); // keeps Game's GraphicsDevice association
-\end{lstlisting}
-
-Use a separate \texttt{ContentManager} directly only when its graphics-device lifetime and its
-asset ownership are deliberately controlled by the caller. Do not use
-\texttt{setContentProperty()} merely to change \texttt{RootDirectory}; it creates a snapshot with
-the source manager's pointer and cache state instead of preserving the target game's live state.
-
-\begin{sourcenote}
-\textbf{A worked example: asking the content root what files it saw.} Rather than walking a
-content tree independently, tooling can use CNA's real, \texttt{CNAEXT}-tagged inventory:
-\texttt{ContentManager::GetContentManifest()} scans the content root lazily on its first call
-(or a caller can invoke the public \texttt{RefreshContentManifest()}) and returns one
-\cnaclass{ContentManifestEntry} per logical asset name, reading directly from
-\texttt{ContentManifestEntry.hpp}:
-
-\begin{lstlisting}
-const auto manifest = content.GetContentManifest(); // value copy: stable across a later refresh
-for (const ContentManifestEntry& entry : manifest) {
-    std::cout << entry.relativePath << ": ";
-    if (entry.hasXnb) {
-        std::cout << ".xnb candidate exists";
-    } else if (!entry.nativeExtensions.empty()) {
-        std::cout << "native candidate (" << entry.nativeExtensions[0] << ")";
-    } else if (entry.hasCnj) {
-        std::cout << ".cnj candidate exists";
-    }
-    std::cout << "\n";
-}
-\end{lstlisting}
-
-Each \cnaclass{ContentManifestEntry} exposes exactly the three booleans/lists this chapter's
-resolution-order section depends on --- \texttt{hasXnb}, \texttt{hasCnj}, and
-\texttt{nativeExtensions} --- plus, when a \texttt{.xnb} file is present and readable,
-\texttt{xnbReaderNames}: the canonical reader-type names its own type-reader table references,
-letting a companion method, \texttt{GetXnbReaderUsageSummary()}, aggregate across an entire
-content tree which reader types are actually exercised and whether
-\cnaclass{ContentTypeReaderManager} currently has a registered reader for each one --- a real,
-runnable first inventory for ``which reader names occur in my compiled XNA content'' without
-reading any individual \texttt{.xnb} file by hand. The next subsection gives the important
-limits before treating that inventory as a loadability verdict.
-\end{sourcenote}
-
-\subsection{The manifest is an unsorted best-effort inventory, not a resolver or health check}
-
-The deliberately changed word ``candidate'' above matters. The manifest is additive
-introspection only: \texttt{Load<T>()} and \texttt{ResolveAssetPath()} still make their own live
-\texttt{std::filesystem::exists()} checks and do not consult it. A row says that a regular file
-with that final extension was seen below the root; it does not prove a reader for the requested
-\texttt{T} exists, that the native extension is one that reader accepts, that a GPU device is
-attached, that a CNJ envelope is valid, or that the XNB object can deserialize. Thus an XNB row
-still ranks ahead of a native/CNJ candidate in the ordinary resolver, but a malformed XNB can make
-the real \texttt{Load} fail rather than fall through to a displayed sibling. The manifest must
-not be used as a dry-run or as a way to change resolution precedence.
-
-The reader-name column is best-effort in a narrower way. For an exact lower-case
-\texttt{.xnb} extension, the scan reads the entire file and inventories only an uncompressed,
-well-formed header/table. An unopened or malformed file, and every compressed file (LZX as well
-as currently unsupported LZ4), remains \texttt{hasXnb = true} with an empty
-\texttt{xnbReaderNames} vector. There is no status or error field distinguishing those cases
-from an XNB that genuinely names no readers, and the usage summary omits that blank entry
-altogether. The planned compressed-reader inventory remains unimplemented even though normal
-LZX \emph{loading} exists. Similarly, \texttt{isRegistered} asks the global factory map anew
-for each summary call: registering a name changes that boolean without a rescan, while new files
-or changed reader-name tables need \texttt{RefreshContentManifest()}. As the earlier registry
-audit showed, ``registered'' means only that a map key is present; it does not validate that a
-stored factory is callable.
-
-Neither order nor scan completeness is a deterministic contract. Directory traversal order feeds
-the \texttt{nativeExtensions} list, then an \texttt{unordered\_map} supplies the manifest and a
-second \texttt{unordered\_map} supplies the usage summary; none is sorted. Tooling which writes
-a report or diff should make and sort its own value copy by \texttt{relativePath} (and sort native
-extensions/reader names as needed), rather than treating the current order as stable. Extension
-classification is byte-exact too: \texttt{asset.XNB} is recorded as a native \texttt{.XNB}
-extension, not as \texttt{hasXnb}; a dotless file contributes an empty native extension. No
-located test covers order, case variants, dotless names, or multiple native extensions.
-
-Finally, the scanner has no public error result and no explicit entry, depth, or total-byte scan
-budget. A missing/inaccessible root produces a successful-looking empty snapshot; permission
-denials are skipped where the iterator can skip them, and a later iteration error can leave a
-partial scan marked built. Every uncompressed XNB is read wholesale before its table is parsed.
-\texttt{GetContentManifest()} returns a const reference to the manager's internal vector, not a
-value snapshot: the vector object remains owned by the manager, while a refresh can invalidate
-its element references, pointers, and iterators and replace what a held vector reference observes.
-Copy it before retaining, sorting, or passing it beyond the serialized inspection phase described
-above. These are diagnostic-tooling limits, not reasons to feed untrusted trees to the method as
-a bounded validator.
-
-\subsection{Audio and video: the \cnaclass{SoundEffect} / \cnaclass{Song} / \cnaclass{Video} readers}
+\section{Audio and video readers}
 \label{sec:xnb-audio}
 
-The hardening pass above covers the texture side of the reader set; the audio side has its own
-real story, worth a worked example in its own right. \texttt{SoundEffectReader} is a
-line-by-line port of FNA's own \texttt{SoundEffectReader.cs}, but CNA's own support surface is
-narrower and stated as a concrete matrix rather than an all-or-nothing claim, read directly from
-the reader's own header comment:
+Loose readers and XNB readers solve different problems. Loose \cnaclass{Song} and
+\cnaclass{Video} simply wrap the selected media path (Video also requires the manager device).
+XNB readers decode the XNA-specific body and resolve an external companion.
 
-\begin{description}
-  \item[16-bit PCM.] The fast path --- CNA's \cnaclass{SoundEffect} raw-buffer constructor
-        already speaks \texttt{SDL\_AUDIO\_S16LE} natively, so a 16-bit PCM \texttt{.xnb} needs
-        no conversion at all.
-  \item[8-bit PCM, 32-bit IEEE float, MS-ADPCM, IMA-ADPCM.] Wrapped in a minimal, synthetic
-        in-memory WAV file (\texttt{CNA::Internal::Audio::BuildWavFromWaveFormatEx}, forwarding
-        the real captured \texttt{WAVEFORMATEX} extension bytes verbatim) and decoded through
-        \cnaclass{SoundEffect}\allowbreak{}\texttt{::FromStream}, reaching SDL3's own native
-        WAV/ADPCM decoder --- CNA never had to implement a float or ADPCM decoder of its own.
-  \item[XMA2.] Rejected outright with a documented \texttt{ContentLoadException} naming the
-        format --- SDL3 has no XMA2 decoder either, so there is no decode path anywhere in this
-        stack, and the reader says so rather than silently constructing a
-        \cnaclass{SoundEffect} that would play back as noise.
-\end{description}
+\subsection{SoundEffect}
 
-\paragraph{A worked example: a real fixture with no coefficient table at all.}
-Widening MS-ADPCM support past the original PCM16-only baseline surfaced a real, XNA-specific
-gap rather than a clean conversion. A hex dump of a real MonoGame-produced
-\texttt{tone\_mono\_44khz\_msadpcm.xnb} fixture shows its \texttt{cbSize} field (the format
-extension's declared byte length) is \texttt{0} --- no \texttt{wSamplesPerBlock}, no coefficient
-table, nothing --- matching FNA's own reader, which never captures this extension for any
-non-XMA2 format either. IMA-ADPCM tolerates this: SDL3's own decoder can derive
-\texttt{wSamplesPerBlock} from \texttt{nBlockAlign} when it is missing. MS-ADPCM cannot ---
-SDL3's decoder (\texttt{SDL\_wave.c}'s \texttt{MS\_ADPCM\_Init}) requires an explicit,
-valid coefficient table or it fails outright. The fix synthesizes one, using the same standard
-preset coefficients \cnaclass{WaveBank}'s own ADPCM path already relies on, plus a
-\texttt{samplesPerBlock} value computed directly from \texttt{nBlockAlign} via the MS-ADPCM
-``Standards Update'' formula every encoder (XNA's own included) follows:
+The XNB \cnaclass{SoundEffectReader} handles native PCM16 directly. PCM8, IEEE float, IMA-ADPCM,
+and MS-ADPCM are wrapped as an in-memory WAV and sent through SDL's decoder; XMA2 is rejected.
+MS-ADPCM content without its coefficient extension receives the standard coefficient table and
+a block-derived sample count. The full wire contract and loop-boundary defect are in
+\S\ref{sec:xnb-soundeffect-reader-contract}.
 
-\begin{lstlisting}
-uint16_t ComputeMsAdpcmSamplesPerBlock(uint16_t blockAlign, uint16_t channels) {
-    const uint32_t ch = channels == 0 ? 1u : channels;
-    const uint32_t blockHeaderBits = ch * 7u * 8u;
-    const uint32_t blockBits = static_cast<uint32_t>(blockAlign) * 8u;
-    const uint32_t availableBits = blockBits > blockHeaderBits ? blockBits - blockHeaderBits : 0u;
-    const uint32_t blockDataSamples = availableBits / (4u * ch);
-    return static_cast<uint16_t>(blockDataSamples + 2u);   // +2: the block's own two header samples
-}
-\end{lstlisting}
-
-This only ever runs when the \texttt{.xnb} genuinely supplied no usable extension of its own
-(\texttt{cbSize} below the real 32-byte minimum a coefficient table needs) --- an XNB that
-\emph{does} carry a real extension is forwarded verbatim, unmodified.
-
-\paragraph{A C\texttt{++}-specific architectural gap this widening exposed.}
-Reading \cnaclass{SoundEffect} through the generic reader machinery hit a real language-level
-wall the texture readers never do. \texttt{ContentTypeReader<T>::ReadUntyped()}'s own job is
-FNA's object-boxing glue --- box a typed \texttt{Read()} result into the type-erased
-\texttt{std::any} every reader returns through --- but \texttt{std::any} requires its held type
-to be \texttt{CopyConstructible}, unconditionally. \cnaclass{SoundEffect} is deliberately
-move-only (its per-owner \texttt{Dispose()}-cascade tracking needs a single unambiguous owner),
-so a literal \texttt{std::any(std::move(result))} for a \cnaclass{SoundEffect} result simply does
-not compile. The fix branches at compile time, in the one shared base-class method every reader
-already goes through, so no individual reader --- including \texttt{SoundEffectReader} itself ---
-needs to know this branch exists:
-
-\begin{lstlisting}
-std::any ReadUntyped(ContentReader& input, std::any existingInstance) override {
-    if constexpr (std::is_copy_constructible_v<T>) {
-        // ...box/unbox T directly, exactly as every ordinary reader already does...
-    } else {
-        // T is move-only (e.g. SoundEffect): box/unbox as std::shared_ptr<T> instead,
-        // unwrapped back out symmetrically by InnerReadObject<T>().
-        std::optional<T> existing = existingInstance.has_value()
-            ? std::optional<T>(std::move(*std::any_cast<std::shared_ptr<T>>(std::move(existingInstance))))
-            : std::nullopt;
-        T result = Read(input, std::move(existing));
-        return std::any(std::make_shared<T>(std::move(result)));
-    }
-}
-\end{lstlisting}
-
-Several readers use a copyable value or a \texttt{shared\_ptr} handle and never touch this branch.
-The bare move-only targets are currently \cnaclass{SoundEffect} and \cnaclass{TextureCube};
-both depend on it. The branch still belongs in the shared base so a future move-only reader does
-not need to rediscover the same wall, but the direct reader overloads described in
-\S\ref{sec:content-type-reader-contract} must learn the same box/unbox convention before they can
-support those targets.
-
-\subsubsection{\cnaclass{SongReader}: an external-file reference}
+\subsection{Song}
 \label{sec:xnb-song-reader}
 
-\cnaclass{SongReader} is registered as a version-zero reader.  Its canonical factory key is:
+An XNB Song body contains a reference string and duration in milliseconds. The reader resolves
+the reference within the authorized root, strips the final four characters when long enough,
+and probes the extensionless stem, \texttt{.ogg}, \texttt{.oga}, then \texttt{.qoa}. If none
+exists, it restores the serialized path. This preserves the desktop substitution convention for
+XNA \texttt{.wma} placeholders; it is not general extension parsing.
 
-\begin{lstlisting}
-Microsoft.Xna.Framework.Content.SongReader
-\end{lstlisting}
+Construction checks that the selected path exists, so a well-formed XNB with no companion fails
+during \texttt{Load<Song>} with \cnaclass{FileNotFoundException}. Decoding remains deferred until
+playback. The retained MonoGame fixture establishes XNB dispatch, sibling lookup, duration, and
+the \texttt{.ogg} route; it does not establish playback or the other substitutions.
 
-It has no embedded encoded-audio payload, format tag, byte count, shared resource, or decoder
-hand-off.  After the root-object reader index, its complete body is one XNB \cnaclass{String}
-followed by one signed \cnaclass{Int32}:
-
-\begin{lstlisting}
-String  referenceName  // normal XNB 7-bit byte-length prefix, then UTF-8 bytes
-Int32   durationMs
-\end{lstlisting}
-
-The first value is a file reference, not an invocation of the generic external-reference
-mechanism. CNA first combines the owning manager's \cnaclass{RootDirectory} and the logical asset
-name (for example, \texttt{Content/Music/Menu}) into the owning XNB path, then resolves the
-serialized value as a sibling through \cnaclass{ResolveContainedPathRelativeToFile()}. A reference
-such as \texttt{"../Audio/loop.wma"} remains legitimate when it normalizes inside the authorized
-root. Empty, absolute, drive, UNC, above-root, and existing-symlink escapes instead fail as
-\cnaclass{ContentLoadException}. Normally the authorized root is the manager's content root. If the
-caller explicitly loaded an XNB outside it, the external XNB's containing directory becomes a
-narrow bundle root, allowing its own contained companions without granting access to adjacent
-directories. This is deliberately stricter than FNA's plain relative-path resolution.
-
-For a resolved path longer than four characters, the reader removes the final four characters
-without inspecting what they are, then calls \cnaclass{Normalize()} on the resulting stem.  It first
-accepts the extensionless stem itself if it exists, then probes \texttt{.ogg}, \texttt{.oga}, and
-\texttt{.qoa}, in that order.  The first existing candidate wins.  If all four probes fail, it
-restores the original, unstripped path.  This is FNA's historical XNA compatibility rule: an XNA
-asset conventionally stores a \texttt{.wma} placeholder, while a desktop runtime substitutes an
-available supported companion.  It also happens to round-trip MonoGame content which has already
-serialized \texttt{.ogg}, because removing and then re-appending its four-character extension
-finds the same file.  It is not general extension validation: \texttt{.mp3} loses four characters
-too, and the three supported spellings are case-sensitive filesystem probes on a case-sensitive
-host. Because a probed candidate can itself be a symlink, CNA feeds the final selection through the
-same containment helper again before constructing the song.
-
-There are two malformed-edge differences worth keeping separate from the valid-format contract.
-CNA skips the stripping step when the resolved string has four or fewer characters; FNA calls
-\texttt{Substring(0, length - 4)} unconditionally, so a shorter string throws before either
-duration or constructor processing.  For a four-character string FNA probes the empty stem, while
-CNA retains the original string.  Neither behavior is covered by a checked-in test and neither is
-how a real \cnaclass{Song} asset is emitted.  More practically, CNA's final \cnaclass{Song}
-constructor tests \cnans{std::filesystem::exists()}, which admits an existing directory; FNA's
-\cnaclass{File.Exists()} rejects a directory.  A CNA directory reference can consequently survive
-loading and fail only when the media backend later attempts to open it.
-
-\paragraph{The media file is not decoded here, but a missing file still fails during \texttt{Load}.}
-The reader performs its path probes before it reads \texttt{durationMs}, then constructs
-\cnaclass{Song} only after that integer has been consumed.  CNA's constructor performs the final
-existence test and throws \cnaclass{FileNotFoundException} when the selected candidate (or the
-unstripped fallback) is absent.  Consequently a truncated duration can produce a stream exception
-first, but a well-formed XNB whose companion is missing fails from \cnaclass{ContentManager::Load<Song>},
-not when the game first calls \cnaclass{MediaPlayer::Play()}.  This corrects a stale claim in the
-current CNA reader and test comments: current FNA's own \cnaclass{Song} constructor also calls
-\cnaclass{File.Exists()} and throws \cnaclass{FileNotFoundException} immediately.  The parity boundary
-is therefore eager \emph{existence}, not lazy failure.  CNA's media player still opens the file
-lazily with SDL3's streaming music loader, so deletion/replacement after loading, a directory
-accepted by CNA, or an unsupported/corrupt-but-existing audio stream remains a later playback
-boundary rather than an XNB decoding result.
-
-Unlike scalar readers, \cnaclass{SongReader} cannot use a standalone \cnaclass{ContentReader}.
-It requires a non-null owning \cnaclass{ContentManager} to form the base path and throws
-\cnaclass{ContentLoadException} before consuming either body field when none is present.  Normal
-\texttt{ContentManager::Load<Song>()}\index{ContentManager::Load<Song>} always supplies one, but the direct reader surface does not.
-The reader does not opt into deserializing an existing object, so normal root dispatch passes no
-existing song.  A direct C\texttt{++}
-\cnaclass{ReadUntyped()} call can still box a copyable \cnaclass{Song} in \cnans{std::any}; the
-generic adapter unboxes it, but \cnaclass{SongReader::Read()} intentionally ignores it and returns a
-fresh value, just as FNA's typed reader ignores its \texttt{existingInstance} parameter.  CNA's
-ordinary manager cache is a separate value-cache story: \cnaclass{Song} is copyable, so a later
-matching \texttt{Load<Song>()}\index{ContentManager::Load<Song>} returns a copy of the cached value, not an in-place deserialization
-of an earlier caller's object.
-
-\paragraph{What the real companion fixture proves --- and what it does not.}
-The vendored MonoGame fixture \texttt{one\_two\_three.xnb}, in the checked-in uncompressed Song
-fixture directory, is a 131-byte version-five XNB.  Its root reader is \cnaclass{SongReader}; the
-body names its \texttt{.ogg} companion and records \texttt{769282} milliseconds.  Its genuine
-72,796-byte companion sits beside it.  The end-to-end manager test proves the
-canonical registration, header/table dispatch, sibling lookup, \texttt{.ogg} strip-and-reprobe
-round trip, final handle, and duration together; a built-in-registration test repeats the load
-with a fresh manager.  A hand-built full XNB additionally proves that an unresolved reference
-propagates CNA's \cnaclass{FileNotFoundException} through the manager path.
-
-That is useful but intentionally narrow evidence.  The fixture is MonoGame-produced rather than
-an original XNA \texttt{.wma}-placeholder asset, and it neither plays/decodes the companion nor
-proves the \texttt{.oga} or \texttt{.qoa} alternatives. Shared containment tests add deep
-traversal, an absolute path, a symlink selected by extension probing, an in-root normalized
-\texttt{..} path, cache retry after rejection, and a confined explicit external bundle. No located
-test covers a null manager, direct existing-instance input, short or malformed strings,
-negative/extreme duration values, directory admission, or a Song root in the whole-container
-fuzzer. Treat that combined evidence as path-policy and loading coverage, not a media-playback
-certificate.
-
-\subsubsection{\cnaclass{VideoReader}: five trusted metadata fields around a deferred media open}
+\subsection{Video}
 \label{sec:xnb-video-reader}
 
-\cnaclass{VideoReader} is also registered at reader version zero, under the canonical factory
-key:
+An XNB Video body contains a reference, duration, width, height, frame rate, and soundtrack enum.
+The reader contains the reference, probes the extensionless stem, \texttt{.ogv}, then
+\texttt{.ogg}, and stores the serialized metadata in a \cnaclass{Video}. It does not open or
+validate the media during content loading.
 
-\begin{lstlisting}
-Microsoft.Xna.Framework.Content.VideoReader
-\end{lstlisting}
+\cnaclass{VideoPlayer::Play} performs the FFmpeg open on supported native builds and compares
+stream dimensions and frame rate with the serialized metadata. Missing or unusable media can
+leave CNA stopped without the FNA-style file exception. The strongest test uses a test-built XNB
+and CNA's FFmpeg fixture; no external-producer Video XNB is retained. On platforms where the
+FFmpeg-backed implementation is excluded, declarations alone do not establish a usable route.
 
-Like \cnaclass{SongReader}, it serializes an external media name rather than encoded media bytes.
-Unlike Song, the reference is followed by four more pieces of metadata.  Its complete root-object
-body is therefore:
+\section{Porting implications}
 
-\begin{lstlisting}
-String  referenceName       // normal XNB 7-bit byte-length prefix, then UTF-8 bytes
-Int32   durationMs
-Int32   width
-Int32   height
-Single  framesPerSecond
-Int32   soundTrackType      // cast directly to VideoSoundtrackType
-\end{lstlisting}
+Use an extensionless logical name when XNB/CNJ precedence is desired; use a concrete literal
+filename when the native file itself must win. Treat the root and TitleContainer as trusted-path
+conveniences, not sandboxes. Register readers and attach a graphics device before loading, keep
+manager mutation serialized, and call \texttt{Unload} when deliberately changing the cache
+namespace.
 
-FNA reads these fields through its generic \texttt{ReadObject<T>()} calls, while CNA calls the
-matching typed primitive methods directly.  That is a C\texttt{++} implementation-style
-difference, not a second wire format: both consume the same String, four signed 32-bit values
-(including the soundtrack enum), and one IEEE-754 single in the same order.  Neither reader
-validates that the soundtrack integer is one of the three named \cnaclass{VideoSoundtrackType}
-values.  It is simply cast, and current playback code on both sides treats that field as metadata
-rather than a cue to duck, mute, or select an audio track.
+Existing XNA/FNA games can reuse compiled assets only for reader families supported at this pin.
+Arbitrary Effect bytecode remains a separate unsupported contract
+(Chapter~\ref{ch:shader-fx-gap}); CNJ or a native conversion is appropriate where the XNB reader
+or runtime capability is absent.
 
-\paragraph{Sibling resolution is filesystem-shaped, inside an explicit containment boundary.}
-The reader forms a base path from \cnaclass{ContentManager}'s \texttt{RootDirectory} plus the
-logical XNB asset name, then resolves the serialized string as a sibling. CNA's shared helper
-normalizes separators and relative segments, rejects empty and disallowed absolute spellings, and
-compares weakly-canonical paths against the authorized root. For an ordinary XNB this is the
-configured content root; for an explicitly loaded external XNB it is that bundle's containing
-directory. FNA's \texttt{FileHelpers.ResolveRelativePath()} uses a URI to collapse the same
-relative-directory syntax but supplies no equivalent containment policy. This path is still not
-\cnaclass{ContentReader::ReadExternalReference<T>()}; it is a separate filesystem-relative route
-with the same CNA containment invariant.
+\section{Summary}
 
-After resolution, the normal XNA convention is a fake \texttt{.wmv} suffix.  Both readers remove
-the final four characters without checking that they actually spell \texttt{.wmv}, first accept
-the extensionless stem if it exists, then probe \texttt{.ogv} and \texttt{.ogg} in that exact
-order.  The first existing path wins; when neither probe exists, the original unstripped path is
-retained.  Thus a real \texttt{intro.wmv} can become an adjacent \texttt{intro.ogv} or
-\texttt{intro.ogg}; a pre-existing \texttt{intro.ogv} also round-trips through strip and
-re-probe.  This is narrower than Song's \texttt{.ogg}/\texttt{.oga}/\texttt{.qoa} set and does
-not make CNA's ordinary loose-file \cnaclass{Video} extensions (such as \texttt{.mkv} or
-\texttt{.mp4}) into supported XNB substitutions. CNA revalidates the winning probe through the
-containment helper, closing a symlink-at-the-probed-extension bypass.
-
-There are two small malformed-reference qualifications.  CNA only strips when the \emph{resolved}
-path exceeds four characters; FNA calls \texttt{Substring(0, length - 4)} unconditionally, so a
-short direct-reader path can fail in FNA before the numeric fields are read.  At exactly four
-characters, both eventually retain the original string, although CNA skips FNA's empty-stem
-filesystem probes.  CNA uses \cnans{std::filesystem::exists()}, which also reports a directory;
-FNA uses \texttt{File.Exists()}, which does not. Shared tests cover traversal, absolute input,
-symlinked extension probing, normalized in-root lookup, cache retry, and a confined external
-bundle. They do not cover the short-reference and directory cases, every separator spelling, both
-successful \texttt{.wmv} substitutions, or an invalid soundtrack integer.
-
-\paragraph{Loading creates trusted metadata; opening and most validation happen later.}
-\cnaclass{VideoReader} needs both an owning \cnaclass{ContentManager} and that manager's
-\cnaclass{GraphicsDevice}.  A standalone \cnaclass{ContentReader} fails immediately with
-\cnaclass{ContentLoadException} when no manager exists; a manager without a device fails after
-the five fields have been read when it requests its internal device.  Normal
-\texttt{ContentManager::Load<Video>()} supplies both in a configured game.  The resulting
-seven-argument \cnaclass{Video} constructor stores the path, device, duration, dimensions,
-frame rate, and soundtrack type verbatim.  It neither tests that the file exists nor opens a
-decoder.  In particular, an unresolved but well-formed XNB reference loads successfully, and
-negative/extreme duration or dimension values, non-finite frame rates, and arbitrary enum values
-are admitted as trusted serialized metadata.
-
-The actual FFmpeg open happens when \cnaclass{VideoPlayer::Play()} receives that Video.  A
-successful open then checks the file's width and height and compares its frame rate against the
-serialized value before allocating the frame texture.  This makes a validly parsed but
-metadata-mismatched XNB fail at playback with \cnaclass{InvalidOperationException}, rather than
-at \texttt{Load}.  There is a precise current FNA difference at the tolerance edge: FNA rejects
-a difference of one frame per second or more (\texttt{>= 1.0f}), while CNA rejects only a value
-strictly greater than one (\texttt{> 1.0f}); no CNA test exercises that exact one-fps boundary.
-More seriously for callers expecting FNA-style failure, CNA's FFmpeg wrapper returns false when a
-path cannot be opened or contains no usable video stream.  \cnaclass{VideoPlayer::Play()} then
-returns in the stopped state without throwing.  FNA's ordinary Theora player opens the path when
-played and throws \cnaclass{FileNotFoundException} if it cannot open it.  The timing is therefore
-deferred in both designs, but CNA's unresolved-reference outcome is a silent stopped player,
-not FNA's playback-time exception.  A corrupt existing file can similarly reach the decoder
-boundary rather than becoming an XNB parsing error.
-
-This graphics and decoder dependence also explains the platform boundary already described in
-Chapter~\ref{ch:media-system}: on Windows, Android, and Emscripten the current build excludes the
-FFmpeg-backed Video implementation.  The public declarations remain, but using this reader's
-result reaches a link-time absence rather than an intentionally implemented runtime fallback.
-
-\paragraph{Existing instances, caching, and the evidence actually present.}
-\cnaclass{VideoReader} inherits the default false
-\texttt{CanDeserializeIntoExistingObject} capability, so ordinary root dispatch supplies no
-existing Video.  A direct type-erased C\texttt{++} call can still box a copyable Video in
-\texttt{std::any}; the generic bridge unboxes it, but the reader discards it and constructs a
-fresh value, just as FNA ignores its \texttt{existingInstance} parameter.  \cnaclass{ContentManager}'s
-normal Video cache is consequently a separate value-cache: later \texttt{Load<Video>()} calls
-return copies of the cached Video rather than populating an object the caller previously held.
-No located test covers direct existing-instance input or a Video cache identity/lifetime case.
-
-The strongest current end-to-end test builds a complete uncompressed version-five \texttt{XNBw}
-container in memory, writes it beside CNA's 160-by-90, 25-fps, two-second
-\texttt{chroma\_420.mkv} FFmpeg fixture, then loads it through the real header, type table,
-registration, reader, manager, and \cnaclass{VideoPlayer} route.  It proves the five-field
-order, GraphicsDevice hand-off, fallback to the original \texttt{.mkv} reference after the
-\texttt{.ogv}/\texttt{.ogg} probes fail, and a first frame of the declared size.  Focused tests
-also cover registration, all five declared values, deliberately mismatched metadata reaching
-the deferred player check, and the missing-manager-device error.  This is meaningful integration
-evidence, but its provenance matters: the \texttt{.xnb} is assembled by the test at run time and
-the companion is CNA's synthetic FFmpeg media fixture.  No real MonoGame- or XNA-produced Video
-XNB has been located; no real compressed Video XNB, XNB Video container-fuzzer seed,
-missing-reference playback assertion, malformed/truncated field test, extension-probe success
-case, direct-existing case, or external-producer differential test exists.  Song's real compiled
-fixture is not evidence for this five-field Video body.
-
-\section{What this means for porting}
-
-Chapter~\ref{ch:migration-guide}'s migration guide covers this in full practical detail, but the
-short version, now that this chapter has given the corrected picture, is worth stating here:
-porting an existing XNA/FNA game's compiled \texttt{.xnb} content is, for the specific asset
-types \S\ref{sec:xnb-and-cnj-model} named as complete (textures, sprite fonts, stock effects,
-sound effects, songs, and models), increasingly a matter of pointing CNA at the original,
-unmodified compiled assets and letting the real binary reader do the work --- not, as an
-earlier version of this book's own understanding assumed, a mandatory translation into
-hand-authored JSON. For asset types the \texttt{.xnb} reader has not reached yet, or a custom
-compiled \texttt{.fx} effect (permanently out of scope for the reason
-Chapter~\ref{ch:shader-fx-gap} already gave), \texttt{.cnj} or a direct native-format
-conversion remains the path.
-
-\section{Where this leaves the rest of Part~\ref{part:content-pipeline}}
-
-Every class in the chapters ahead --- \cnaclass{Texture2D}, \cnaclass{Model}, the stock
-effects --- is describable purely in terms of its runtime API, independent of which of this
-chapter's three loading paths actually produced a live instance of it. This chapter's
-distinction matters specifically at the boundary between ``I have an asset file'' and ``I have
-a live CNA object,'' which is exactly the boundary Chapter~\ref{ch:migration-guide}'s migration guide and the
-\texttt{cna-samples} / \texttt{cna-examples} chapter (Chapter~\ref{ch:samples-and-examples})
-come back to when the asset in
-question was originally authored for real XNA rather than for CNA from scratch.
+ContentManager's contract is a deterministic existence-priority resolver with type-specific
+caching. XNB, literal, CNJ, and native-extension paths are not fallback attempts after decode
+failure. The distinction explains most surprising content behavior: explicit filename choice,
+root changes hidden by cache, sidecars shadowing native media, and a manifest that inventories
+candidates without certifying them.

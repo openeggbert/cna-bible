@@ -2,7 +2,7 @@
 
 This repository is a single, unified LaTeX technical book about the `openeggbert/cna`
 ecosystem (CNA: a C++23 reimplementation of the Microsoft XNA 4.0 programming model, built on
-SDL3 with pluggable graphics backends). It is being written incrementally, across many
+SDL3 with pluggable graphics renderers). It is being written incrementally, across many
 sessions, by Claude Code itself, under the direction of the repository's author.
 
 **The book was originally drafted as two separate volumes and merged into one book on
@@ -40,10 +40,9 @@ before the current expansion phase started; useful for background, not for "what
   volumes' first complete pass, back when it was still two volumes, the content-completeness
   pass, the API quick-reference appendices, the index fix). Read for background; don't add new
   entries here — new work goes in `PLAN.md`'s session log and `NEXT.md`.
-- `tools/cna-screenshot-infra/` — a patch, a demo source file, and a README documenting how to
-  build CNA and capture a real, headless screenshot via its `SOFTWARE` graphics backend.
-  `/workspace/cna` (or wherever `cna` gets cloned for a given session) does **not** persist
-  across sessions — reapply this patch to a fresh clone whenever screenshot capture is needed.
+- `tools/cna-screenshot-infra/` — archival capture sources, historical patches, and current
+  reproduction notes for SOFTWARE, SDL Renderer, and EasyGL screenshots. The patches predate
+  CNA's module/renderer rename and are provenance, not instructions for the pinned tree.
 - `tools/verify-book.sh` — the authoritative build/source/PDF verification suite. Use it once per
   writing batch; its PDF checks still do not replace reading rendered images of touched pages.
 - `tools/build-release.sh` — the sealed fixed-date release reproduction. It requires the reviewed
@@ -89,7 +88,7 @@ affected pages and reading them closes a real text/layout change.
   the standard to hold every new page to, not an embarrassment to hide.
 - **Screenshots: real or not at all.** Never fabricate, mock up, or AI-generate an image
   presented as a screenshot of running code. If a real one can't be captured for a given
-  backend (see `tools/cna-screenshot-infra/README.md` for exactly which backends currently
+  renderer (see `tools/cna-screenshot-infra/README.md` for exactly which renderers currently
   can/can't), say so explicitly in the chapter text instead of skipping the question silently.
 - **Code examples must be real, compilable code**, adapted from an actual test or example call
   site wherever one exists — not invented from scratch, and never presented as verified when it

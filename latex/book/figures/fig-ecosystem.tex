@@ -1,0 +1,29 @@
+\begin{figure}[tbp]
+\centering
+\begin{figurealt}{Dependency graph with CNA at the center. Sharp-runtime is required by CNA; meta-gl feeds easy-gl, which is an optional CNA renderer dependency; free-api feeds free-direct, another optional renderer dependency. Xna4-spec feeds compatibility audits. CNA is consumed by the sample, example, and template repositories.}
+\resizebox{0.98\textwidth}{!}{%
+\begin{tikzpicture}[node distance=11mm and 17mm]
+  \node[cna public, minimum width=25mm] (cna) {CNA};
+  \node[cna internal, above left=of cna] (sharp) {sharp-runtime};
+  \node[cna internal, left=of cna] (easy) {easy-gl};
+  \node[cna internal, left=of easy] (meta) {meta-gl};
+  \node[cna internal, below left=of cna] (fd) {free-direct};
+  \node[cna internal, left=of fd] (fa) {free-api};
+  \node[cna evidence, above=of cna] (audit) {compatibility audits};
+  \node[cna evidence, above=of audit] (spec) {xna4-spec};
+  \node[cna public, right=32mm of cna] (users) {cna-samples\\cna-examples\\cna-template};
+  \draw[cna flow] (sharp) -- node[cna label,above]{required} (cna);
+  \draw[cna flow] (meta) -- (easy);
+  \draw[cna optional] (easy) -- node[cna label,above]{five identities} (cna);
+  \draw[cna flow] (fa) -- (fd);
+  \draw[cna optional] (fd) -- node[cna label,below]{FREEDIRECT} (cna);
+  \draw[cna flow] (spec) -- (audit);
+  \draw[cna flow] (cna) -- (audit);
+  \draw[cna flow] (cna) -- node[cna label,above]{framework dependency} (users);
+\end{tikzpicture}}
+\end{figurealt}
+\caption{Repository relationships relevant to CNA at the edition pins. Arrows point from a
+provider or evidence input to its consumer; dashed edges are renderer-conditional. The graph is
+not an organization-wide repository inventory.}
+\label{fig:ecosystem-dependencies}
+\end{figure}

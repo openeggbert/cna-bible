@@ -1,20 +1,59 @@
-# Next session — start here
+# Next session — editorial candidate handoff
 
-Read this file, then `PLAN.md`, then `AUDIT.md`. The raw per-area research evidence is in
-`audit/` (ten files). CNA-side defects found along the way are in `cnabugs.md`. The previous
-edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
-`NEXT-ARCHIVE-2026-07-26.md` — history, not instructions.
+Read this section first, then `EDITORIAL-AUDIT.md` and `PLAN.md` §0. The remainder of this file is
+the preserved 709-page pre-editorial handoff; it is historical, not a current status report.
 
-## State at handoff (2026-08-12)
+## Current state (2026-08-12)
 
 | | |
 |---|---|
-| cna-bible branch | `next`; local commits are ahead of `origin/next` (push requires explicit external-publication approval) |
-| CNA pinned SHA | `7a64362efef4119bf880459ef1704fb2c52199e2` (`develop` == `origin/develop` at pin time, 2026-08-11; later drift is item 43) |
-| Book builds | **yes** — 709 pages, all automated and release-artifact checks green; every physical page has passed the final visual review |
-| Phase | **A–G complete.** The source audit, restructuring, writing, appendices, whole-book consistency sweep and final artifact verification are closed against the pinned source. |
+| cna-bible revision | branch `next`, editorial baseline HEAD `b236bb65fdccaa7c1c9d62096be4fc8e05477f80`; reviewed editorial changes remain uncommitted because `.git` is read-only |
+| CNA edition pin | `7a64362efef4119bf880459ef1704fb2c52199e2`; final observed clean checkout `9918353b82256000dd1356d547d874fce2afd9d2`, three descendants; no repin |
+| Candidate PDF | **574 A4 pages**, 2,536,383 bytes, SHA-256 `4d5a42926e6b5116bd52849ee998800efc09e39ca2876399aa07799c748c20d0` |
+| Editorial reduction | 246,787 → 174,766 stable prose tokens (**29.18%**) |
+| Visuals | 20 reproducible architecture diagrams + five retained screenshots; all 25 described and reviewed in colour/grayscale |
+| Validation | complete semantic verifier green; clean fixed-date LaTeX build; final targeted PDF review complete |
+| Phase | editorial audit, structural/prose pass, diagrams, examples, appendices/index, accessibility investigation, and adversarial final pass are **complete** |
 
-## What is done
+## What changed
+
+- Added `EDITORIAL-AUDIT.md`, stable editorial metrics, pin-derived fact verification, centralized
+  release facts, canonical evidence callouts, Reading Paths, and a factual AI-assisted production
+  note.
+- Reworked the title claim to “comprehensive, revision-bounded”; separated current contracts from
+  implementation, limitation, evidence, and compact historical notes; consolidated repeated
+  methodology into Appendix G.
+- Performed whole-book terminology, absolute-claim, stale-number, contradiction, example/API,
+  navigation, index, and prose-cadence passes while preserving renderer/platform qualifications,
+  defects, and negative evidence.
+- Added 20 source-native diagrams covering the ecosystem, modules, lifecycle, renderer flow,
+  resources, SpriteBatch, shader routes, content/XNB/CNJ/glTF, skinning, platform routes,
+  verification, sharp-runtime, and porting.
+- Reduced the printed TOC depth, normalized open-right blank versos, retained searchable text and
+  safe links, and documented that the current pdfLaTeX output is not tagged.
+
+## What remains
+
+There is no known manuscript or PDF defect awaiting editorial work. The next authorized session
+should only:
+
+1. make a logically bounded commit once `.git` is writable (the failed `git add` attempt changed
+   no index or worktree data);
+2. reproduce the candidate from that commit with the fixed source date;
+3. independently compare the artifact, then replace the old 709-page fingerprint in
+   `tools/release-profile.sh` and run `tools/build-release.sh` from a clean tree;
+4. publish or push only with explicit external-publication authorization.
+
+Do not repin CNA merely because the live checkout moved. Do not touch the unrelated sibling
+states: `easy-gl` has untracked `VERSION`, `meta-gl` has staged/modified `VERSION`, and
+`cna-samples` has a modified tank model asset.
+
+## Historical 709-page handoff (preserved)
+
+The following record documents the preceding source-audit/new-edition campaign. Its page counts,
+release fingerprint, and “current” wording are superseded by the section above.
+
+## What was done in that campaign
 
 1. **Source baseline pinned**, read-only throughout — CNA and every sibling repository were only
    ever read, never built, checked out, reset, or fixed. `PLAN.md` §2 has all eleven sibling HEADs.

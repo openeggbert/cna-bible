@@ -1,13 +1,60 @@
-# The CNA Bible — New Edition Plan
+# The CNA Bible — Edition Plan and Campaign Record
 
-**This is the current, authoritative plan.** The previous expansion plan and handoff are
-preserved verbatim as `PLAN-ARCHIVE-2026-07-26.md` and `NEXT-ARCHIVE-2026-07-26.md`. They remain
-valuable as history — methodology, prior source findings, the two-volume merge record — but their
-per-chapter page targets, chapter-count assumptions and "PDF-verified" labels are **not binding**
-on this edition.
+**Current status:** the 2026-08-12 editorial and technical quality campaign is complete in the
+working tree. Section 0 is the authoritative status and handoff. Sections 1 onward preserve the
+source-audit and 709-page production campaign that preceded it; their page counts and release
+metrics are historical. The earlier expansion plan and handoff remain in
+`PLAN-ARCHIVE-2026-07-26.md` and `NEXT-ARCHIVE-2026-07-26.md`.
 
-Evidence for everything below is in `AUDIT.md` (curated matrix + contradiction log) and `audit/`
-(raw per-area research reports).
+The source findings remain in `AUDIT.md` and `audit/`. The editorial problem inventory, decisions,
+and closure evidence are in `EDITORIAL-AUDIT.md`.
+
+---
+
+## 0. Editorial quality campaign — completed working tree
+
+The campaign edited the existing 12-part, 79-chapter, eight-appendix monograph without repinning
+CNA or changing any CNA/sibling source. The candidate is 574 A4 pages and 2,536,383 bytes, with
+SHA-256 `4d5a42926e6b5116bd52849ee998800efc09e39ca2876399aa07799c748c20d0` under the fixed
+2026-08-12 source date.
+
+| Outcome | Final state |
+|---|---|
+| Manuscript volume | prose-only token metric fell from 246,787 to 174,766 (29.18%); listings fell from 250 to 190 while materially useful examples and limitations were retained |
+| Structure | current contract, implementation, evidence, limitation, and history are separated more consistently; printed TOC depth is reduced; Reading Paths and production-method front matter were added |
+| Evidence model | Appendix G is the canonical vocabulary; compact callouts and cross-references replace repeated methodology |
+| Renderer facts | 46 public identities, 42 implementation families, and 39 named oracle scenes are derived from the pinned Git object by `tools/verify-edition-facts.sh` |
+| Visual explanation | 20 reproducible TikZ architecture diagrams plus five retained screenshots; all 25 figures have source descriptions and were inspected in colour and grayscale |
+| Examples | the minimum complete game translation unit syntax-checks against the pinned headers; its SDL dummy-driver frame is byte- and pixel-identical to the retained SDL oracle screenshot |
+| Navigation | 12 parts, 79 chapters, eight appendices, 994 outline entries, 1,661 accepted index records, and working TOC/index destinations |
+| Artifact quality | clean fixed-date build; zero unresolved references/citations, zero physical text crossings, all fonts embedded/subsetted/Unicode-mapped, safe links, clean MuPDF/Ghostscript parses |
+| Accessibility | metadata, bookmarks, selectable text, heading hierarchy, and figure descriptions are present; the pdfLaTeX artifact remains untagged and makes no conformance claim |
+| Visual review | the whole manuscript was contact-sheet reviewed during the campaign; every new figure, every high-risk reflow batch, final front matter, Appendix G, index tail, and representative open-right blanks received targeted final review |
+
+The editorial campaign deliberately leaves the edition pin at CNA
+`7a64362efef4119bf880459ef1704fb2c52199e2`. At final postflight the clean CNA checkout was
+`9918353b82256000dd1356d547d874fce2afd9d2`, three descendants beyond the pin (a proposal
+document, an ENet CMake-minimum change, and new `GraphicsBackendMaturity`/
+`GraphicsBackendCategory` enums). Pin-based verification prevents that moving checkout from
+silently changing the edition's claims. `cna-template` likewise remains pinned at `1d86681f`
+despite the observed clean descendant `4d0a2c8a`.
+
+No manuscript defect is knowingly left open. Two release-administration steps remain:
+
+1. Commit the reviewed working tree when `.git` is writable. The present environment exposes
+   `.git` read-only; an attempted `git add` failed while creating `index.lock`, so no checkpoint
+   commit could be made.
+2. After that authorized commit, reproduce the fixed-date PDF independently and update
+   `tools/release-profile.sh` with the new commit/tree IDs and fingerprint. Until then the profile
+   intentionally seals the preceding reviewed 709-page release and rejects this dirty candidate.
+
+A possible short companion, **Programming with CNA**, remains a future proposal. It should cover
+installation, a first game, input/audio/sprites/3D/content, renderer choice, porting, and
+deployment; it was not allowed to divert this monograph pass.
+
+---
+
+## Historical source-audit and new-edition campaign
 
 ---
 
@@ -67,7 +114,7 @@ postflight on 2026-08-12 observed these descendants after the audit had closed:
 
 | Repo | Pinned commit | Later observed HEAD | Relationship and disposition |
 |---|---|---|---|
-| `cna` | `7a64362e` | `d316653a` | one direct descendant adding only root-level proposal document `cnaplatform.md`; no audited code or tests changed; pin retained |
+| `cna` | `7a64362e` | `9918353b` | three descendants: proposal document `cnaplatform.md`, an ENet CMake-minimum update, and new graphics maturity/category enums; pin retained, and edition facts are read from the pinned Git object |
 | `cna-template` | `1d86681` | `4d0a2c8` | three descendants with a material renderer/build/demo rewrite; intentionally outside this edition; pin retained pending a future bounded re-audit |
 
 All other locally available sibling HEADs in the table still matched their recorded pins at that

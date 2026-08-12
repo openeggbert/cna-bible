@@ -1,0 +1,26 @@
+\begin{figure}[tbp]
+\centering
+\begin{figurealt}{On the Linux verification host, MinGW produces a Windows PE test executable. A dedicated Wine prefix supplies bitness, registry state, and DLL overrides. Wine dispatches the DirectX call through builtin DirectDraw, D8VK, DXVK, vkd3d-proton, or another named runtime. The runtime reaches the Linux graphics stack and GPU. Captured logs must contain a route-specific engagement marker before a behavioral or pixel oracle is credited.}
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[node distance=8mm and 10mm]
+  \node[cna internal] (mingw) {MinGW cross-build};
+  \node[cna public, right=of mingw] (pe) {Windows PE test};
+  \node[cna internal, right=of pe] (prefix) {dedicated Wine prefix\\DLL overrides + bitness};
+  \node[cna internal, right=of prefix] (runtime) {Wine builtin / D8VK /\\DXVK / vkd3d-proton};
+  \node[cna public, right=of runtime] (gpu) {Linux driver + GPU};
+  \node[cna evidence, below=of runtime] (marker) {route-specific log marker};
+  \node[cna evidence, right=of marker] (oracle) {behavior or pixel oracle};
+  \draw[cna flow] (mingw) -- (pe);
+  \draw[cna flow] (pe) -- (prefix);
+  \draw[cna flow] (prefix) -- (runtime);
+  \draw[cna flow] (runtime) -- (gpu);
+  \draw[cna flow] (runtime) -- (marker);
+  \draw[cna flow] (gpu) -- (oracle);
+  \draw[cna flow] (marker) -- (oracle);
+\end{tikzpicture}}
+\end{figurealt}
+\caption{The Windows-on-Linux engagement chain. Exit status and plausible pixels are not enough
+when Wine can silently select a different DLL route.}
+\label{fig:wine-engagement}
+\end{figure}
+

@@ -1,0 +1,26 @@
+\begin{figure}[tbp]
+\centering
+\begin{figurealt}{Emscripten compiles CNA and a selected Web renderer into WebAssembly and JavaScript. The files are served over HTTP and loaded by a browser. Game Run registers a browser callback and yields; the browser repeatedly invokes the frame callback. The selected renderer may be WebGL through easygl, WebGPU, Canvas, HTML DOM, or SVG DOM. Evidence can observe DOM state, renderer markers, readback, or compositor pixels, which are different boundaries.}
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[node distance=8mm and 11mm]
+  \node[cna internal] (emcc) {Emscripten configure + build};
+  \node[cna public, right=of emcc] (bundle) {Wasm + JavaScript + assets};
+  \node[cna internal, right=of bundle] (http) {HTTP server};
+  \node[cna public, right=of http] (browser) {browser page};
+  \node[cna internal, below=of browser] (loop) {register callback $\rightarrow$ yield\\browser schedules frames};
+  \node[cna internal, left=of loop] (renderer) {WebGL / WebGPU / Canvas /\\HTML\_DOM / SVG\_DOM};
+  \node[cna evidence, left=of renderer] (observe) {DOM, marker, readback,\\or compositor observation};
+  \draw[cna flow] (emcc) -- (bundle);
+  \draw[cna flow] (bundle) -- (http);
+  \draw[cna flow] (http) -- (browser);
+  \draw[cna flow] (browser) -- (loop);
+  \draw[cna flow] (loop) -- (renderer);
+  \draw[cna flow] (renderer) -- (observe);
+  \draw[cna optional] (loop.south) to[bend left=30] (loop.east);
+\end{tikzpicture}}
+\end{figurealt}
+\caption{Browser/WebAssembly execution. Loading a page, invoking a frame, engaging a renderer,
+and verifying compositor pixels are separate milestones.}
+\label{fig:web-execution}
+\end{figure}
+

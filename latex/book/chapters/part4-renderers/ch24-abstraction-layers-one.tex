@@ -60,21 +60,19 @@ depth/stencil follows it too. The cube-usage, per-face-MSAA, and depth/stencil-u
 distinguish Discard, Preserve, and Platform rather than relying on the older no-crash usage
 smoke test. The full comparison is \S\ref{sec:backend-rendertarget-usage-matrix}.
 
-\section{Recorded BGFX campaign and the Phase 72 closure}
+\section{Recorded BGFX campaign}
 
 The recorded BGFX validation campaign reported 4{,}375 passes in a 4{,}377-case configured
 population, with two hardware skips; its renderer-specific \texttt{ctest} population passed
 103 of 105.  These are campaign populations, not a universal current test count; see
-Chapter~\ref{ch:counting-discipline}. The two remaining
-failures are both environment ceilings, not code defects: one render-target MSAA-resolve test
+Chapter~\ref{ch:counting-discipline}. The two remaining outcomes were classified as environment
+ceilings: one render-target MSAA-resolve test
 fails because this project's own headless \texttt{Xvfb} display has no DRI3 support to
 resolve against, and one render-target-cube depth-format test (a
 \texttt{Depth24Stencil8}-attached cube face producing no color output) has been investigated
-three separate times without finding a root cause, and remains formally deferred rather than
-silently dropped. A first complete, row-by-row triage of this renderer originally found
-thirty-eight real gaps; thirty-seven were fixed in a single closing session, leaving only the
-depth-bias item covered below --- which was itself subsequently fixed too, closing the phase
-in full.
+three times without finding a root cause and remains deferred. The row-by-row triage recorded
+38 gaps, closed 37 in its final batch, and left the depth-bias item described below; that item was
+subsequently fixed. These are historical campaign results, not present-day population counts.
 
 \section{Choosing bgfx's underlying native renderer}
 \label{sec:bgfx-renderer-selection}
@@ -93,7 +91,7 @@ work issued at all), throwing a \texttt{std::runtime\_error} naming every valid 
 anything else; \texttt{ResolveRendererType()} ties the two together, falling back to the
 platform default whenever the environment variable is unset or empty.
 
-\subsection{A worked example: routing one specific test around a real bgfx/GL limitation}
+\subsection{Routing a test around a BGFX/OpenGL limitation}
 
 This mechanism exists for a concrete, real reason, not as a speculative escape hatch:
 \texttt{modules/renderers/bgfx/examples/\allowbreak{}bgfx\_rendertarget2d\_msaa\_test.cpp}'s own header comment documents a genuine
@@ -140,7 +138,7 @@ real, sourced explanations are given here rather than silently picking one, cons
 this book's own methodology of not resolving an ambiguity the underlying sources themselves
 leave open.
 
-\section{DepthBias: a real gap in the underlying library, not just CNA}
+\section{DepthBias: an upstream BGFX limit}
 
 \cnaclass{RasterizerState.DepthBias} is the one feature in this chapter whose fix required
 working around a genuine absence in bgfx itself, confirmed by reading bgfx's own vendored
@@ -168,15 +166,11 @@ not resolved by this fix.
 \section{View IDs: a free-list-backed pool, not a hardcoded slot}
 \label{sec:bgfx-view-ids}
 
-The ``flush view'' fix in the previous section (Task~951) is one visible symptom of a broader
-architectural fact worth explaining directly: bgfx organizes all drawing into numbered
-\emph{views}, an ordering mechanism distinct from render-target binding itself --- every
+The screenshot flush route follows from bgfx's numbered \emph{views}, an ordering mechanism
+distinct from render-target binding. Every
 \texttt{bgfx::submit()} call targets a specific numeric view id, and bgfx processes views in
-ascending id order every frame regardless of the order draws were actually submitted in. This
-renderer's own render-target support (\texttt{Detail::AllocateRtViewId()}) originally handed out
-a single hardcoded view id --- ``the old hardcoded 1'' its own fix comment calls it --- for
-every render target, 2D or cube, MRT or single-target alike. Task~910 replaced that with a real,
-free-list-backed pool:
+ascending id order each frame. The original renderer assigned view 1 to every render target.
+\texttt{Detail::AllocateRtViewId()} now allocates from a free-list-backed pool:
 
 \begin{lstlisting}
 static bgfx::ViewId AllocateRtViewId()
@@ -196,69 +190,29 @@ static bgfx::ViewId AllocateRtViewId()
 }
 \end{lstlisting}
 
-Three real numbers are reserved by construction, not by convention alone: view id \texttt{0} is
-permanently the backbuffer's own view and is never handed out by this allocator at all;
-\texttt{kBackbufferFlushViewId} --- the same reserved, highest-numbered view Task~951's own
-flush-view fix touches every frame, precisely \emph{because} it is guaranteed to sort last in
-bgfx's own ascending-id processing order --- sits at the top of the id space, one past the
-allocator's own exclusive upper bound; and every id strictly between those two bookends is a
-real, currently-live render target's own view. A newly-freed id returns to the pool
-(\texttt{RtViewIdFreeList()}) for reuse by the \emph{next} render target created, rather than
-the counter monotonically climbing forever --- the free-list is specifically what keeps a
-long-running game that creates and destroys render targets across many frames (a shadow-map
-pool being cycled, a portal-camera render target rebuilt on level load) from eventually
-exhausting bgfx's own hard \texttt{BGFX\_CONFIG\_MAX\_VIEWS} ceiling (256 by default) and
-throwing \texttt{std::runtime\_error} on a perfectly ordinary render target creation, purely
-because ids were never being recycled. A CNA game with a genuinely unbounded number of
-\emph{simultaneously live} render targets --- not created-and-destroyed-over-time, but all
-open at once --- can still exhaust the pool; the free-list solves churn, not an unbounded
-working set, and the thrown exception is the correct, honest response to that specific case
-rather than a bug to route around.
+View 0 is reserved for the backbuffer. \texttt{kBackbufferFlushViewId} is the highest reserved
+view, so bgfx processes it last; the allocator's exclusive upper bound keeps it out of the
+render-target pool. Freed IDs return to \texttt{RtViewIdFreeList()}, preventing normal
+creation/destruction churn from exhausting bgfx's \texttt{BGFX\_CONFIG\_MAX\_VIEWS} ceiling
+(256 by default). Simultaneously live targets can still exhaust the bounded pool, in which case
+creation throws \texttt{std::runtime\_error}.
 
 \section{Sampling a render target: a wrong-handle-type cast, since fixed}
 \label{sec:bgfx-wrong-handle-cast}
 
-Chapter~\ref{ch:vulkan-backend} named this renderer's own, now-resolved
-\cnaclass{RenderTargetCube}-sampling bug as ``a genuine wrong-handle-cast, diagnosed precisely''
-in contrast to Vulkan's own still-unresolved equivalent --- this section is that precise
-diagnosis, including how it was actually closed. Both \texttt{BgfxSpriteBatchRenderer::Draw} and
-\cnaclass{BgfxRenderer}'s own \texttt{envMapping} branch (the code path
-\cnaclass{EnvironmentMapEffect}, per Chapter~\ref{ch:stock-effects}, reaches) used to
-unconditionally \texttt{static\_cast} whatever \cnaclass{ITextureRenderer} / \cnaclass{%
-ITextureCubeRenderer} they were handed to the plain, ordinary-texture concrete type.
-\cnaclass{RenderTarget2D} and \cnaclass{RenderTargetCube} are each backed by their own,
-entirely separate sibling renderer class --- consistent with
-Chapter~\ref{ch:backend-architecture}'s own \cnaclass{IRenderTargetRenderer} interface design,
-not a shortcut specific to this renderer. Both of those sibling classes'
-\emph{first data member} is a framebuffer handle, not a texture handle.
+Both \texttt{BgfxSpriteBatchRenderer::Draw} and the environment-mapping branch once cast any
+\cnaclass{ITextureRenderer} to the ordinary-texture concrete class. Render targets use sibling
+classes whose first member is a framebuffer handle. Because bgfx represents framebuffer and
+texture handles with the same \texttt{uint16\_t idx} layout, the cast compiled and usually did
+not crash; it used a framebuffer-pool index as a texture-pool index and could sample an unrelated
+texture.
 
-The reason this compiled cleanly and never crashed, rather than failing loudly the moment it was
-exercised, is a genuinely instructive piece of type-confusion: bgfx represents both handle kinds
-identically at the ABI level, as a bare \texttt{struct \{ uint16\_t idx; \}}. The cast was
-structurally valid C\texttt{++} --- both types really do have that exact layout --- so the
-compiler had no basis to reject it, and the resulting object did not crash on access, because
-\texttt{idx} really was a valid, in-range integer. It was simply the \emph{wrong} integer: an
-index into bgfx's framebuffer handle pool, read and used as though it indexed the texture handle
-pool instead. The practical consequence was a render target that silently sampled whatever
-texture happened to occupy the coincidentally-matching slot in the wrong pool --- confirmed by
-direct memory-layout analysis and by new smoke tests added specifically to prove the cast
-\emph{did not crash} on either \cnaclass{RenderTarget2D} or \cnaclass{RenderTargetCube}, which is
-exactly why ordinary ``does it crash'' testing had not caught this before. Both call sites are
-now fixed (Tasks~873/874, closed by Task~907's own follow-up): \texttt{BgfxSpriteBatchRenderer::%
-Draw} now reaches a render target's real dimensions through \cnaclass{ITextureRenderer}'s own
-virtual \texttt{GetWidth()} / \texttt{GetHeight()} rather than an unsafe cast, and the
-\texttt{envMapping} branch resolves a bound cube texture through a real \texttt{dynamic\_cast} to
-a shared \texttt{IBgfxCubeSamplable} interface instead --- a render-to-texture technique (a
-portal, a security-camera view, a reflection probe rendered as an ordinary 2D texture rather than
-through the dedicated cube-face path) that samples its own render target back through
-\cnaclass{SpriteBatch} or \cnaclass{EnvironmentMapEffect} on this renderer can now be trusted,
-where it previously could not have been even though nothing about running the code signaled that
-anything was wrong. This chapter's own closing summary below already reflected this fix
-implicitly, by not naming Tasks~873/874 among the renderer's remaining open items --- the
-paragraph above exists so that omission reads as a confirmed, explained resolution rather than
-as an unexplained gap between two sections of the same chapter.
+The current SpriteBatch route obtains dimensions through virtual \texttt{GetWidth()} and
+\texttt{GetHeight()}. Environment mapping resolves cube sampling through
+\texttt{IBgfxCubeSamplable} with a checked cast. Focused 2D and cube render-target tests cover the
+non-crashing type-confusion that ordinary smoke tests missed.
 
-\section{A real, found-and-fixed rendering bug: silent black meshes}
+\section{Corrected silent-black-mesh defect}
 
 One bug is worth naming for how invisible it was until specifically tested: this renderer's
 graphics-renderer class never overrode the effect-aware indexed-draw entry point at all. Any
@@ -271,7 +225,7 @@ consequence: any loaded 3D model rendered as a solid black silhouette on this re
 regardless of its real diffuse color, texture, or lighting --- fixed by adding a real
 override.
 
-\subsection{A worked example: recognizing the trigger condition before hitting it}
+\subsection{Recognizing the trigger condition}
 
 The black-mesh bug's real trigger condition --- a vertex format with no \texttt{Color}
 attribute, which is essentially every \cnaclass{Model} loaded from content rather than
@@ -397,10 +351,9 @@ shares.
 
 \section{Texture3D and TextureCube readback: copy first, then read}
 
-For a long time, \cnaclass{Texture3D} and \cnaclass{TextureCube} had a more serious
-limitation on BGFX than an absent convenience overload: their shared renderer interfaces'
-default \texttt{GetData()} implementation was a silent no-op. Task~914 closes that gap without
-making ordinary sampled textures pay for a readback-only usage flag. BGFX documents
+The shared renderer interfaces once left \cnaclass{Texture3D} and \cnaclass{TextureCube}
+\texttt{GetData()} as silent no-ops. The current copy-before-read route avoids placing a
+readback-only usage flag on ordinary sampled textures. BGFX documents
 \texttt{BGFX\_TEXTURE\_READ\_BACK} as incompatible with a texture that is also a normal GPU
 resource, so marking the game texture itself readback-capable would undermine the very texture
 that an effect needs to sample.
@@ -454,15 +407,13 @@ separates two Begin matrices even when the viewport is unchanged. The analogous 
 scissor oracle proves that each draw still receives its own captured rectangle and enable bit.
 Section~\ref{sec:backend-viewport-scissor-matrix} records that broader current scope.
 
-\section{Where this leaves the renderer}
+\section{Current qualification}
 
-The original Phase~72 closure is a useful historical snapshot, but not a freeze-frame: the
-later readback and mip work above is one example of a real capability that would be invisible if
-the old ``only depth bias remains'' shorthand were repeated literally. The still-deliberate
+The recorded closure predates the readback and mip work above. The still-deliberate
 \texttt{SlopeScaleDepthBias} omission, the non-GLSL instancing matrix-constructor defect, and
 the two environment-bound render-target checks remain important limitations, while later
 feature work should be evaluated from the current renderer plan and its registered tests rather
-than from that earlier closure slogan alone.
+than from the historical campaign summary.
 
 \section{MAGNUM: a wrapper with no offline shader generator}
 

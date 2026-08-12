@@ -1,12 +1,15 @@
 \chapter{The Game Lifecycle}
 \label{ch:game-lifecycle}
 \label{ch:game-loop}
+\index{Game lifecycle!desktop and browser loops}
 
 Chapter~\ref{ch:first-game} showed \texttt{Update} / \texttt{Draw} as two overridden methods
 without asking what drives them. This chapter opens up \cnaclass{Game} itself --- the class
 every CNA game inherits from --- and the small constellation of supporting types
 (\cnaclass{GameTime}, \cnaclass{GameComponent}, \cnaclass{GameWindow},
 \cnaclass{GameServiceContainer}) that make the loop work.
+
+\input{figures/fig-game-lifecycle.tex}
 
 \section{Game: base class, not framework-owned entry point}
 
@@ -214,7 +217,7 @@ Two \texttt{CNAEXT}-tagged additions live directly on \cnaclass{Game}: a public
 ``existing CNA examples'' already depend on an FPS-based way to talk about frame timing,
 alongside the real XNA \texttt{TargetElapsedTime} \texttt{TimeSpan}.
 
-\subsection{A worked example: what actually happens when a frame runs long}
+\subsection{What happens when a frame runs long}
 
 The timing loop described above is a real, working catch-up mechanism, not just a sleep/measure
 pair — and its concrete behavior under load is worth tracing through with real numbers rather
@@ -254,7 +257,7 @@ call happened since the last \texttt{Draw()}'' --- exactly the invariant
 Chapter~\ref{ch:first-game}'s own \texttt{Update} / \texttt{Draw} split already depends on
 without stating it this precisely.
 
-\subsection{IsRunningSlowly: a real five-tick hysteresis, not a one-frame flag}
+\subsection{IsRunningSlowly: five-tick hysteresis}
 
 \texttt{GameTime::IsRunningSlowly} looks, from its own name and Chapter~\ref{ch:first-game}'s
 brief mention, like it might flip true the instant a single \texttt{Tick()} needed more than one
@@ -289,7 +292,7 @@ getter/setter, never \texttt{Game::Tick()}'s multi-tick accumulation), so its co
 entirely on this direct reading of \texttt{Game.cpp} matching FNA's own algorithm, not on a
 passing test asserting it.
 
-\subsection{A real gotcha: ResetElapsedTime() is a no-op under fixed timestep}
+\subsection{ResetElapsedTime() under fixed timestep}
 
 \texttt{Game::ResetElapsedTime()} exists, per its own XNA-inherited contract, to discard a
 large, misleading elapsed-time spike --- the classic case being right after a blocking load
@@ -369,7 +372,7 @@ and \texttt{IUpdateable} / \texttt{IDrawable} are the interface pair that
 enabled-or-visible state, an ordering value, a changed-event pair, and the actual
 \texttt{Update} / \texttt{Draw} method.
 
-\subsection{A worked example: a self-contained DrawableGameComponent}
+\subsection{A self-contained DrawableGameComponent}
 
 The ordering contract described above is easiest to see in a small, real
 \cnaclass{DrawableGameComponent} --- an FPS counter, a natural first component to reach for
@@ -484,7 +487,7 @@ move construction and move assignment are defaulted --- a small but precise stat
 ownership: a \cnaclass{GameServiceContainer} can be relocated, but never silently duplicated
 into a second set of service pointers.
 
-\subsection{A worked example: registering and consuming a service}
+\subsection{Registering and consuming a service}
 
 \cnaclass{GameServiceContainer}'s own test suite
 (\texttt{GameServiceContainerTests.cpp}) is a good template for the pattern a real game uses

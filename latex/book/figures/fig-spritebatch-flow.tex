@@ -1,0 +1,26 @@
+\begin{figure}[tbp]
+\centering
+\begin{figurealt}{SpriteBatch Begin resolves states. Draw calls append quad items. A flush occurs at End, on an immediate-mode draw, or when capacity or texture boundaries require it. Deferred modes optionally sort items, then group and submit them through the renderer SpriteBatch path. Submission does not guarantee one GPU draw call.}
+\resizebox{0.98\textwidth}{!}{%
+\begin{tikzpicture}[node distance=9mm and 12mm]
+  \node[cna public] (begin) {\texttt{Begin()}\\resolve state};
+  \node[cna public, right=of begin] (draw) {\texttt{Draw(...)}\\append quad item};
+  \node[cna internal, right=of draw] (queue) {CPU item queue};
+  \node[cna internal, right=of queue] (flush) {flush boundary\\\texttt{End}/Immediate/capacity};
+  \node[cna internal, right=of flush] (sort) {optional sort\\by mode};
+  \node[cna internal, right=of sort] (group) {group by texture/state\\expand vertices};
+  \node[cna public, right=of group] (renderer) {renderer SpriteBatch\\submission path};
+  \draw[cna flow] (begin) -- (draw);
+  \draw[cna flow] (draw) -- (queue);
+  \draw[cna flow] (queue) -- (flush);
+  \draw[cna flow] (flush) -- (sort);
+  \draw[cna flow] (sort) -- (group);
+  \draw[cna flow] (group) -- (renderer);
+  \draw[cna optional] (draw.south) to[bend right=35] node[cna label,below]{Immediate} (flush.south);
+\end{tikzpicture}}
+\end{figurealt}
+\caption{SpriteBatch's CPU submission flow. ``Batch'' describes the public accumulation and
+flush contract; renderer implementations may issue more than one native draw.}
+\label{fig:spritebatch-flow}
+\end{figure}
+

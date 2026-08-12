@@ -96,7 +96,7 @@ the same explicit ``does not support 3D'' runtime error, rather than an
 need portable validation should validate their input before asking SDL\_Renderer to allocate a
 3D buffer.
 
-\subsection{A worked example: one narrow positive capability among explicit refusals}
+\subsection{A narrow positive capability among explicit refusals}
 
 Chapter~\ref{ch:backend-architecture}'s \cnaclass{GraphicsCapability} mechanism defaults to
 answering \texttt{true} for everything unless a renderer overrides it. Reading
@@ -129,12 +129,12 @@ if (device.SupportsCapability(GraphicsCapability::ThreeD)) {
 }
 \end{lstlisting}
 
-\section{The Phase 70 audit: fifteen real bugs, followed by later contract repairs}
+\section{Recorded SDL Renderer audit and later repairs}
 \label{sec:phase70-audit-bugs}
 
-The single most thorough renderer audit in the project (Tasks~666--730, 65 technical tasks,
-followed by Task~731's closing document) found and fixed fifteen real bugs, spanning almost
-every area \cnaclass{SpriteBatch} touches:
+The recorded 65-item technical audit found and fixed fifteen defects across most of the
+\cnaclass{SpriteBatch} surface. Its closing document is historical; later repairs described
+below supersede parts of that snapshot.
 
 \begin{itemize}
   \item \textbf{SpriteBatch (2 bugs).} \texttt{SDL\_RenderTextureRotated}'s rotation-pivot
@@ -223,7 +223,7 @@ longer does:
         observable contract.
 \end{description}
 
-\subsection{A worked example: exactly what ``clamp-like, by coincidence'' means in pixels}
+\subsection{What ``clamp-like by coincidence'' means in pixels}
 
 The blocked \texttt{TextureAddressMode::Wrap} / \texttt{Mirror} decision above is easy to read
 as an abstract API gap; a concrete pixel case makes it precise instead. Take a $2\times1$
@@ -260,7 +260,7 @@ technique that this is not a hypothetical edge case --- gets the wrong pixel on 
 today, silently, with no exception and no visual artifact obviously identifiable as ``wrong''
 unless you already know to look for texel~0 failing to reappear at the wrap boundary.
 
-\section{What is honestly emulated versus what is real}
+\section{Native and emulated behavior}
 
 Beyond the \texttt{DepthFormat} case above, \texttt{TextureAddressMode::Clamp} is flagged as
 working ``by coincidence'' --- it matches \texttt{SDL\_RenderTexture}'s own fixed
@@ -274,7 +274,7 @@ direct combination hooks do call \texttt{ThrowNo3D}, but public
 \cnaclass{GraphicsDevice}\texttt{.Clear} first sees \texttt{SupportsDepthStencil()==false} and masks
 both bits away. A depth/stencil-only request is therefore an FNA-faithful silent no-op; adding
 \texttt{Target} still clears colour. The two SDL-specific tests that expect public throws
-predate that mask and are stale (Task~1113), not proof that the direct hooks are reachable.
+predate that mask and are stale; they do not establish that the direct hooks are reachable.
 Chapter~\ref{ch:graphicsdevice} and \S\ref{sec:backend-clear-matrix} separate the shared and
 renderer layers in full. Five real, multi-frame compatibility samples --- a 2D
 demo, a bouncing-sprite physics scene, a keyboard-driven sprite, a two-glyph
@@ -304,24 +304,20 @@ above; cube/volume silent success was closed by the shared resource-contract rep
 claims in this chapter therefore come from the registered renderer tests and pinned source, not
 from the snapshot's old pass total or status count.
 
-\section{A real screenshot, captured headlessly under Xvfb}
+\section{Xvfb screenshot evidence}
 
-Every screenshot elsewhere in this book credited to CNA's \texttt{SOFTWARE} renderer
-(Chapter~\ref{ch:graphicsdevice}) was reachable with no display at all, since that renderer
-never touches SDL video/X11/a GPU. \texttt{SDL\_RENDERER} is different: it opens a real SDL3
-window and issues real \texttt{SDL\_RenderTexture} calls through a real OpenGL context, so a
-genuine screenshot requires a genuine (if virtual) display. This book's own screenshot-feasibility
-notes had long identified \texttt{Xvfb} plus Mesa's software \texttt{llvmpipe} renderer as
-plausible for exactly this case but explicitly left it \emph{untested} pending someone actually
-trying it --- CNA's own \texttt{CNA\_TEST\_DISPLAY} CMake cache variable already anticipates the
-technique, defaulting to the real desktop's \texttt{:0} but documented as overridable to a
-virtual display such as \texttt{:99} for exactly this reason.
+Screenshots credited to CNA's \texttt{SOFTWARE} renderer (Chapter~\ref{ch:graphicsdevice}) need
+no display server. \texttt{SDL\_RENDERER}, by contrast, creates an SDL3 window and submits
+\texttt{SDL\_RenderTexture} calls through an OpenGL context. The retained campaign therefore
+used \texttt{Xvfb} with Mesa's \texttt{llvmpipe}. Earlier feasibility notes had identified this
+route but left it untested; CNA's \texttt{CNA\_TEST\_DISPLAY} cache variable already permits a
+virtual display such as \texttt{:99} in place of the default \texttt{:0}.
 
 Building this renderer (\texttt{cmake -B build-sdlrenderer -DCNA\_GRAPHICS\_RENDERER=SDL\_RENDERER})
-and running a small headless demo under \texttt{xvfb-run} confirms the technique works end to
-end. The demo reuses the exact same scene as the real golden-image regression test
-\texttt{modules/renderers/easygl/examples/\allowbreak{}easygl\_spritebatch\_rotation\_golden\_test.cpp} (Task~465/417, also the basis
-of Chapter~\ref{ch:spritebatch}'s own rotate-around-origin worked example): a
+and running the screenshot demo under \texttt{xvfb-run} exercised the display and capture path.
+The demo reuses the same scene as the golden-image regression test
+\texttt{modules/renderers/easygl/examples/\allowbreak{}easygl\_spritebatch\_rotation\_golden\_test.cpp},
+also used in Chapter~\ref{ch:spritebatch}: a
 $100\times100$ \cnaclass{Texture2D} whose top-left $20\times20$ block is red and the remainder
 blue, drawn through \cnaclass{SpriteBatch} rotated $90$ degrees ($\texttt{MathHelper::PiOver2}$)
 around \texttt{origin}~$(100,100)$ --- the source's own bottom-right corner --- then captured
@@ -335,63 +331,46 @@ xvfb-run -a --server-args="-screen 0 1024x768x24" \
 
 \begin{figure}[h]
 \centering
+\begin{figurealt}{SDL Renderer screenshot of a SpriteBatch rotation fixture. A red marker rotated ninety degrees around the source bottom-right origin lands at the destination rectangle's top-right corner.}
 \includegraphics[width=0.5\textwidth]{images/ch17-spritebatch-rotation-sdlrenderer.png}
-\caption{Real, unedited output of the rotate-around-origin \cnaclass{SpriteBatch} scene,
-rendered by \texttt{SDL\_RENDERER} under a virtual \texttt{Xvfb} display, no physical GPU or
-real desktop involved. The red marker lands in the destination rectangle's top-right corner,
-exactly where a $90$-degree rotation about the source's bottom-right corner should place it.}
+\end{figurealt}
+\caption{Output of the rotate-around-origin \cnaclass{SpriteBatch} scene rendered by
+\texttt{SDL\_RENDERER} under \texttt{Xvfb}, without a physical GPU or desktop. The red marker
+lands in the destination rectangle's top-right corner, the expected result of a $90$-degree
+rotation about the source's bottom-right corner.}
 \label{fig:ch17-spritebatch-rotation}
 \end{figure}
 
-Figure~\ref{fig:ch17-spritebatch-rotation} is that real output: the rotated red marker lands
-in the destination rectangle's top-right corner, matching the same geometric derivation the
-golden test itself already relies on (Chapter~\ref{ch:spritebatch}). This closes the one
-remaining ``untested, not confirmed feasible'' item this book's own screenshot-infrastructure
-notes had left open for the two renderers needing a virtual display rather than a headless
-software rasterizer.
+The marker position matches the geometric derivation used by the golden test
+(Chapter~\ref{ch:spritebatch}). The retained artifact closes the screenshot-infrastructure
+feasibility item for a renderer that requires a virtual display.
 
-\section[Why every pixel test needs one specific presentation mode]{Why every
-pixel-verification test on this renderer needs one specific presentation mode}
+\section{Pixel readback and presentation mode}
 
-A detail silently underlies every worked example so far in this chapter, and every one of the
-Phase~70 audit's own regression tests: read the real source comment on any of them ---
-\texttt{sdlrenderer\_blendstate\_opaque\_test.cpp}, \texttt{sdlrenderer\_sample\_bouncing\_}
-\texttt{sprite\_test.cpp}, dozens more --- and each carries an identical one-line dependency,
-credited back to a single real finding:
+The pixel fixtures share one prerequisite, documented in their source comments:
 
 \begin{quote}
-\emph{Requires \texttt{PresentationMode::NativeBackBuffer} (Task~915 finding):
+\emph{Requires \texttt{PresentationMode::NativeBackBuffer}:
 \texttt{SDL\_RenderReadPixels} operates in physical output coordinates, while this renderer's
 default presentation mode (\texttt{FixedHeightDynamicWidth}) does not map logical pixels 1:1
 to physical ones.}
 \end{quote}
 
-\texttt{GetBackBufferData()} on this renderer is, underneath, a call to SDL3's own
-\texttt{SDL\_RenderReadPixels} --- and that function has no concept of CNA's own logical/virtual
-resolution scaling at all; it reads back whatever the OS-level render target's physical pixel
-grid actually contains. Chapter~\ref{ch:graphicsdevice}'s own \cnaclass{PresentationMode}
-coverage already establishes why \texttt{FixedHeightDynamicWidth} exists (letterboxing a fixed
-logical resolution into whatever physical window size is actually available) --- but that exact
-letterboxing is precisely what breaks a naive pixel readback: a logical coordinate a test
-computed against the game's own virtual resolution does not correspond to the same physical
-pixel offset once scaling and letterboxing have been applied. \texttt{NativeBackBuffer}
-sidesteps the whole problem by disabling the logical/physical distinction entirely --- the
-backbuffer's physical size \emph{is} the logical size, one to one, so a coordinate computed
-either way lands on the identical pixel. This is why every pixel-precision worked example this
-chapter has shown so far quietly works: each one was built on a test harness that already sets
-this mode, not because logical/physical scaling happens not to matter on this renderer.
+\texttt{GetBackBufferData()} delegates to \texttt{SDL\_RenderReadPixels}, which reads physical
+output coordinates. \texttt{FixedHeightDynamicWidth} may letterbox logical output, so a logical
+coordinate does not necessarily name the same physical pixel. \texttt{NativeBackBuffer} makes
+the two sizes equal. The fixtures select it explicitly; without that precondition, a plausible
+coordinate check can sample the wrong pixel.
 
-\subsection{A worked example: animated spritesheet frame selection}
+\subsection{Animated sprite-sheet frame selection}
 
-\texttt{modules/renderers/sdl-renderer/examples/\allowbreak{}sdlrenderer\_sample\_animated\_spritesheet\_test.cpp} (Task~730, sample~5 of a
-5-sample real-XNA-idiom compatibility suite --- Section~\ref{sec:phase70-audit-bugs} above
-covers Phase~70's own single-frame API checks; these five samples are deliberately
-multi-\texttt{Update()} instead) exercises a different code path than any single-frame pixel
-check: \texttt{SpriteBatch::Draw}'s \texttt{sourceRectangle} parameter, re-selected every
-\texttt{Update()} call to animate through a spritesheet, the classic 2D XNA idiom for
-walk-cycle/effect-frame animation. The sheet is deliberately tiny and deterministic --- an
+\texttt{modules/renderers/sdl-renderer/examples/\allowbreak{}sdlrenderer\_sample\_animated\_spritesheet\_test.cpp},
+the fifth entry in a five-sample compatibility suite, exercises a different route from the
+single-frame checks above. These samples use multiple \texttt{Update()} calls. The fixture covers
+the \texttt{SpriteBatch::Draw} \texttt{sourceRectangle} parameter, re-selected every
+\texttt{Update()} call to animate through a spritesheet. The deterministic sheet is an
 $8\times4$ texture, left $4\times4$ solid red (frame~0), right $4\times4$ solid green
-(frame~1) --- with a fixed per-\texttt{Update()} frame-index increment rather than real
+(frame~1), with a fixed per-\texttt{Update()} frame-index increment instead of
 elapsed-time-based timing, so the outcome never depends on wall-clock frame speed:
 
 \begin{lstlisting}
@@ -417,24 +396,20 @@ void Draw(const GameTime&) override
 \end{lstlisting}
 
 After exactly three \texttt{Update()} calls, \texttt{frameCounter\_ \% 2} evaluates to
-\texttt{1}, so the animation should have settled on the green frame. The test's own check does
-not stop at asserting that arithmetic fact in isolation --- it reads back the actual drawn
-pixel and confirms the color genuinely reaching the screen is green, not merely that the frame
-index variable computed the expected value:
+\texttt{1}, so the animation should have settled on the green frame. The test then reads the
+rendered pixel instead of checking the frame-index arithmetic alone:
 
 \begin{lstlisting}
 Color px(0, 0, 0, 0);
 Rectangle region(3, 3, 1, 1);
 dev.GetBackBufferData(&region, &px, 0, 1);
 check(px.getRProperty() <= 15 && px.getGProperty() >= 240 && px.getBProperty() <= 15,
-      "genuinely shows frame 1 (green) -- sourceRectangle selection reached the real Draw call");
+      "frame 1 (green) reached the rendered output");
 \end{lstlisting}
 
-That distinction matters precisely because of the presentation-mode dependency above: a version
-of this test built without \texttt{PresentationMode::NativeBackBuffer} could compute the
-correct frame index every time and still fail the pixel check, for a reason that has nothing to
-do with the animation logic under test at all --- the classic shape of a flaky-looking test
-whose real root cause is a setup precondition, not the feature it claims to exercise.
+Without \texttt{PresentationMode::NativeBackBuffer}, the frame index can be correct while the
+pixel check samples a scaled or letterboxed coordinate. That failure would concern fixture
+setup, not animation.
 
 \section{SKIA: a bounded contract written down before expansion}
 

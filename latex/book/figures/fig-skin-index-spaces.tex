@@ -1,0 +1,29 @@
+\begin{figure}[tbp]
+\centering
+\begin{figurealt}{Three index spaces are connected by explicit maps. Flattened selected-scene nodes become ModelBone indices. The ordinal in the glTF skin joints array is the source joint index used by JOINTS zero. BuildSkeleton topologically reorders joints and records an old-to-new map, yielding palette indices. Packed joint values are rewritten to palette indices before SkinningData and the skinned effect consume them.}
+\resizebox{0.96\textwidth}{!}{%
+\begin{tikzpicture}[node distance=10mm and 14mm]
+  \node[cna public] (scene) {selected-scene node\\index};
+  \node[cna public, below=of scene] (joint) {source-joint ordinal\\\texttt{skin.joints}/\texttt{JOINTS\_0}};
+  \node[cna internal, right=20mm of joint] (map) {topological reorder\\old $\rightarrow$ new map};
+  \node[cna public, right=of map] (palette) {palette index};
+  \node[cna internal, above=of palette] (bone) {\texttt{ModelBone} index\\from flattened scene};
+  \node[cna internal, right=of palette] (skin) {bind + inverse bind +\\animated worlds};
+  \node[cna public, right=of skin] (effect) {\texttt{SkinnedEffect} palette};
+  \node[cna internal, below=of map] (rewrite) {rewrite packed joint bytes};
+  \draw[cna flow] (scene) -- (bone);
+  \draw[cna flow] (joint) -- (map);
+  \draw[cna flow] (map) -- (palette);
+  \draw[cna flow] (joint) -- (rewrite);
+  \draw[cna flow] (map) -- (rewrite);
+  \draw[cna flow] (rewrite) -- (palette);
+  \draw[cna flow] (palette) -- (skin);
+  \draw[cna flow] (skin) -- (effect);
+  \draw[cna optional] (bone) -- node[cna label]{placement relation} (skin);
+\end{tikzpicture}}
+\end{figurealt}
+\caption{Scene-node, source-joint, and palette indices are distinct. Convenient source ordering
+can hide a missing conversion, so the importer records and tests the maps explicitly.}
+\label{fig:skin-index-spaces}
+\end{figure}
+

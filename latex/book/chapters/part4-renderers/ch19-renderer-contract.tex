@@ -2,2259 +2,553 @@
 \label{ch:renderer-contract}
 \label{ch:backend-architecture}
 
-Every renderer chapter that follows implements the same contract. This chapter covers that
-contract once --- the interfaces, the shared parameter struct, and the build-time selection
-mechanism --- so the renderer-specific chapters ahead can spend their time on what
-actually differs, not on repeating the shape they all share.
+Every renderer family implements the same internal C\texttt{++} contract, but the contract is
+deliberately permissive. Some methods are pure virtual; others return null, throw, forward to a
+reduced operation, or do nothing. Consequently, reaching an interface method is not evidence
+that the selected family performed the requested work. This chapter defines that shared boundary.
+Chapters~\ref{ch:renderer-selection-identity}--\ref{ch:diagnostic-renderers} own family-specific
+mechanisms and results; Appendix~\ref{ch:feature-matrix} owns the complete family inventory.
 
-\begin{sourcenote}
-\textbf{Edition scope.} Interface names, paths, selection rules, and the registry discussion in
-this chapter describe the pinned current source. Several operation-level matrices below preserve
-an earlier executed audit cohort rather than pretending that unaudited new families have the
-same evidence. Their \texttt{ASCII} rows are explicitly historical: ASCII is no longer a public
-renderer identity. An omitted current renderer means ``not measured by this inherited matrix,''
-not ``unsupported.''
-\end{sourcenote}
+\begin{evidencenote}
+Interface declarations, factory routes, and shared public forwarding are source-proven at
+\CnaRevisionShort. Several cross-family observations below come from a retained fourteen-product
+audit. Those rows are historically recorded where they were not rerun for this edition. The
+removed \texttt{ASCII} identity appears only when its historical result explains the current
+\cnaclass{AsciiPostProcessEffect}; omission of a newer family means ``not measured by that
+cohort,'' not ``unsupported.''
+\end{evidencenote}
 
-\section{One header, not several}
+\section{Contract shape and default behavior}
 
-Despite \cnaclass{IGraphicsRenderer} being described throughout this book as ``the renderer
-contract layer,'' it is worth being precise: the entire contract lives in a single header,
-\texttt{modules/graphics/include/\allowbreak{}CNA/\allowbreak{}Internal/\allowbreak{}Renderers/\allowbreak{}Common/\allowbreak{}IGraphicsRenderer.hpp} --- more than two thousand
-lines, not a family of separate \texttt{ISpriteBatchRenderer.hpp} / \texttt{ITextureRenderer.hpp}
-files. Eleven interface classes live inside it, all in
-\texttt{namespace CNA::Internal::Renderers}:
+The contract is one header:
+\path{modules/graphics/include/CNA/Internal/Renderers/Common/IGraphicsRenderer.hpp}.
+Eleven interfaces divide resource operations from device-wide dispatch:
 
 \begin{center}
-\begin{tabular}{ll}
+\small
+\begin{tabular}{@{}p{0.32\textwidth}p{0.60\textwidth}@{}}
 \toprule
-\textbf{Interface} & \textbf{Owns} \\
+\textbf{Interface} & \textbf{Responsibility} \\
 \midrule
-\texttt{IVertexBufferRenderer} & Vertex data upload, streaming hints, declaration \\
-\texttt{IIndexBufferRenderer} & 16/32-bit index data upload \\
-\texttt{IOcclusionQueryRenderer} & Begin/End/IsComplete/PixelCount \\
-\texttt{ITextureCubeRenderer} & Per-face texture data \\
-\texttt{ITexture3DRenderer} & Per-slice volume texture data \\
-\texttt{ITextureRenderer} & 2D texture data, GL interop, CPU shadow \\
-\texttt{IRenderTargetRenderer} & Extends \texttt{ITextureRenderer}: bind/unbind as target \\
-\texttt{IRenderTargetCubeRenderer} & Extends \texttt{ITextureCubeRenderer}: per-face target binding \\
-\texttt{IEffectRenderer} & Shader program compile/bind, uniform/texture setters \\
-\texttt{ISpriteBatchRenderer} & Begin/End, transform, three \texttt{Draw} overloads \\
-\texttt{IGraphicsRenderer} & Everything else --- see below \\
+\texttt{IVertexBufferRenderer} & vertex upload, update hints, and declaration \\
+\texttt{IIndexBufferRenderer} & 16- and 32-bit index upload \\
+\texttt{ITextureRenderer} & 2D texture data, interop, and optional CPU-shadow behavior \\
+\texttt{ITexture3DRenderer} / \texttt{ITextureCubeRenderer} & volume and cube storage \\
+\texttt{IRenderTargetRenderer} / \texttt{IRenderTargetCubeRenderer} & target binding, applied MSAA, and attachment reporting \\
+\texttt{IEffectRenderer} & renderer-specific program compilation, binding, uniforms, and textures \\
+\texttt{IOcclusionQueryRenderer} & query begin/end/completion/sample count \\
+\texttt{ISpriteBatchRenderer} & batch state and the three renderer draw forms \\
+\texttt{IGraphicsRenderer} & device lifecycle, factories, state, targets, draws, presentation, readback, and capability queries \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-\cnaclass{IGraphicsRenderer} itself is the large one: device lifecycle
-(\texttt{Clear} / \texttt{Present}/viewport and presentation-mode management), native handle
-access (\texttt{GetWindowInternal()} / \texttt{GetRendererInternal()} --- both pure virtual,
-and both carry a comment flagging the \texttt{SDL\_Window*} / \texttt{SDL\_Renderer*} return
-types as ``should be abstracted later''), resource factories for every GPU object type in
-Part~\ref{part:graphics-machine}, render-target binding, per-state-object apply methods, the full 3D draw dispatch
-(\texttt{DrawColoredPrimitives}, the effect-aware \texttt{DrawPrimitivesEx} family, instanced
-draws), and a capability-query mechanism (\S\ref{sec:graphicscapability} below). A single,
-project-wide design choice worth internalizing before reading any renderer chapter: nearly
-every optional method on this interface \textbf{defaults to a safe no-op or a null return}
-rather than requiring every renderer to implement everything. \texttt{CreateEffectRenderer()}
-defaults to \texttt{nullptr} (``renderers that do not support programmable shaders'');
-\texttt{CreateOcclusionQuery()} defaults to \texttt{nullptr}; every state-application method
-defaults to doing nothing at all. This is a deliberate ``graceful capability degradation''
-design, and every renderer chapter's own ``degrades/gap/blocked'' distinctions in
-Part~\ref{part:renderers} rest on it: a feature
-that silently degrades to a no-op reads differently in an audit than one that throws, even
-though both mean ``not implemented here.''
+The default bodies form five distinct contracts:
 
-\subsection{Resource ownership is separate from device tracking}
+\begin{center}
+\small
+\begin{tabular}{@{}p{0.18\textwidth}p{0.31\textwidth}p{0.42\textwidth}@{}}
+\toprule
+\textbf{Default} & \textbf{Representative routes} & \textbf{Caller-visible consequence} \\
+\midrule
+Pure virtual & required 2D texture, SpriteBatch, vertex-buffer, and index-buffer factories & A family must implement the route to compile. \\
+Null factory & volume/cube textures, render targets, effects, and occlusion queries & Public construction may still produce an object with no private implementation. \\
+No-op & state setters, SpriteBatch options, several uniform setters & Stored public state or a successful call may have no native effect. \\
+Reduced fallback & effect-aware draws may call a colored draw & Work can complete after effect parameters were discarded. \\
+Throw/refusal & backbuffer readback, instancing, selected upload paths & Failure is explicit, although exception type and timing vary. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{contractnote}
+Treat every optional method as an independent capability. A non-null renderer object, a true
+capability answer, and one successful draw establish different facts. Appendix~\ref{ch:verification-tiers}
+defines the evidence labels used to keep those facts separate.
+\end{contractnote}
+
+\subsection{Resource ownership and device tracking}
 \label{sec:backend-resource-tracking}
 
-The factory return types answer only one half of the lifetime question. A concrete public
-resource owns its renderer handle --- normally through a \texttt{unique\_ptr}, while
-\cnaclass{Texture2D} deliberately uses a \texttt{shared\_ptr} --- but
-\cnaclass{GraphicsDevice} owns neither. Its \texttt{resources\_} member is only a raw,
-non-owning vector of \cnaclass{GraphicsResource} addresses. The normal constructor path adds
-\texttt{this} to that vector and raises \texttt{ResourceCreated}; a normal disposal removes it
-after the derived class has released its renderer handle. This split is why renderer factories can
-return independent resource objects without creating a reference cycle with the device.
+A public \cnaclass{GraphicsResource} owns its renderer handle, normally through
+\texttt{unique\_ptr}; \cnaclass{Texture2D} uses \texttt{shared\_ptr}. The device owns neither.
+It records raw \cnaclass{GraphicsResource} addresses so it can dispose registered resources
+before destroying the renderer. \texttt{GraphicsDevice::Dispose()} moves and clears that list,
+calls each resource's virtual \texttt{Dispose()}, raises \texttt{Disposing}, and then releases
+the renderer. Re-entrant deregistration therefore does not invalidate the iteration.
 
-The shutdown order is intentionally strong for that normal path. \cnaclass{GraphicsDevice}\texttt{::Dispose()}
-moves the raw list into a local vector, clears the registered list before iteration, calls each
-resource's virtual public \texttt{Dispose()}, raises the device's \texttt{Disposing} event, and
-only then destroys the renderer/context. Re-entrant removal is therefore harmless, and a normal
-texture, buffer, query, sprite batch, effect, or render target releases its GL/D3D/Vulkan/SDL
-object while its owning renderer still exists. A resource's own \texttt{Disposing} event is
-suppressed on its C++ destructor path, but \texttt{GraphicsResource::Dispose(bool)} still calls
-the device's \texttt{ResourceDestroyed} hook regardless of that Boolean; only explicit versus
-destructor notification differs. Once the device has disposed a normally registered object,
-its \texttt{isDisposed} guard also prevents the later resource destructor from following its
-now-dangling device pointer.
+The registry follows object addresses, not renderer-handle ownership. The
+\cnaclass{GraphicsResource} copy and default move constructors carry the device pointer without
+registering the destination or replacing the source address. A \cnaclass{Texture2D} copy has its
+own disposed flag and shares the private handle; moving buffers, textures, or render targets can
+leave the device tracking the moved-from value. If a surviving untracked object outlives device
+disposal, its renderer resource may be released after the native context.
 
-That guarantee is address-based, not ownership-based, and it has a consequential C++ boundary.
-\cnaclass{GraphicsResource}'s copy constructor and defaulted move constructor copy the device
-pointer but do \emph{not} replace the original raw-list entry with the destination address or
-register a new one. \cnaclass{Texture2D} makes this directly observable: it is copyable, its
-copies have independent \texttt{IsDisposed} flags but share the same renderer
-\texttt{shared\_ptr}, and a copy raises neither \texttt{ResourceCreated} nor the tracked-resource
-count. Moving \cnaclass{VertexBuffer}, \cnaclass{IndexBuffer}, \cnaclass{Texture2D},
-\cnaclass{Texture3D}, \cnaclass{TextureCube}, or a movable render target transfers the handle
-but leaves the device tracking the moved-from address. The existing move example proves only
-that immediate ownership transfer avoids a double free; it does not prove device-first teardown.
+\begin{limitationnote}
+Keep live graphics resources address-stable and device-scoped. Prefer non-relocating ownership,
+do not move them across devices, and dispose every \cnaclass{Texture2D} alias before the device.
+The pin has no located test for copy/move followed by device-first teardown. The sibling
+\path{docs/graphics-resource-lifetime.md} is stale where it says destructor cleanup suppresses
+\texttt{ResourceDestroyed}; the current implementation still calls that device hook.
+\end{limitationnote}
 
-This makes a seemingly ordinary scope pattern non-portable in CNA:
+Chapter~\ref{ch:graphicsdevice}, \S\ref{sec:resource-lifetime}, covers event ordering and the
+remaining constructor/destructor gaps. Figure~\ref{fig:resource-lifetime} summarizes the
+ownership relation.
 
-\begin{lstlisting}
-Texture2D original(device, 64, 64);
-Texture2D alias = original;              // shared GPU renderer, alias untracked
-Texture2D relocated(std::move(original)); // renderer moved, old address still tracked
-// Letting either surviving value outlive device.Dispose() is unsafe.
-\end{lstlisting}
-
-If the device disposes first, it sees only the original address. For the copy case that merely
-releases one \texttt{shared\_ptr} reference; for the move case it resets the moved-from null
-handle. In both cases a surviving, untracked value can retain a renderer object past destruction
-of its native context and later destroy it too late. Same-device move assignment is less severe
-only because the pre-existing destination was already registered; cross-device assignment has
-no coherent tracking transfer at all. The public test examples deliberately use stable
-\texttt{unique\_ptr} storage or reserve capacity, and no located test copies/moves a live
-resource, disposes its device first, checks event/count accounting, or then destroys the
-surviving value.
-
-Treat GPU resources as address-stable, device-scoped objects: prefer
-\texttt{std::unique\_ptr<T>} (or another non-relocating owner), do not put live movable resources
-in a reallocating value container, avoid \cnaclass{Texture2D} value copies unless every alias is
-explicitly disposed before the device, and never move-assign a resource across devices. FNA's
-managed resource references do not expose this C++ relocation failure mode. CNA's sibling
-\path{docs/graphics-resource-lifetime.md} records the move caveat, but its statement that a
-destructor suppresses \texttt{ResourceDestroyed} is stale against the current common
-implementation; the source and this chapter's rule above are authoritative.
-
-\subsection{A null factory result is not one uniform ``unsupported'' outcome}
+\subsection{Null factories and delayed failure}
 \label{sec:backend-null-factory-outcomes}
 
-The common interface intentionally makes several factories optional. Its inherited defaults
-return a null \texttt{unique\_ptr} for an occlusion query, volume texture, cube texture,
-2D render target, cube render target, or programmable effect. That return is a renderer-side
-capability signal, not a public exception policy. The required 2D texture, SpriteBatch, vertex
-buffer, and 16-bit index-buffer factories are pure virtual instead; Chapter~\ref{ch:shader-fx-gap}
-covers the separate optional-effect result. The remaining five factory results travel through
-three materially different public paths:
+Null factory results do not share one public failure policy:
 
 \begin{center}
 \small
-\begin{tabular}{p{0.21\textwidth}p{0.31\textwidth}p{0.39\textwidth}}
+\begin{tabular}{@{}p{0.22\textwidth}p{0.31\textwidth}p{0.38\textwidth}@{}}
 \toprule
-\textbf{Factory result} & \textbf{Public construction result} & \textbf{First observable use} \\
+\textbf{Private result} & \textbf{Public result} & \textbf{First use at the pin} \\
 \midrule
-Occlusion query & A real \cnaclass{OcclusionQuery} with a null private handle. & \texttt{Begin()} and \texttt{End()} do nothing; \texttt{IsComplete} is false and \texttt{PixelCount} is zero. \\
-\addlinespace
-Volume or cube texture & A real \cnaclass{Texture3D} or \cnaclass{TextureCube}, with validated dimensions, format, and mip count but no native handle. & Valid \texttt{SetData} returns after its argument checks without storing data. \texttt{GetData} returns without writing the caller's buffer. \\
-\addlinespace
-2D or cube render target & A real \cnaclass{RenderTarget2D} or \cnaclass{RenderTargetCube} whose cached target-renderer pointer is null. & \cnaclass{GraphicsDevice} forwards null to the renderer bind hook but still records the target as bound and resets its viewport/scissor to the target's public dimensions. \\
+Null occlusion query & Constructed \cnaclass{OcclusionQuery} & Begin/end do nothing; completion is false and count is zero. \\
+Null volume/cube texture & Policy depends on the public wrapper & An honest \texttt{Texture3D} capability answer rejects construction; an optimistic answer can still produce a null object. Cube and volume transfers now throw instead of fabricating or discarding content. \\
+Null 2D/cube target & Constructed target with no cached target renderer & Sampling and transfer operations reject missing storage; target binding throws before public binding state changes. \\
+Null effect & Renderer-dependent public failure & Chapter~\ref{ch:shader-fx-gap} distinguishes null, invalid, throwing, and working routes. \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-This is not merely theoretical inheritance. The Software renderer deliberately inherits the
-null defaults for volume textures, cube render targets, and hardware queries; Canvas leaves
-the corresponding 3D-only surface on the common defaults; and D3D9 can return null at runtime
-when its actual device lacks cube-map, volume-texture, or occlusion-query support. SDL\_RENDERER
-documents the historical problem especially plainly: its 3D texture constructors succeed with
-no real renderer. It later chose a different policy for queries by overriding the factory to
-throw its usual ``no 3D'' exception. Thus even a factory's \texttt{nullptr} convention does not
-predict construction behaviour for every renderer.
+Software supplies 2D targets and cube-texture storage but still inherits the null factories for
+volume textures, cube targets, and occlusion queries; several 2D families inherit a wider subset.
+D3D9 can also return null according to device capabilities. A cube or volume texture passed to
+\cnaclass{ShaderEffect} remains a sharp edge because its CNAEXT renderer accessor assumes that the
+private owner exists. Construction alone therefore does not establish usable storage. No
+individual capability value covers every texture and target factory.
 
-The texture case is dangerous. Both classes have the CNAEXT
-\texttt{GetRenderer\allowbreak()} reference accessor, which unconditionally dereferences that possibly-null
-owner. A custom \cnaclass{ShaderEffect}'s cube/volume \texttt{SetTexture()} overload calls exactly
-that accessor before invoking its effect renderer, so a successfully constructed unsupported
-texture reaches C++ null-reference undefined behaviour rather than a capability exception. The
-ordinary \texttt{Texture\allowbreak Collection} accepts it as well because it rejects disposed textures,
-not textures without a renderer. Render-target binding has the opposite mismatch: it retains a
-coherent-looking public binding/viewport state even though the native target pointer handed to
-the renderer is null. These are worse failure modes than an explicit unsupported-operation error
-because they make the constructor's success look like evidence of usable storage.
+The framework needs one consistent source-level policy---early
+\cnaclass{NotSupportedException}, or explicit nullable availability plus guards throughout.
+This book records the current behavior and does not choose or implement that policy.
 
-\cnaclass{GraphicsCapability} does not close this gap. \texttt{ThreeD} is deliberately a broad
-pipeline flag, \texttt{OcclusionQuery} is the only one of these operations with a dedicated
-value, and neither Texture3D, TextureCube, nor either single render-target factory has an
-individual query. A 3D-capable D3D9 device may therefore report the inherited broad capability
-while its hardware-specific cube or volume factory returns null. Existing unit tests exercise
-normal device construction and argument guards; the old combined texture/render-target test
-checks only enum ordinals, and no located test injects a null optional factory, observes the
-unchanged read buffer, checks the device's binding state, or attempts the ShaderEffect route.
-
-This requires a source-repository compatibility decision, not a documentation-only patch:
-either turn a null factory result into a well-defined, early \texttt{NotSupportedException}
-for the public constructors, or retain constructible null objects but expose an explicit
-availability contract and guard every accessor/binding path. The choice affects observable
-failure timing and must be made consistently with the intentional OcclusionQuery fallback.
-Until then, treat construction as insufficient evidence of support, preflight the coarse
-capability where it is meaningful, and keep unsupported cube/volume textures out of custom
-effect bindings.
-
-\subsection{Native window handles are borrowed; renderers remain a renderer escape hatch}
+\subsection{Borrowed native handles}
 \label{sec:backend-native-handle-boundary}
 
-The two native-handle methods in \cnaclass{IGraphicsRenderer} are pure virtual because the
-common \cnaclass{Game} construction path needs a window even though the renderers construct it
-in different ways. Their nearby source comment still says that the SDL dependency ``should be
-abstracted later.'' In the ordinary path, \cnaclass{Game} takes
-\texttt{GetWindowInternal()} from its already-created \cnaclass{GraphicsDevice} and installs the
-same raw address in its \cnaclass{GameWindow}. The XNA-shaped \texttt{Handle} property exposes
-that address as an integer, while the explicitly CNAEXT
-\texttt{GetNativeSdlWindowEXT()} returns it as \texttt{SDL\_Window*}. Neither accessor transfers
-ownership: \cnaclass{GameWindow}'s destructor is defaulted, its constructor taking an
-\texttt{SDL\_Window*} merely stores the pointer, and it never calls \texttt{SDL\_DestroyWindow}.
-The public extension is therefore a borrowed inspection/control escape hatch for calls such as
-\cnaclass{CNA::Devices::DisplayInfo}, not a license to destroy CNA's window.
-
-The two raw return types have intentionally different availability. A regular windowed renderer
-returns its current \texttt{SDL\_Window*}; \texttt{HEADLESS} and \texttt{SOFTWARE} always return
-null, and the D3D12 \texttt{HeadlessEXT} path does too. Only \texttt{SDL\_RENDERER} returns an
-\texttt{SDL\_Renderer*} of its own. The former \texttt{ASCII} renderer forwarded the renderer
-owned by its inner SDL renderer. Every other renderer returns null, including \texttt{FREEDIRECT}: free-direct
-creates a private SDL renderer lazily for presentation but deliberately never gives it to CNA.
-The device's direct renderer accessor is private, but its CNAEXT \texttt{GetRenderer()} extension
-makes the internal route available to code that includes internal headers. It is not a stable,
-portable renderer API: null is normal, and any non-null pointer belongs to the current renderer
-and expires when that renderer is recreated or disposed. There is deliberately no matching
-\cnaclass{GameWindow} renderer extension.
-
-These distinctions make the safe public use pattern small but strict. Inside a scope holding a
-\texttt{Game\& game} (with \texttt{<SDL3/SDL.h>} included), use:
-
-\begin{lstlisting}
-auto& window = game.getWindowProperty();
-if (SDL_Window* native = window.GetNativeSdlWindowEXT(); native != nullptr) {
-    // Borrowed only: inspect/configure it with SDL; never SDL_DestroyWindow(native).
-#if defined(CNA_DEVICES)
-    const float scale = CNA::Devices::DisplayInfo::getContentScaleProperty(window);
-    (void) scale;
-#endif
-}
-\end{lstlisting}
-
-This is adapted from the real \texttt{DisplayInfo} call shape, rather than promising that every
-renderer has a window. It also has a device-lifetime precondition which the return type cannot
-express. When a device owns the window it resets its renderer first and then destroys that SDL
-window during \texttt{Dispose()}; it does not notify the separate \cnaclass{GameWindow} raw
-field. Normal \cnaclass{Game} member destruction is ordered safely because \cnaclass{GameWindow}
-dies before the device and has no native destructor work. Explicitly disposing a game-owned
-device while retaining and using \texttt{Game::Window}, however, leaves that wrapper pointing at
-a destroyed SDL object. No located test performs that sequence. Do not cache or use either raw
-pointer across device disposal; code needing a long-lived independent window must retain and
-manage its own SDL ownership instead.
-
-\texttt{PresentationParameters::DeviceWindowHandle}%
-\index{PresentationParameters::DeviceWindowHandle@PresentationParameters::\allowbreak{}DeviceWindowHandle}
-is the inverse integration route, but it
-is still a borrow. A nonzero integer is blindly reinterpreted as \texttt{SDL\_Window*}; CNA sets
-\texttt{ownsWindow\_} false, performs no validity check, and never destroys it. The embedding
-host must keep the real SDL window alive through renderer teardown. This branch returns before
-the normal creator path publishes the window into \cnaclass{Input::TextInputEXT} and
-\cnaclass{Input::Mouse}; it also does not clear either global static handle during teardown.
-An embedding application that needs text input, cursor warps, or relative mouse mode on its
-attached window must set and later clear those two input-handle properties itself, without
-clobbering another live device's selection. FNA's usual game path avoids this ambiguity because
-it creates its game window before its graphics device and publishes its window to the input
-subsystems there.
-
-Existing \cnaclass{GameWindow} tests prove that a wrapper can mutate a caller-created SDL window
-and that a null wrapper is safe, while renderer smoke examples only inspect internal handles.
-They do not construct a device around a live external window, check that device disposal leaves
-it intact, check input-handle publication/clearing, or exercise \cnaclass{GameWindow} after
-explicit device disposal. A source-repository decision is needed before repairing the latter two
-boundaries: should an attached device claim the process-wide input target, and should device
-disposal explicitly invalidate its \cnaclass{GameWindow} view? Those choices affect multi-window
-embedding and observable post-disposal behaviour, so they are \texttt{needs\_human} outside this
-book-only checkout.
-
-\subsection{ISpriteBatchRenderer, and where Chapter~\ref{ch:spritebatch}'s transform bug actually lived}
-
-Only five of \cnaclass{ISpriteBatchRenderer}'s nine methods are pure virtual ---
-\texttt{Begin()}, \texttt{End()}, and the three \texttt{Draw} overloads
-(\texttt{float x, float y}; destination-plus-source-rectangle; and a fully-parameterized
-rotation/origin/effects/depth form). \texttt{SetTransformMatrix}, \texttt{SetCustomEffect},
-\texttt{SetSamplerFilter}, and \texttt{SetSamplerAddressMode} all default to a plain, silent
-no-op body in the interface itself. This is the exact mechanism behind
-Chapter~\ref{ch:spritebatch}'s own worst SDL\_RENDERER finding: a renderer that simply never
-overrides \texttt{SetTransformMatrix} is not violating the interface contract in any way a
-compiler could catch --- it is using the interface exactly as designed, ``graceful capability
-degradation'' silently reached its most literal form, a \texttt{Begin(transformMatrix)} call
-whose matrix argument reaches the renderer and is discarded with zero indication anything was
-skipped. Reading this interface's own defaults is why that bug reads as an architecturally
-expected failure mode, not a surprising one, and it also names a real, genuine gap in the
-capability-query mechanism covered next: \cnaclass{GraphicsCapability} (below) has no value at
-all for ``does this renderer actually honor a \cnaclass{SpriteBatch} transform matrix,'' so a
-caller has no way to \emph{ask} before hitting this specific silent no-op --- unlike the eight
-capabilities that mechanism does cover.
-
-\subsection{Window/logical input transforms: three dispatch tiers}
-\label{sec:backend-input-coordinate-matrix}
-
-\cnaclass{IGraphicsRenderer}'s two coordinate hooks both default to returning
-\texttt{false}. The read hook is
-\texttt{TransformWindow\allowbreak ToLogical()}; its inverse is
-\texttt{TransformLogical\allowbreak ToWindow()}. That sounds like one ordinary
-unsupported-feature sentinel, but the public callers place two routes ahead of it:
-
-\begin{enumerate}
-\item if the window has an associated SDL renderer, mouse and touch use SDL's renderer
-  coordinate-conversion API;
-\item otherwise they consult \cnaclass{IGraphicsRenderer}'s static window-to-renderer registry
-  and call the corresponding virtual hook;
-\item if neither route succeeds, the original coordinates pass through unchanged.
-\end{enumerate}
-
-The read direction is shared by absolute mouse motion, mouse-button positions, and touch
-coordinates. The inverse is used by \cnaclass{Mouse::SetPosition()} before the OS cursor is
-warped. This makes both the override matrix and the dispatch tier load-bearing: an excellent
-transform that the renderer never registers may still be dead, while a renderer with no
-override may be correct because an SDL renderer wins first.
-
-\begingroup
-\small
-\setlength{\tabcolsep}{3.5pt}
-\renewcommand{\arraystretch}{1.15}
-\begin{longtable}{@{}p{0.14\textwidth}p{0.24\textwidth}p{0.31\textwidth}p{0.23\textwidth}@{}}
-\toprule
-\textbf{Renderer} & \textbf{Public route} & \textbf{Actual coordinate contract} &
-  \textbf{Located evidence} \\
-\midrule
-\endfirsthead
-\toprule
-\textbf{Renderer} & \textbf{Public route} & \textbf{Actual coordinate contract} &
-  \textbf{Located evidence} \\
-\midrule
-\endhead
-\texttt{SDL\_\allowbreak RENDERER}, \texttt{ASCII}
-  & Associated SDL renderer, not a renderer override.
-  & SDL implements all five presentation modes, including scale and letterbox offset.
-  & Public read-side event test and direct write-side conversion tests. ASCII's own immediate
-    set/get check is weaker for the reason below. \\
-\texttt{EasyGL}
-  & Registered renderer override.
-  & Offset-free height scaling is exact for \texttt{FixedHeightDynamicWidth}; the other stored
-    modes do not have matching transform/output implementations.
-  & Source only; no dedicated coordinate test was found. \\
-\texttt{CANVAS}
-  & Registered renderer override.
-  & Same height-only contract as EasyGL.
-  & Its unit test explicitly excludes the window-dependent transform methods. \\
-\texttt{WEBGPU}, \texttt{SDL\_GPU}
-  & Registered renderer override.
-  & Shared five-mode math uses physical pixels, while SDL events and cursor warps use window
-    coordinates; high pixel density therefore introduces a scale error. A letterbox-bar read
-    also returns \texttt{false}, making the caller substitute raw window coordinates.
-  & Source only; no dedicated coordinate test was found. \\
-\texttt{FREEDIRECT}
-  & The SDL renderer created inside \repolink{free-direct} wins before FREEDIRECT's overrides.
-  & Hardcoded letterbox mapping becomes active lazily on the first \texttt{Present()}; before
-    that, public input passes through. The direct overrides are shadowed during normal use.
-  & Four-property test proves the shadowed helper math, not public input routing. \\
-\texttt{VULKAN}
-  & Inherited \texttt{false}; raw pass-through.
-  & SpriteBatch projects the virtual size across the physical swapchain, so a resized or
-    otherwise non-1:1 window makes absolute input disagree with rendered coordinates.
-  & Source only; no dedicated coordinate test was found. \\
-\texttt{BGFX}
-  & Inherited \texttt{false}; raw pass-through.
-  & The renderer explicitly ignores virtual resolution and uses a physical viewport, so
-    pass-through agrees with that separate presentation limitation.
-  & Source only. \\
-\texttt{D3D9}, \texttt{D3D11}, \texttt{D3D12}
-  & Inherited \texttt{false}; raw pass-through.
-  & Presentation-mode scaling is stored or a no-op and rendering remains physical, so the
-    fallback is internally consistent but does not implement the requested presentation mode.
-  & Source only; no dedicated input-coordinate test was found. \\
-\texttt{SOFTWARE}, \texttt{HEADLESS}
-  & Inherited \texttt{false}; no normal window route exists.
-  & Logical pixels are internal buffers only; there is no OS cursor or SDL window to map.
-  & Source-proven by both null window accessors. \\
-\bottomrule
-\end{longtable}
-\endgroup
-
-The WebGPU/SDL GPU density distinction is not inferred from names alone. SDL's own
-\texttt{SDL\_video.h} says \texttt{SDL\_GetWindow\allowbreak Size()} returns
-window-coordinate size and
-\texttt{SDL\_GetWindow\allowbreak SizeInPixels()} returns the drawable pixel size; its
-renderer conversion API explicitly accepts and returns window coordinates. Both renderers
-build \texttt{ComputeLogical\allowbreak Viewport()} from the latter physical size, then feed
-the result directly to/from mouse-event and warp coordinates from the former space.
-
-Two test boundaries prevent false confidence. \cnaclass{Mouse::SetPosition()} first writes the
-requested logical point straight into \texttt{InputManager}, then attempts the physical warp.
-An immediate \texttt{SetPosition}/\texttt{GetState} round trip therefore passes even if
-coordinate conversion and the warp are both wrong; the ASCII integration test has exactly
-this shape. The FREEDIRECT test instead calls both renderer methods directly, bypassing the
-SDL-renderer-first dispatch which shadows them. The strongest existing public evidence is the
-SDL read-side test: it injects a physical motion event into a $200\times200$ window with a
-$100\times100$ logical presentation and observes logical $(50,50)$.
-
-FNA avoids a renderer registry entirely. Its \cnaclass{Mouse::GetState()} multiplies each
-window coordinate by the independent backbuffer/window dimension ratio; \texttt{SetPosition}
-uses the inverse ratios. CNA's richer five-mode presentation model needs offsets and
-mode-specific viewport math that FNA's simple faux-backbuffer scale does not represent, but
-the table shows that this additional mechanism is not yet uniform or uniformly tested.
-
-\subsection{The static window registry is a raw, single-slot routing table}
-\label{sec:backend-window-registry-lifetime}
-
-The second dispatch tier above is not a property of an SDL window or a
-\cnaclass{GraphicsDevice}.  It is one process-wide, function-local-static
-\texttt{unordered\_map<SDL\_Window*, IGraphicsRenderer*>}.  Registration assigns
-\texttt{map[window] = renderer}; lookup returns the stored raw pointer or null; unregistration
-erases by window pointer alone.  There is no ownership token, weak lifetime check, duplicate
-registration check, or lock.  Thus the map is deliberately a convenience route for the two
-virtual transforms, not a native-object or device-ownership registry.
-
-Both directions dereference its result.  After the SDL-renderer-first attempt fails or finds no
-renderer, \texttt{SdlInputBridge} gets the pointer and calls
-\texttt{TransformWindowToLogical()} for mouse motion, button positions, and touch coordinates.
-\cnaclass{Mouse::SetPosition()} makes the symmetric lookup before calling
-\texttt{TransformLogicalToWindow()} and warping the cursor.  The renderer-first branch normally
-keeps SDL\_RENDERER and ASCII out of this map, but it does not make a stale entry safe: the
-fallback immediately performs a virtual call through whatever pointer the map returns.
-
-Only four current source renderers register: EasyGL, Canvas, SDL GPU, and WebGPU.  Their timing
-is materially different:
+\texttt{GetWindowInternal()} and \texttt{GetRendererInternal()} are pure virtual because the
+shared game path needs a window, even though not every family has one. The returned pointers are
+borrowed:
 
 \begin{itemize}
-\item EasyGL registers immediately after its non-null-window check, \emph{before} creating the
-  GL context, initializing the EasyGL device, registering GL resources, or allocating optional
-  MSAA buffers.  If any later constructor step throws, C\texttt{++} destroys constructed members
-  but does not invoke the incomplete \texttt{EasyGLRenderer} destructor.  Its
-  unregistration therefore never runs, leaving a map entry whose renderer pointer is dangling.
-  This compounds Chapter~\ref{ch:graphicsdevice}'s already-recorded lack of a \cnaclass{GraphicsDevice} construction
-  rollback: a later input event for that window can reach a virtual call through the stale
-  pointer rather than merely observing a failed device construction.
-\item Canvas registers after its null check and has no later constructor work.  SDL GPU registers
-  only after its GPU resources, output-size query, and presentation state have been established.
-  WebGPU registers at the end of its guarded initialization block, after creating/configuring its
-  surface and adapter/device; its catch path cleans the earlier native state.  These three orders
-  avoid EasyGL's particular ``register, then perform risky setup'' interval, but all use the
-  same raw map and unconditional destructor erase.
+  \item ordinary windowed families return their current \texttt{SDL\_Window*};
+  \item \texttt{HEADLESS}, \texttt{SOFTWARE}, and D3D12 \texttt{HeadlessEXT} return null;
+  \item only \texttt{SDL\_RENDERER} returns its own \texttt{SDL\_Renderer*}; other families
+        normally return null for that method;
+  \item \cnaclass{GameWindow::GetNativeSdlWindowEXT()} and the integer-shaped XNA
+        \texttt{Handle} property expose the same window without transferring ownership.
 \end{itemize}
 
-The usual test-only multisample replacement is serial rather than overlapping: it resets the old
-renderer, whose destructor erases its entry, then constructs the replacement for the same window.
-It therefore has a temporary no-mapping interval and does not itself produce two map values.  A
-failed replacement still leaves no usable renderer; an EasyGL failure can additionally retain the
-early stale value described above.
+Do not call \texttt{SDL\_DestroyWindow} on either result or cache it across device disposal.
+Explicitly disposing the game-owned device does not invalidate the separate
+\cnaclass{GameWindow} wrapper, so later use of that wrapper can reach a destroyed SDL object.
 
-The public attached-window path makes the single-slot rule observable even without reaching into
-the internal header.  Nothing prevents two devices from being given the same borrowed
-\texttt{PresentationParameters::DeviceWindowHandle}.  If both selected renderers register, the
-later assignment silently replaces the earlier pointer.  When the earlier renderer is destroyed,
-its pointer-blind erase removes the later renderer's mapping too.  The survivor then falls back to
-raw coordinates rather than its transform.  Reuse of an SDL-window address after destruction has
-the analogous key-identity hazard.  The map also has no synchronization, so input processing on
-one thread concurrent with renderer creation or destruction on another would read and mutate an
-\texttt{unordered\_map} without a stated thread-affinity or locking contract.  The ordinary game
-loop may happen to serialize those operations, but the implementation itself does not enforce it.
+\texttt{PresentationParameters::DeviceWindowHandle} is the inverse borrowed route. A nonzero
+value is reinterpreted as \texttt{SDL\_Window*}; CNA does not validate or destroy it. The pinned
+implementation publishes an attached window to the global mouse and text-input services and, at
+teardown, clears either handle only if it still names that window. An embedding host must keep the
+window alive through renderer teardown. The global slots still have last-writer semantics, so two
+live devices can replace one another's input target; the located tests do not cover that
+multi-device lifecycle.
 
-The current tests do not exercise these lifetime rules.  Canvas tests construct a renderer with a
-non-null fake pointer specifically because its constructor only registers it, but never query the
-map or exercise a transform.  The direct SDL-renderer and FREEDIRECT helper tests summarized above also
-bypass registry lookup.  No located test covers duplicate attached devices, owner-aware
-unregistration, constructor failure after registration, address reuse, or concurrent lookup.
-FNA's ratio-based mouse path has no comparable renderer-pointer registry, even though its simpler
-coordinate model cannot represent CNA's offsets and presentation modes.
+\section{Presentation and input are family contracts}
 
-\paragraph{Source-repository follow-up (needs human decision).}
-This requires an explicit ownership/concurrency policy in CNA, not a documentation-only
-workaround: register only after fallible construction or use an RAII registration guard; erase
-only when the entry still belongs to the departing renderer; and either reject a second device for
-one SDL window or specify a supported multi-device routing model.  The last choice affects the
-public borrowed-window embedding contract, and the thread-affinity versus locking choice affects
-renderer and event-pump design.  The source repository is outside this book checkout, so this
-audit records the boundary rather than selecting or implementing a policy.
+The public manager stores one presentation request. The selected family determines whether that
+request changes a compositor, a swapchain, a CPU buffer, only reported state, or nothing.
 
-\subsection{\texttt{PresentationMode} is one manager request, not one portable presentation engine}
+\subsection{Input-coordinate routing}
+\label{sec:backend-input-coordinate-matrix}
+
+Window-to-logical input uses three tiers: an associated SDL renderer; otherwise a static
+\texttt{SDL\_Window*} to \texttt{IGraphicsRenderer*} registry; otherwise raw coordinates. The
+inverse mouse-warp route uses the same ordering. The compact matrix below names the current
+behavioral classes; family chapters retain the implementation detail.
+
+\begin{center}
+\small
+\begin{tabular}{@{}p{0.23\textwidth}p{0.31\textwidth}p{0.37\textwidth}@{}}
+\toprule
+\textbf{Family group} & \textbf{Route} & \textbf{Boundary} \\
+\midrule
+\texttt{SDL\_RENDERER} & SDL logical-presentation conversion & Implements all five modes, including offsets; public read-side and direct write-side tests exist. \\
+EasyGL / Canvas & Static renderer registry & Fixed-height scaling is implemented; other stored modes lack matching offset/output behavior. \\
+\texttt{SDL\_GPU} / \texttt{WEBGPU} & Static renderer registry & Five-mode math uses physical pixels while events and warps use window coordinates; high pixel density can mis-scale input. \\
+\texttt{FREEDIRECT} & Associated private SDL renderer wins & Mapping appears after first present and is hard-coded to letterbox; direct CNA transform overrides are shadowed. \\
+Vulkan, BGFX, Direct3D families & Raw fallback & Either presentation remains physical or the stored virtual request is not implemented as an output transform. \\
+\texttt{SOFTWARE} / \texttt{HEADLESS} & No window route & Logical coordinates belong only to internal buffers or trace state. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+An immediate \texttt{Mouse::SetPosition}/\texttt{GetState} test is weak because the setter first
+writes the requested logical value into \texttt{InputManager}; that round trip can pass even if
+the physical warp is wrong. The strongest located public evidence injects physical SDL motion
+into a scaled presentation and observes the converted logical point.
+
+\subsection{Window-registry lifetime}
+\label{sec:backend-window-registry-lifetime}
+
+The second tier is one process-wide, unsynchronized
+\texttt{unordered\_map<SDL\_Window*, IGraphicsRenderer*>}. Registration overwrites by key and
+unregistration erases by window alone; neither operation checks ownership. EasyGL registers
+before several fallible constructor steps, so an exception can leave a dangling value. Two
+devices attached to the same borrowed window create another failure: the second replaces the
+first, then destruction of the first removes the second's entry. Address reuse and concurrent
+lookup add equivalent hazards.
+
+This requires an ownership and thread-affinity decision in CNA. Suitable designs include an RAII
+registration after fallible setup, owner-checked removal, and either rejecting duplicate devices
+or defining multi-device routing. No located test covers constructor failure after registration,
+duplicate attachment, window-address reuse, or concurrent access.
+
+\subsection{Presentation modes}
 \label{sec:backend-presentation-mode-matrix}
 
-The five-value \texttt{CNAEXT} \cnaclass{PresentationMode} enum belongs to
-\cnaclass{GraphicsDeviceManager}, not to the public presentation-parameters object. Its default
-is \texttt{FixedHeight\allowbreak Dynamic\allowbreak Width}; a game changes it through
-\texttt{setPreferred\allowbreak Presentation\allowbreak Mode\allowbreak Property()}. This
-distinction is important: a direct \cnaclass{GraphicsDevice} construction does not receive a
-manager's preferred mode at all. \texttt{GraphicsDevice::create\allowbreak Renderer()} fills
-virtual width/height, MSAA, interval, formats, and profile in
-\texttt{GraphicsRenderer\allowbreak CreateArgs}, but leaves its presentation-mode member at that
-struct's default fixed-height value. It then calls the renderer's virtual-resolution hook.
+The CNAEXT \cnaclass{PresentationMode} property belongs to
+\cnaclass{GraphicsDeviceManager}. Direct device construction leaves the renderer-create argument
+at its fixed-height default. The manager route applies the mode before reset so implementations
+that derive a virtual width see the intended value.
 
-The ordinary game-manager route is deliberately ordered differently.  On
-\texttt{CreateDevice()} or \texttt{ApplyChanges()}, the manager first calls
-\texttt{GraphicsDevice::SetPresentationMode()} and then calls \texttt{Reset()} with its new
-\cnaclass{PresentationParameters}.  Reset stores the requested back-buffer dimensions, updates
-TouchPanel's display dimensions, applies the native window change, and calls only
-\texttt{renderer->SetVirtualResolution()}.  The order matters for SDL\_RENDERER: its
-fixed-height calculation derives a new logical width from the physical output and therefore must
-already know the mode.  The private \texttt{GraphicsDevice::SetVirtualResolution()} helper does
-write both the cached virtual dimensions and the public presentation parameters, but no current
-caller of that helper was located; creation and Reset duplicate the renderer-forwarding part
-directly.  Thus the manager is the public configuration route, while the individual renderer is
-the presentation implementation.
-
-The enum names express a useful requested policy. \texttt{Letterbox} preserves aspect ratio with
-bars; \texttt{Overscan} fills and crops; \texttt{Stretch} fills non-uniformly; and
-\texttt{NativeBack\allowbreak Buffer} requests physical output coordinates. The fixed-height
-mode retains its logical height while deriving width from the output aspect. They are \emph{not},
-however, a cross-renderer promise that each output path draws those five policies. The following
-matrix records the earlier fourteen-product executed audit cohort described in the edition note
-above.  ``2D'' means the normal window-backbuffer sprite
-path; an explicitly bound render target remains its own pixel grid rather than acquiring
-letterbox bars or a crop rectangle.
-
-\begingroup
+\begin{center}
 \small
-\setlength{\tabcolsep}{2.7pt}
-\renewcommand{\arraystretch}{1.14}
-\begin{longtable}{@{}p{0.15\textwidth}p{0.28\textwidth}p{0.25\textwidth}p{0.25\textwidth}@{}}
+\begin{tabular}{@{}p{0.23\textwidth}p{0.31\textwidth}p{0.37\textwidth}@{}}
 \toprule
-\textbf{Renderer} & \textbf{What the five-mode request executes} &
-\textbf{Virtual size / viewport result} & \textbf{Evidence and boundary} \\
+\textbf{Implementation group} & \textbf{Current behavior} & \textbf{Evidence scope} \\
 \midrule
-\endfirsthead
-\toprule
-\textbf{Renderer} & \textbf{What the five-mode request executes} &
-\textbf{Virtual size / viewport result} & \textbf{Evidence and boundary} \\
-\midrule
-\endhead
-\texttt{SDL\_\allowbreak RENDERER}
-  & Maps Letterbox, Overscan, Stretch, and NativeBackBuffer directly to SDL's logical-
-    presentation modes. FixedHeightDynamicWidth first derives a width from the physical output
-    and then uses SDL Letterbox; because the derived grid has the output aspect, it normally has
-    no bars.
-  & Reports its logical grid. It reapplies the presentation when SetVirtualResolution or
-    SetPresentationMode is called and again after an output-size change at Present().
-  & The source logs, but does not throw, if SDL rejects the logical-presentation call. Existing
-    readback tests deliberately select NativeBackBuffer because SDL pixel reads are physical;
-    they do not constitute a five-mode pixel suite. \\
-\texttt{ASCII}
-  & Forwards every mode to an inner SDL renderer, then samples its private virtual-sized game
-    target into character cells before that inner renderer presents.
-  & A virtual-resolution change forwards to SDL and recreates the private game target. Its
-    reported viewport is the inner renderer's logical viewport.
-  & This is SDL's mode conversion plus an extra quantisation/composite step, not an independent
-    five-mode implementation. No separate ASCII mode test was located. \\
-\texttt{EasyGL}
-  & FixedHeightDynamicWidth is a uniform full-window map with a derived width. Every other enum
-    value uses the supplied virtual width/height over the whole GL viewport; there is no
-    letterbox offset, overscan crop, or NativeBackBuffer disable path.
-  & The renderer stores both fields and computes its logical size for projection and viewport
-    reporting. It selects the full physical GL viewport before using that logical projection.
-  & Its own transform comments explicitly describe the non-default offset handling as
-    unimplemented. The resize example proves the fixed-height calculation, not the other four
-    policies. \\
-\texttt{CANVAS}
-  & Stores the mode and performs the same fixed-height logical-width calculation as EasyGL;
-    non-fixed modes retain the requested virtual dimensions. No located Canvas drawing path
-    consumes the mode to create bars, crop, or stretch a browser canvas.
-  & The bookkeeping drives GetViewportSize and input conversion, not a demonstrated output
-    compositor.
-  & Fake-window tests establish construction only. Browser execution and a five-mode visual
-    assertion remain unlocated, so this must not be read as a browser-presentation guarantee. \\
-\texttt{SDL\_GPU}, \texttt{WEBGPU}
-  & Compute the same explicit logical viewport: NativeBackBuffer is physical; fixed height
-    derives width; Stretch fills; Letterbox uses the smaller uniform scale and centered bars;
-    Overscan uses the larger scale and centered crop.
-  & The normal swapchain 2D sprite path maps through that rectangle and reports its logical
-    dimensions. Both validate the enum range; an invalid internal integer throws.
-  & This is the only located pair with a complete local five-policy geometry calculation. The
-    existing tests cover input/ordinary rendering routes, not a visual assertion for every mode;
-    high-DPI window-versus-pixel input mismatch is covered earlier in this chapter. \\
-\texttt{VULKAN}
-  & SetPresentationMode is an empty override. SetVirtualResolution retains the values and
-    recreates the physical swapchain; no letterbox, crop, or stretch pass follows.
-  & The window backbuffer uses its physical swapchain extent and GetViewportSize queries SDL
-    pixel size. Virtual 2D projection therefore does not imply a five-mode output transform.
-  & The expensive swapchain recreation on a logical-size update is source-visible. No mode test
-    or source branch selects a different presentation policy. \\
-\texttt{D3D9}, \texttt{D3D11}, \texttt{D3D12}
-  & D3D9 stores both values; D3D11 discards the mode; D3D12 has an empty mode hook. Their native
-    swapchains remain physical, so no member creates bars, cropping, or a scaling pass.
-  & D3D9/D3D11 report physical dimensions. D3D12 reports the stored virtual dimensions even
-    though its drawing backbuffers are physical.
-  & Consequently identical requests can change reported coordinates without changing output on
-    D3D12. The Direct3D renderer chapter gives the detailed native-swapchain evidence. \\
-\texttt{BGFX}
-  & Both hooks are explicit no-ops: BGFX has no CNA logical-presentation layer.
-  & It uses the physical SDL window viewport.
-  & Header comments state this policy directly; no mode-specific test exists. \\
-\texttt{SOFTWARE}, \texttt{HEADLESS}
-  & Software ignores the mode and resizes its CPU backbuffer to the virtual dimensions when no
-    render target is active. Headless ignores the mode and uses the virtual dimensions as its
-    synthetic backbuffer size.
-  & These are replacement/simulation grids, not a physical presentation scale. A bound target
-    supplies its own size.
-  & Neither product has a window compositor, so the visual meanings of Letterbox, Overscan, and
-    Stretch do not apply. \\
-\texttt{FREEDIRECT}
-  & Stores the requested mode, but free-direct's physical presenter always uses letterbox.
-  & A virtual-size change recreates CNA's logical surfaces. The underlying presenter retains its
-    first logical-presentation rectangle after that change.
-  & Chapter~\ref{ch:dx3-freedirect-renderer} documents both the hard-coded-letterbox limitation
-    and its later-resolution-change defect; CNA cannot fix either by storing another enum. \\
+\texttt{SDL\_RENDERER} & Maps all five requests to SDL logical presentation; fixed height derives width. & Source and focused routing tests; no five-mode pixel corpus. \\
+\texttt{SDL\_GPU} / \texttt{WEBGPU} & Computes native, fixed-height, stretch, letterbox, and overscan rectangles. & Complete local geometry; visual coverage is partial. \\
+EasyGL / Canvas & Derives fixed-height width; other values retain dimensions without implementing bars or crop. & Source plus fixed-height coverage; browser output remains unverified. \\
+Vulkan / BGFX / Direct3D & Stores, ignores, or partially reports the request while rendering to physical output. & Source and renderer-specific smoke evidence; not a portable five-mode contract. \\
+Software / Headless & Resizes or simulates an internal grid. & No display compositor exists, so bar/crop semantics do not apply. \\
+\texttt{FREEDIRECT} & Stores the enum; the presenter uses letterbox and has a later-resolution defect. & Exact pixels for selected paths, not five policies. \\
 \bottomrule
-\end{longtable}
-\endgroup
+\end{tabular}
+\end{center}
 
-For a portable game, set the manager property before its normal initialization and treat
-\texttt{NativeBackBuffer} as the explicit test/readback choice when physical pixels matter. Do
-not infer letterbox geometry from the enum alone: ask the target renderer's chapter, use its
-logical input route, and keep physical screenshot/readback coordinates separate. The matrix is
-also a stabilization boundary: any merger of the pending renderer work must rerun this audit
-before the book promotes a current implementation detail to a compatibility promise.
+Portable code should configure the manager before normal initialization and use
+\texttt{NativeBackBuffer} when physical readback coordinates matter. An enum round trip is not
+evidence that letterbox, crop, or stretch reached output.
 
-\subsection{\texttt{SetSwapInterval}: exact public enum, four renderer meanings}
+\subsection{Swap interval}
 \label{sec:backend-swap-interval-matrix}
 
-The default swap-interval body is empty. Its comment defines
-\texttt{0=Immediate}, \texttt{1=VSync}, and \texttt{2=half-rate}, but neither the type system
-nor \cnaclass{GraphicsCapability} can tell a caller whether a renderer implements that
-contract. The public conversion itself loses nothing:
-\texttt{Immediate} becomes~0, \texttt{Two} becomes~2, and
-\texttt{Default}/\texttt{One} become~1. Both renderer construction and
-\cnaclass{GraphicsDevice}\texttt{::Reset()} receive the result. The reset forwarding is a
-real repaired path; older CNA builds updated the stored
-\cnaclass{PresentationParameters} but never called this virtual from
-\texttt{GraphicsDevice\allowbreak Manager::ApplyChanges()}.
+Public conversion preserves \texttt{Immediate}=0, \texttt{One}=1, and \texttt{Two}=2, but
+families interpret them differently. The manager's Boolean retrace property reaches only 0 or 1;
+2 requires explicit \cnaclass{PresentationParameters}. Because \cnaclass{Game} constructs its
+first renderer before derived-game configuration, a family that consumes only the constructor
+argument can remain at the default interval.
 
-Two lifecycle details are necessary to read the matrix correctly. First, the device
-manager's vertical-retrace preference is a Boolean and therefore selects only
-\texttt{One} or \texttt{Immediate}; \texttt{Two} requires explicit
-\cnaclass{PresentationParameters}, commonly through
-\texttt{Preparing\allowbreak DeviceSettings}.
-Second, CNA's \cnaclass{Game} eagerly constructs its \cnaclass{GraphicsDevice} and renderer
-with default parameters before the derived game can configure its device manager. A renderer
-that consumes the construction argument but inherits the runtime no-op therefore does
-\emph{not} honor the ordinary game-level preference.
-
-\begingroup
+\begin{center}
 \small
-\setlength{\tabcolsep}{3.0pt}
-\renewcommand{\arraystretch}{1.13}
-\begin{longtable}{@{}p{0.13\textwidth}p{0.20\textwidth}p{0.29\textwidth}p{0.30\textwidth}@{}}
+\begin{tabular}{@{}p{0.24\textwidth}p{0.28\textwidth}p{0.39\textwidth}@{}}
 \toprule
-\textbf{Renderer} & \textbf{Construction} & \textbf{Reset/runtime and \texttt{Two}} &
-  \textbf{Located evidence and failure boundary} \\
+\textbf{Group} & \textbf{0 / 1 / 2 mapping} & \textbf{Qualification} \\
 \midrule
-\endfirsthead
-\toprule
-\textbf{Renderer} & \textbf{Construction} & \textbf{Reset/runtime and \texttt{Two}} &
-  \textbf{Located evidence and failure boundary} \\
-\midrule
-\endhead
-\texttt{SDL\_\allowbreak RENDERER}, \texttt{ASCII}
-  & Their shared SDL renderer converts every positive initial value to~1.
-  & Runtime passes the exact integer to \texttt{SDL\_SetRenderVSync}; if a value above~1 is
-    rejected it tries~1. Thus \texttt{Two} is attempted only after construction.
-  & Public test proves reset routing, parameter round-trip, and continued pixels, not actual
-    renderer state. A raw local probe rejected~2. ASCII has no separate interval test. \\
-\texttt{EasyGL}
-  & Stores and submits the exact integer through
-    \texttt{SDL\_GL\_SetSwap\allowbreak Interval}.
-  & Repeats the exact call, including~2, but ignores its success result and has no fallback.
-  & Public manager/reset test queries the real GL context and proves 0 versus nonzero.
-    A second test only proves that all enum values round-trip without a crash; no test proves~2. \\
-\texttt{VULKAN}
-  & 0 prefers Immediate then Mailbox; 1 uses FIFO; 2 prefers FIFO Relaxed, then FIFO.
-  & Inherits the no-op. FIFO Relaxed is adaptive late tearing, not half-refresh pacing.
-  & Source only. In an ordinary \cnaclass{Game}, the eager default construction fixes FIFO;
-    later manager/reset changes, including disabling VSync, do not alter the present mode. \\
-\texttt{BGFX}
-  & Any positive value sets \texttt{BGFX\_RESET\_VSYNC}.
-  & Repeats that Boolean mapping and calls \texttt{bgfx::reset}; \texttt{Two} equals
-    \texttt{One}.
-  & Source only; no dedicated interval or timing assertion was found. \\
-\texttt{WEBGPU}
-  & 0 prefers Immediate then Mailbox; positive values select FIFO.
-  & Stores a nonnegative value and reconfigures the surface when it changes; \texttt{Two}
-    still selects FIFO.
-  & Source only. Unsupported immediate modes fall back to the initial FIFO choice; no
-    half-rate WebGPU present mode is requested. \\
-\texttt{SDL\_GPU}
-  & Calls the same runtime handler: 0 prefers Immediate then Mailbox, positive means VSync.
-  & Reconfigures swapchain parameters; \texttt{Two} equals \texttt{One}. Failure is only
-    logged while the requested integer remains stored.
-  & Nineteen tests had to use the public manager property after real VSync caused roughly
-    one-second virtual-display frames. This proves observable on/off routing, not
-    half-refresh behavior. \\
-\texttt{D3D9}
-  & Maps 0/1/2 to the matching native D3D9 presentation interval.
-  & A change immediately resets the device. \texttt{Two} is literal, but CNA neither checks
-    the driver capability bit nor restricts it to fullscreen.
-  & Source plus the official D3D9 contract: windowed mode permits only Default, Immediate,
-    and One. A rejected reset is logged and retried every present; no dedicated interval
-    test or real-Windows proof was found. \\
-\texttt{D3D11}, \texttt{D3D12}
-  & Store only \texttt{args.swapInterval > 0}.
-  & Runtime stores the same Boolean; \texttt{Present()} passes DXGI sync interval 1 or~0.
-    \texttt{Two} therefore collapses despite DXGI accepting values 1--4.
-  & Real windowed present smoke tests exercise only the default VSync branch. No dedicated
-    on/off, tearing, or interval-2 assertion was found; D3D12 headless mode cannot present. \\
-\texttt{CANVAS}
-  & Factory discards the argument.
-  & Inherits the no-op; browser composition paints the canvas automatically.
-  & Source only. \texttt{Present()} itself is empty, so no swap interval exists at this
-    abstraction layer. \\
-\texttt{FREEDIRECT}
-  & Constructor ignores the argument.
-  & Inherits the no-op. Present is a waiting DirectDraw \texttt{Blt} into free-direct's
-    primary surface, with no interval selection.
-  & Source only; no timing or interval test was found. \\
-\texttt{SOFTWARE}
-  & Factory discards the argument.
-  & Inherits the no-op and has an empty \texttt{Present()}.
-  & Source-proven non-applicability: there is no window or display pacing. \\
-\texttt{HEADLESS}
-  & Factory discards the argument.
-  & Inherits the no-op. \texttt{Present()} advances trace counters, never time.
-  & Source-proven diagnostic behavior; no window or retrace exists. \\
+EasyGL & Passes the exact integer at construction and reset. & Off/on is runtime-observed through GL state; interval 2 is not timing-verified. \\
+Vulkan & Immediate-or-mailbox / FIFO / FIFO-relaxed-or-FIFO at construction. & Runtime hook is a no-op; FIFO-relaxed is adaptive tearing, not half-refresh pacing. \\
+BGFX, WebGPU, SDL GPU, D3D11/12 & Collapse positive values to enabled VSync or FIFO. & 2 is equivalent to 1 despite some downstream APIs supporting wider intervals. \\
+D3D9 & Maps all three to D3D9 intervals and resets. & Windowed D3D9 may reject 2; CNA does not preflight that native restriction. \\
+SDL Renderer & Initial positive values collapse to 1; runtime attempts the integer, then falls back to 1. & Tests prove safe reset and pixels, not driver timing. \\
+Canvas, free-direct, Software, Headless & No display-interval implementation at this layer. & Stored public state may still change. \\
 \bottomrule
-\end{longtable}
-\endgroup
+\end{tabular}
+\end{center}
 
-The D3D rows make the difference between an API limitation and a CNA narrowing especially
-clear. DXGI's own \texttt{Present(SyncInterval,\ldots)} accepts 1 through~4, so D3D11/12
-could represent \texttt{Two}; CNA throws the distinction away in its Boolean
-\texttt{vsyncEnabled\_}. D3D9 preserves the integer but omits the native validity checks,
-which can be worse than a clean downgrade: a normal windowed game can retain
-\texttt{PresentInterval::Two} in its public property while the device repeatedly keeps its
-previous presentation configuration.
+No located timing test distinguishes half refresh from ordinary VSync on any family.
 
-Test names also need careful interpretation. The SDL Renderer regression cycles all four
-values and reads a pixel afterward, but the renderer exposes no public actual-VSync query;
-that assertion proves a safe route, not the driver's accepted interval. EasyGL's stronger
-manager test calls \texttt{SDL\_GL\_GetSwapInterval()} and therefore proves real off/on
-state, but still never requests~2. No located timing test distinguishes half refresh from
-ordinary VSync on any product. FNA's shared path instead sends the complete
-\cnaclass{PresentationParameters} to \texttt{FNA3D\_ResetBackbuffer}; it does not expose
-CNA's per-renderer empty virtual at all.
-
-\subsection{\texttt{UpdatePresentationFormatEXT}: stored fields, window state, and native attachments}
+\subsection{Backbuffer format, depth format, and fullscreen}
 \label{sec:backend-presentation-format-matrix}
 
-Three fields travel together through this \texttt{CNAEXT} renderer hook:
-\cnaclass{SurfaceFormat} for the back buffer, \cnaclass{DepthFormat} for its depth/stencil
-attachment, and \texttt{IsFullScreen}. They must be audited separately. On every
-\cnaclass{GraphicsDevice}\texttt{::Reset()}, CNA first copies the whole requested object into
-its public \cnaclass{PresentationParameters}. It then calls
-\texttt{SDL\_SetWindowFullscreen()} and, outside Android,
-\texttt{SDL\_SetWindowSize()}. Fullscreen failure is cleared and ignored; size failure throws.
-Only after that window work does the device reapply virtual resolution, MSAA, and swap
-interval, then call \texttt{UpdatePresentationFormatEXT()}.
+Reset first asks the renderer to normalize the requested color and depth formats, then stages the
+result as public state. Window resizing and virtual-resolution application form a rollback block:
+if either throws, CNA restores the prior presentation, adapter, touch dimensions, and window size
+before rethrowing. MSAA, interval, and the renderer's presentation-format update occur afterward;
+they are not covered by that rollback. Only D3D9 overrides the final format-update hook. A family
+whose applied-format query inherits the identity default can therefore echo a request even when
+its native attachments use a fixed format.
 
-Only D3D9 overrides the empty interface body. This matters during ordinary \cnaclass{Game}
-construction. A bare presentation-parameter object initially means
-\texttt{Color}/\texttt{None}/windowed, so the game eagerly creates its renderer with those
-values. The subsequently-created manager defaults instead to
-\texttt{Color}/\texttt{Depth24}/windowed and delivers that combination through
-\texttt{ApplyChanges()} and \texttt{Reset()}. D3D9 needed the runtime hook so its initial
-no-depth device became the requested Depth24 device. Every other product either never
-consults the three constructor fields or keeps its independently-chosen attachments.
-
-\begingroup
+\begin{center}
 \small
-\setlength{\tabcolsep}{2.8pt}
-\renewcommand{\arraystretch}{1.12}
-\begin{longtable}{@{}p{0.13\textwidth}p{0.25\textwidth}p{0.26\textwidth}p{0.28\textwidth}@{}}
+\begin{tabular}{@{}p{0.21\textwidth}p{0.34\textwidth}p{0.36\textwidth}@{}}
 \toprule
-\textbf{Renderer} & \textbf{Native color target} & \textbf{Native depth/stencil} &
-  \textbf{Fullscreen/reset behavior and evidence} \\
+\textbf{Group} & \textbf{Native attachments} & \textbf{Reset/fullscreen boundary} \\
 \midrule
-\endfirsthead
-\toprule
-\textbf{Renderer} & \textbf{Native color target} & \textbf{Native depth/stencil} &
-  \textbf{Fullscreen/reset behavior and evidence} \\
-\midrule
-\endhead
-\texttt{SDL\_\allowbreak RENDERER}, \texttt{ASCII}
-  & SDL chooses the window renderer's output format. CNA does not pass
-    \texttt{BackBufferFormat}; its owned textures are fixed RGBA32.
-  & None. Both are 2D-only; the renderer target's
-    \texttt{HasRealDepthBuffer()} is always false.
-  & The shared SDL window call is the only fullscreen mechanism. Tests prove parameter
-    round-trip/no throw and post-toggle pixels under Xvfb, explicitly not that the display
-    accepted fullscreen. ASCII wraps the same renderer. \\
-\texttt{EasyGL}
-  & The default framebuffer is chosen by SDL/GL. CNA requests no PP-derived color sizes.
-    With MSAA it instead renders through a fixed RGBA8 renderbuffer.
-  & The context request asks for 8 stencil bits but does not derive attachment sizes from
-    \cnaclass{DepthFormat}. The MSAA FBO is fixed Depth24 with no stencil attachment.
-  & SDL handles the window. Dedicated depth/fullscreen examples assert stored fields and
-    no-throw behavior only; their comments explicitly disclaim native reconfiguration. \\
-\texttt{VULKAN}
-  & Prefers \texttt{B8G8R8A8\_UNORM} with the ordinary nonlinear display color space, else
-    takes the first surface format. The requested \cnaclass{SurfaceFormat} is never read.
-  & Always allocates one device-selected backbuffer depth image, preferring D24S8, then
-    D32S8, then D32. Even \texttt{None} does not remove it.
-  & SDL changes the window; normal out-of-date/resize handling rebuilds the swapchain.
-    Format/depth conclusions are source-only. Render-target depth fidelity is separate. \\
-\texttt{BGFX}
-  & bgfx owns the implicit platform backbuffer; CNA supplies dimensions and reset flags, not
-    the requested pixel format.
-  & The platform backbuffer's depth/stencil allocation is likewise bgfx-owned. CNA submits
-    depth/stencil clears but neither selects nor queries its exact format.
-  & SDL changes the window; the next size check calls \texttt{bgfx::reset}. No dedicated
-    format/fullscreen assertion was found. \\
-\texttt{WEBGPU}
-  & Chooses from surface capabilities, preferring BGRA8-sRGB, then RGBA8-sRGB, then their
-    UNORM variants. Thus public \texttt{Color} can accompany a real sRGB swapchain.
-  & Always creates \texttt{Depth24PlusStencil8}, regardless of
-    \texttt{DepthStencilFormat}, and recreates it with the physical surface size.
-  & SDL changes the window; the next frame detects physical-size changes and reconfigures the
-    surface. Existing depth tests prove the fixed attachment works, not format selection. \\
-\texttt{SDL\_GPU}
-  & Reads the swapchain texture format selected by SDL\_gpu on every frame; the PP color
-    format never participates.
-  & At construction, chooses D24S8 or D32S8 by device support and allocates it whenever a
-    frame needs the backbuffer. It is absent only if neither combined format is supported,
-    not because the caller requested \texttt{None}.
-  & SDL owns the window and swapchain acquisition follows it. No discriminating default
-    attachment/fullscreen test was found. \\
-\texttt{D3D9}
-  & Maps the requested enum to \texttt{D3DFORMAT}. \texttt{Color}'s texture-native
-    A8B8G8R8 is specially substituted with display-compatible A8R8G8B8; unknown values fall
-    back to that color format.
-  & Exact None/D16/D24X8/D24S8 mapping. A runtime change immediately performs a real device
-    \texttt{Reset()}.
-  & The same native parameters set \texttt{Windowed = !IsFullScreen}. Mapping tests and the
-    smoke test prove D24S8 exists after the manager reset. Unsupported combinations can still
-    fail while public requested state remains changed. \\
-\texttt{D3D11}
-  & Always R8G8B8A8 UNORM.
-  & Always D24S8, including a public \texttt{None} or Depth24 request.
-  & SDL may change the containing window, but the flip-model swapchain is always created
-    windowed; CNA never calls \texttt{SetFullscreenState}. Native formats are source-proven. \\
-\texttt{D3D12}
-  & A windowed swapchain is fixed R8G8B8A8 UNORM. In \texttt{HeadlessEXT} mode there is no
-    swapchain/backbuffer at all.
-  & A windowed swapchain gets fixed D24S8. Headless mode has no default attachment; only
-    explicitly-created render targets can have one.
-  & Same SDL-window-only fullscreen semantics as D3D11; no DXGI exclusive transition.
-    Ordinary Linux/Wine tests predominantly exercise the off-screen path. \\
-\texttt{CANVAS}
-  & The browser's Canvas2D main canvas is the color target; the XNA surface format is ignored.
-  & None. \texttt{SupportsDepthStencil()} and every target's
-    \texttt{HasRealDepthBuffer()} return false.
-  & CNA still tries the SDL fullscreen call, but no real browser/DOM acceptance assertion was
-    found. The public PP can change independently. \\
-\texttt{FREEDIRECT}
-  & Always creates a 32-bpp DirectDraw primary plus a 32-bpp shadow backbuffer; no
-    \cnaclass{SurfaceFormat} is read.
-  & None; all 3D/depth methods throw.
-  & SDL changes the window, while free-direct remains in
-    \texttt{DDSCL\_NORMAL}; CNA never requests an exclusive DirectDraw cooperative level.
-    Existing resize/pixel tests do not discriminate fullscreen. \\
-\texttt{SOFTWARE}
-  & Always a CPU RGBA8 vector.
-  & Always a float depth vector; stencil operations are no-ops. The PP depth enum cannot
-    add or remove either.
-  & No SDL window and empty \texttt{Present()}; fullscreen is stored state only. Source and
-    pixel tests prove the fixed CPU storage. \\
-\texttt{HEADLESS}
-  & No pixel attachment; readback synthesizes the last clear color.
-  & No attachment; depth/stencil calls only validate/record trace state.
-  & No window. All three fields are diagnostic stored state with no presentation object to
-    change. \\
+D3D9 & Maps requested color and exact None/D16/D24/D24S8 depth forms. & Performs a device reset; unsupported combinations can fail after public state changed. \\
+D3D11/12 & Fixed RGBA8 and D24S8 when a windowed backbuffer exists. & SDL changes the window; DXGI exclusive fullscreen is not requested. \\
+Vulkan / WebGPU / SDL GPU / BGFX & Selects surface/device formats independently of the XNA enums; depth is fixed or device-selected. & Resize/surface recreation follows the window, not the stored enum fidelity. \\
+EasyGL & SDL/GL chooses the default framebuffer; its MSAA FBO is fixed RGBA8/depth24 without stencil. & Tests establish stored values and selected depth behavior, not format reconfiguration. \\
+SDL Renderer / Canvas / free-direct & 2D color target with no default depth/stencil attachment. & Fullscreen is an SDL/window or browser concern. \\
+Software / Headless & Fixed CPU color/depth arrays, or trace state without attachments. & Fullscreen is stored state only. \\
 \bottomrule
-\end{longtable}
-\endgroup
+\end{tabular}
+\end{center}
 
-The most counterintuitive row is not necessarily the least capable one. Software, Vulkan,
-WebGPU, SDL GPU, and D3D11/12 can perform real depth testing while ignoring the requested
-depth format; their problem is \emph{selection fidelity}. Asking for \texttt{None} does not
-save the allocation, and asking for Depth16 does not create 16-bit depth. Conversely SDL
-Renderer, ASCII, Canvas, and FREEDIRECT honestly have no default depth attachment at all, regardless
-of the stored manager default.
+An SDL fullscreen failure is cleared and ignored, so \texttt{IsFullScreen} is a request, not an
+actual-state query. D3D9 has the strongest located native format evidence; most other tests prove
+stored-field round trips or continued rendering.
 
-Fullscreen also cannot be collapsed into a Boolean capability mark. SDL can change an
-ordinary window before the renderer hook, and resize-sensitive swapchains can follow its new
-dimensions without consuming \texttt{isFullScreen}. That produces borderless/window-manager
-fullscreen on many rows, not necessarily the exclusive native mode implied by D3D9's
-\texttt{Windowed} field. Because CNA swallows an SDL fullscreen failure, the public property
-never becomes an actual-state query on any row.
-
-The located tests reinforce that boundary rather than closing it. The EasyGL depth-format
-test deliberately cycles all four enums and checks only the stored PP; the EasyGL and SDL
-Renderer fullscreen tests state that virtual displays may reject the transition and assert
-round-trip/no-throw behavior. D3D9 is the exception with a native
-\texttt{D3DFMT\_D24S8} surface assertion after manager-driven setup. No dedicated test was
-found that requests two distinct \cnaclass{SurfaceFormat} backbuffers and queries the native
-result. FNA passes the complete native presentation structure to
-\texttt{FNA3D\_ResetBackbuffer}; CNA's empty per-field hook is its own architecture, not an
-FNA behavior to infer from a successful public reset.
-
-\subsection{\texttt{ReadBackbuffer}: one name, four observable contracts}
+\subsection{Backbuffer readback}
 \label{sec:backend-readback-matrix}
 
-\cnaclass{IGraphicsRenderer}'s comment promises RGBA8 pixels, top-left coordinates in game
-space, and \(w\times h\times4\) bytes of output. Its implementation does not silently
-degrade: it throws
-\texttt{runtime\_error("ReadBackbuffer: not implemented in this renderer")}. Twelve products in
-that audit cohort
-override it; \texttt{SDL\_GPU} and \texttt{D3D12} do not.
+The interface promises top-left RGBA8 data and throws by default. The public wrapper checks a
+null destination, positive in-bounds rectangles against the stored backbuffer dimensions, and
+\texttt{elementCount < width*height}. It does not reject a negative start index, account for
+remaining capacity after that offset, or guard the signed area multiplication against overflow.
 
-The public layer does not make those twelve audited overrides equivalent.
-\texttt{GetBackBuffer\allowbreak Data()} passes a supplied rectangle through unchanged; for a
-null rectangle it asks \texttt{GetViewport\allowbreak Size()} for \(w,h\). It rejects a null output
-pointer and \texttt{elementCount < w*h}, then allocates an RGBA byte buffer, calls the virtual,
-and writes exactly \(w\times h\) \cnaclass{Color} objects starting at \texttt{startIndex}.
-It does not validate a negative offset, the allocation capacity after that offset, rectangle
-bounds, or signed multiplication overflow. Those wrapper gaps are shared; the table below
-records the separate renderer behavior reached after them.
+Renderer behavior falls into four observable classes:
 
-\begingroup
+\begin{center}
 \small
-\setlength{\tabcolsep}{3.2pt}
-\renewcommand{\arraystretch}{1.13}
-\begin{longtable}{@{}p{0.13\textwidth}p{0.25\textwidth}p{0.31\textwidth}p{0.23\textwidth}@{}}
+\begin{tabular}{@{}p{0.25\textwidth}p{0.28\textwidth}p{0.38\textwidth}@{}}
 \toprule
-\textbf{Renderer} & \textbf{Image actually read} & \textbf{Region and special behavior} &
-  \textbf{Located evidence} \\
+\textbf{Class} & \textbf{Families} & \textbf{Image returned} \\
 \midrule
-\endfirsthead
-\toprule
-\textbf{Renderer} & \textbf{Image actually read} & \textbf{Region and special behavior} &
-  \textbf{Located evidence} \\
-\midrule
-\endhead
-\texttt{SDL\_\allowbreak RENDERER}
-  & The current SDL render target; the window only when no target is bound.
-  & Converts to packed RGBA and honors surface pitch. Window readback throws when logical and
-    physical presentation sizes differ; a 1:1 image may still use the presentation offset.
-  & Public exact-pixel tests select \texttt{NativeBackBuffer}; a dedicated target test proves
-    the bound-target route. \\
-\texttt{ASCII}
-  & Its internal logical \texttt{gameTarget\_}, or an explicit user target. Never the final
-    visible glyph grid.
-  & Forwards to SDL Renderer. The displayed quantized grid has a separate test-only
-    real-backbuffer helper used before swap.
-  & Off-screen test distinguishes the game target, explicit target, and public route; present
-    test uses the private final-grid helper. \\
-\texttt{SOFTWARE}
-  & \texttt{CurrentFramebuffer()}: bound target or CPU backbuffer.
-  & Exact top-left CPU copy; out-of-range source pixels become transparent black.
-  & Smoke test reads an exact clear, then distinguishes a still-bound target from the
-    restored backbuffer. \\
-\texttt{HEADLESS}
-  & No rendered image: a synthetic fill of the last global \texttt{Clear} color.
-  & Ignores \(x,y\) and all draw output; only rejects negative dimensions.
-  & Source only for this public result; existing smoke checks trace/resource state, not
-    returned pixels. \\
-\texttt{EasyGL}
-  & The currently bound GL framebuffer.
-  & Flips GL's Y origin and rows; resolves default-framebuffer MSAA. For the window,
-    \texttt{GetViewportSize()} reports logical dimensions but \texttt{glReadPixels} addresses
-    physical framebuffer pixels, so non-1:1 presentation can scale or offset the region.
-  & Many public pixel tests; target-usage test explicitly proves bound-FBO readback. Existing
-    cases are predominantly 1:1. \\
-\texttt{FREEDIRECT}
-  & \texttt{ActiveSurface()}: bound target or its logical shadow backbuffer.
-  & Exact logical pixels before free-direct's later physical presentation scaling.
-  & Dedicated texture/target test reads the bound target and then the restored shadow
-    backbuffer. \\
-\texttt{VULKAN}
-  & Always the physical swapchain, even while a render target is bound.
-  & Captures the full image into a staging cache before deferred presentation, swizzles the
-    swapchain format, and zero-fills out-of-range pixels.
-  & Broad public pixel coverage; the target round-trip test explicitly documents and proves
-    that a bound target is \emph{not} the source. \\
-\texttt{BGFX}
-  & Always the default swapchain via
-    \texttt{requestScreenShot(\allowbreak BGFX\_INVALID\_HANDLE)}.
-  & Honors callback pitch, Y direction, and BGRA/RGBA order, but performs no source-rectangle
-    bounds check. Each read may advance as many as three bgfx frames; window-coordinate size
-    and screenshot pixel size can diverge on high-density displays.
-  & Public pixel tests compensate by rerendering/retrying; that proves pixels but also exposes
-    the multiple-read-per-frame caveat. \\
-\texttt{CANVAS}
-  & Under Emscripten, the current Canvas2D context: bound target or main canvas.
-  & Synchronous \texttt{getImageData}. The non-Emscripten body is a silent no-op, leaving the
-    wrapper's zero-initialized output unchanged. Logical viewport dimensions can differ from
-    canvas backing-store pixels.
-  & Source only; no real browser/DOM public readback execution was found. \\
-\texttt{D3D11}
-  & Always \texttt{backBufferTexture\_}, independent of render-target binding.
-  & Copies to a fresh staging texture, honors mapped row pitch, and returns top-left RGBA.
-  & Real windowed smoke tests discriminate two clear colors and regions. Their small regions
-    do not independently force a padded-row case. \\
-\texttt{WEBGPU}
-  & Always the physical surface image, independent of render-target binding.
-  & On-demand render, 256-byte-aligned staging rows, format swizzle, and transparent-black
-    out-of-range fill. The wrapper obtains logical dimensions but the copy is indexed in
-    physical pixels, so scaled/high-density regions are mismatched.
-  & Public clear/readback and mutation/revert pixel proofs; no non-1:1 coordinate case. \\
-\texttt{SDL\_GPU}
-  & None: inherited default throws.
-  & The acquired swapchain texture is write-only in SDL's API. A readable proxy would add a
-    texture and blit to every frame and is deliberately not implemented.
-  & Render-target \texttt{GetData} is tested separately; it does not make public backbuffer
-    readback available. \\
-\texttt{D3D9}
-  & Always the actual Direct3D backbuffer.
-  & Copies to system memory, honors pitch, handles the two supported RGBA/BGRA layouts, and
-    rejects other formats or a lost device.
-  & Real smoke/draw tests assert exact returned pixels. \\
-\texttt{D3D12}
-  & None: inherited default throws, including on a windowed device.
-  & Its \texttt{HeadlessEXT} mode has no swapchain at all. The renderer owns working
-    render-target resource readback, but no \texttt{ReadBackbuffer} bridge.
-  & Headless smoke tests deliberately read target resources directly; they do not exercise
-    \cnaclass{GetBackBufferData}. \\
+Active target & SDL Renderer, EasyGL, Software, free-direct, Canvas; historical ASCII & Bound target when present, otherwise the family backbuffer/logical surface. Canvas browser execution was not observed for this edition. \\
+Physical/default backbuffer & Vulkan, BGFX, D3D9, D3D11, WebGPU & Ignores an active user target. Logical and physical dimensions can diverge on scaled/high-density output. \\
+Synthetic & Headless & Fills with the last global clear color; draw output and source coordinates are not represented. \\
+Explicit refusal & SDL GPU, D3D12 & Inherited throw, even though both have separate render-target readback mechanisms. \\
 \bottomrule
-\end{longtable}
-\endgroup
+\end{tabular}
+\end{center}
 
-The bound-target split is therefore exact, not merely a testing quirk.
-\texttt{SDL\_RENDERER}, \texttt{ASCII}, \texttt{SOFTWARE}, \texttt{EasyGL}, \texttt{FREEDIRECT},
-and \texttt{CANVAS} follow the active target; \texttt{VULKAN}, \texttt{BGFX},
-\texttt{D3D11}, \texttt{WEBGPU}, and \texttt{D3D9} stay on the real backbuffer;
-\texttt{HEADLESS} is synthetic; two products throw. FNA's public generic overload instead
-queries the actual backbuffer size and surface format and calls
-\texttt{FNA3D\_\allowbreak ReadBackbuffer}, without a current-render-target branch. CNA has
-no \texttt{Graphics\allowbreak Capability} value for this distinction, so portable caller code cannot
-query it through the capability API; it must treat readback support, source image, and
-coordinate space as an explicitly selected renderer contract.
+There is no capability query for this distinction. A portable test must name the selected
+family, source image, coordinate space, and oracle.
 
-\subsection{IRenderTargetRenderer: where Chapter~\ref{ch:textures-rendertargets}'s honest defaults actually live}
+\section{Resource and draw defaults}
 
-Reading \cnaclass{IRenderTargetRenderer}'s own interface definition directly explains
-\emph{why} several of Chapter~\ref{ch:textures-rendertargets}'s per-renderer render-target
-findings take the specific shape they do, rather than being independent per-renderer choices:
-\texttt{GetMultiSampleCount()} defaults to returning \texttt{0}, and
-\texttt{HasRealDepthBuffer(bool depthFormatWasRequested)} defaults to simply echoing back
-whatever was requested. Vulkan and BGFX ``honestly reporting \texttt{MultiSampleCount = 0}''
-is not a special case either renderer had to write --- it is what happens automatically by
-\emph{not overriding} this method at all, exactly the same ``graceful capability degradation''
-default-no-op pattern this chapter opened with, applied here to a getter rather than a
-command. \textbf{SDL\_RENDERER} is the one renderer that does override
-\texttt{HasRealDepthBuffer} specifically to return \texttt{false} unconditionally (Task~708)
---- the one case in this whole family of defaults where the honest answer requires active
-code rather than falling out of inaction, because the naive default (echoing the request back)
-would otherwise silently claim a depth buffer exists on a renderer whose 2D-only render targets
-never allocate one.
+\subsection{Target, effect, and query interfaces}
 
-\subsection{IEffectRenderer and IOcclusionQueryRenderer: capability-gated by construction}
+\texttt{IRenderTargetRenderer::GetMultiSampleCount()} defaults to zero, while
+\texttt{HasRealDepthBuffer}\allowbreak\texttt{(requested)} defaults to echoing the request. The first is conservative;
+the second can claim an attachment that the family never created. SDL Renderer overrides the
+depth answer to false. Applied sample count and actual attachment presence are therefore stronger
+facts than constructor arguments.
 
-These are the two thinnest interfaces in the table above, and both connect directly to
-\cnaclass{GraphicsCapability} values already named in this chapter.
-\cnaclass{IOcclusionQueryRenderer} is fully pure virtual --- \texttt{Begin()}, \texttt{End()},
-\texttt{IsComplete()}, \texttt{PixelCount()} --- with no default-no-op escape hatch at the
-interface level at all; a renderer that does not support occlusion queries simply never
-constructs one in the first place, since \texttt{CreateOcclusionQuery()} on
-\cnaclass{IGraphicsRenderer} itself is what defaults to \texttt{nullptr}
-(\cnaclass{GraphicsCapability::OcclusionQuery} is the flag a caller checks before ever
-reaching this interface at all).
+\texttt{IOcclusionQueryRenderer} itself is pure virtual, but its factory is optional.
+\texttt{IEffectRenderer} requires program compile/bind/status methods while many scalar, array,
+and texture setters have no-op defaults. A valid program can consequently discard selected
+parameters. Chapter~\ref{ch:shader-fx-gap} owns the renderer-specific matrix.
 
-\cnaclass{IEffectRenderer} takes the opposite approach for a subtler reason worth reading
-carefully: only \texttt{CompileProgram}, \texttt{Bind}, \texttt{Unbind}, \texttt{IsValid}, and
-\texttt{GetCompileError} are pure virtual --- every one of its \texttt{SetUniform*} setters
-(\texttt{Float}, \texttt{Int}, \texttt{Vec2/3/4}, \texttt{Mat4}, and the array forms) defaults
-to a silent no-op body in the interface itself, the identical shape as
-\cnaclass{ISpriteBatchRenderer}'s \texttt{SetTransformMatrix} default from this chapter's own
-\texttt{ISpriteBatchRenderer} section above. This means a renderer could, in
-principle, compile a \cnaclass{ShaderEffect}'s program successfully (\texttt{IsValid()}
-returning \texttt{true}) while silently dropping every single uniform value a game sets on it
---- exactly the kind of ``it compiles and something appears on screen'' risk
-Chapter~\ref{ch:shader-fx-gap}'s own \texttt{IsEffectValid()} worked example already warned
-readers to check for, extended one level deeper here: a valid program is not the same
-guarantee as a program that actually receives the uniforms it was given. Renderers that ship
-\cnaclass{ShaderEffect} support do \emph{not} uniformly override the full setter set; this is a
-real, observed boundary, not merely a hypothetical one. EasyGL supplies every
-scalar, vector, matrix, array, and 2D/cube/volume texture hook. D3D11 and D3D12 supply the
-scalar/vector/matrix family but inherit both array no-ops and every texture no-op; D3D9 has
-the same setter boundary. Their \cnaclass{SpriteBatch} paths bind only the primary texture
-expected by the fixed shader contract. Vulkan and SDL GPU likewise implement only their fixed
-scalar/vector/matrix slots. Headless records scalar/vector/matrix/array updates and a 2D
-texture bind for logic tests, but cannot prove a pixel result. Most strikingly, Software
-returns a valid effect while deliberately executing none of the supplied source and
-discarding every setter. Chapter~\ref{ch:shader-fx-gap} gives the full live matrix; the
-architectural lesson here is that each method on this permissive interface is an independent
-capability, even after compilation succeeds.
+\subsection{Buffer updates and instancing}
 
-\subsection{Buffer streaming: one ignored constructor flag, four real hint mappings}
+Dynamic buffer constructors currently use the same factory as static buffers; the constructor's
+\texttt{dynamic} flag is ignored. Update options still have meaning on EasyGL, SDL GPU, D3D9,
+and D3D11, which map discard/no-overwrite to distinct native operations. Vulkan and BGFX inherit
+the option-discarding default; WebGPU, D3D12, Software, and Headless override it without
+preserving option identity. The options-taking public wrappers also fail to refresh the shared
+CPU shadow, so a later public \texttt{GetData()} can throw or return stale bytes.
 
-\cnaclass{IVertexBufferRenderer} has two permissive defaults that originally made the public
-buffer family look simpler than it now is. \path{SetDataWithOptions()} discards its
-\cnaclass{SetDataOptions} argument and calls plain \texttt{SetData()}; and
-\path{SetVertexDeclaration()} discards the caller's element list. The index interface has
-the analogous \path{SetData16WithOptions()} / \path{SetData32WithOptions()} forwarding
-defaults. These methods are all reachable on the ten 3D-capable implementations, unlike the
-unreachable \texttt{SetData32} throw discussed next.
+The declaration route is stricter: \texttt{SetVertexDeclaration()} is pure virtual, and raw
+uploads send the complete declaration. A family may translate it, remember it for draw-time
+validation, or reject it. Chapter~\ref{ch:vertex-streams-capabilities} defines the packed-stream
+contract.
 
-The shared public constructors impose one universal limit before that renderer split. Each
-\texttt{Dynamic*} class passes \texttt{dynamic=true} to its protected base constructor, but
-that constructor leaves the parameter unnamed and calls the same factory as the static class.
-The type therefore never selects a different allocation merely by being dynamic. That does
-\emph{not} mean every upload hint is ignored:
-
-\begingroup
-\small
-\setlength{\tabcolsep}{4pt}
-\renewcommand{\arraystretch}{1.15}
-\begin{longtable}{@{}p{0.20\textwidth}p{0.26\textwidth}p{0.46\textwidth}@{}}
-\toprule
-\textbf{Renderer} & \textbf{Options route} & \textbf{Actual update contract} \\
-\midrule
-\endfirsthead
-\toprule
-\textbf{Renderer} & \textbf{Options route} & \textbf{Actual update contract} \\
-\midrule
-\endhead
-\texttt{EasyGL}
-  & explicit, distinct & \texttt{Discard} orphans storage then uploads at offset zero;
-    \texttt{NoOverwrite} uses sub-data in place. Vertex buffers need an existing allocation.
-    Index-buffer \texttt{NoOverwrite} additionally falls back to reallocation when context
-    recovery is disabled, because its eligibility check is coupled to the absent CPU shadow. \\
-\texttt{SDL\_GPU}
-  & explicit, distinct & \texttt{None}/\texttt{Discard} set
-    \texttt{SDL\_UploadToGPUBuffer}'s \texttt{cycle} flag; \texttt{NoOverwrite} clears it. \\
-\texttt{D3D9}
-  & explicit, distinct & Every buffer is native dynamic storage. \texttt{NoOverwrite} uses
-    \texttt{D3DLOCK\_NOOVERWRITE}; both other values use \texttt{D3DLOCK\_DISCARD}.
-    A freshly created or grown buffer forces discard regardless of the requested option. \\
-\texttt{D3D11}
-  & explicit, distinct & Every buffer is \texttt{D3D11\_USAGE\_DYNAMIC}.
-    \texttt{NoOverwrite} maps to \texttt{D3D11\_MAP\_WRITE\_NO\_OVERWRITE}; both other values
-    map to \texttt{D3D11\_MAP\_WRITE\_DISCARD}. \\
-\texttt{VULKAN}, \texttt{BGFX}
-  & inherited default & The option is discarded. Vulkan copies to persistently mapped memory;
-    BGFX updates its dynamic handle at element zero. \\
-\texttt{WEBGPU}, \texttt{D3D12}
-  & explicit, ignored & WebGPU always calls \texttt{wgpuQueueWriteBuffer}; D3D12 always performs
-    its synchronous staging-buffer copy and fence wait. \\
-\texttt{SOFTWARE}, \texttt{HEADLESS}
-  & explicit, ignored & Software replaces its CPU bytes. Headless records the same generic
-    \texttt{SetData} trace, with no option identity retained. \\
-\texttt{SDL\_RENDERER}, \texttt{ASCII}, \texttt{CANVAS}, \texttt{FREEDIRECT}
-  & unreachable & Buffer construction fails first under their 2D-only contract. \\
-\bottomrule
-\end{longtable}
-\endgroup
-
-EasyGL has the strongest public pixel proof:
-\path{easygl_dynamic_buffer_stress_test.cpp} cycles all three enum values over twelve
-successive colored-quad frames and reads the center pixel each time. SDL GPU's smoke test
-calls both distinct paths for vertex and index buffers but checks only the resulting count,
-so the native \texttt{cycle} distinction is established by source, not by that assertion.
-WebGPU's own plan still leaves its option-specific buffer tests open.
-
-One bug sits above every row in this table. The options-taking public wrappers pack and upload
-their bytes but never update the shared \cnaclass{VertexBuffer}/\cnaclass{IndexBuffer}
-\texttt{cpuShadow\_}. Consequently a non-\texttt{WriteOnly} dynamic buffer's inherited
-\texttt{GetData()} cannot return the data just uploaded: on a fresh instance the empty shadow
-produces \texttt{ArgumentOutOfRangeException}; after an older ordinary upload it can return
-stale data. Chapter~\ref{ch:textures-rendertargets} gives the caller-facing consequence.
-
-The declaration route is no longer an optional default. \path{VertexBuffer::SetDataRaw()} sends
-the complete \cnaclass{VertexDeclaration} through \path{SetVertexDeclaration()} before upload,
-and that renderer method is pure virtual: every buffer implementation must explicitly consume,
-remember, or reject the declaration. That structural requirement is not the same as universal
-layout fidelity. EasyGL binds custom-effect attributes in declaration order, bgfx translates the
-declaration, and Magnum builds dynamic attributes from it; several fixed-layout renderers instead
-remember the declaration and apply a draw-time fidelity guard before selecting a layout from the
-stride. The guards turn known same-stride/different-layout wrong pixels into deterministic
-\texttt{NotSupportedException}, while full native translation remains open work on those
-backends. The one deliberate shared exception is the legacy
-\texttt{VertexBuffer(device,count)} shape: its empty, zero-stride declaration can use the old
-single-buffer route, because describing it as a zero-stride stream would fetch record zero for
-every vertex. Chapter~\ref{ch:vertex-streams-capabilities} gives the semantic and constructor rules in full.
-
-\subsection{DrawEx fallbacks and the complete-but-uneven instancing bridge}
 \label{sec:drawex-instancing-matrix}
+Effect-aware \texttt{DrawPrimitivesEx} defaults can discard \cnaclass{GpuDrawParams} and enter a
+colored draw. The exhaustive family audit found DIRECTX10 as the consequential live inherited
+fallback: an effect request can become a plausible untextured colored result. Several families
+override the method but still use a colored fallback for unmatched layouts. Appendix
+\ref{ch:feature-matrix} classifies inherited, hybrid, and renderer-owned routes.
 
-The two ordinary effect-aware defaults look dangerously permissive:
-\path{DrawPrimitivesEx()} drops its entire parameter block and calls the colored draw, while
-\path{DrawIndexedPrimitivesEx()} does the same to its indexed counterpart. The exhaustive
-42-family audit shows that these bodies are not dead. Thirty-one families override both methods;
-eleven inherit both. Nine of those eleven eventually reject the call through their colored route,
-and STUB intentionally does nothing. DIRECTX10 is the consequential exception: its inherited
-fallback reaches a real D3D10 colored draw, so a textured, lit, fogged, skinned, or alpha-tested
-request can succeed as a plausible untextured colored approximation after the whole
-\cnaclass{GpuDrawParams} payload was discarded.
+Instancing has a throwing default. Shared code now transports up to sixteen bindings, preserving
+slot, renderer buffer, stride, vertex offset, instance frequency, and count. It rejects partially
+overlapping semantic declarations and validates per-vertex and per-instance ranges before
+submission. The broad portable subset is one vertex stream plus one instance stream; multiple
+streams of either rate additionally require \texttt{MultiStreamVertexInput}. EasyGL profiles
+with native support, Magnum, Vulkan, BGFX, WebGPU, and D3D11/12 have focused pixel evidence for
+specific layouts. D3D9 has a native step-frequency route but weaker shared-oracle coverage.
+Headless records counts, and SDL GPU inherits a default-true capability despite the throwing
+callback; neither establishes working instancing.
 
-Override presence is still not enough to conclude that no fallback exists. OPENGLES1, SDL GPU,
-OPENGL4, and WebGPU own both methods but explicitly re-enter their colored route for unmatched
-effect/layout combinations. Guards make some of those tails fail loudly; supported colored
-layouts can still draw with reduced semantics. The portable classification is therefore
-\emph{inherited fallback}, \emph{hybrid renderer-owned route}, or \emph{direct renderer-owned
-route} --- not merely \emph{override present}. Appendix~\ref{ch:feature-matrix} summarizes the
-family results, and the source evidence is curated in the edition audit rather than inferred
-from a virtual-method declaration count.
-
-\path{DrawInstancedPrimitivesEx()} is different. Its shared default throws
-\path{std::runtime_error}, but the public bridge no longer narrows XNA/FNA's binding model before
-a renderer runs. The same \path{FillVertexStreamBindings()} helper serves ordinary indexed,
-ordinary non-indexed, and instanced draws. \cnaclass{GpuDrawParams} carries up to sixteen active
-streams by value; each tuple keeps its public slot, renderer buffer, declaration-derived stride,
-\cnaclass{VertexOffset}, \cnaclass{InstanceFrequency}, and element count. No tuple points back
-into mutable \cnaclass{GraphicsDevice} state, which matters to deferred renderers.
-
-Composition follows FNA3D's semantic rule, not byte position. A later stream that entirely
-repeats already-claimed \texttt{(VertexElementUsage, UsageIndex)} pairs contributes nothing; a
-partially duplicated declaration is rejected because CNA's combined layout cannot express it
-without ambiguity. The shared layer then validates every per-vertex range and every per-instance
-range. For instance stream $s$, an \texttt{instanceCount} of $n$ consumes exactly
-$1+\lfloor(n-1)/f_s\rfloor$ records starting at that stream's own offset, where $f_s$ is its
-positive frequency. More than one stream of either input rate additionally requires
-\texttt{MultiStream\allowbreak{}VertexInput}; an unsupported renderer rejects the binding set before native
-submission instead of truncating it. The classic one-mesh-plus-one-instance shape requires no
-multi-stream capability and remains the broad portable subset.
-
-\begingroup
-\small
-\setlength{\tabcolsep}{3.5pt}
-\renewcommand{\arraystretch}{1.15}
-\begin{longtable}{@{}p{0.19\textwidth}p{0.34\textwidth}p{0.39\textwidth}@{}}
-\toprule
-\textbf{Implementation class} & \textbf{Current contract} &
-  \textbf{Strongest located evidence} \\
-\midrule
-\endfirsthead
-\toprule
-\textbf{Implementation class} & \textbf{Current contract} &
-  \textbf{Strongest located evidence} \\
-\midrule
-\endhead
-\texttt{MAGNUM}
-  & Full native stream model: multiple streams of either rate, each declaration, offset, and
-    divisor, followed by a real instanced draw.
-  & The renderer explicitly reports both \texttt{MultiStreamVertexInput} and
-    \texttt{Instancing}; the shared four-stream mixed-frequency pixel oracle includes Magnum. \\
-\texttt{EasyGL} except
-\texttt{OPENGLES2}/\texttt{WEBGL1}
-  & Full stream transport and native \texttt{glVertexAttribDivisor}; the custom
-    \cnaclass{ShaderEffect} path consumes caller declarations. The two ES~2/WebGL~1 profiles
-    explicitly report no instancing.
-  & The mixed-stream oracle is 14/14; the classic matrix exercises offsets and frequencies 1,
-    2, 3, larger-than-count, and a 2--1--2 transition in one frame. \\
-\texttt{VULKAN}, \texttt{BGFX},
-\texttt{WEBGPU}
-  & One per-vertex plus one per-instance stream. Native APIs expose no enabled divisor on these
-    paths, so frequency above one is expanded into the staging/transient instance data while
-    preserving one native draw and one destination record per instance.
-  & Pixel tests prove offsets and divisor arithmetic. bgfx additionally pins identical submit,
-    primitive, transient-byte, and view counts for frequency 1 versus 2. \\
-\texttt{D3D11}, \texttt{D3D12}
-  & One stream of each rate with native per-instance step rate; input-layout/PSO identity includes
-    the frequency so alternating draws cannot reuse stale divisor state.
-  & The shared offset/frequency oracle covers both. D3D11 was runtime-tested under Wine; D3D12's
-    current evidence combines its oracle legs with cross-build/source verification where the
-    windowed environment remains constrained. \\
-\texttt{D3D9}
-  & Real \texttt{SetStreamSourceFreq} path with a fixed world-matrix stream and post-draw reset.
-  & Range and basic pixel behavior are tested, but the shared offset/frequency oracle deliberately
-    makes no claim because a suitable D3D display was unavailable for that measurement. \\
-\texttt{DILIGENT}, \texttt{OPENGL2},
-\texttt{OPENGL4}, \texttt{SOKOL}, \texttt{WICKED}
-  & Each owns an instanced callback and reports \texttt{Instancing}; OpenGL2's answer is a live
-    check for both required extension entry points. Their accepted layout/frequency subsets are
-    renderer-specific rather than a promise of arbitrary effects.
-  & Source and renderer-specific tests; these rows are not promoted to the stronger shared
-    offset/frequency-oracle claim above. \\
-\texttt{FNA3D}, \texttt{SOFTWARE},
-selected fixed/2D renderers
-  & Explicitly report no instancing and refuse. FNA3D can transport all bindings, but CNA's
-    vendored stock-effect shaders declare no per-instance input, so its refusal is intentional.
-  & Capability switches and refusal tests establish the boundary before a draw is attempted. \\
-\texttt{HEADLESS}, \texttt{SDL\_GPU}
-  & Two remaining default-true hazards: Headless records logical counts without rasterizing;
-    SDL GPU inherits the shared throwing callback. Neither is proof of real hardware instancing.
-  & Direct source comparison of the inherited capability default with the callback routes. \\
-\bottomrule
-\end{longtable}
-\endgroup
-
-Those callbacks still do not imply a portable arbitrary-effect contract. Many choose a CNA-owned
-instancing shader whose useful common subset is a per-vertex position/color record, one
-per-instance world matrix, shared view/projection, and a small fixed material payload. A valid
-stock or custom effect does not by itself establish that the same instanced scene is portable.
-
-The binding state above the matrix is now coherent too. Both singular setters clear the vector and
-install exactly one binding, including the supplied offset; the plural setter replaces the vector
-and updates the singular pointer to slot zero (or null for an empty list). A singular draw after an
-instanced one therefore cannot reuse a stale instance stream, and the two getters describe the
-same state transition.
-
-\cnaclass{GraphicsCapability::Instancing} now provides the preflight the earlier interface lacked.
-Its documentation says ``hardware instancing,'' but unlike \texttt{MultiStreamVertexInput} it
-inherits the base class's optimistic \texttt{true}. Explicit answers such as EasyGL's live profile
-split, OpenGL2's extension check, Magnum's native support, and Software/FNA3D's refusal are useful;
-the Headless/SDL GPU rows show why an inherited answer must still be audited against the callback.
-
-\subsection{Texture2D updates: one dead default and one live silent discard}
+\subsection{Texture updates and readback}
 \label{sec:texture2d-update-matrix}
 
-\cnaclass{ITextureRenderer} gives both \texttt{UpdatePixels()} and
-\texttt{UpdatePixelsLevel()} empty default bodies. They look symmetric in the header, but
-the current factory graph makes them materially different. Every concrete object returned by
-any renderer's \texttt{CreateTexture()} overrides level~0 \texttt{UpdatePixels()} (ASCII
-returns SDL\_RENDERER's object), so that first no-op is unreachable today. The mip-level
-default remains live on SDL GPU. Software and Headless override it too, but deliberately
-discard the bytes or record only a trace, respectively.
+Every current 2D texture implementation overrides level-zero updates. The higher-mip default is
+still reachable on SDL GPU and silently discards the upload; Software explicitly discards higher
+levels, while SDL Renderer, Canvas, and free-direct throw. EasyGL, Vulkan, BGFX, WebGPU, and
+D3D9/11/12 implement higher-level storage. GPU-sampled or native-subresource tests, not public
+CPU-shadow round trips, establish those paths. WebGPU additionally regenerates the mip chain
+after level-zero writes, which can overwrite previously authored higher levels.
 
-The public routing matters before reading the table. Whole-texture
-\texttt{SetData(Color*, count)} recreates the resource and never calls either update hook.
-Only the detailed level/rectangle overload reaches them: level~0 patches the CPU shadow and
-re-uploads that complete level through \texttt{UpdatePixels()}, while a higher level calls
-\texttt{UpdatePixelsLevel()}. Ordinary \texttt{Texture2D::GetData()} then reads the same CPU
-shadow, not the GPU object, so a public SetData/GetData round trip is not proof that either
-hook changed sampled content.
-
-\begingroup
-\small
-\setlength{\tabcolsep}{3.5pt}
-\renewcommand{\arraystretch}{1.15}
-\begin{longtable}{@{}p{0.16\textwidth}p{0.20\textwidth}p{0.25\textwidth}p{0.31\textwidth}@{}}
-\toprule
-\textbf{Renderer} & \textbf{Detailed level~0} & \textbf{Level above zero} &
-  \textbf{Strongest located evidence} \\
-\midrule
-\endfirsthead
-\toprule
-\textbf{Renderer} & \textbf{Detailed level~0} & \textbf{Level above zero} &
-  \textbf{Strongest located evidence} \\
-\midrule
-\endhead
-\texttt{EasyGL}
-  & real full-level GPU upload & real GPU mip upload
-  & A rendered minified stock-effect pixel selects authored higher-level color. The older
-    SetData/GetData test is CPU-shadow-only. \\
-\texttt{VULKAN}
-  & real staged GPU upload & real staged, level-specific GPU upload
-  & A rendered minified pixel selects the authored mip; validation also caught and fixed a
-    wrong-level image barrier. \\
-\texttt{BGFX}
-  & real mutable-texture update & real \texttt{updateTexture2D} mip upload
-  & A rendered minified pixel selects the authored mip. \\
-\texttt{WEBGPU}
-  & real upload; also regenerates the chain & real per-level upload
-  & Direct renderer readback distinguishes level~1, and a nonuniform source proves
-    linear-filtered generated mips. \\
-\texttt{SDL\_GPU}
-  & real transfer-buffer upload & inherited no-op; physical texture has one level
-  & No plain-Texture2D mip test was found. The one-level descriptor and missing override are
-    source-proven. \\
-\texttt{D3D9}
-  & real managed-texture lock & real per-level \texttt{LockRect}
-  & Exact native readback proves construction and a level~0 replacement; higher-level
-    addressing is source-proven. \\
-\texttt{D3D11}
-  & real \texttt{UpdateSubresource} & real mip-subresource update
-  & Direct staging readback proves exact level~1 bytes and unchanged level~0. \\
-\texttt{D3D12}
-  & real staged copy and fence & real mip-subresource copy
-  & Direct readback proves exact level~1 bytes and unchanged level~0. \\
-\texttt{SOFTWARE}
-  & real CPU level~0 replacement & explicit no-op
-  & Source only for the mip discard; the public shadow can mask it. \\
-\texttt{HEADLESS}
-  & real CPU level~0 replacement plus trace & trace only; no renderer mip storage
-  & Logic trace only; no sampled-pixel claim is possible. \\
-\texttt{SDL\_RENDERER}, \texttt{ASCII}
-  & real SDL texture update & explicit \texttt{runtime\_error}
-  & SDL\_RENDERER's dedicated test proves the throw; ASCII returns the same texture class. \\
-\texttt{CANVAS}
-  & real Canvas2D update & explicit \texttt{runtime\_error}
-  & Source-proven; no dedicated mip test was found. \\
-\texttt{FREEDIRECT}
-  & real DirectDraw surface write & explicit \texttt{runtime\_error}
-  & Source-proven; no dedicated mip test was found. \\
-\bottomrule
-\end{longtable}
-\endgroup
-
-WebGPU's level~0 behavior is a deliberate compatibility difference, not merely an
-implementation technique. It renders a linear downsample from each level into the next
-whenever level~0 changes, including at construction. FNA and CNA's other ordinary-texture
-implementations expect authored/content-pipeline mip data instead. Consequently WebGPU gives
-an otherwise-empty chain useful pixels automatically, but a later level~0 write also
-regenerates over higher levels authored before it.
-
-The test boundary is especially important for EasyGL and Vulkan's identically registered
-\path{easygl_texture2d_mip_test.cpp}: the file itself states ``No framebuffer readback ---
-pure CPU shadow buffer.'' The separate texture-filter tests are the GPU proof. D3D11/12 and
-WebGPU instead bypass the public shadow and read native subresources directly. This is the
-same audit rule the volume/cube matrix below applies to Headless's misleadingly named
-``round-trip'' tests: follow the assertion to the storage layer it actually observes.
-
-\subsection{Volume and cube readback: success is now an explicit renderer answer}
 \label{sec:texture-volume-readback-matrix}
+Volume and cube readback now returns a completion Boolean. Public wrappers convert results only
+after a true response; null/false raises \cnaclass{NotSupportedException} without modifying the
+destination. EasyGL, Vulkan, BGFX (when transfer capabilities exist), WebGPU, SDL GPU,
+D3D9/11/12, and LLGL have native transfer routes. Skia and selected Software cube paths use exact
+CPU storage. Headless refuses instead of manufacturing transparent pixels. The shared fixtures
+distinguish slices, faces, subrectangles, mips, and unchanged sentinel buffers.
 
-\cnaclass{ITexture3DRenderer::GetData()} and
-\cnaclass{ITextureCubeRenderer::GetData()} historically defaulted to an empty body. The old
-public wrappers nevertheless converted their zero-initialized RGBA scratch vector back to
-\cnaclass{Color}, so an inherited no-op fabricated a complete transparent-black result. A null
-resource factory silently returned even earlier. The current contract makes completion visible:
-each method returns \texttt{true} only after writing the complete region and returns \texttt{false}
-when it read nothing. The shared wrappers convert only the former; either a null resource or
-\texttt{false} now raises \cnaclass{NotSupportedException} without touching the caller's buffer.
-
-The ordinary-resource columns below cover \cnaclass{Texture3D} and
-\cnaclass{TextureCube}. The third is separate because \cnaclass{RenderTargetCube} inherits
-the same public \texttt{GetData()} but supplies a different renderer object:
-
-\begingroup
-\small
-\setlength{\tabcolsep}{3.5pt}
-\renewcommand{\arraystretch}{1.15}
-\begin{longtable}{@{}p{0.17\textwidth}p{0.22\textwidth}p{0.22\textwidth}p{0.31\textwidth}@{}}
-\toprule
-\textbf{Renderer} & \textbf{Texture3D} & \textbf{TextureCube} & \textbf{RenderTargetCube} \\
-\midrule
-\endfirsthead
-\toprule
-\textbf{Renderer} & \textbf{Texture3D} & \textbf{TextureCube} & \textbf{RenderTargetCube} \\
-\midrule
-\endhead
-\texttt{EasyGL}
-  & exact GPU readback & exact GPU readback & exact level/mip/MSAA readback \\
-\texttt{VULKAN}
-  & exact GPU readback & exact GPU readback & exact level/mip readback; cube MSAA follows the
-    renderer-wide sample count \\
-\texttt{BGFX}
-  & exact when transfer caps exist & exact when transfer caps exist
-  & exact level/mip/MSAA readback when transfer caps exist \\
-\texttt{D3D9}
-  & exact GPU readback & exact GPU readback
-  & exact level~0; unallocated upper target mips are refused \\
-\texttt{D3D11}
-  & exact GPU readback & exact GPU readback & exact level/mip/MSAA readback \\
-\texttt{D3D12}
-  & exact GPU readback & exact supported-level readback & exact level/mip/MSAA readback \\
-\texttt{WEBGPU}
-  & exact GPU readback & exact GPU readback
-  & exact level~0; mipmapped cube targets are refused at creation \\
-\texttt{SDL\_GPU}
-  & exact GPU readback & exact GPU readback & exact level/mip/MSAA readback \\
-\texttt{LLGL}
-  & exact GPU readback & exact GPU readback & exact level/mip/MSAA readback \\
-\texttt{SKIA}
-  & exact CPU storage & exact CPU storage
-  & exact six-surface CPU storage; MSAA clamps to zero \\
-\texttt{SOFTWARE}
-  & construction refused & exact CPU storage at every mip
-  & construction refused \\
-\texttt{HEADLESS}
-  & construction refused & explicit refusal & explicit refusal; trace state only \\
-\texttt{SDL\_RENDERER}, \texttt{ASCII}, \texttt{CANVAS}, \texttt{FREEDIRECT}
-  & construction refused & null factory; public call refuses
-  & construction refused \\
-\bottomrule
-\end{longtable}
-\endgroup
-
-The native GPU implementations are not CPU-shadow echoes. EasyGL attaches the requested
-slice or face to a temporary framebuffer and calls \texttt{glReadPixels}; Vulkan
-copies the requested image subresource into host-visible staging memory; D3D9 locks its
-managed cube/volume resource, while D3D11 and D3D12 use staging/readback resources with
-native row and slice pitches; WebGPU maps a staged copy asynchronously; and SDL GPU waits on
-a download transfer and fence. BGFX cannot mark an ordinary sampled source
-\texttt{READ\_BACK}, so it blits the requested region into a temporary transfer texture and
-advances frames until \texttt{readTexture()} completes. If the selected renderer lacks its
-required complete transfer, it returns \texttt{false}; the public layer refuses instead of
-answering from untouched scratch memory.
-
-The proof is correspondingly stronger than ``did not throw.'' EasyGL, Vulkan, and BGFX
-share exact slice, off-origin rectangle, and mip round trips; WebGPU's public checks
-distinguish all six faces, a non-origin rectangle, and mip data, plus separate volume slices,
-voxel, and mip cases. SDL GPU checks distinct slices/faces and authored/generated mip
-retention. D3D9/11/12 smoke tests compare exact subregion bytes (D3D9 first gates its
-volume/cube cases on the real device caps). LLGL has the same shared public contract fixture.
-Software's exact cube result is now asserted by that fixture at level~0 and an upper mip;
-Skia's answer is deliberately bounded to CPU RGBA storage rather than presented as a native
-3D sampling pipeline.
-
-Headless is now the explicit counterexample. It records cube operations but keeps no pixels;
-cube upload and readback therefore return \texttt{false}, and volume construction is refused
-because the renderer reports no \cnaclass{Texture3D} capability. The shared contract fixture
-requires the resulting public \cnaclass{NotSupportedException} and proves that the caller's
-sentinel destination remains byte-for-byte unchanged.
-
-\subsection{RenderTargetCube: explicit upload refusal and renderer-owned transitions}
 \label{sec:rendertargetcube-default-contracts}
+\cnaclass{RenderTargetCube} inherits public texture upload methods, but most renderer-target
+objects explicitly refuse them; EasyGL and Skia are the notable storage implementations.
+Target transitions are a separate concern. Families with deferred work must finalize the
+outgoing face before another cube face, 2D target, MRT set, or backbuffer becomes active.
+D3D9/11/12, BGFX, WebGPU, SDL GPU, LLGL, and Vulkan have renderer-owned transition mechanisms.
+EasyGL retains per-face MSAA storage, but switching faces on the same cube can skip outgoing
+finalization; callers that need freshly resolved/sampleable faces should unbind between them.
 
-\cnaclass{RenderTargetCube} inherits \cnaclass{TextureCube}'s complete public
-\texttt{SetData()} family. FNA leaves that inherited call live and forwards it to
-\texttt{FNA3D\_SetTextureDataCube()}, including when the texture was created as a render
-target. CNA's renderer contract instead redeclares \texttt{SetData()} on
-\cnaclass{IRenderTargetCubeRenderer}. Its historical empty body is now a deterministic
-\texttt{false}; the base \cnaclass{ITextureCubeRenderer::SetData()} contract is itself a pure
-boolean completion method. EasyGL overrides it with a real GPU upload and Skia with an exact CPU
-store; the render-target cube families in the table below refuse. The shared public wrapper still
-validates and converts the request, but raises \cnaclass{NotSupportedException} unless the whole
-region was stored. A shared write-contract fixture exercises both outcomes, including the public
-\cnaclass{RenderTargetCube} inheritance path.
+\section{Targets, clears, viewport, and scissor}
 
-Target switching remains a separate renderer responsibility. \cnaclass{IGraphicsRenderer}'s
-\texttt{SetRenderTargetCubeFace(rt, face)} calls
-\texttt{rt->BindAsRenderTargetFace(face)} when non-null, but on null merely delegates to
-\texttt{SetRenderTarget2D(nullptr)}. It never remembers or calls the outgoing cube target's
-\texttt{UnbindAsRenderTarget()}. That is harmless only when the renderer either overrides the
-method, tracks cube state elsewhere, or finalizes each face without an unbind callback:
-
-\begingroup
-\small
-\setlength{\tabcolsep}{4pt}
-\renewcommand{\arraystretch}{1.15}
-\begin{longtable}{@{}p{0.16\textwidth}p{0.16\textwidth}p{0.60\textwidth}@{}}
-\toprule
-\textbf{Renderer} & \textbf{RT-cube SetData} & \textbf{Public cube-target transition contract} \\
-\midrule
-\endfirsthead
-\toprule
-\textbf{Renderer} & \textbf{RT-cube SetData} & \textbf{Public cube-target transition contract} \\
-\midrule
-\endhead
-\texttt{EasyGL}
-  & real GPU upload & Exact rendered-face readback. Explicit tracking finalizes on
-    cube-to-2D/backbuffer and between different cube objects. Direct face switching on the same
-    cube skips outgoing finalization; per-face MSAA storage preserves samples, but callers needing
-    several freshly resolved/sampleable faces must unbind between them. \\
-\texttt{VULKAN}
-  & explicit refusal & Exact rendered-face/mip readback. The common route is sound: deferred draw commands retain their face proxy, and
-    command recording performs per-face render-pass resolve and mip generation independently
-    of the cube object's unbind callback. \\
-\texttt{BGFX}
-  & explicit refusal & Exact level/mip/MSAA readback. Normalized public transitions finalize the
-    active face in ordered views before selecting the next target. Calling the renderer's
-    \texttt{SetRenderTargetCubeFace(nullptr,...)} directly is still a no-op, but
-    \cnaclass{GraphicsDevice}'s empty descriptor route does not use it. \\
-\texttt{D3D9}
-  & explicit refusal & Exact level-0 readback; requested upper mip levels have no storage and are
-    refused. An explicit override tracks the cube and unbinds it on every transition, including
-    face-to-face; resolve and backbuffer restoration therefore run. \\
-\texttt{D3D11}
-  & explicit refusal & Exact level/mip/MSAA readback. Separate active-cube tracking finalizes the
-    outgoing face before cube/2D/MRT/backbuffer transitions, including direct face switches. \\
-\texttt{D3D12}
-  & explicit refusal & Exact level/mip/MSAA readback. Its active-cube tracker mirrors D3D11 while
-    finalization performs explicit barriers, resolve and CPU-generated mip uploads. \\
-\texttt{WEBGPU}
-  & explicit refusal & Exact level-0 readback. Binding another face or target eagerly flushes the
-    outgoing identity; mipmapped cube targets are rejected and cube MSAA reports zero. \\
-\texttt{SDL\_GPU}
-  & explicit refusal & Exact level/mip/MSAA readback. Mutually exclusive 2D/cube pointers and
-    queued per-face state preserve face-to-face work and ordered finalization. \\
-\texttt{LLGL}
-  & explicit refusal & Exact level/mip/MSAA readback. Public target descriptors select distinct
-    per-face binding proxies and deferred replay groups their commands into ordered render passes;
-    the cube object's own bind/unbind callbacks are intentionally no-ops. Preserve-on-rebind is
-    bounded to an unflushed frame because cube creation ignores the preserve flag. \\
-\texttt{SKIA}
-  & exact CPU upload & Six independent CPU raster surfaces provide exact level/mip readback and
-    transfer. MSAA is clamped to zero; this is bounded storage/raster support, not native GPU cube
-    sampling. \\
-\texttt{HEADLESS}
-  & explicit refusal & The common route changes logical trace state only; readback refuses rather
-    than inventing pixels, and requested MSAA remains bookkeeping rather than a resolved surface. \\
-\texttt{SOFTWARE}, \texttt{SDL\_RENDERER}, \texttt{ASCII}, \texttt{CANVAS}, \texttt{FREEDIRECT}
-  & null renderer & No cube render-target factory, so no native transition or upload occurs. \\
-\bottomrule
-\end{longtable}
-\endgroup
-
-Direct3D11 and Direct3D12 now close the distinction between a working low-level cube object and
-the public device path. Each renderer tracks the active cube independently of its 2D target,
-flushes the outgoing resolve/mip work before cube, 2D, MRT, or backbuffer transitions, and forwards
-the requested preserve policy at creation. The shared public readback, usage, MSAA,
-depth/stencil, pass-boundary, and ordered-clear fixtures exercise those paths; the D3D12 suite is
-cross-built even where the local Wine swapchain environment prevents registering it as a runnable
-\texttt{ctest}. Direct object smoke checks remain useful mechanism evidence, but are no longer the
-only evidence for the public transition.
-
-\subsection{IIndexBufferRenderer::SetData32: a defensive throw traced out to dead code}
-
-Not every default in this file is a silent no-op. \cnaclass{IIndexBufferRenderer}'s
-\texttt{SetData32} defaults to throwing a plain \texttt{std::runtime\_error}
-(\texttt{"SetData32 not supported by this renderer"}) rather than quietly doing nothing --- the
-opposite failure mode from every default this chapter has covered so far. Grepping every
-renderer's own implementation directory shows exactly four renderers never override it:
-\texttt{SDL\_RENDERER}, \texttt{ASCII}, \texttt{CANVAS}, and \texttt{FREEDIRECT}; the other ten
-(\texttt{EasyGL}, \texttt{Vulkan}, \texttt{BGFX}, \texttt{D3D9}, \texttt{D3D11}, \texttt{D3D12},
-\texttt{WebGPU}, \texttt{SdlGpu}, \texttt{Software}, and the internal \texttt{Headless} test
-renderer) all supply a real one.
-
-Tracing where that default would actually fire tells a reassuring story rather than an
-alarming one, though only once actually traced rather than assumed: all four non-overriding
-renderers are the project's 2D-only renderers, and every one of them already refuses to
-construct \emph{any} index buffer at all, 16-bit or 32-bit, at its own
-\texttt{CreateIndexBuffer16} / \texttt{CreateVertexBuffer} factory call --- confirmed directly
-in \texttt{FreeDirectRenderer.cpp} and \texttt{CanvasRenderer.cpp} (\texttt{"does not
-support 3D"} thrown by name for both calls) and in a real, dedicated regression test for
-\texttt{SDL\_RENDERER} (\texttt{sdlrenderer\_buffer\_construction\_throws\_test.cpp}, Task~723)
-that pins the exact thrown message for a \texttt{ThirtyTwoBits} \cnaclass{IndexBuffer}
-construction --- and that message is \texttt{CreateIndexBuffer16}'s own, not a distinct
-32-bit-specific one, since \texttt{CreateIndexBuffer32} is never separately overridden on this
-renderer either and simply delegates to the 16-bit path's throw. \texttt{ASCII} inherits the
-identical no-3D-support story from \texttt{SDL\_RENDERER} underneath it
-(Chapter~\ref{ch:what-is-cna}'s own verification-scale table already notes this inheritance).
-The practical consequence: \cnaclass{IIndexBufferRenderer}'s own \texttt{SetData32} default can
-never actually fire in this project today --- every renderer that would reach it fails earlier,
-at construction, for an unrelated and already-well-tested reason, and every renderer that
-survives construction already supplies its own real override. It is defensive code with no
-live call path behind it right now, not a currently-reachable gap --- worth recording precisely
-as that, rather than either dismissing it as obviously dead without checking or citing it as an
-active risk without tracing where it actually leads.
-
-\section{Render-target binding identity and usage in the fourteen-product audit cohort}
+\subsection{Render-target identity and usage}
 \label{sec:backend-rendertarget-usage-matrix}
 
-The public enum is small; the execution contract is not. CNA now has one shared target-binding
-route. Singular 2D and cube calls normalize into \texttt{SetRenderTargets}; every binding
-becomes a slot-aligned descriptor naming either a 2D target or a cube face, its dimensions,
-and its renderer-applied sample count. The first target controls viewport/scissor dimensions,
-implicit usage clear, and the shared usage policy. An empty list restores the backbuffer
-without reading \texttt{PresentationParameters.RenderTargetUsage}.
+Singular 2D and cube calls normalize into one descriptor list. Each descriptor names a 2D target
+or cube face, dimensions, and applied sample count. The first descriptor controls viewport,
+scissor, discard clearing, and usage policy. The shared layer rejects null/disposed targets,
+nonzero 2D slices, dimension or sample-count mismatches, duplicate subresources, and unsupported
+mixed/cube MRT shapes before native binding.
 
-Three shared consequences precede any renderer difference:
+Three rules are cross-family:
 
 \begin{enumerate}
-  \item There is no redundant-binding check. An identical repeated 2D bind clears a discard
-        target again and resets viewport/scissor; an identical repeated cube/MRT/backbuffer
-        bind resets state and can redo renderer finalization. FNA compares target identity and
-        cube face and returns early before any of those operations.
-  \item Both target classes pass one centralized predicate to their factories:
-        \texttt{usage != DiscardContents}. Platform therefore follows Preserve, matching FNA,
-        while only exact Discard selects the shared implicit clear.
-  \item Discard requests target plus each depth/stencil aspect the first descriptor reports as
-        real. Cube faces remain in the tracked public list, so their own format participates in
-        this mask. Null/disposed bindings, nonzero 2D slices, mismatched dimensions or applied
-        sample counts, and duplicate subresources are rejected before native binding. A renderer
-        may still reject an otherwise valid mixed/cube MRT shape explicitly.
+  \item CNA has no FNA-style redundant-binding early return. Rebinding the same discard target
+        clears it again and can repeat resolve/finalization work.
+  \item \texttt{PreserveContents} and \texttt{PlatformContents} both pass the preserve Boolean;
+        exact \texttt{DiscardContents} triggers the shared implicit clear.
+  \item The discard mask includes color and each depth/stencil aspect the first descriptor
+        reports as present. Backbuffer usage is outside this policy.
 \end{enumerate}
 
-``Preserve'' in the table means what the implementation retains across separate bind cycles,
-not what a property getter echoes. Every product stores the requested enum correctly. None
-uses the presentation/backbuffer usage. ``P'' below abbreviates \texttt{PreserveContents};
-``Platform'' means \texttt{PlatformContents}.
+Focused fixtures distinguish discard from preserve/platform for major GPU families, including
+cube and depth/stencil cases. Software has CPU color, depth, and stencil storage; Headless reports
+trace changes, not preserved pixels. WebGPU and Software explicitly reject more than one target.
+D3D12 binds multiple RTVs, but current stock draws write target zero. A true MRT capability answer
+must therefore be paired with a successful multi-target bind and an oracle for the intended
+outputs.
 
-\begingroup
-\footnotesize
-\setlength{\tabcolsep}{3pt}
-\renewcommand{\arraystretch}{1.13}
-\begin{longtable}{@{}p{0.13\textwidth}p{0.30\textwidth}p{0.28\textwidth}p{0.22\textwidth}@{}}
-\toprule
-\textbf{Product} & \textbf{2D target behavior} & \textbf{Cube / MRT behavior} &
-\textbf{Evidence boundary} \\
-\midrule
-\endfirsthead
-\toprule
-\textbf{Product} & \textbf{2D target behavior} & \textbf{Cube / MRT behavior} &
-\textbf{Evidence boundary} \\
-\midrule
-\endhead
-\texttt{SDL\_\allowbreak{}RENDERER}
-  & Persistent SDL target texture. Shared black clear makes Discard differ from P;
-    Platform follows P because the factory Boolean is ignored.
-  & No cube or MRT. Repeated identical binds still reach SDL and repeat shared discard/state
-    work.
-  & Strong sampled-pixel proof for non-MSAA Discard versus P; no Platform/backbuffer test. \\
-\texttt{ASCII}
-  & Explicit 2D targets delegate the SDL behavior above. A null bind is redirected to the
-    persistent private game target, independent of presentation usage.
-  & No cube or MRT; non-empty plural calls delegate, while empty restores the private target.
-  & Exact off-screen readback proves a P target survives redirection; no complete usage pair. \\
-\texttt{EasyGL}
-  & Persistent texture/FBO; factory need not consume preserve because the shared three-aspect
-    bind clear distinguishes Discard from P/Platform.
-  & Usage reaches cube faces and MRT through normalized descriptors; the first target controls
-    the shared clear, while mip finalization remains separate.
-  & Shared 2D/cube/depth-stencil usage fixtures provide discriminating pixels. \\
-\texttt{VULKAN}
-  & Discard clears each real aspect; P/Platform load and store colour, depth, and stencil for
-    single-sample and MSAA targets.
-  & Usage reaches cube faces and MRT. Cube colour is per face; one target-wide depth/stencil
-    image is shared across faces, matching FNA.
-  & 2D/cube usage, per-face MSAA, and depth/stencil discriminators cover all three enums. \\
-\texttt{BGFX}
-  & Discard's shared three-aspect clear becomes an ordered view; P/Platform create no bind clear,
-    so persistent attachments load by construction under \texttt{CLEAR\_NONE}.
-  & The same rule reaches cube faces and MRT, including per-face multisample colour and shared
-    depth/stencil usage.
-  & Cube usage, per-face MSAA, and depth/stencil tests add discriminating pixels to the old smoke. \\
-\texttt{WEBGPU}
-  & First-segment load ops clear all real aspects for Discard and load them for P/Platform;
-    explicit clears remain separately ordered.
-  & Cube faces follow the same policy. More than one simultaneous target is rejected rather
-    than silently reduced to the first.
-  & Cube-usage and depth/stencil-usage fixtures distinguish all enums; MRT rejection is tested. \\
-\texttt{SDL\_GPU}
-  & Segment load ops clear real colour/depth/stencil for Discard and load them for P/Platform;
-    explicit clear requests override the policy aspect by aspect.
-  & Cube faces and real MRT retain owning attachment state; MSAA Preserve keeps per-face samples
-    with \texttt{RESOLVE\_AND\_STORE}.
-  & Cube, MSAA-face, depth/stencil, and pass-boundary tests discriminate policy and chronology. \\
-\texttt{D3D9}
-  & Persistent native surfaces; shared Discard clears each real aspect, P and Platform do not.
-  & Cube faces and MRT receive normalized descriptors; the first target controls usage, while
-    redundant binds can repeat resolve/rebind work.
-  & Shared usage fixtures cover colour/depth/stencil; native clear-format gating is separate. \\
-\texttt{D3D11}
-  & Persistent resources; shared Discard clears each real aspect, P/Platform retain them.
-    Rebinding the same target still performs native finalization/rebind work.
-  & Cube faces and real MRT use normalized descriptors; the first target controls the shared
-    usage clear.
-  & Shared cube and depth/stencil usage fixtures exercise public transitions. \\
-\texttt{D3D12}
-  & Persistent resources; shared Discard clears each real aspect, P/Platform retain them;
-    redundant binds still repeat native work.
-  & Cube faces and real MRT use normalized descriptors. MRT binds real RTVs, while stock draws
-    still write only target~0.
-  & Shared usage fixtures provide public colour/depth/stencil discrimination. \\
-\texttt{SOFTWARE}
-  & Persistent CPU color/depth arrays. Shared Discard clears both when present; P and Platform
-    retain them. There is no stencil plane.
-  & No cube-target factory; inherited MRT binds only the first 2D target.
-  & Source-proven; current smoke coverage does not compare usage values. \\
-\texttt{HEADLESS}
-  & The enum changes only whether shared code emits a synthetic clear/counter update;
-    target pixels are not rendered and readback repeats one renderer-global last-clear color.
-  & Cube faces and MRT arrive as normalized descriptors; behavior remains synthetic rather
-    than attachment preservation.
-  & Trace/counter evidence only, never preservation pixels. \\
-\texttt{CANVAS}
-  & Browser off-screen canvas is persistent; shared Discard overwrites black while P/Platform
-    leave it. Native non-Emscripten bodies remain no-ops.
-  & No cube or MRT.
-  & Source/specification audit only; no browser execution in this environment. \\
-\texttt{FREEDIRECT}
-  & Persistent DirectDraw surface; shared Discard clears black, while P/Platform retain
-    prior color.
-  & No cube or MRT; identical rebind repeats the shared Discard clear.
-  & Exact readback proves Discard rebind becomes black; P and Platform are not tested. \\
-\bottomrule
-\end{longtable}
-\endgroup
-
-The portable rule is now direct: Discard replaces every real aspect on bind; Preserve and
-Platform retain them. Singular 2D/cube calls and one-element \cnaclass{RenderTargetBinding}
-lists share that route. Still avoid redundant bind calls because CNA lacks FNA's identity
-early-return, and consult the renderer row before requesting several simultaneous attachments.
-The presentation backbuffer's own usage remains outside this policy.
-
-\section{ClearOptions: seven shared routes in the fourteen-product audit cohort}
+\subsection{Clear selection and ordering}
 \label{sec:backend-clear-matrix}
 
-\cnaclass{GraphicsDevice} converts the colour once, then selects exactly one of seven renderer
-methods for the seven non-empty combinations of target/depth/stencil. Before that selection it
-validates a requested depth value and applies the active-target mask described in
-\S\ref{sec:clearoptions}. FNA's mask uses the actual \cnaclass{DepthFormat}: \texttt{None}
-retains target only, while every format except \texttt{Depth24Stencil8} removes stencil. CNA
-now asks depth and stencil independently from the first bound normalized 2D/cube descriptor,
-and asks the backbuffer renderer independently when no target is bound. The table begins
-\emph{after} that shared routing; ``exact'' means exact for the flags that survived it.
+\cnaclass{GraphicsDevice} converts color once, masks unavailable target aspects, and dispatches
+one of seven non-empty target/depth/stencil combinations. The significant remaining differences
+are concise:
 
-\begingroup
-\footnotesize
-\setlength{\tabcolsep}{3pt}
-\renewcommand{\arraystretch}{1.12}
-\begin{longtable}{@{}p{0.13\textwidth}p{0.25\textwidth}p{0.27\textwidth}p{0.25\textwidth}@{}}
-\toprule
-\textbf{Product} & \textbf{Native/pass behavior} & \textbf{Option and target fidelity} &
-\textbf{Evidence boundary} \\
-\midrule
-\endfirsthead
-\toprule
-\textbf{Product} & \textbf{Native/pass behavior} & \textbf{Option and target fidelity} &
-\textbf{Evidence boundary} \\
-\midrule
-\endhead
-\texttt{SDL\_\allowbreak{}RENDERER}
-  & Immediate \texttt{SDL\_RenderClear} of the active colour target.
-  & Public depth/stencil bits are masked away; depth/stencil-only is a silent no-op.
-    Direct six 3D hooks throw, but are unreachable through this public path.
-  & Two dedicated public tests still expect the obsolete throw behavior and fail. Their
-    colour assertions remain useful; Task~1113's policy question is settled by FNA. \\
-\texttt{ASCII}
-  & Delegates colour and all six combination hooks to the inner SDL renderer.
-  & Same public mask and no-op behavior; colour affects the off-screen game target before
-    character conversion.
-  & The dedicated test proves direct hooks throw, not that public masked calls throw. \\
-\texttt{EasyGL}
-  & Immediate \texttt{glClear}; viewport-independent but narrowed by an enabled scissor.
-    Depth/stencil-specific hooks force full write masks.
-  & The plain colour hook incorrectly includes \texttt{GL\_DEPTH\_BUFFER\_BIT} without forcing
-    depth writes. Thus public \texttt{Target} and the raw-float overload can clear depth too,
-    or fail to do so according to the prior depth mask. Other combinations select their bits.
-  & Public overload/range tests, generic depth tests, cross-frame stencil, clear-options, and
-    ordered-clear pixels exist. The plain colour-hook coupling remains distinct. \\
-\texttt{VULKAN}
-  & Leading clears may fold into load ops; later clears become
-    \texttt{vkCmdClearAttachments} between ordered draw slices.
-  & Exact per-aspect selection after shared format masking, on backbuffer, 2D, cube, and MRT;
-    preserve-content explicit clears remain effective.
-  & Eight-mask clear-options and no-flush ordered-clear suites prove isolated aspects,
-    clear-only segments, target kinds, and draw--clear order. \\
-\texttt{BGFX}
-  & Every public clear owns an ordered touched view carrying its exact
-    \texttt{BGFX\_CLEAR\_*} mask and values.
-  & Exact per-aspect selection after shared masking; full-target clear is independent of custom
-    viewport, and subsequent work receives another view.
-  & Shared clear-options/ordered-clear suites prove depth-only no-draw, repeated clears,
-    draw--clear order, cube, and MRT behavior. \\
-\texttt{WEBGPU}
-  & Ordered clear entries partition a bind cycle into native pass segments; a leading clear
-    may become a load action and a post-draw clear opens the next segment.
-  & Exact per-aspect selection after shared masking for backbuffer, 2D, and cube. MRT is an
-    explicit capability rejection, not a silently narrowed clear.
-  & Shared clear-options and ordered-clear suites prove isolated aspects, same-pass chronology,
-    and target transitions. \\
-\texttt{SDL\_GPU}
-  & Per-destination pass segments coalesce only consecutive pre-draw clears; a post-draw clear
-    opens another load/clear segment at the public position.
-  & Exact per-aspect selection after shared masking for backbuffer, 2D, cube, and real MRT;
-    later MSAA segments preserve samples they must load.
-  & Shared clear-options, ordered-clear, pass-boundary, and backbuffer-order tests distinguish
-    masks, chronology, and destinations. \\
-\texttt{D3D11}
-  & Immediate full-view clears: all bound colour RTVs, plus exactly requested native
-    depth/stencil flags when a DSV exists.
-  & Renderer selection is exact. Shared routing asks the bound 2D/cube attachment independently
-    for real depth and stencil and masks only the absent aspect.
-  & Strong direct-renderer GPU readback proves stencil values and depth-only colour
-    preservation; shared clear-options and ordered-clear fixtures exercise public routing. \\
-\texttt{D3D12}
-  & Immediate, synchronous command lists clear bound off-screen/swap-chain RTVs and selected
-    DSV flags exactly.
-  & Shared format masking queries the actual attachment aspects. The helper still requires some
-    bound colour resource, but with colour bound and no DSV a requested depth/stencil clear is a
-    legal no-op.
-  & Strong direct-renderer depth-test and stencil-plane readback proof exists. It bypasses the
-    shared public mask and requires a real bound target. \\
-\texttt{D3D9}
-  & Immediate \texttt{IDirect3DDevice9::Clear} with the selected
-    \texttt{D3DCLEAR\_*} bits.
-  & Native bits are further gated by the presentation/backbuffer
-    \texttt{depthStencilFormatOrdinal\_}, even while a differently-formatted 2D/cube target is
-    bound. The active attachment can therefore be skipped or receive an invalid extra bit.
-  & The smoke test calls all seven public combinations on D24S8, but most depth/stencil-only
-    checks prove only that colour stayed unchanged. No backbuffer/target-format mismatch test
-    exists. \\
-\texttt{SOFTWARE}
-  & Immediate CPU framebuffer clears with independent colour and depth arrays.
-  & Colour/depth selection is exact after shared routing. There is no stencil storage:
-    stencil-only is a no-op and combined forms ignore that component.
-  & Source-proven; broad rendering tests use clears, but no dedicated seven-combination
-    discriminator was found. \\
-\texttt{HEADLESS}
-  & Synthetic state only: colour forms update last-clear colour and one counter; depth/stencil
-    forms add counters/traces without pixels.
-  & Dispatch identity is visible in traces, not attachment contents. Renderer-wide depth support
-    defaults true; per-target support merely echoes whether depth was requested.
-  & Smoke and trace-difference tests prove counters/names, not XNA rendering semantics. \\
-\texttt{CANVAS}
-  & Browser builds synchronously overwrite the whole active Canvas2D context (transparent
-    clears use \texttt{clearRect}); native non-Emscripten builds do nothing.
-  & Public depth/stencil is masked away. Direct combination hooks throw as unsupported 3D, but
-    public calls cannot reach them.
-  & Source-audited; no browser execution was performed for this audit. \\
-\texttt{FREEDIRECT}
-  & Immediate locked full-surface RGBA fill of the active free-direct target, including caller
-    alpha.
-  & Public depth/stencil is masked away and becomes a no-op; direct 3D combination hooks throw.
-  & Dedicated tests prove exact colour/alpha, target redirection, public no-op masking, and the
-    otherwise-unreachable direct throws. \\
-\bottomrule
-\end{longtable}
-\endgroup
+\begin{itemize}
+  \item Vulkan, BGFX, WebGPU, and SDL GPU preserve ordered clears across deferred pass segments;
+        focused pixel suites cover masks, chronology, and several target kinds.
+  \item D3D11/12 issue native immediate clears. D3D9 further gates depth/stencil bits using its
+        backbuffer format, even when a differently formatted target is active.
+  \item EasyGL's color-only hook also includes the GL depth bit without forcing depth writes, so
+        prior depth-mask state can change a nominal target-only clear.
+  \item SDL Renderer, Canvas, and free-direct mask depth/stencil away on their public 2D paths;
+        their direct 3D hooks may throw but are not reached by the masked public call.
+  \item Software handles color, depth, and stencil in CPU arrays; Headless records trace identity
+        without attachment semantics.
+\end{itemize}
 
-No \cnaclass{GraphicsCapability} value reports clear selectivity or same-pass ordering.
-Portable code should still pass only aspects the active target publicly owns and avoid the
-raw-float overload, whose semantics differ from \texttt{Clear(Color)}. The four audited modern
-deferred renderers now preserve issue order and masks; EasyGL's target-only depth coupling and
-D3D9's backbuffer-format gating remain renderer-specific exceptions, not caller preconditions.
+There is no capability value for aspect selectivity or same-pass ordering. Tests must observe the
+requested aspect after intervening work; an unchanged color pixel alone does not prove that a
+depth-only clear occurred.
 
-\section{Viewport and scissor in the fourteen-product audit cohort}
+\subsection{Viewport and scissor}
 \label{sec:backend-viewport-scissor-matrix}
 
-\cnaclass{GraphicsDevice} stores both public values before immediately invoking the two
-otherwise-empty renderer hooks. Scissor enable arrives separately through
-\texttt{ApplyRasterizerState}. A successful setter and an exact getter round trip therefore say
-nothing yet about where a later primitive lands. The table records \emph{draw-time} behavior;
-clear operations are a separate native-API question.
+The device calls each renderer hook before committing the corresponding public property, and
+scissor enable arrives separately through \cnaclass{RasterizerState}. A successful getter round
+trip therefore establishes accepted bookkeeping, not rasterization.
 
-\begingroup
-\footnotesize
-\setlength{\tabcolsep}{3pt}
-\renewcommand{\arraystretch}{1.12}
-\begin{longtable}{@{}p{0.13\textwidth}p{0.22\textwidth}p{0.27\textwidth}p{0.28\textwidth}@{}}
-\toprule
-\textbf{Product} & \textbf{Custom viewport} & \textbf{Scissor rectangle + enable} &
-\textbf{Scope, timing, and evidence} \\
-\midrule
-\endfirsthead
-\toprule
-\textbf{Product} & \textbf{Custom viewport} & \textbf{Scissor rectangle + enable} &
-\textbf{Scope, timing, and evidence} \\
-\midrule
-\endhead
-\texttt{SDL\_\allowbreak{}RENDERER}
-  & No hook; stored property and \cnaclass{Viewport} math only.
-  & A positive rectangle immediately installs an SDL clip; a non-positive size disables it.
-    \texttt{ScissorTestEnable} is ignored, so a non-empty rectangle clips even when false.
-  & Immediate 2D-renderer state. The rasterizer test proves assignment/round trip only; no
-    clipping or viewport pixel test was found. \\
-\texttt{ASCII}
-  & No hook.
-  & Delegates the rectangle to its inner SDL renderer, inheriting the same always-active clip;
-    the rasterizer Boolean is not delegated.
-  & Clips the off-screen game target before glyph quantization. Source-proven, with no dedicated
-    state pixel test. \\
-\texttt{EasyGL}
-  & Immediate GL viewport and depth range, with top-left to bottom-left conversion using the
-    active target height.
-  & Immediate GL rectangle plus a genuinely independent GL enable.
-  & Dedicated 3D viewport and scissor pixel tests, plus target-switch reset proof. A SpriteBatch
-    flush overwrites the GL viewport with full window/target size and does not restore it; its
-    scissor remains effective. \\
-\texttt{VULKAN}
-  & Captured per SpriteBatch batch/3D draw and applied dynamically on its own backbuffer or
-    target segment, including depth range.
-  & Rectangle and enable are captured per command; disabled/degenerate becomes full target.
-  & Target-specific plus shared deferred-capture pixel tests prove several unflushed state
-    changes cannot collapse last-wins. \\
-\texttt{BGFX}
-  & View-level state preserved by ordered target/viewport segments for 3D and SpriteBatch;
-    min/max depth is discarded.
-  & Independent Boolean and rectangle, re-applied before every SpriteBatch and 3D submit.
-  & Subregion, deferred-viewport/scissor, multi-viewport, and SpriteBatch-transform tests cover
-    backbuffer and target scope. \\
-\texttt{WEBGPU}
-  & Captured per command, clamped at dynamic application, and applied on backbuffer, 2D, and
-    cube passes.
-  & Independent captured Boolean/rectangle; disabled or zero becomes full target, enabled is
-    clamped at replay.
-  & Deferred pixel oracles prove chronology; cardinality tests prove no pipeline/pass/submit
-    multiplication and skip redundant same-state setter calls. \\
-\texttt{SDL\_GPU}
-  & Captured per command and applied through \texttt{SDL\_SetGPUViewport}, including depth range.
-  & Captured Boolean/rectangle applied per command; disabled or zero becomes full target.
-  & Shared deferred viewport/scissor fixtures cover backbuffer, 2D, cube, and multiple changes
-    in one unflushed bind cycle. \\
-\texttt{D3D11}
-  & Immediate \texttt{RSSetViewports}, including depth range.
-  & Immediate \texttt{RSSetScissorRects}; cached rasterizer state controls
-    \texttt{ScissorEnable}.
-  & Persists into subsequent 3D and SpriteBatch draws. Smoke Check~O reads the native state back,
-    but calls renderer methods directly and is not a behavioral public pixel test. \\
-\texttt{D3D12}
-  & Stored custom rectangle/depth range consumed by every 3D and SpriteBatch command list;
-    SpriteBatch uses the same viewport-local projection basis.
-  & Empty hook; every draw installs a full-target native scissor regardless of the public
-    rectangle/Boolean.
-  & Native GPU pixels distinguish subregion, multiple successive viewports, depth range and
-    target-switch reset. Scissor remains the source-proven negative half. \\
-\texttt{D3D9}
-  & Immediate native viewport, including depth range.
-  & Immediate native rectangle; \texttt{D3DRS\_SCISSORTESTENABLE} is independent.
-  & Subsequent 3D/SpriteBatch draws use native state. Source and broad native-draw tests exist,
-    but the 39-scene oracle corpus contains no viewport/scissor scene; the plan's
-    ``oracle-proven'' shorthand is stale. \\
-\texttt{SOFTWARE}
-  & Explicit no-op.
-  & Explicit rectangle no-op; rasterizer application keeps culling but discards scissor enable.
-  & Public values round-trip while both CPU 3D and SpriteBatch rasterization ignore them.
-    Source-proven; no dedicated negative test. \\
-\texttt{HEADLESS}
-  & Validation and trace only.
-  & Validation and trace only; enable is merely another traced rasterizer-state change.
-  & No pixels are rasterized. Tests prove viewport trace divergence and validation-mode rejection
-    of invalid scissor input, not visual clipping. \\
-\texttt{CANVAS}
-  & No hook.
-  & No rectangle or rasterizer hook.
-  & Stored-only public state on a 2D-only browser renderer; source-audited, not browser-executed. \\
-\texttt{FREEDIRECT}
-  & No hook.
-  & No rectangle or rasterizer hook.
-  & Stored-only public state on the 2D \texttt{free-direct} route; no dedicated test. \\
-\bottomrule
-\end{longtable}
-\endgroup
+Vulkan, BGFX, WebGPU, and SDL GPU capture viewport/scissor per deferred command and have focused
+pixel evidence. EasyGL and D3D9/11 apply both through native state; EasyGL SpriteBatch resets the
+viewport to the full destination and does not restore it. D3D12 applies custom viewport and depth
+range but installs a full-target scissor on every draw. SDL Renderer applies a nonempty clip
+rectangle regardless of \texttt{ScissorTestEnable} and has no viewport hook. Software applies the
+rectangle and enable state to its 2D and 3D clip paths; its custom viewport is covered for
+SpriteBatch, while the 3D NDC mapping still spans the full framebuffer. Canvas, free-direct, and
+historical ASCII do not implement both semantics. Headless validates/traces but does not rasterize.
 
-The common lifecycle adds two independent qualifications to every row. Render-target switches
-do reset both public values to the first target's or backbuffer's full bounds. Construction and
-\texttt{Reset()} do not yet match FNA: CNA starts with a zero public scissor, and its reset path
-preserves both custom values when size is unchanged or resets only the viewport after a real
-size change. FNA initializes both to presentation bounds and unconditionally resets both.
+Target switches reset viewport and scissor to destination bounds. Construction establishes both
+full rectangles. Present and a same-size reset preserve custom values; a logical-size or physical
+default-viewport change resets both. No capability value reports either feature.
 
-\cnaclass{SpriteBatch} now reaches the same state route as an explicit device assignment. Its
-full \texttt{Begin()} overload applies the supplied blend state, depth/stencil state, rasterizer
-state, and sampler through the ordinary \cnaclass{GraphicsDevice} property setters; a null
-rasterizer is resolved to \texttt{CullCounterClockwise}, matching FNA. Passing a
-scissor-enabled rasterizer to \texttt{Begin()} can therefore reach every capable row in the
-table. There is still no \cnaclass{GraphicsCapability} entry for viewport or scissor, and invalid
-rectangles are not normalized at the shared boundary, so portable code must neither probe by
-getter nor rely on one renderer's clamp/ignore/throw behavior.
-
-\section{GpuDrawParams: already covered, worth remembering here}
-
-Chapter~\ref{ch:stock-effects} already introduced \cnaclass{GpuDrawParams} in full --- the
-single struct \texttt{Effect::FillGpuDrawParams()} populates and every renderer's
-\texttt{DrawPrimitivesEx} / \texttt{DrawIndexedPrimitivesEx} consumes. It is worth restating
-here only because it is the concrete mechanism by which ``a stock effect draws identically
-across twelve renderers'' is actually achieved: the effect layer never talks to a renderer
-directly about lights, fog, or skinning palettes --- it fills one struct, and each renderer's
-own draw dispatch decides how to turn that struct into real GPU state.
-
-\section{GraphicsCapability: ask, don't catch}
+\section{Capability answers and operational evidence}
 \label{sec:graphicscapability}
 
-Rather than requiring game code to attempt an operation and catch an exception to discover
-whether a renderer supports it, \cnaclass{GraphicsCapability} is a small enum ---
-\texttt{ThreeD}, \texttt{DepthStencilBuffer}, \texttt{MultiSampleAntiAliasing},
-\texttt{MultipleRenderTargets}, \texttt{AnisotropicFiltering}, \texttt{WireFrame},
-\texttt{OcclusionQuery}, \texttt{CustomEffects}, \texttt{Texture3D},
-\texttt{MultiStream\allowbreak{}VertexInput}, \texttt{Instancing}, \texttt{StencilBuffer}, and
-\texttt{AdditiveBlending} --- queryable via
-\texttt{GraphicsDevice::\allowbreak{}SupportsCapability\allowbreak{}(GraphicsCapability)}. The default implementation
-returns \texttt{true} for everything except multi-stream input, while stencil delegates to the
-separate \texttt{SupportsStencilBuffer()} hook; a 2D-only renderer like \texttt{SDL\_RENDERER}
-(Chapter~\ref{ch:sdl-renderer}) overrides this to honestly report what it cannot do, rather
-than accepting a 3D draw call and throwing only once the call actually arrives.
+\cnaclass{GraphicsCapability} contains \texttt{ThreeD}, depth/stencil, MSAA, MRT, anisotropy,
+wireframe, occlusion query, custom effects, 3D textures, multi-stream input, instancing, stencil,
+and additive blending. The shared default returns true except for multi-stream input; stencil
+uses a separate hook. This optimistic polarity makes an answer useful only when the family has
+audited the corresponding operation.
 
-\begin{lstlisting}
-const auto renderer = device.GetGraphicsRendererType();
-if (device.SupportsCapability(GraphicsCapability::ThreeD)) {
-    DrawSceneWith3DModels();
-} else {
-    DrawFlat2DFallbackScene(); // e.g. running on SDL_RENDERER or CANVAS
-}
+Figure~\ref{fig:capability-evidence} shows the required progression from reported Boolean to
+an observed result.
 
-const bool knownOcclusionFalsePositive =
-    renderer == GraphicsRendererType::WebGPU ||
-    renderer == GraphicsRendererType::SdlGpu ||
-    renderer == GraphicsRendererType::Software ||
-    renderer == GraphicsRendererType::Headless;
-if (!device.SupportsCapability(GraphicsCapability::OcclusionQuery) ||
-    knownOcclusionFalsePositive) {
-    // Skip GPU occlusion culling entirely rather than constructing an OcclusionQuery
-    // whose factory would return nullptr or throw on these known exceptions.
-}
-\end{lstlisting}
+Confirmed contradictions and scope mismatches at the pin include:
 
-This is precisely the ``ask, don't catch'' pattern this section's own title promises, but the
-default-true polarity means it must be audited against behavior. Many renderer overrides answer
-MRT honestly, including runtime/device-dependent answers in EasyGL, Magnum, and OpenGL2. Three do
-not: HEADLESS, SOFTWARE, and WebGPU report true while their multi-target bind path throws. A
-capability flag can therefore exist and still be an unreliable preflight on a named renderer.
-
-The source audit confirms further failures of that default-true design. \texttt{CustomEffects}
-reports true on BGFX and WebGPU despite two different non-support shapes: an always-invalid
-compiled object and a null factory plus a throwing \cnaclass{SpriteBatch}. \texttt{OcclusionQuery}
-has a parallel confirmed set in WebGPU, SDL GPU, and Software, which inherit a null factory but
-report \texttt{true}; HEADLESS returns a bookkeeping query whose pixel count is the constant one,
-not a real GPU query. Thus ``ask, don't catch'' is the intended API, not yet a universal guarantee.
-A caller targeting one of these known exceptions needs the explicit guards above and, for
-custom effects, the renderer-specific boundary documented in
-Chapter~\ref{ch:shader-fx-gap}.
-
-\subsection{The two device-dependent entries, audited end to end}
-
-The remaining two enum values expose why ``inherits \texttt{true}'' and ``has some
-implementation code'' are not equivalent to a current-device answer. In the table,
-\emph{live} means that \texttt{SupportsCapability()} itself performs a runtime query;
-\emph{true} means the renderer simply inherits or returns an unconditional answer.
-
-\begingroup
+\begin{center}
 \small
-\setlength{\tabcolsep}{4pt}
-\renewcommand{\arraystretch}{1.15}
-\begin{longtable}{@{}p{0.16\textwidth}p{0.13\textwidth}p{0.15\textwidth}p{0.48\textwidth}@{}}
+\begin{tabular}{@{}p{0.23\textwidth}p{0.26\textwidth}p{0.42\textwidth}@{}}
 \toprule
-\textbf{Renderer} & \textbf{MSAA report} & \textbf{Anisotropy report} & \textbf{What the live implementation actually establishes} \\
+\textbf{Capability} & \textbf{Affected families} & \textbf{Reachable behavior} \\
 \midrule
-\endfirsthead
-\toprule
-\textbf{Renderer} & \textbf{MSAA report} & \textbf{Anisotropy report} & \textbf{What the live implementation actually establishes} \\
-\midrule
-\endhead
-\texttt{SDL\_RENDERER}, \texttt{CANVAS}, \texttt{FREEDIRECT}
-  & false & false & Honest: none of the three implements either feature. \\
-\texttt{EasyGL}
-  & live & live & Honest live GL checks: maximum samples must exceed one, and
-    \texttt{GL\_EXT\_texture\_filter\_anisotropic} must exist. Both paths clamp to the driver. \\
-\texttt{VULKAN}
-  & true & live & Anisotropy is honestly gated by the enabled device feature. MSAA is real, but
-    \texttt{PickSampleCount()} can return one; the capability query never asks it. \\
-\texttt{BGFX}
-  & true & true & MSAA flags and anisotropic on/off flags are real. The requested anisotropy
-    level is ignored, and the default legacy-GL renderer has a pixel-proven MSAA resolve failure
-    despite its format-support bit. The query distinguishes neither boundary. \\
-\texttt{WEBGPU}
-  & true & true & Anisotropic sampler descriptors are real. MSAA performs a scratch 4x texture
-    probe and can fall back to one, but the capability query does not consult the probe. \\
-\texttt{SDL\_GPU}
-  & true & true & Render-target MSAA asks
-    \texttt{SDL\_GPUTextureSupportsSampleCount()} and can clamp to one. Anisotropy is stored but
-    omitted from commands and sampler creation, so that answer is definitely false. \\
-\texttt{D3D9}
-  & true & true & Real MSAA and anisotropy calls exist, but both depend on
-    \texttt{CheckDeviceMultiSampleType()} / \texttt{D3DCAPS9::MaxAnisotropy}; the capability query
-    consults neither, and the anisotropy request is not clamped. \\
-\texttt{D3D11}, \texttt{D3D12}
-  & true & true & Honest for the devices CNA accepts: both enforce a feature-level~11.0 floor,
-    then use the required RGBA8 multisample support and real anisotropic sampler mapping. \\
-\texttt{SOFTWARE}
-  & true & true & Both false: one CPU sample per pixel; every sampler value is discarded. \\
-\texttt{HEADLESS}
-  & true & true & Record-only test semantics: requested values enter traces/state, but no pixel
-    is rasterized. These answers cannot establish rendering support. \\
+MRT & Headless, Software, WebGPU & Trace-only behavior or explicit rejection, not a usable multi-attachment draw contract. \\
+Occlusion query & WebGPU, SDL GPU, Software; Headless is synthetic & Null factory or non-GPU bookkeeping despite true reporting. \\
+Custom effects & BGFX, WebGPU & Always-invalid object, null factory, or a later throwing route. \\
+Instancing & Headless, SDL GPU & Trace-only result or inherited throwing callback. \\
+MSAA & Software; several device-dependent families are overbroad & Software implements 4x color MSAA for render targets but not its backbuffer; Vulkan/WebGPU/SDL GPU/D3D9 can negotiate a request down while still reporting true. \\
+Anisotropy & SDL GPU, Software; D3D9 is overbroad & Stored/ignored value, discarded sampler state, or device limit not consulted by the query. \\
 \bottomrule
-\end{longtable}
-\endgroup
+\end{tabular}
+\end{center}
 
-Thus the absolute false positives in this retained matrix are Software for MSAA and
-SDL GPU/Software for anisotropy. Vulkan, WebGPU, SDL GPU, and D3D9 add a subtler MSAA
-contract failure: their real application/creation paths can say ``this device has no usable
-count above one,'' while the public capability query still says true. D3D9 has the analogous
-anisotropy problem. For MSAA, the reliable public evidence after a reset is the
-device-clamped value written back into
-\texttt{GraphicsDevice.PresentationParameters.MultiSampleCount}, not the capability boolean.
-For a \cnaclass{RenderTarget2D} or \cnaclass{RenderTargetCube}, read that target's own
-\texttt{MultiSampleCount}; its renderer getter reports the applied value (zero means disabled)
-on the implementations that genuinely negotiate it.
+For MSAA, the applied value written back to presentation parameters or the target's own
+\texttt{MultiSampleCount} is stronger than the Boolean. For all capabilities, the defensible
+sequence is query, factory, operation, engagement, then a suitable behavioral or pixel oracle.
 
-\subsection{Recovery and debug hooks: one shared flag, two real loss channels, one marker}
+\subsection{Recovery, device-loss, and markers}
 \label{sec:backend-recovery-debug-matrix}
 
-Three more interface defaults look like optional renderer diagnostics but cross the public
-framework boundary in three different ways. First, the device's public
-\texttt{SetContextRecovery\allowbreak{}Enabled()} changes its shared recovery flag
-\emph{before} it calls the renderer hook. The flag
-controls whether a successful full \cnaclass{Texture2D} upload may discard its CPU pixel
-shadow. When recovery is disabled, a later ordinary \texttt{GetData()} or partial level-zero
-update can therefore throw even on a product whose renderer hook is empty; a complete
-level-zero replacement can still recreate the resource. Unit tests prove all three cases.
-Turning recovery back on does not reconstruct already-discarded pixels.
+\texttt{SetContextRecoveryEnabled()} changes shared texture-shadow policy before invoking the
+renderer hook. Disabling it permits a successful full upload to discard CPU pixels, so later
+readback or a partial update can fail even when the family hook is empty. Re-enabling recovery
+does not reconstruct discarded data. Call it after device construction but before loading
+resources; the header's ``before device initialization'' wording cannot be literal because the
+method belongs to an existing device.
 
-The declaration's instruction to call the setter ``before device initialization'' cannot be
-read literally: the public method belongs to an already-constructed
-\cnaclass{GraphicsDevice}, whose renderer is created eagerly. The intended safe point,
-confirmed by the change's own Git history, is after device construction but before loading
-game resources. It is a policy for future creation and uploads, not a reversible migration
-of existing resources.
+F9 and F10 key-down events pass through input first, then call renderer loss/restore hooks.
+EasyGL uses them for desktop or browser context-loss routes. D3D9 exposes a staged lost/reset
+lifecycle with event and pixel coverage. Other audited families generally inherit no-ops.
+\texttt{SetStringMarkerEXT()} is also a no-op by default; Vulkan can queue a debug-utils marker
+when the extension function exists, while D3D9 throws. Successful submission is not proof that a
+native marker was emitted.
 
-Second, non-repeated F9 and F10 key-down events are global \cnaclass{Game} debug triggers.
-Its event pump sends the event through \texttt{SdlInputBridge} first, then calls the loss or
-restore hook. Game input state thus sees the key as well as the framework action. Third,
-\texttt{SetStringMarkerEXT()} is a public device method with a silent interface default.
-The full product matrix matters:
+\section{Selection and factory boundary}
 
-\begingroup
-\footnotesize
-\setlength{\tabcolsep}{3pt}
-\renewcommand{\arraystretch}{1.13}
-\begin{longtable}{@{}p{0.13\textwidth}p{0.25\textwidth}p{0.27\textwidth}p{0.27\textwidth}@{}}
-\toprule
-\textbf{Product} & \textbf{Recovery-policy effect} &
-\textbf{F9 / F10 loss channel} & \textbf{String marker and evidence} \\
-\midrule
-\endfirsthead
-\toprule
-\textbf{Product} & \textbf{Recovery-policy effect} &
-\textbf{F9 / F10 loss channel} & \textbf{String marker and evidence} \\
-\midrule
-\endhead
-\texttt{EasyGL}
-  & Shared texture-shadow rule, plus disabling registration of subsequently-created GL
-    textures, buffers, queries, SpriteBatch state, and render targets. Existing registrations
-    are not removed.
-  & Desktop: either key performs one complete synchronous loss/recreate/restore cycle.
-    Web: F9 requests asynchronous browser loss; F10 separately requests restore.
-  & Marker is a no-op. Desktop recovery is exercised by source/tests; the real browser event
-    path was source-audited, not executed here. \\
-\texttt{D3D9}
-  & The shared flag changes, then the renderer hook throws
-    \texttt{runtime\_error} through \texttt{NotYetImplemented}; the public call leaves partial
-    state.
-  & F9 enters \texttt{Lost} and raises \texttt{DeviceLost}; F10 performs a real reset and
-    raises \texttt{DeviceResetting}, then \texttt{DeviceReset}. Invalid repeated transitions
-    do nothing.
-  & Marker also throws. The smoke suite proves event counts, lost-state draw rejection,
-    exact post-reset pixels, and default-pool resource recreation. \\
-\texttt{VULKAN}
-  & Shared texture-shadow rule only; the renderer hook is empty.
-  & Both keys reach empty hooks.
-  & Real, but deferred: a non-empty marker is queued in the pending 3D/current-render-target
-    stream, then becomes a Vulkan debug-utils label only when
-    \texttt{vkCmdInsert\allowbreak{}DebugUtils\allowbreak{}LabelEXT} is loaded. No dedicated
-    marker assertion was found. \\
-\texttt{FREEDIRECT}
-  & Shared texture-shadow rule only.
-  & Both keys are no-ops, directly confirmed by the renderer test.
-  & Marker is a no-op. \\
-\texttt{SDL\_\allowbreak{}RENDERER}, \texttt{ASCII}, \texttt{BGFX}, \texttt{WEBGPU},
-\texttt{SDL\_GPU}, \texttt{D3D11}, \texttt{D3D12}, \texttt{CANVAS},
-\texttt{SOFTWARE}, \texttt{HEADLESS}
-  & Shared texture-shadow rule only.
-  & Both keys reach empty hooks.
-  & Marker is a no-op; these rows are source-proven rather than dedicated loss/marker tests. \\
-\bottomrule
-\end{longtable}
-\endgroup
+Chapter~\ref{ch:renderer-selection-identity} is the canonical identity/family registry. At this
+edition, one configure-time public identity maps to one of \RendererFamilyCount{} implementation
+families; the five EasyGL identities share one family. Platform and dependency gates run before
+the factory is compiled.
 
-There is no public capability query for any row in this matrix. A portable game should not
-bind gameplay to F9/F10 without accounting for the global side effect, should treat
-\texttt{SetContextRecoveryEnabled(false)} as a one-way policy for subsequent resource
-creation and full uploads, and cannot use successful marker submission as proof that a native
-marker was emitted. FNA provides the marker extension by forwarding it uniformly to FNA3D,
-but has neither CNA's recovery-policy extension nor these framework-installed F9/F10
-triggers.
+The selected module provides exactly one
+\texttt{CreateGraphicsRenderer(const GraphicsRendererCreateArgs\&)} returning
+\texttt{unique\_ptr<IGraphicsRenderer>}. Its create arguments include window, virtual
+resolution, presentation mode, recovery policy, requested samples and interval, plus CNAEXT
+backbuffer/depth formats, fullscreen, and profile. Field presence is not a requirement that every
+family consume the field; the presentation tables above show the current differences.
 
-\section{Build-time selection}
+\begin{historynote}
+The original audit narrated individual task numbers, intermediate tests, and repaired defaults
+throughout this chapter. The current contract now incorporates those fixes. History remains here
+only where it explains a live hazard: permissive defaults allowed plausible reduced draws;
+CPU-shadow round trips masked missing GPU uploads; and direct helper tests bypassed the public
+coordinate route. The detailed dated campaign remains in the repository audit artifacts.
+\end{historynote}
 
-\texttt{cmake/RendererSelection.cmake} is where the renderer list from
-Chapter~\ref{ch:building-cna} is actually enumerated: the \texttt{CNA\_GRAPHICS\_RENDERER}
-cache variable's \texttt{STRINGS} property lists 46 recognized public identities. Five of them
---- \texttt{OPENGLES2}, \texttt{OPENGLES3}, \texttt{OPENGL33}, \texttt{WEBGL1}, and
-\texttt{WEBGL2} --- share the internal EasyGL factory, so the public identities map to 42
-implementation factories. Appendix~\ref{ch:feature-matrix} gives the complete grouped list;
-\texttt{docs/renderer-registry.md} is the primary machine-adjacent registry.
+\section{Implications for users and implementers}
 
-Every identity also has a corresponding \texttt{CNA\_RENDERER\_*} Boolean option for legacy
-or scripted configuration. If any such option is used, exactly one must be on; otherwise CMake
-fails with ``Exactly one renderer option must be ON.'' The defaults are \texttt{WEBGL2} under
-Emscripten, \texttt{OPENGLES3} on Linux, and \texttt{SDL\_RENDERER} elsewhere. The former
-\texttt{EASYGL}, \texttt{DX3}, \texttt{D3D9}, \texttt{D3D11}, \texttt{D3D12}, and
-\texttt{ASCII} spellings are not accepted selectors. \texttt{FREEDIRECT} names the
-free-direct-backed renderer; current \texttt{DIRECTX3} is a separate genuine DirectX~3
-implementation. ASCII's reusable logic now lives in
-\cnaclass{CNA::Graphics::AsciiPostProcessEffect}, not in a public renderer factory.
+For application code:
 
-Platform gates are checked before a factory is reached. The DirectX/Direct2D/GDI/Glide families
-target Windows (with Glide additionally requiring a 32-bit process); \texttt{METAL} targets
-Darwin; \texttt{CANVAS}, \texttt{HTML\_DOM}, \texttt{SVG\_DOM}, \texttt{WEBGL1}, and
-\texttt{WEBGL2} target Emscripten. The three native EasyGL profiles are rejected under
-Emscripten, while the two WebGL profiles are rejected on native builds. Dependency checks are
-equally explicit: the EasyGL profiles require \texttt{../easy-gl}, and \texttt{FREEDIRECT}
-requires \texttt{../free-direct}; other families use their own system, pinned-artifact, or
-\texttt{FetchContent} gates.
+\begin{itemize}
+  \item choose a renderer by the operations and evidence your program needs, not by selector name;
+  \item treat capability answers as preflight hints and verify applied values or results;
+  \item keep resources address-stable and within device lifetime;
+  \item distinguish logical presentation coordinates from physical readback pixels;
+  \item expect custom effects, MRT, queries, instancing, and readback to require family-specific
+        qualification.
+\end{itemize}
 
-Physical composition and linking belong to \texttt{modules/renderers/CMakeLists.txt} and the
-selected \texttt{modules/renderers/<family>/CMakeLists.txt}. There is no shared
-renderer-library helper: each module owns the libraries needed by its implementation.
-This keeps identity selection, factory compilation, and dependency ownership separate while
-still guaranteeing that exactly one public factory reaches the final CNA build.
-
-\section{One factory function per renderer}
-
-Whichever renderer is selected at configure time compiles exactly one implementation of
-the factory function
-\texttt{CreateGraphicsRenderer(\allowbreak{}const GraphicsRendererCreateArgs\&)}, which returns
-\texttt{std::unique\_ptr<IGraphicsRenderer>}. It is gated behind a
-\texttt{\#ifdef CNA\_RENDERER\_*} matching the
-compile definition \texttt{RendererSelection.cmake} set. \cnaclass{GraphicsRendererCreateArgs}
-itself carries the window handle, virtual resolution, presentation mode, context-recovery
-flag, multisample count, swap interval, and --- as \texttt{CNAEXT} additions introduced
-alongside the Direct3D~9 renderer --- back-buffer/depth-stencil format, fullscreen flag,
-and graphics profile, each documented as a field ``every existing renderer except D3D9 may
-ignore'': a direct, structural acknowledgment that the Direct3D~9 implementation
-actually consults these values the way a real device negotiation would.
-
-With the shared contract established, the next thirteen chapters cover what each renderer
-actually does with it.
+For a renderer implementation, overriding a virtual method is only the beginning. A complete
+claim for one operation needs a reachable factory, shared public routing, applied state, correct
+target and lifetime behavior, renderer-engagement evidence, and a discriminating oracle. That is
+the standard used by the family chapters that follow.

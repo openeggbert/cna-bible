@@ -28,7 +28,7 @@ reader. They are useful for CNA hand construction and the XNB reader, but turn r
 metadata into caller-maintained state, which is exactly where the two model loaders and the
 draw contract below diverge sharply.
 
-\section{A worked example: two ways to draw a loaded model}
+\section{Two ways to draw a loaded model}
 
 The simplest path is the convenience method already named above:
 
@@ -62,13 +62,10 @@ for (ModelMesh* mesh : model.getMeshesProperty()) {
 }
 \end{lstlisting}
 
-\texttt{boneTransforms[mesh.getParentBoneProperty()->getIndexProperty()]} is the one line
-worth pausing on: it looks up the mesh's \emph{own} parent bone's absolute transform, not bone
-0 or the model's own root. This used to be exactly where the former loose-JSON route bit
-hardest --- every mesh once silently got the same default bone regardless of what the source data
-said, so this exact loop would have rendered every part rigidly welded together. That specific
-failure mode is fixed now (Task~937, below); the worked example holds for XNB, CNJ, and direct
-glTF/GLB outputs today.
+\texttt{boneTransforms[mesh.getParentBoneProperty()->getIndexProperty()]} selects the mesh's
+parent-bone absolute transform, not bone 0 or the model root. The former loose-JSON route assigned
+one default bone to every mesh and welded parts together. That defect is fixed; the example applies
+to current XNB, CNJ, and direct glTF/GLB outputs.
 
 \section{The draw contract: a model is more than a bag of pointers}
 \label{sec:model-draw-contract}
@@ -349,7 +346,7 @@ deliberately not built on \cnaclass{Model} / \cnaclass{ModelBone} / \cnaclass{Mo
 has its own full test coverage, and is covered alongside the rest of the Avatar system in
 this book.
 
-\subsection{A worked example: driving AnimationPlayer, adapted from its own test suite}
+\subsection{Driving AnimationPlayer with a test-adapted example}
 \label{sec:animation-player-worked-example}
 
 \texttt{AnimationPlayerTests.cpp} builds its fixtures around the smallest rig that can
@@ -393,7 +390,7 @@ is pre-multiplied by each bone's own \texttt{InverseBindPose}, which is specific
 \cnaclass{SkinnedEffect::SetBoneTransforms} expects, since GPU skinning needs the bone's
 \emph{delta} from bind pose, not its absolute pose.
 
-\subsection{A worked example: a two-target morph, adapted from its own test suite}
+\subsection{A two-target morph from the test suite}
 
 \texttt{MorphTargetEXTTests.cpp} builds every one of its cases around the same small,
 hand-crafted fixture, which doubles as a clear, minimal illustration of how the whole system

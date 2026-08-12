@@ -1,0 +1,29 @@
+\begin{figure}[tbp]
+\centering
+\begin{figurealt}{An XNB file passes through its ten-byte header and optional LZX decompression into one ContentReader session. The file's reader table maps type identifiers to registered readers. Readers construct the root object, nested objects, and shared-resource references. Deferred fixups connect shared resources after the main object stream. Container validity, reader availability, and object-graph validity are separate boundaries.}
+\resizebox{0.98\textwidth}{!}{%
+\begin{tikzpicture}[node distance=9mm and 12mm]
+  \node[cna public] (file) {XNB file};
+  \node[cna internal, right=of file] (header) {10-byte header\\platform, version, flags, length};
+  \node[cna internal, right=of header] (decode) {none or stateful\\LZX decode};
+  \node[cna internal, right=of decode] (session) {one \texttt{ContentReader}\\session};
+  \node[cna internal, right=of session] (table) {file reader table\\$\rightarrow$ registered readers};
+  \node[cna public, right=of table] (root) {root + nested\\object graph};
+  \node[cna internal, below=of session] (shared) {shared-resource table\\deferred fixups};
+  \node[cna warning, below=of table] (limits) {depth, size, index, type,\\and exact-read limits};
+  \draw[cna flow] (file) -- (header);
+  \draw[cna flow] (header) -- (decode);
+  \draw[cna flow] (decode) -- (session);
+  \draw[cna flow] (session) -- (table);
+  \draw[cna flow] (table) -- (root);
+  \draw[cna flow] (session) -- (shared);
+  \draw[cna flow] (shared) -- (root);
+  \draw[cna optional] (limits) -- (session);
+  \draw[cna optional] (limits) -- (table);
+\end{tikzpicture}}
+\end{figurealt}
+\caption{XNB container, reader-table, and object-graph layers. Passing an earlier boundary does
+not establish the later ones.}
+\label{fig:xnb-object-graph}
+\end{figure}
+

@@ -1,0 +1,27 @@
+\begin{figure}[tbp]
+\centering
+\begin{figurealt}{GLTF or GLB enters vendored cgltf for parsing and buffers. CNA's shared import core extracts scene nodes, mesh groups, materials, skins, and animation records. The runtime front end converts the first mesh group into live GraphicsDevice resources and a Model. The offline gltf to cnj front end writes a CNJ descriptor and packed sidecars. Runtime and offline share parsing and extraction but not final object or file construction.}
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[node distance=9mm and 12mm]
+  \node[cna public] (input) {\texttt{.gltf} / \texttt{.glb}};
+  \node[cna internal, right=of input] (cgltf) {cgltf parse +\\buffer/image access};
+  \node[cna internal, right=of cgltf, minimum width=36mm] (core) {shared import core\\scene, groups, materials,\\skins, animation};
+  \node[cna internal, above right=of core] (runtime) {runtime reader\\first mesh group};
+  \node[cna public, right=of runtime] (model) {live buffers, effects,\\textures, \texttt{Model}};
+  \node[cna internal, below right=of core] (offline) {\texttt{gltf\_to\_cnj}\\offline front end};
+  \node[cna public, right=of offline] (sidecars) {CNJ descriptor +\\packed sidecars};
+  \node[cna warning, below=of core] (boundary) {parse $\ne$ runtime use $\ne$\\renderer draw $\ne$ pixel proof};
+  \draw[cna flow] (input) -- (cgltf);
+  \draw[cna flow] (cgltf) -- (core);
+  \draw[cna flow] (core) -- (runtime);
+  \draw[cna flow] (runtime) -- (model);
+  \draw[cna flow] (core) -- (offline);
+  \draw[cna flow] (offline) -- (sidecars);
+  \draw[cna optional] (boundary) -- (core);
+\end{tikzpicture}}
+\end{figurealt}
+\caption{The shared glTF import core and its two front ends at \CnaRevisionShort. Shared parsing
+does not make the runtime and offline output routes equivalent.}
+\label{fig:gltf-import-routes}
+\end{figure}
+

@@ -5,8 +5,8 @@
 
 This book introduced \texttt{easy-gl} as the C\texttt{++}23 OpenGL/OpenGL ES wrapper behind
 CNA's five shared-family profiles: \texttt{OPENGLES2}, \texttt{OPENGLES3},
-\texttt{OPENGL33}, \texttt{WEBGL1}, and \texttt{WEBGL2}. The public renderer family is really
-a two-library stack. \texttt{meta-gl} owns loading, typed calls, context facts, and validation;
+\texttt{OPENGL33}, \texttt{WEBGL1}, and \texttt{WEBGL2}. That implementation family uses a
+two-library stack. \texttt{meta-gl} owns loading, typed calls, context facts, and validation;
 \texttt{easy-gl} owns resources, object-oriented state, and RAII.
 
 \section{The ownership split}
@@ -64,7 +64,7 @@ are checked through \texttt{metagl::IsFunctionAvailable()} and fail with
 WebGL~1 may obtain vertex arrays through \texttt{GL\_OES\_vertex\_array\_object}; separable
 program pipelines have no WebGL equivalent, including WebGL~2.
 
-\section{Capability gating: a real per-feature table, not a version-number heuristic}
+\section{Capability gating by feature, not version}
 
 \texttt{easygl::Capabilities::detect\_common\_features()}%
 \index{easygl::Capabilities::detect_common_features()@easygl::Capabilities::\allowbreak{}detect\_common\_features()}
@@ -135,7 +135,7 @@ a public export macro, a GNU/Clang version script, SONAME and exported-symbol po
 an installed-package consumer. It can be found as \texttt{meta-gl 0.3}; an uncommitted
 \texttt{0.4.0-snapshot} file in the local worktree is not a released or pinned version.
 
-\section{Real design fixes, and one genuine breaking change worth knowing}
+\section{Design corrections and one breaking change}
 
 \texttt{easy-gl}'s own planning documents record several real, reasoned design corrections.
 
@@ -179,7 +179,7 @@ side-effect this book has flagged elsewhere (Chapter~\ref{ch:spritebatch}'s igno
 matrix, for instance) as the class of bug most likely to go unnoticed until specifically
 tested for.
 
-\subsection{Four small, real RAII additions worth knowing about}
+\subsection{Four focused RAII additions}
 
 Two small utility classes, added after this chapter's own original pass, are worth a direct
 mention because each closes a real, easy-to-get-wrong ergonomic gap rather than adding a new
@@ -249,7 +249,7 @@ RAII shape as every other addition in this section, applied specifically to the
 register/deregister pair a \cnaclass{RecoverableResource} would otherwise have to manage by
 hand at every one of its own constructor and destructor sites.
 
-\section{Context loss recovery: two real tiers, one of them built but not yet adopted}
+\section{Two tiers of context-loss recovery}
 
 \cnaclass{ResourceRegistration} above closes the register/deregister half of the context-loss
 story, but reading \texttt{GenerationTracked.hpp} and the context-lifecycle test suite together

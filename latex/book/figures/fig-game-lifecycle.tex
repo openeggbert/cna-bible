@@ -1,0 +1,31 @@
+\begin{figure}[tbp]
+\centering
+\begin{figurealt}{Game Run first initializes the game and calls BeginRun. Desktop then repeats event and timing work, Update, Draw, and Present until exit, followed by OnExiting, EndRun, and AfterLoop. Web instead registers a browser callback and yields; the browser invokes frames and the normal post-loop hooks do not run.}
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[node distance=8mm and 10mm]
+  \node[cna public] (run) {\texttt{Game::Run()}};
+  \node[cna internal, right=of run] (init) {\texttt{DoInitialize()}\\device, content, components};
+  \node[cna internal, right=of init] (begin) {\texttt{BeginRun()}};
+  \node[cna internal, right=16mm of begin] (desktop) {desktop loop};
+  \node[cna internal, below=8mm of desktop] (tick) {events + timing\\\texttt{Update()} $\rightarrow$ \texttt{Draw()} $\rightarrow$ present};
+  \node[cna internal, right=of desktop] (exit) {\texttt{OnExiting()}\\\texttt{EndRun()}\\\texttt{AfterLoop()}};
+  \node[cna warning, below=17mm of begin] (web) {Emscripten callback\\registration + yield};
+  \node[cna internal, right=of web] (browser) {browser scheduler\\invokes Web frame callback};
+  \node[cna warning, right=of browser] (noreturn) {no normal loop return\\post-loop hooks absent};
+  \draw[cna flow] (run) -- (init);
+  \draw[cna flow] (init) -- (begin);
+  \draw[cna flow] (begin) -- node[cna label]{native} (desktop);
+  \draw[cna flow] (desktop) -- (tick);
+  \draw[cna flow] (tick.east) -| (desktop.south);
+  \draw[cna flow] (desktop) -- node[cna label]{exit requested} (exit);
+  \draw[cna optional] (begin) -- node[cna label,left]{Web} (web);
+  \draw[cna flow] (web) -- (browser);
+  \draw[cna flow] (browser) -- (noreturn);
+  \draw[cna flow] (browser.south) |- ++(0,-7mm) -| (browser.south);
+\end{tikzpicture}}
+\end{figurealt}
+\caption{Desktop and Emscripten lifecycle control at \CnaRevisionShort. The shared public
+methods do not imply identical scheduler or shutdown semantics.}
+\label{fig:game-lifecycle}
+\end{figure}
+

@@ -1,84 +1,49 @@
 \chapter*{Preface}
 \addcontentsline{toc}{chapter}{Preface}
 
-This book exists because a codebase got large enough, and honest enough about its own
-gaps, that it deserved a book instead of a wiki page.
+CNA is a C\texttt{++}23 reimplementation of the Microsoft XNA~4.0 programming model. It uses
+SDL3 for platform integration and selects one graphics renderer at build time. At this edition's
+pin, the public selector exposes \RendererIdentityCount{} renderer identities implemented by
+\RendererFamilyCount{} source families. CNA is neither a game nor an editor-centered engine. It
+is a compatibility framework for native C\texttt{++} programs written in the shape of
+\texttt{Microsoft::Xna::Framework}.
 
-\textbf{CNA} is a C\texttt{++}23 reimplementation of the Microsoft XNA 4.0 programming
-model, built on SDL3 and a pluggable graphics-renderer layer. It is not a game, and not a
-game engine in the ``opinionated framework with an editor'' sense --- it is a compatibility
-and abstraction layer that lets code written against \texttt{Microsoft::Xna::Framework}
-run as native, non-managed C\texttt{++}, across 46 public renderer identities backed by
-42 implementation factories, on
-Linux, Windows, the Web, and Android.
+The surrounding repositories provide capabilities CNA should not duplicate.
+\texttt{sharp-runtime} supplies selected .NET-shaped types; \texttt{easy-gl} and
+\texttt{meta-gl} provide the OpenGL/OpenGL~ES layer used by five public identities;
+\texttt{free-direct} and \texttt{free-api} implement a narrow legacy compatibility route;
+\texttt{xna4-spec} makes the XNA API surface searchable; and the sample and example repositories
+exercise the framework from a user's perspective. Chapter~\ref{ch:ecosystem-vocabulary} maps
+those relationships without treating every adjacent repository as part of CNA itself.
 
-CNA does not exist in isolation. Around it sits a small constellation of sibling
-repositories, each solving one piece of the problem so that CNA itself does not have to:
-\texttt{sharp-runtime} provides a C\texttt{++} subset of the .NET base class library CNA's
-API vocabulary assumes; \texttt{easy-gl} wraps OpenGL/OpenGLES behind a toolkit-independent
-interface shared internally by five public OpenGL/OpenGL ES profiles; \texttt{free-direct} reimplements the narrow
-slice of DirectDraw/DirectSound/DirectPlay that real legacy games actually call, backing
-the \texttt{FREEDIRECT} renderer; \texttt{xna4-spec} is a machine-readable transcription of the
-entire official XNA 4.0 API surface, used to audit CNA's coverage claims against a ground
-truth rather than against memory; and \texttt{cna-samples}/\texttt{cna-examples} give the
-whole thing something to actually run.
+This book serves two roles. It is a technical monograph about CNA's architecture and engineering
+trade-offs, and a reference for people building, porting, testing, or extending CNA programs.
+It follows public API contracts into their pinned implementations, then separates what source
+inspection establishes from what a build, execution, renderer trace, independent oracle, or
+pixel comparison establishes. Bugs, partial routes, stale project documents, and unsupported
+configurations remain visible because they affect engineering decisions.
 
-\paragraph{What this book is.} A technical reference and a guided tour, built by reading
-the source code, the design documents (\texttt{NEXT.md}, \texttt{CLAUDE.md}, the \texttt{docs/}
-tree, the per-renderer \texttt{plan\_*.md} files), and the test suites of these repositories,
-not by paraphrasing marketing claims. Where the project's own documentation is careful to
-distinguish ``implemented'' from ``pixel-verified'' from ``architecturally blocked,'' this
-book preserves that distinction rather than flattening it into a uniform sales pitch. CNA's
-own README is unusually candid about exactly this --- it dates its own coverage numbers,
-names its own known bugs, and tells you which renderer's ``done'' marks mean something different
-from another renderer's ``done'' marks. That candor is worth preserving in a book, not smoothing over.
+The book is not the project's live API documentation. Software changes faster than an edition
+can. Treat the text as a revision-bounded map: use it to locate the relevant subsystem and its
+constraints, then check the current repository before relying on a detail in new code. The full
+pin set and observed checkout state appear in Appendix~\ref{ch:repo-map}.
 
-\paragraph{What this book is not.} It is not the official documentation of the
-\texttt{openeggbert} project --- that lives in the repositories themselves, and it changes
-faster than any book can. Treat this book as a snapshot and a map: a way to build a mental
-model of how the pieces fit together, which you then go verify against the current
-\texttt{NEXT.md} and \texttt{docs/} tree of the actual repository, exactly as the project's
-own documentation index recommends doing for itself.
+The organization follows the path of a call through the system. Parts~\ref{part:ecosystem}
+and~\ref{part:architecture-framework} introduce the ecosystem, build, framework lifecycle,
+math conventions, and module boundaries. Parts~\ref{part:graphics-machine}
+and~\ref{part:renderers} trace the public graphics API into renderer implementations and native
+APIs. Parts~\ref{part:content-pipeline} and~\ref{part:3d-content} cover asset resolution, XNB,
+CNJ, glTF, models, animation, and conformance evidence. Part~\ref{part:services} covers input,
+audio, media, devices, storage, networking, and related XNA services. The remaining parts cover
+foundation libraries, platforms, verification, and porting practice.
 
-\paragraph{How this book is organized.} The book proceeds from CNA's ecosystem and framework
-architecture to its graphics API and the renderer families behind it
-(Parts~\ref{part:ecosystem}--\ref{part:renderers}), then follows assets and services upward through
-the public framework (Parts~\ref{part:content-pipeline}--\ref{part:services}). The remaining parts cover
-the supporting runtime and sibling libraries, cross-platform engineering, verification, and the
-practical work of porting real games
-(Parts~\ref{part:sharp-runtime}--\ref{part:porting-practice}).
+Appendix~\ref{ch:verification-tiers} is the authoritative evidence key. In short, API presence,
+successful compilation, execution, renderer engagement, behavioral comparison, and pixel
+comparison are different observations. A green result is reported at the narrowest level the
+retained evidence supports. This convention lets a reader distinguish a working portable path
+from a source-visible implementation, a historical run, or a test that skipped before reaching
+its intended boundary.
 
-Part~\ref{part:ecosystem} introduces CNA and its ecosystem and the design philosophy that runs through all of
-it --- API mirroring, renderer/interface separation, and an unusual commitment to
-differential testing against a real reference implementation. Part~\ref{part:architecture-framework} gets a reader from a
-clean checkout to a running triangle, and then walks the core framework types a game is
-built from: the game loop, math and layout, modules, and dependency boundaries. Part~\ref{part:graphics-machine} is the
-graphics machine in depth --- everything between \texttt{GraphicsDevice} and a pixel
-actually landing on screen: \texttt{SpriteBatch}, textures and render targets, draw geometry and
-vertex streams, the five stock effects, state objects, and CNA's four shader answers. Part~\ref{part:renderers}
-takes the same graphics machine and asks how 46 public renderer identities map onto 42 concrete
-implementation factories, grouped by architecture rather than forced into one chapter apiece.
-
-Parts~\ref{part:content-pipeline} and~\ref{part:3d-content} cover the content system and 3D asset
-pipeline, from path resolution and XNB/CNJ containers through glTF packing, skinning, and
-conformance. Part~\ref{part:services} covers input, audio, media, host devices, gamer services,
-storage, networking, and avatars. Part~\ref{part:sharp-runtime} turns to
-\texttt{sharp-runtime} on its own terms; Part~\ref{part:sibling-libraries} does the same for \texttt{easy-gl},
-\texttt{metagl}, \texttt{free-direct}, and \texttt{free-api}. Part~\ref{part:cross-platform} is the cross-platform
-engineering that makes one codebase meaningful on Linux, Windows-via-Wine, the Web, Android,
-and macOS. Part~\ref{part:testing-verification} covers verification discipline in full mechanical
-detail. Part~\ref{part:porting-practice} closes
-with migration practice, the Blupi case study, specification auditing, examples, contribution
-practice, and a dated roadmap.
-
-The methodological commitment holds across every part: a claim in this book is stated as
-fact because the project's own source, tests, or documentation state it as a verified fact,
-with a mechanism behind it, not because it sounded right.
-
-\paragraph{A note on dates.} Software documentation ages the moment it is written. Specific
-percentages, task numbers, and ``as of'' dates quoted in this book (many drawn directly from
-CNA's own README and \texttt{docs/} tree, dated around 2026-07-11 through 2026-07-15) are
-reproduced as evidence of methodology and of the project's own verification discipline, not
-as a promise that they still hold on the day you read this. The edition-wide audit itself is
-bounded to the repository revisions recorded on 2026-08-11 in Appendix~\ref{ch:repo-map}.
-Where the source material itself flags a figure as dated or superseded, this book says so.
+The production process, including its use of AI-agent assistance, is described in the front
+matter that follows. The authority for technical claims remains the identified source and
+evidence, not the tool that drafted a sentence.

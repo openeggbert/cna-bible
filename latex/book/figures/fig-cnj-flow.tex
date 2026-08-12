@@ -1,0 +1,30 @@
+\begin{figure}[tbp]
+\centering
+\begin{figurealt}{A CNJ JSON file first passes envelope parsing and per-type version and type checks. Self-contained readers construct an asset from JSON and optional binary sidecars. Delegating readers instead validate sourceFile containment and invoke ContentManager on a native file. Separately, the gltf to cnj tool uses the shared glTF import core to emit a model CNJ descriptor and binary sidecars for later runtime loading.}
+\resizebox{0.96\textwidth}{!}{%
+\begin{tikzpicture}
+  \node[cna public, text width=20mm] (cnj) at (-6.2,1.8) {\texttt{.cnj} JSON};
+  \node[cna internal, text width=31mm] (env) at (-3.2,1.8) {parse envelope\\version, type, sourceFile};
+  \node[cna internal, text width=34mm] (validate) at (0.3,1.8) {per-type ceiling\\and requested-\texttt{T} check};
+  \node[cna internal, text width=33mm] (self) at (3.9,2.8) {self-contained reader\\JSON + binary sidecars};
+  \node[cna internal, text width=33mm] (delegate) at (3.9,0.8) {delegating reader\\contained \texttt{sourceFile}};
+  \node[cna public, text width=23mm] (asset) at (7.5,1.8) {runtime asset};
+  \node[cna public, text width=21mm] (gltf) at (-6.2,-1.3) {glTF / GLB};
+  \node[cna internal, text width=29mm] (core) at (-3.2,-1.3) {shared import core};
+  \node[cna internal, text width=25mm] (tool) at (0,-1.3) {\texttt{gltf\_to\_cnj}};
+  \node[cna public, text width=38mm] (files) at (3.8,-1.3) {Model CNJ + packed\\binary sidecars};
+  \draw[cna flow] (cnj) -- (env);
+  \draw[cna flow] (env) -- (validate);
+  \draw[cna flow] (validate) -- (self);
+  \draw[cna flow] (validate) -- (delegate);
+  \draw[cna flow] (self) -- (asset);
+  \draw[cna flow] (delegate) -- (asset);
+  \draw[cna flow] (gltf) -- (core);
+  \draw[cna flow] (core) -- (tool);
+  \draw[cna flow] (tool) -- (files);
+\end{tikzpicture}}
+\end{figurealt}
+\caption{CNJ runtime and offline-tool routes. The envelope is a type/version cross-check, not a
+reflection-based object factory.}
+\label{fig:cnj-flow}
+\end{figure}

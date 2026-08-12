@@ -1,0 +1,31 @@
+\begin{figure}[tbp]
+\centering
+\begin{figurealt}{ContentManager Load first checks its cache. On a miss it probes the logical base plus dot xnb. If absent, it obtains the loose type reader, checks an existing literal base, then base plus dot cnj, then the reader's ordered native extensions. The first existing candidate is terminal; reader failure does not continue to a lower-priority candidate. A successful result enters the relevant cache.}
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[node distance=8mm and 9mm]
+  \node[cna public] (load) {\texttt{Load<T>(name)}};
+  \node[cna internal, right=of load] (cache) {type + normalized-name\\cache lookup};
+  \node[cna internal, right=of cache] (xnb) {\texttt{base + .xnb} exists?};
+  \node[cna internal, right=of xnb] (literal) {literal \texttt{base} exists?};
+  \node[cna internal, right=of literal] (cnj) {\texttt{base + .cnj} exists?};
+  \node[cna internal, right=of cnj] (ext) {first existing reader\\extension};
+  \node[cna warning, below=of literal] (terminal) {selected candidate is terminal\\decode failure does not retry};
+  \node[cna public, below=of ext] (result) {decoded asset / exception};
+  \draw[cna flow] (load) -- (cache);
+  \draw[cna flow] (cache) -- node[cna label]{miss} (xnb);
+  \draw[cna flow] (xnb) -- node[cna label]{absent} (literal);
+  \draw[cna flow] (literal) -- node[cna label]{absent} (cnj);
+  \draw[cna flow] (cnj) -- node[cna label]{absent} (ext);
+  \draw[cna flow] (xnb) |- (terminal);
+  \draw[cna flow] (literal) -- (terminal);
+  \draw[cna flow] (cnj) |- (terminal);
+  \draw[cna flow] (ext) -- (result);
+  \draw[cna flow] (terminal) -- (result);
+  \draw[cna optional] (result) -| node[cna label,near start]{success caches} (cache.south);
+\end{tikzpicture}}
+\end{figurealt}
+\caption{ContentManager candidate order at \CnaRevisionShort. Existence selects a path; it does
+not prove that the selected reader can decode or use the asset.}
+\label{fig:content-resolution}
+\end{figure}
+

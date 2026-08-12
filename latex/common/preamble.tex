@@ -12,19 +12,30 @@
 % last-resort stretch so it can move such a token to the next line instead of
 % letting it cross the physical page edge.
 \setlength{\emergencystretch}{2.5em}
-\usepackage{titlesec}
+% Keep open-right filler versos genuinely blank. Without titlesec's clearempty
+% option, its redefined \cleardoublepage inherits the running-head page style.
+\usepackage[clearempty]{titlesec}
 \usepackage{fancyhdr}
 \usepackage{listings}
 \usepackage{xcolor}
 \usepackage{tabularx}
 \usepackage{longtable}
 \usepackage{booktabs}
+\usepackage{needspace}
 \usepackage{enumitem}
 \usepackage{imakeidx}
 \makeindex[intoc]
 \usepackage{hyperref}
 \usepackage{parskip}
 \usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,backgrounds,calc,fit,positioning,shapes.geometric}
+\usepackage{accsupp}
+
+% Keep the printed contents useful at book scale. Subsections remain available in
+% the PDF outline, where they are searchable without occupying dozens of TOC pages.
+\setcounter{tocdepth}{1}
+\setcounter{secnumdepth}{2}
 
 \hypersetup{
   colorlinks=true,
@@ -33,15 +44,21 @@
   urlcolor=blue!50!black,
   pdfauthor={Robert Vokac},
   pdftitle={The CNA Bible},
-  pdfsubject={A source-grounded guide to CNA and the Microsoft XNA 4.0 programming model},
-  pdfkeywords={CNA, Microsoft XNA, C++23, graphics renderers, game development},
-  pdflang={en-US}
+  pdfsubject={A revision-bounded technical account of CNA and the Microsoft XNA 4.0 programming model},
+  pdfkeywords={CNA, Microsoft XNA, C++23, graphics renderers, content pipeline, verification},
+  pdflang={en-US},
+  bookmarksdepth=2,
+  bookmarksopen=false
 }
 
 \definecolor{codebg}{RGB}{245,245,245}
 \definecolor{codekeyword}{RGB}{0,90,150}
 \definecolor{codecomment}{RGB}{120,120,120}
 \definecolor{codestring}{RGB}{140,20,20}
+\definecolor{diagrampublic}{RGB}{224,236,246}
+\definecolor{diagraminternal}{RGB}{238,238,238}
+\definecolor{diagramevidence}{RGB}{231,242,232}
+\definecolor{diagramwarning}{RGB}{250,239,220}
 
 \lstdefinestyle{cnacpp}{
   language=C++,
@@ -92,6 +109,34 @@
 \newcommand{\cnans}[1]{\texttt{#1}\index{#1}}
 \newcommand{\repolink}[1]{\texttt{#1}}
 
+% Edition facts reused across chapters. Counts belong here so the source has one
+% revision-bounded value instead of many independently maintained literals.
+\newcommand{\CnaRevisionShort}{\texttt{7a64362e}}
+\newcommand{\RendererIdentityCount}{46}
+\newcommand{\RendererFamilyCount}{42}
+\newcommand{\XnaOracleSceneCount}{39}
+
+% Reproducible diagram language. Shape and border style carry meaning in addition
+% to colour so figures remain useful in grayscale print.
+\tikzset{
+  cna node/.style={draw=black!65, rounded corners=2pt, align=center,
+    minimum height=8mm, inner sep=4pt, font=\small},
+  cna public/.style={cna node, fill=diagrampublic, very thick},
+  cna internal/.style={cna node, fill=diagraminternal},
+  cna evidence/.style={cna node, fill=diagramevidence, double},
+  cna warning/.style={cna node, fill=diagramwarning, dashed},
+  cna flow/.style={-{Latex[length=2.2mm]}, semithick},
+  cna optional/.style={-{Latex[length=2.2mm]}, semithick, dashed},
+  cna label/.style={font=\scriptsize, align=center, fill=white, inner sep=1pt}
+}
+
+% The current pdfLaTeX artifact is not a fully tagged PDF. This wrapper nevertheless
+% attaches alternate text to each graphic's marked-content span and keeps a readable
+% description beside the structured figure source.
+\newenvironment{figurealt}[1]
+  {\BeginAccSupp{method=pdfstringdef,unicode,Alt={#1}}}
+  {\EndAccSupp{}}
+
 % Consistent callout box for "verified fact" style notes drawn from source
 \usepackage{mdframed}
 \newmdenv[
@@ -106,3 +151,31 @@
   innerleftmargin=8pt,
   innerrightmargin=8pt
 ]{sourcenote}
+
+\newenvironment{contractnote}
+  {\begin{mdframed}[backgroundcolor=diagrampublic,linecolor=blue!45!black,
+    linewidth=0.7pt,roundcorner=2pt,skipabove=1em,skipbelow=1em,
+    innertopmargin=6pt,innerbottommargin=6pt,innerleftmargin=8pt,
+    innerrightmargin=8pt]\textbf{Current contract.}\enspace}
+  {\end{mdframed}}
+
+\newenvironment{evidencenote}
+  {\begin{mdframed}[backgroundcolor=diagramevidence,linecolor=green!35!black,
+    linewidth=0.7pt,roundcorner=2pt,skipabove=1em,skipbelow=1em,
+    innertopmargin=6pt,innerbottommargin=6pt,innerleftmargin=8pt,
+    innerrightmargin=8pt]\textbf{Evidence.}\enspace}
+  {\end{mdframed}}
+
+\newenvironment{historynote}
+  {\begin{mdframed}[backgroundcolor=black!3,linecolor=black!45,
+    linewidth=0.6pt,roundcorner=2pt,skipabove=1em,skipbelow=1em,
+    innertopmargin=6pt,innerbottommargin=6pt,innerleftmargin=8pt,
+    innerrightmargin=8pt]\textbf{Historical note.}\enspace}
+  {\end{mdframed}}
+
+\newenvironment{limitationnote}
+  {\begin{mdframed}[backgroundcolor=diagramwarning,linecolor=orange!55!black,
+    linewidth=0.7pt,roundcorner=2pt,skipabove=1em,skipbelow=1em,
+    innertopmargin=6pt,innerbottommargin=6pt,innerleftmargin=8pt,
+    innerrightmargin=8pt]\textbf{Limitation.}\enspace}
+  {\end{mdframed}}

@@ -1,0 +1,24 @@
+\begin{figure}[tbp]
+\centering
+\begin{figurealt}{Cross-platform evidence progresses from a source path through CMake admission, compilation and linking, execution under a native host or translation, renderer or service engagement, and an oracle. Native Linux may travel directly. Windows uses a PE cross-build and Wine. Web uses Emscripten and a browser. Android uses the NDK and an emulator or device. macOS and Metal require an Apple toolchain and host. Each route can stop at a different evidence state.}
+\resizebox{0.95\textwidth}{!}{%
+\begin{tikzpicture}
+  \node[cna public, text width=25mm] (source) at (-5.5,2.2) {pinned source};
+  \node[cna internal, text width=39mm] (gate) at (-1.7,2.2) {CMake platform +\\renderer admission};
+  \node[cna internal, text width=36mm] (artifact) at (2.6,2.2) {compiled and linked\\artifact};
+  \node[cna internal, text width=64mm] (routes) at (1.2,0) {observed routes at or before the pin\\Linux native; MinGW/Wine; browser; Android AVD};
+  \node[cna evidence, text width=31mm] (engage) at (6.4,0) {host + route\\engaged};
+  \node[cna evidence, text width=38mm] (oracle) at (6.4,-2.0) {behavior / pixel\\oracle, where retained};
+  \node[cna warning, text width=57mm] (apple) at (-3.8,-2.0) {not executed after adaptation\\macOS/Metal; iOS and tvOS unreached};
+  \draw[cna flow] (source) -- (gate);
+  \draw[cna flow] (gate) -- (artifact);
+  \draw[cna flow] (artifact) -- (routes);
+  \draw[cna flow] (routes) -- (engage);
+  \draw[cna flow] (engage) -- (oracle);
+  \draw[cna optional] (gate.west) |- (apple.north);
+\end{tikzpicture}}
+\end{figurealt}
+\caption{Cross-platform build and execution routes. An admitted source path is not automatically
+compile-proven, renderer-engaged, or oracle-compared.}
+\label{fig:platform-routes}
+\end{figure}

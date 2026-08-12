@@ -24,7 +24,7 @@ reapply its rasterizer state every draw, but that implementation detail is not a
 route. The safe rule in either API is to configure a state before assignment and assign it again
 after a change.
 
-\section{A worked example: the by-value semantics, made concrete}
+\section{By-value state semantics}
 
 The value copy and submission boundary are easy to state abstractly and easy to get wrong in
 practice. \texttt{GraphicsDevice::setBlendStateProperty(const BlendState\&)} takes its argument
@@ -157,22 +157,21 @@ that appeared to pass was passing against a buffer with zero stencil bits actual
 a ``correct code, no resource to act on'' bug rather than a logic error. One gap named in an
 earlier pass of this chapter as open on both EasyGL and BGFX is now only open on one of them:
 \texttt{IGraphicsRenderer::SetReferenceStencil} does exist in the shared renderer interface, with
-a no-op default any renderer may override --- reading each renderer's own header directly finds
-BGFX now has a real override (Task~764, mirroring Vulkan's own existing mechanism, Task~870/%
-319: every other stencil parameter is cached so a later standalone reference-value change can
+a no-op default any renderer may override. BGFX now overrides it, mirroring Vulkan's mechanism:
+every other stencil parameter is cached so a later standalone reference-value change can
 rebuild the renderer's own front/back stencil state without a full state-object
-re-application), while EasyGL still has none, falling through to the interface's own no-op ---
-independently overriding \texttt{ReferenceStencil} without reassigning the whole
-\cnaclass{DepthStencilState} is confirmed broken on EasyGL specifically, not BGFX anymore. A
+re-application. EasyGL has no override and inherits the interface no-op. Changing
+\texttt{ReferenceStencil} without reassigning the whole
+\cnaclass{DepthStencilState} is therefore broken on EasyGL, but not BGFX. A
 second gap named in the same earlier pass of this chapter as still open on all three hardware
-renderers is also closed now: a stencil-only \texttt{Clear} call once never even checked its
-own flag on any renderer (Task~871), but a real fix now dispatches it
-correctly on EasyGL, Vulkan, and BGFX alike, surfacing and closing a genuine, independent
+renderers is also closed: a stencil-only \texttt{Clear} call once ignored its
+flag on every renderer, but the current route dispatches it on EasyGL, Vulkan, and BGFX. The
+repair also exposed an independent
 Vulkan-specific bug along the way (every render-pass-creation site had its own stencil
 load-operation hardcoded to discard, regardless of what \texttt{Clear()} itself requested) ---
 see Chapter~\ref{ch:graphicsdevice} for the fix in full.
 
-\subsection{A worked example: masking a reflection with the stencil buffer}
+\subsection{Masking a reflection with the stencil buffer}
 
 The classic real use of the stencil-test properties above, taken together, is a planar mirror:
 render the mirror surface into the stencil buffer only, then render the reflected scene a
@@ -210,8 +209,8 @@ is set once, as part of constructing each \cnaclass{DepthStencilState} --- this 
 does not rely on changing it independently afterward, which sidesteps the still-open gap
 flagged above (no real \texttt{SetReferenceStencil} override exists on EasyGL specifically,
 BGFX's own fix now notwithstanding; a technique needing a per-draw-call reference value without
-rebuilding the whole state object would hit that remaining gap directly on EasyGL). Task~871
-made the requested stencil \emph{value} real on all three hardware renderers; later
+rebuilding the whole state object would hit that remaining gap directly on EasyGL). The
+requested stencil \emph{value} now reaches all three hardware renderers; later
 ordered-clear work also made stencil-only clears selective on Vulkan and BGFX. Vulkan records
 the exact attachment command at the issue position, and BGFX assigns an ordered view carrying
 only \texttt{BGFX\_CLEAR\_STENCIL} (\S\ref{sec:backend-clear-matrix}). Portable code can still
@@ -259,7 +258,7 @@ project, so its state coverage is smoke-test/no-regression only, a scope differe
 remembering whenever this book or the project's own docs describe a BGFX row as
 ``correct.''
 
-\subsection{A worked example: shadow-map depth bias, and a wireframe debug toggle}
+\subsection{Shadow-map depth bias and a wireframe debug toggle}
 
 \texttt{DepthBias} and \texttt{SlopeScaleDepthBias} exist for exactly one recurring real
 problem: shadow acne, the self-shadowing Moir\'e artifact a shadow-mapped surface shows when its
@@ -358,7 +357,7 @@ wraps. The last three therefore also make
 the interface's default \texttt{true}; D3D9's answer is conditionally unreliable on the current
 device. See Chapter~\ref{ch:backend-architecture}'s complete capability table.
 
-\subsection{A worked example: crisp pixel art versus a minified, mipmapped floor}
+\subsection{Crisp pixel art and a minified, mipmapped floor}
 
 Two everyday sampler needs pull \texttt{Filter} in opposite directions, and the chapter's own
 mip-awareness deviation above means the obvious choice is not always the correct one for both.
@@ -392,7 +391,7 @@ filters mip-unaware because unconditionally enabling mip selection on the common
 would make it GL-incomplete and black. Other renderers map the same enum through their own native
 sampler contracts; carry this choice across only after a renderer-specific pixel test.
 
-\section{One recurring, small bug worth naming on its own}
+\section{The recurring device-default copy defect}
 
 Every one of these four state classes independently had the identical small bug at some
 point in its history: its static presets did not set their own \texttt{Name} property. This

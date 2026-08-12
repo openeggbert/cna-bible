@@ -2,265 +2,135 @@
 \label{ch:sensors}
 \label{ch:devices-sensors}
 
-\cnans{Microsoft::Devices::Sensors} is a real, historical Windows Phone~7 API surface CNA
-ports onto SDL3 and Android NDK sensors. The separately gated, CNA-original host utility layer
-lives in Chapter~\ref{ch:host-devices}; it shares the word ``Devices'', not this runtime model.
+\cnans{Microsoft::Devices::Sensors} ports the Windows Phone 7 sensor model to SDL3 and Android
+NDK inputs. The CNA-original host utility layer in Chapter~\ref{ch:host-devices} is separate.
+Sensor callbacks may run outside the game thread, which makes lifecycle and synchronization part
+of the public usage contract.
 
-\section{Microsoft::Devices::Sensors: a real WP7 API, engineered for real concurrency}
+\section{Sensor model and delivery}
 
-\cnaclass{SensorBase<TSensorReading>} is the shared template base for every sensor in this
-namespace (\cnaclass{Accelerometer}, \cnaclass{Gyroscope}, \cnaclass{Compass},
-\cnaclass{Motion}), providing \texttt{CurrentValue}, \texttt{IsDataValid},
-\texttt{TimeBetweenUpdates} (defaulting to 2 milliseconds, matching the real WP7 API), the
-public \texttt{CurrentValueChanged} event, and abstract \texttt{Start()} / \texttt{Stop()}.
-What makes this namespace worth a dedicated section in this book is not its API surface,
-which is small, but the genuine concurrency-safety engineering behind it --- because, unlike
-most of CNA's XNA-facing surface, a sensor's \texttt{CurrentValueChanged} callback need not
-fire on the game's update thread. Desktop Accelerometer/Gyroscope delivery can arrive on the
-thread that pushes SDL's watched event, while the native Android Compass/Motion backends use
-their own worker threads.
-
-\subsection{A real, found-and-fixed data race, and the design it produced}
-
-An early implementation read \texttt{isDisposed\_} with no lock at all, while the real
-SDL-backed sensor classes wrote to it from a background event-watch thread --- a genuine
-data race under the C\texttt{++} memory model, not a theoretical one. The fix that grew out
-of finding it is more interesting than the fix itself: rather than a single coarse lock, this
-namespace now uses a documented, per-instance protocol for safe disposal under concurrent
-access --- an atomic \texttt{ClaimDisposalOnce()} so exactly one of two racing
-\texttt{Dispose()} callers actually runs cleanup, a \texttt{WaitForDisposalToComplete()} for
-the loser to block on, and (added after a later external audit found the first version could
-still strand a waiting thread if the winning cleanup itself threw) an RAII
-\texttt{DisposalTerminalStateGuard} that unconditionally publishes the disposed state even on
-an exceptional exit path. \texttt{Accelerometer} and \texttt{Gyroscope} each additionally track
-which specific threads are currently mid-dispatch into a callback, so that a handler which
-reentrantly disposes its own sensor instance does not deadlock waiting for itself to finish.
-
-\subsection{A second, subtler bug: an update-throttling integer overflow}
-
-A separate, later external audit found a genuine signed-integer-overflow bug in the update
-throttle every sensor uses to honor \texttt{TimeBetweenUpdates}: comparing an elapsed
-duration against the configured interval by promoting both to a common, finer time
-resolution multiplies the interval's own tick count by 100 --- which overflows a signed
-64-bit integer outright when \texttt{TimeBetweenUpdates} is set to \texttt{TimeSpan.MaxValue},
-confirmed directly under UndefinedBehaviorSanitizer. The fix casts the \emph{elapsed}
-duration down to the coarser resolution instead of promoting the interval up --- a direction
-that can never overflow, since a signed 64-bit count of 100-nanosecond ticks can represent
-roughly 29{,}000 years, far beyond any realistic elapsed wall-clock time a running program
-would ever measure.
-
-\subsection{A third finding: closing the window between two correct locks}
-
-A subtler, later fix illustrates something worth understanding beyond ``add a lock'': two
-individually race-free operations can still compose into an observable inconsistency.
-\cnaclass{Accelerometer} and \cnaclass{Gyroscope} both originally set \texttt{IsDataValid} and
-\texttt{CurrentValue} as two separate, independently-locked calls on every dispatched reading
---- each call is itself genuinely race-free, per the documented thread-safety contract, but
-nothing prevented a concurrent reader on another thread from observing the narrow window
-\emph{between} the two calls, where \texttt{IsDataValid} had already flipped true while
-\texttt{CurrentValue} still held the previous (or, for a sensor's very first reading, a
-still-default-constructed) value --- a real, misleading snapshot a caller following the
-documented ``if valid, use CurrentValue'' pattern could genuinely observe. \cnaclass{SensorBase}
-now exposes a combined \texttt{SetCurrentValueAndMarkDataValid(value)} that performs both
-assignments under a single lock scope, so a concurrent reader always sees either the fully
-prior state or the fully updated state, never a mix of the two --- the separate setters remain
-available only for the rarer case of changing one without the other, such as explicitly
-invalidating data with no new reading to publish.
-
-\subsection{A fourth finding: exceptions silently swallowed at a native callback boundary}
-
-A later re-audit found a real gap of a different shape from the first three, closer to the
-error-handling side of the same concurrency-safety theme than to locking itself: several
-native failures --- and, specifically, an exception thrown out of a game's own
-\texttt{CurrentValueChanged} handler while it was being invoked from inside a background
-sensor-event callback --- were silently absorbed by a bare \texttt{catch (\ldots{}) \{ \}}, with
-no logging and no way for anything, test or production diagnostic, to ever learn it had
-happened. This is a real hazard specific to crossing from C\texttt{++} into a C callback
-boundary (an SDL event filter, an Android NDK sensor callback, a raw \texttt{std::thread} entry
-point): an exception that escapes such a boundary is undefined behavior, so swallowing it
-outright was the safe choice at the time, but swallowing it \emph{silently} meant a real bug in
-a game's own handler could vanish without a trace. The fix is a small, shared, deliberately
-\texttt{noexcept} diagnostic channel --- a structured record (backend, operation, native
-error code and message, device id, timestamp, severity) that any native call site can publish
-to without risking becoming a new throw-across-a-callback hazard itself, since the recording
-call internally wraps its own logging and callback-invocation in its own \texttt{try}/%
-\texttt{catch}. Exposed through debug-build logging plus \texttt{CNAEXT} test hooks
-(\texttt{GetRecordCountForTesting()}, \texttt{GetLastRecordForTesting()}), it was wired into one
-concretely-identified real gap first --- the Android sensor bridge's own callback dispatch,
-which previously swallowed a handler's thrown exception with no trace at all, now correctly
-distinguishes a typed \texttt{std::exception} (recording its own \texttt{.what()} message) from
-an unknown throw, both routed through the same shared record. This is deliberately scoped as a
-first migration, not a full sweep --- several other already-hardened call sites (the SDL sensor
-path's own dispatch-exception counters, haptic and sensor device connection-loss diagnostics)
-still use their own earlier, differently-shaped ad-hoc mechanisms and are named as real,
-tractable follow-up work rather than silently left unmentioned.
+\cnaclass{SensorBase<TSensorReading>} supplies \texttt{CurrentValue}, \texttt{IsDataValid},
+\texttt{TimeBetweenUpdates} (default 2 ms), \texttt{CurrentValueChanged}, and abstract
+\texttt{Start}/\texttt{Stop}. Do not touch \cnaclass{GraphicsDevice} or other main-thread-only
+objects in a sensor handler; transfer the reading through a synchronized queue.
 
 \begin{lstlisting}
-// Worked example: subscribing to Accelerometer readings from the game
-// thread while acknowledging the callback can legitimately arrive on
-// whatever thread SDL's own sensor event-watch mechanism uses.
 Accelerometer accelerometer;
 accelerometer.CurrentValueChanged.Add(
-    [](System::Object* sender, const SensorReadingEventArgs<AccelerometerReading>& args)
-    {
-        Vector3 g = args.getSensorReadingProperty().getAccelerationProperty();
-        // NOTE: this handler may run on a non-game thread -- do not touch
-        // GraphicsDevice or other main-thread-only state directly here;
-        // hand the value off to a thread-safe queue instead.
+    [](System::Object*,
+       const SensorReadingEventArgs<AccelerometerReading>& args) {
+        Vector3 acceleration =
+            args.getSensorReadingProperty().getAccelerationProperty();
+        // Enqueue acceleration for the game thread.
     });
 accelerometer.Start();
-// ... later, at shutdown or when the feature is no longer needed ...
+// ... later ...
 accelerometer.Stop();
 accelerometer.Dispose();
 \end{lstlisting}
 
-\subsection{A fifth finding: a closed race that TSan alone caught, in the fix for a different race}
+Desktop Accelerometer and Gyroscope install an SDL event watch rather than a polling thread.
+\texttt{SDL\_EVENT\_SENSOR\_UPDATE} is handled on the thread that pushes it. Acceleration is
+converted from SI units to $g$ by division by 9.80665; angular velocity is already in radians
+per second. Readings receive UTC wall-clock timestamps.
 
-The most instructive concurrency finding in this whole namespace's history is not a fresh bug
-in old code, but a genuine, later-discovered race \emph{inside a fix that had already shipped
-and been marked closed}. \cnaclass{Compass} and \cnaclass{Motion}'s \texttt{Start()} /
-\texttt{Stop()} were rewritten as a two-phase protocol specifically to stop a lock from being
-held across a backend call that might block, spawn a thread, or invoke a callback: reserve the
-lifecycle transition under the owner mutex, release the lock, call the backend, then commit or
-roll back under lock again. Part of that design already handled a real edge case correctly ---
-a \texttt{Start()} attempt superseded by a concurrent \texttt{Stop()} while its own backend
-call was still in flight (an ``orphaned start'') calls \texttt{Stop()} on its own captured
-backend pointer afterward, so nothing it started is left running unmanaged.
+Android Compass and Motion use \texttt{ASensorManager}, event queues, and \texttt{ALooper} on
+worker threads, without JNI. A Motion instance can own six workers for rotation, game rotation,
+gravity, linear acceleration, gyroscope, and magnetic field. The native route expects Android
+API 24 or later.
 
-What the design missed, found only once an actual \texttt{devices-tsan} run was performed
-against real concurrent \texttt{Start()} / \texttt{Stop()} traffic (an 8-thread stress test, not
-a hand-reasoned review), is that the superseding \texttt{Stop()} cleared its own
-transition-in-progress flag back to \texttt{false} the moment \emph{its own} backend call
-returned --- without waiting for the orphaned start's own cleanup \texttt{Stop()} call,
-running concurrently on a different thread, to actually finish. A fresh \texttt{Start()}
-attempt could therefore begin calling into the backend again while that orphaned cleanup call
-was still physically in flight, a genuine data race confirmed by a real ThreadSanitizer report
---- and one that cascaded into actual heap corruption (a use-after-free) in the test fixture's
-own callback bookkeeping under load, not merely a theoretical ordering concern. The fix adds a
-condition variable tracking how many backend calls are currently in flight, and makes only
-\texttt{Start()}'s reserve phase wait for that count to reach zero before proceeding ---
-deliberately \emph{not} applied to \texttt{Stop()}, which has to stay non-blocking with respect
-to an in-flight \texttt{Start()} to preserve the earlier guarantee that a \texttt{Stop()} call
-arriving during another thread's \texttt{Start()} can never deadlock.
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}lXX@{}}
+\toprule
+\textbf{Type} & \textbf{Implemented route} & \textbf{Boundary} \\
+\midrule
+\cnaclass{Accelerometer} & SDL3 on desktop, Android, and iOS & WP7 legacy
+\texttt{ReadingChanged} also fires \\
+\cnaclass{Gyroscope} & SDL3 sensor events & CNAEXT \texttt{State}; no legacy event \\
+\cnaclass{Compass} & Android NDK only & Unsupported elsewhere; \texttt{Start()} throws \\
+\cnaclass{Motion} & Android NDK fusion only & Unsupported elsewhere; six possible workers \\
+\bottomrule
+\end{tabularx}
+\end{center}
 
-The lesson worth carrying forward from this specific history, distinct from the ``two correct
-locks can still compose into a bug'' finding above: a fix that passes careful manual review and
-even a full non-sanitizer test suite can still hide a genuine, low-probability data race that
-only a real TSan run under real concurrent load will surface --- which is exactly why this
-project's own verification standard treats an older \texttt{CLOSED} label as a claim to
-re-verify under a sanitizer, not as evidence a fix is actually complete.
+\section{Concurrency contract}
 
-\subsection{Per-sensor reality: what is genuinely backed by hardware}
+Disposal is claimed atomically so only one racing caller performs cleanup. A losing caller
+waits for terminal state, and an RAII guard publishes that state even if cleanup throws.
+Accelerometer and Gyroscope track callbacks in flight so a handler can dispose its own sensor
+without waiting for itself.
 
-\cnaclass{Accelerometer} is the most complete of the four: genuinely SDL3-backed
-(\texttt{SDL\_SENSOR\_ACCEL}) on desktop, Android, and iOS alike --- a deliberate design
-decision, not a Windows Phone accident, since desktop accelerometer hardware (a laptop's own
-motion sensor, for instance) is treated as a first-class supported case rather than a
-mobile-only special case. It also carries the one genuinely real \texttt{State} property in
-this namespace, and the legacy WP7~7.0 \texttt{ReadingChanged} event --- deprecated since WP7
-7.1 in favor of \texttt{CurrentValueChanged}, but still present and still raised immediately
-after \texttt{CurrentValueChanged} for the same reading, exactly matching real WP7's own
-still-shipping deprecated-but-functional behavior. \cnaclass{Gyroscope} follows the same SDL
-delivery and throttling shape, but its State property is CNAEXT and it has no legacy
-\texttt{ReadingChanged} event. \cnaclass{Compass}, by contrast, has no SDL3
-backing at all --- SDL3 exposes no magnetometer API on any platform --- so it is only
-genuinely real on Android, through a dedicated native backend built directly on the NDK's own
-rotation-vector and magnetic-field sensors; on every other platform, \texttt{IsSupported}
-correctly reports false and \texttt{Start()} fails with \cnaclass{SensorFailedException},
-exactly as real WP7 hardware without a compass would behave. \cnaclass{Motion} (a fused
-attitude/gravity/acceleration reading) shares this same Android-real,
-everywhere-else-honest-stub shape.
+Current value and validity are published under one lock by
+\texttt{SetCurrentValueAndMarkDataValid}. Separate locks previously allowed a reader to observe
+\texttt{IsDataValid=true} with the prior value. Update throttling compares elapsed time at the
+configured interval's coarser resolution; the earlier reverse conversion overflowed signed
+64-bit ticks for \texttt{TimeSpan.MaxValue}.
 
-\cnaclass{VibrateController} is a real WP7 API in its own right: a single, non-static,
-process-lifetime shared instance reached only through \texttt{getDefaultProperty()} --- the
-private constructor exists specifically because a phone has exactly one vibration motor, and
-a second, independently constructed instance could not meaningfully represent anything
-different. \texttt{Start(TimeSpan)} throws outside the documented $[0, 5\text{s}]$ WP7 range;
-a real \texttt{CNAEXT} extension, \texttt{Start(TimeSpan, float intensity)}, exposes SDL3's
-graduated rumble-strength parameter directly, since modern hardware supports variable
-intensity that a 2010-era WP7 phone's simple on/off buzzer never did. On Android specifically,
-a documented, source-verified hardware limitation is worth knowing: SDL3's own Android haptic
-backend blends any two independent motor intensities into one blended value before handing it
-to the platform vibration service --- true independent left/right rumble on Android is only
-reachable through \cnaclass{GamePad}'s own controller-rumble path, never through this class.
+Compass and Motion use a two-phase start/stop protocol: reserve under the owner mutex, invoke
+the backend without that lock, then commit or roll back. A condition variable prevents a new
+start while an orphaned start's cleanup call is still in flight. Stop deliberately remains able
+to supersede a start without waiting on it.
 
-A deliberately non-obvious detail, re-confirmed by a later external audit against SDL3's own
-haptic source directly rather than left as an assumption: calling \texttt{Start(duration, 0.0f)}
-is \emph{not} treated as an implicit \texttt{Stop()}. It still uploads and plays a genuine,
-zero-strength SDL rumble effect for the full requested duration --- inert in practice, since
-zero strength has no physical effect, but not equivalent to skipping the call entirely, since a
-zero-intensity effect still occupies whatever ``one active effect'' slot the underlying haptic
-device has. \texttt{Stop()} is the correct call when that distinction actually matters to a
-caller, such as canceling a pending rumble outright rather than merely fading it to silence.
+\begin{historynote}{Why sanitizer evidence matters here}
+The first lifecycle rewrite appeared race-free under ordinary tests and manual review.
+ThreadSanitizer found that Stop cleared a transition flag before an orphaned Start had finished
+its backend cleanup, allowing a third Start to enter concurrently. The stress test reproduced
+both the race and a use-after-free in callback bookkeeping. The in-flight-call counter and
+condition variable are the current fix. UndefinedBehaviorSanitizer separately found the
+update-interval overflow.
+\end{historynote}
+
+Exceptions cannot cross SDL, Android C callbacks, or raw thread entry points. CNA records
+backend, operation, native error, device, timestamp, and severity through a \texttt{noexcept}
+diagnostic channel. The Android bridge distinguishes \texttt{std::exception::what()} from an
+unknown throw. Other device paths still retain older ad hoc counters, so the shared diagnostic
+record is not yet universal.
+
+\section{Compass and motion math}
+
+Compass uses upright heading when gravity meets the $\cos 45^\circ$ threshold; otherwise it
+derives flat heading from the quaternion. Results are normalized to $[0,360)$, and an invalid
+quaternion maps to $0^\circ$. Accuracy values High/Medium/Low/Unreliable map to 5/15/20/180
+degrees. Without declination data, \texttt{TrueHeading} equals \texttt{MagneticHeading}.
+
+Motion normalizes Android's rotation quaternion and derives pitch, yaw, and roll. A process-wide
+CNAEXT landscape remap affects acceleration, rotation rate, gravity, and linear acceleration,
+but not \texttt{Attitude}: the requested axis reflection has determinant $-1$ and cannot be
+represented by a quaternion. Fusion accepts the latest readings within 500 ms; it does not
+interpolate them to one timestamp.
+
+\section{Vibration}
+
+\cnaclass{VibrateController} is a process-lifetime singleton. \texttt{Start(TimeSpan)} accepts
+the WP7 range $[0,5\text{s}]$; \texttt{Start(TimeSpan,float)} and
+\texttt{StartLeftRight} are CNAEXT intensity controls. SDL's Android haptic route blends motor
+intensities; independent left/right controller rumble is available through \cnaclass{GamePad},
+not this phone-style API.
 
 \begin{lstlisting}
-// Worked example: a strong "hit" pulse plus a subtler background rumble
-// on the two motors simultaneously, then an explicit Stop() -- NOT a
-// Start(duration, 0.0f) call, which would still play a real, if
-// inert, effect rather than actually canceling anything.
-VibrateController* vibrate = VibrateController::getDefaultProperty();
-if (vibrate->getIsSupportedProperty())
-{
-    vibrate->StartLeftRight(1.0f, 0.3f, System::TimeSpan::FromSeconds(0.2));
+VibrateController* vibration = VibrateController::getDefaultProperty();
+if (vibration->getIsSupportedProperty()) {
+    vibration->StartLeftRight(
+        1.0f, 0.3f, System::TimeSpan::FromSeconds(0.2));
 }
-// ... later, to cancel outright rather than let it play out or fade ...
-vibrate->Stop();
+// Start(duration, 0.0f) still installs a zero-strength effect.
+vibration->Stop();
 \end{lstlisting}
 
-\section{Desktop delivery and Android delivery are different}
+\texttt{DevicesShutdownCoordinator::Shutdown()} must precede the application's
+\texttt{SDL\_Quit()}. It prevents the singleton's later static destructor from closing an SDL
+device after SDL has already released native state. One global mutex serializes sensor and
+haptic subsystem initialization and preserves the documented per-instance-before-global lock
+order.
 
-Desktop Accelerometer and Gyroscope use no polling thread. CNA installs an
-\texttt{SDL\_EventFilter} with \texttt{SDL\_AddEventWatch}; an
-\texttt{SDL\_EVENT\_SENSOR\_UPDATE} is dispatched on whichever thread pushes it. A
-\texttt{static\_assert} proves the callback has SDL's exact function-pointer type, replacing an
-older undefined-behavior \texttt{reinterpret\_cast}. Accelerometer divides SI acceleration by
-9.80665 to report $g$; Gyroscope needs no conversion because SDL3 and WP7 both use radians per
-second. Dispatch timestamps are UTC wall clock, not SDL's monotonic timestamp.
+\section{Known limitation and evidence status}
 
-Android Compass and Motion use the NDK C API---\texttt{ASensorManager}, event queues, and
-\texttt{ALooper}---not JNI. Each sensor bridge owns a worker thread. Motion owns six bridges
-(rotation, game rotation, gravity, linear acceleration, gyroscope, magnetic field), so one
-Motion instance can create six workers. The target links \texttt{android} and \texttt{log}; the
-legacy manager acquisition also fixes the minimum Android API expectation at 24.
+All four concrete sensors expose \texttt{Dispose(bool)} publicly even though the base declares
+it protected. External \texttt{Dispose(false)} marks the instance disposed without stopping it,
+decrementing use counts, or releasing SDL ownership. This is an open API/lifetime defect; call
+the parameterless public \texttt{Dispose()}.
 
-\section{Compass and attitude math}
-
-Compass selects an upright heading only when gravity indicates a near-upright device using the
-$\cos45^\circ=0.70710678\ldots$ threshold; otherwise it uses the flat quaternion heading. Both
-paths normalize \texttt{atan2} output into $[0,360)$. An invalid quaternion deliberately maps
-to $0^\circ$. Accuracy maps High/Medium/Low/Unreliable to 5/15/20/180 degrees; Low is 20 rather
-than 45 so it cannot contradict WP7's calibration threshold. Without a geomagnetic-declination
-source, \texttt{TrueHeading} equals \texttt{MagneticHeading}.
-
-Motion normalizes and passes the Android rotation quaternion through, then derives pitch, yaw,
-and roll from its matrix. The default landscape vector remap is a CNAEXT deviation and can be
-disabled process-wide. It applies to acceleration, rotation rate, gravity, and linear
-acceleration, but never to \texttt{Attitude}: the requested axis map is a reflection with
-determinant $-1$, and no quaternion can represent a reflection. Fusion uses the latest values
-within a 500~ms window rather than timestamp-aligned interpolation.
-
-\section{Subsystem ownership and shutdown}
-
-One process-wide mutex serializes both \texttt{SDL\_INIT\_SENSOR} and
-\texttt{SDL\_INIT\_HAPTIC}. Internal initialization helpers accept an otherwise-unused
-\texttt{const std::lock\_guard\&}; that parameter is compile-time evidence that the caller
-holds the global lock and preserves the documented per-instance-before-global lock order.
-
-\texttt{DevicesShutdownCoordinator::Shutdown()} must run before an application's own
-\texttt{SDL\_Quit()}. It marks the process-lifetime vibration backend so its later static
-destructor skips SDL close/quit calls; without that order, SDL may free the native device before
-the C++ function-local static destructs. The regression harness runs out of process because the
-static lifetime cannot be reset reliably inside one test executable.
-
-\section{Evidence boundary}
-
-The automated suites exercise math, lifecycle, races, fake backends, and an actual TSan stress
-case. No hardware QA report has been filed, and the Android math source explicitly says its
-sign/zero convention has never been checked on real hardware. The Android demo built into the
-APK is also a stale 447-line copy of the 523-line desktop demo. Treat Android behavior as
-source-grounded and host-tested, not device-verified.
-
-One live API defect remains independent of hardware: all four concrete sensors expose
-\texttt{Dispose(bool)} publicly although the base declares it protected. External
-\texttt{Dispose(false)} marks the object disposed without stopping, decrementing counts, or
-releasing SDL ownership.
+Focused tests cover math, throttling, lifecycle, fake backends, reentrancy, and TSan stress.
+They do not constitute hardware QA. The Android source notes that its sign and zero conventions
+have not been checked on a physical device, and the Android demo is an older copy of the desktop
+demo. Android behavior is source-proven and host-tested where fakes permit, not device-verified.

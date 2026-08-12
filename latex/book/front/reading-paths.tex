@@ -1,0 +1,60 @@
+\chapter*{Reading Paths}
+\addcontentsline{toc}{chapter}{Reading Paths}
+\index{reading paths}
+
+The book is designed for selective reading. Chapters state their own evidence boundaries, while
+Appendix~\ref{ch:verification-tiers} defines the shared vocabulary. The routes below avoid
+repeating material and identify a useful first destination for common readers.
+
+\begin{description}[style=nextline,leftmargin=3.2cm,labelwidth=2.8cm]
+  \item[New CNA user]
+    Read Chapters~\ref{ch:what-is-cna}, \ref{ch:configuring-building}, and
+    \ref{ch:first-game}. Continue with the game lifecycle (Chapter~\ref{ch:game-lifecycle}),
+    SpriteBatch (Chapter~\ref{ch:spritebatch}), and content resolution
+    (Chapter~\ref{ch:content-and-assets}). Chapter~\ref{ch:renderer-selection-identity} explains renderer
+    choice; Chapter~\ref{ch:roadmap} lists material gaps at the edition pin.
+
+  \item[XNA or FNA porter]
+    Start with the compatibility boundary in Chapters~\ref{ch:cna-xna}
+    and~\ref{ch:design-philosophy}, then use the migration workflow in
+    Chapter~\ref{ch:migration-guide}. Consult Chapters~\ref{ch:content-and-assets}--
+    \ref{ch:cnj-format} for assets, Chapter~\ref{ch:shader-fx-gap} for effects and custom
+    shaders, and Appendix~\ref{ch:cnaext-catalog} when strict XNA compatibility matters.
+
+  \item[Renderer implementer]
+    Read Chapters~\ref{ch:graphicsdevice}, \ref{ch:backend-architecture},
+    \ref{ch:renderer-selection-identity}, and~\ref{ch:vertex-streams-capabilities}. Appendix~\ref{ch:feature-matrix}
+    summarizes the family-level contract; Chapters~\ref{ch:hostile-environments}
+    and~\ref{ch:oracles} explain engagement and oracle requirements.
+
+  \item[Framework contributor]
+    Begin with the lifecycle and module boundaries in Chapters~\ref{ch:game-lifecycle},
+    \ref{ch:module-monorepo}, and~\ref{ch:boundaries-enforcement}. Chapters~\ref{ch:cnatests-architecture}
+    and~\ref{ch:discipline-as-test} cover test registration and mechanical policy gates.
+
+  \item[Content or glTF contributor]
+    Read Chapters~\ref{ch:content-and-assets}--\ref{ch:content-robustness}, then
+    Chapters~\ref{ch:gltf-import-core}--\ref{ch:gltf-conformance}. Appendix~\ref{ch:gltf-evidence-matrix}
+    keeps importer, runtime, renderer, and oracle evidence in separate columns.
+
+  \item[Verification contributor]
+    Read Parts~\ref{part:testing-verification} and Appendix~\ref{ch:verification-tiers} first.
+    Chapter~\ref{ch:counting-discipline} defines reproducible counts; Chapter~\ref{ch:oracles}
+    distinguishes authority and tolerance; Chapter~\ref{ch:ci-reality} records what automation
+    did and did not exercise at the pin.
+\end{description}
+
+\section*{The shortest practical route}
+
+For a first program, the minimum sequence is: select a renderer when configuring CNA, build CNA
+as the repository documents, derive a class from \cnaclass{Game}, let
+\cnaclass{GraphicsDeviceManager} create the graphics device, load assets through
+\cnaclass{ContentManager}, and draw through an XNA-shaped API such as \cnaclass{SpriteBatch}.
+Chapter~\ref{ch:first-game} contains the complete small program and commands. Portable code stays
+within the \texttt{Microsoft::Xna::Framework} surface and treats \texttt{CNAEXT}-marked APIs as
+explicit extensions.
+
+When a result differs by renderer, first identify the public selector, implementation family,
+native or translation API, and whether the intended route engaged. Then reduce the case to a
+state transition, readback, or pixel oracle. A successful process exit alone cannot localize a
+renderer-specific failure.

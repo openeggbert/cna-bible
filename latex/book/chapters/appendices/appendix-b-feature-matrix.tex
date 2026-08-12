@@ -1,7 +1,8 @@
 \chapter{Renderer Registry, Capabilities, and Evidence}
 \label{ch:feature-matrix}
 
-CNA exposes \textbf{46 public renderer identities / 42 implementation families} at the pinned
+CNA exposes \textbf{\RendererIdentityCount{} public renderer identities /
+\RendererFamilyCount{} implementation families} at the pinned
 revision.  The four-count difference is exact: five EasyGL profiles share one implementation
 family, while every other identity has its own family.  This appendix derives the registry from
 \path{docs/renderer-registry.md} and the source-owned factory paths, then reports a narrow set of
@@ -53,7 +54,8 @@ Windows 2D & \texttt{DIRECT2D}, \texttt{GDI} & 2 \\
 Web / DOM & \texttt{CANVAS}, \texttt{HTML\_DOM}, \texttt{SVG\_DOM} & 3 \\
 Diagnostic / non-GPU & \texttt{HEADLESS}, \texttt{SOFTWARE}, \texttt{STUB} & 3 \\
 \midrule
-\textbf{Total} & \textbf{46 identities / 42 families} & \textbf{46} \\
+\textbf{Total} & \textbf{\RendererIdentityCount{} identities / \RendererFamilyCount{} families}
+  & \textbf{\RendererIdentityCount} \\
 \bottomrule
 \end{longtable}
 \end{small}
@@ -66,7 +68,7 @@ Diagnostic / non-GPU & \texttt{HEADLESS}, \texttt{SOFTWARE}, \texttt{STUB} & 3 \
 DirectX~3 family.  Defaults are \texttt{WEBGL2} under Emscripten, \texttt{OPENGLES3} on Linux,
 and \texttt{SDL\_RENDERER} elsewhere.
 
-\section{Four implementation questions across all 42 families}
+\section{Four implementation questions across all \RendererFamilyCount{} families}
 
 The next matrix deliberately asks only four questions that can be answered uniformly from the
 pinned source.  ``Native'' means the family owns both ordinary effect-aware \texttt{Draw*Ex}
@@ -138,7 +140,8 @@ wicked & \texttt{WICKED} & native & yes & yes & yes \\
 \end{center}
 
 The table is a routing audit, not runtime certification.  It was mechanically checked to contain
-42 families; EasyGL contributes the remaining four public identities.  Thirty-one families own
+\RendererFamilyCount{} families; EasyGL contributes the remaining four public identities.
+Thirty-one families own
 both ordinary effect-aware methods and eleven inherit both shared defaults.  Of the inheritors,
 nine refuse 3D, \texttt{STUB} intentionally does nothing, and \texttt{DIRECTX10} alone produces
 a real coloured draw after silently losing the effect parameters.  Four owner routes---OpenGL

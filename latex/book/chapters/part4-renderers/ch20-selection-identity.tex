@@ -1,11 +1,13 @@
 \chapter{Renderer Selection and Identity}
 \label{ch:renderer-selection-identity}
 
-CNA exposes forty-six public renderer names, but it does not ship forty-six unrelated rendering
-engines and it does not choose among them while a game is running. Configuration selects exactly
-one public identity; CMake maps that identity to one of forty-two implementation families; the
+CNA exposes \RendererIdentityCount{} public renderer identities, but it does not ship that many
+unrelated rendering engines or choose among them while a game is running. Configuration selects
+one public identity; CMake maps it to one of \RendererFamilyCount{} implementation families; the
 resulting binary contains one implementation of the renderer factory. Keeping those three facts
 separate prevents most of the counting and portability mistakes surrounding CNA's renderer list.
+
+\input{figures/fig-renderer-identity.tex}
 
 \begin{sourcenote}
 \textbf{Authority order.} The current identities are jointly pinned by
@@ -13,7 +15,8 @@ separate prevents most of the counting and portability mistakes surrounding CNA'
 \texttt{cmake/RendererSelection.cmake}. The family mapping is stated by
 \texttt{docs/renderer-registry.md} and the physical module list. Older counts in plans, generated
 scripts, and migration documents are historical snapshots. This edition always prints
-\textbf{46 identities / 42 implementation families}, with both nouns present.
+\textbf{\RendererIdentityCount{} identities / \RendererFamilyCount{} implementation families},
+with both nouns present.
 \end{sourcenote}
 
 \section{Identity, family, and native API are different axes}
@@ -27,7 +30,7 @@ An \emph{implementation family} is the source module that provides
 \texttt{CreateGraphicsRenderer()}. Five public identities share the \texttt{easygl} family:
 \texttt{OPENGLES2}, \texttt{OPENGLES3}, \texttt{OPENGL33}, \texttt{WEBGL1}, and
 \texttt{WEBGL2}. That one five-to-one mapping accounts for the arithmetic:
-$46-5+1=42$ families.
+$\RendererIdentityCount-5+1=\RendererFamilyCount$ families.
 
 A \emph{native API} is what the implementation ultimately calls. Usually it follows the family
 name, but not always. BGFX is itself an abstraction layer that can submit through OpenGL, GLES,

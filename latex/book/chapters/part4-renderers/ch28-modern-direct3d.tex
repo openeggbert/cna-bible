@@ -6,7 +6,7 @@ Four CNA identities occupy the modern Direct3D line.  Three broad implementation
 development loop; \texttt{DIRECTX10} is a deliberately narrower bridge between them:
 cross-compiled from this project's own Debian machine using the same MinGW-w64 toolchain
 Chapter~\ref{ch:building-cna}'s Windows cross-build section already introduced, then run and
-verified under Wine on a real GPU --- \texttt{D3D9} and \texttt{D3D11} through DXVK,
+verified under Wine with GPU execution --- \texttt{D3D9} and \texttt{D3D11} through DXVK,
 \texttt{D3D12} through a different translation layer, vkd3d-proton, in its own separate Wine
 prefix. Native-Windows CI now covers \texttt{DIRECTX11} and \texttt{DIRECTX12}; local Wine
 evidence remains a distinct tier and \texttt{DIRECTX9}/\texttt{DIRECTX10} have no equivalent CI
@@ -28,53 +28,45 @@ Identity & Shader model & Extended route & RT / MRT / query \\
 \bottomrule
 \end{longtable}
 
-\section{D3D9: the one renderer that targets pixel authenticity, not just parity}
+\section{D3D9: zero-tolerance XNA oracle comparisons}
 
-\texttt{D3D9} is architecturally different in ambition from every other renderer in this book.
-Its own documentation states the goal directly: ``pixel-for-pixel indistinguishability from
-the original XNA~4.0 runtime itself, not just `renders plausibly.''' It runs Microsoft's own
-vendored, verbatim XNA~4.0 Stock Effects HLSL, compiled through the real
-\texttt{d3dcompiler\_47.dll} rather than a reimplementation of it.
+\texttt{D3D9} targets pixel-for-pixel agreement with XNA~4.0 on its measured corpus. It uses
+Microsoft's vendored XNA stock-effect HLSL and compiles it through
+\texttt{d3dcompiler\_47.dll}; it does not substitute a reimplemented shader package.
 
-\subsection{The oracle: a real XNA~4.0 runtime as ground truth}
+\subsection{Oracle: XNA~4.0 under Wine}
 
-A dedicated tool, \texttt{tools/xna-oracle/}, stands up a genuine, running XNA~4.0 runtime
-under Wine --- real GAC assemblies, compiled by the real in-prefix \texttt{csc.exe} --- and
-renders the same declarative scene file through both that real runtime and CNA's \texttt{D3D9}
-renderer, diffing the two resulting images at zero tolerance: an exact match, not an
-approximate one. Both sides of the comparison run through the same DXVK translation layer on
-the same GPU, which is precisely what makes the comparison a test of CNA's own rendering
-correctness rather than of two different graphics stacks. This corpus keeps growing across
-this book's own successive passes over this chapter --- 36 scenes as of an earlier pass, 39
-real scene files on disk as of this book's own most recent, direct recount --- with zero known
-divergence at every count checked so far.
+A dedicated tool, \texttt{tools/xna-oracle/}, runs XNA~4.0 under Wine using the GAC assemblies
+and the in-prefix \texttt{csc.exe}. It renders each declarative scene through XNA and CNA's
+\texttt{D3D9} renderer, then compares the images at zero tolerance. Both sides use the same DXVK layer on
+the same GPU, isolating CNA behavior from differences between graphics stacks. The pinned corpus contains
+\XnaOracleSceneCount{} scene files. Every retained comparison is an exact match under this
+Wine/DXVK configuration; the result does not cover paths absent from that corpus.
 
-\subsection{What is real}
+\subsection{Current contract and evidence}
 
 Full device lifecycle via plain \texttt{Direct3DCreate9} (not D3D9Ex, a deliberate choice),
-with genuine \texttt{DeviceLost} / \texttt{DeviceResetting} / \texttt{DeviceReset} handling; all
+with \texttt{DeviceLost} / \texttt{DeviceResetting} / \texttt{DeviceReset} handling; all
 five XNA stock effects, with 61 of 66 compiled shader variants byte-identical to Microsoft's
 own shipped bytecode (the remaining five differ only by HLSL compiler version, and are
-separately proven equivalent through the oracle rather than merely assumed so); a real,
+separately compared through the oracle); an
 oracle- and mutation-verified \texttt{SpriteEffect.fx}, including the half-pixel offset
 Direct3D~9 is notorious for --- caught before it could become a false-positive ``closed''
 claim, because the offset's absence is invisible on a $1\times1$ test texture and only shows
-up at a larger size; and \cnaclass{GraphicsProfile.Reach} / \texttt{.HiDef} enforcement that is
-\emph{real} here, consulting an actual \texttt{D3DCAPS9} structure --- the only CNA renderer
-where that distinction reflects a genuine capability query rather than a decorative property,
-as Chapter~\ref{ch:graphicsdevice} already noted. Render targets sampled back as ordinary
-textures, and the \texttt{PreferPerPixelLighting}/specular gaps from
-Chapter~\ref{ch:stock-effects}'s \cnaclass{GpuDrawParams} discussion, were both real, open
-problems earlier in this renderer's history and are now fixed --- the specular fix in
-particular proved four of five \texttt{PixelLighting} bytecode variants pixel-perfect via the
-oracle; the fifth, an untextured vertex-lit variant, remains permanently unreachable, blocked
-by the same missing position-only vertex layout that limits the untextured lit bucket on
-every renderer.
+up at a larger size; and \cnaclass{GraphicsProfile.Reach} / \texttt{.HiDef} enforcement
+through a \texttt{D3DCAPS9} query --- the only audited CNA renderer
+where the distinction reaches a native capability query,
+as Chapter~\ref{ch:graphicsdevice} already noted. Render-target sampling and the
+\texttt{PreferPerPixelLighting}/specular gaps described in Chapter~\ref{ch:stock-effects}
+were corrected. The specular repair produced zero-tolerance frame matches for four of five
+\texttt{PixelLighting} bytecode variants via the
+oracle. The fifth, an untextured vertex-lit variant, is unreachable at the pin because the
+required position-only vertex layout is missing on the measured stock-effect paths.
 
 \begin{sourcenote}
-D3D9's real lost-device lifecycle is also reachable through two framework-reserved keys:
+D3D9's lost-device lifecycle is reachable through two framework-reserved keys:
 after ordinary input processing, non-repeated F9 enters \texttt{Lost} and raises
-\texttt{DeviceLost}; F10 performs the real reset, bracketing it with
+\texttt{DeviceLost}; F10 performs the reset, bracketing it with
 \texttt{DeviceResetting} and \texttt{DeviceReset}. The smoke suite checks exact event counts,
 that rendering fails while lost, exact pixels after recovery, and release/recreation of
 default-pool resources. This strong deterministic debug path should not be confused with two
@@ -84,11 +76,11 @@ before its D3D9 hook throws. Section~\ref{sec:backend-recovery-debug-matrix} com
 fourteen products in the inherited audit cohort and calls out that partial-state outcome.
 \end{sourcenote}
 
-\subsection{What is not, and the one caveat that applies to every number above}
+\subsection{Coverage limits}
 
 Every \cnaclass{SurfaceFormat} besides \texttt{Color} remains unsupported (a shared,
 cross-renderer limitation from Chapter~\ref{ch:textures-rendertargets}, not a D3D9-specific
-one). \texttt{Texture3D} has no oracle-scene coverage, but it does have a real, capability-gated
+one). \texttt{Texture3D} has no oracle-scene coverage, but it has a capability-gated
 sub-volume \texttt{SetData()}/\texttt{GetData()} byte round trip: \texttt{D3D9\_Smoke} creates a
 \(4\times4\times4\) volume only when \texttt{D3DCAPS9::MaxVolumeExtent}
 is nonzero, writes 32 distinct RGBA bytes into the off-origin \(2\times2\times2\) box at
@@ -101,13 +93,13 @@ deterministic oracle scenes at all --- \texttt{Immediate} is not something a ras
 observe, and \texttt{Texture} sorts by an implementation-defined \texttt{GetHashCode()},
 which no two implementations are obligated to agree on. The caveat that applies to every
 result in this section: \texttt{D3DCAPS9} itself is synthesized by DXVK on this dev loop, not
-reported by genuine XNA-era driver hardware --- real-Windows-hardware verification remains
+reported by XNA-era Windows driver hardware --- native-Windows hardware verification remains
 open, as stated above.
 
-\subsection{D3D9 render targets prove native limits before promising a draw path}
+\subsection{D3D9 render-target limits and evidence}
 
-The D3D9 smoke test proves real render-target storage and recovery rather than treating an
-off-screen bind as a no-crash smoke test. An 8x8 target with Depth24Stencil8 is bound, cleared
+The D3D9 smoke test establishes render-target storage and recovery. An 8x8 target with
+Depth24Stencil8 is bound, cleared
 through the public device, and copied with D3D9's required
 \texttt{GetRenderTargetData()}--system-memory-surface--\texttt{LockRect()} route; its own surface
 must contain the exact requested color. A cube-face target has the same proof for one selected
@@ -116,7 +108,7 @@ face, followed by an independent back-buffer clear/readback after unbind.
 MSAA is capability-gated by \texttt{IDirect3D9::CheckDeviceMultiSampleType()}, not assumed from
 the requested count. When 4x is available, a multisampled target is cleared and unbound; D3D9's
 \texttt{StretchRect()} resolve must make its separate sampleable texture read exactly
-\((200,210,220,255)\). The test proves the resolved result, not merely the multisample surface.
+\((200,210,220,255)\). The assertion reads the resolved result, not the multisample surface.
 One naming trap matters here: this is an internal device-capability check in the creation path,
 not \cnaclass{GraphicsDevice}\texttt{::SupportsCapability}. D3D9 never overrides that public
 method, so \texttt{MultiSampleAntiAliasing} still reports true even when
@@ -125,17 +117,17 @@ method, so \texttt{MultiSampleAntiAliasing} still reports true even when
 \texttt{D3DSAMP\_MAXANISOTROPY}, but neither the public query nor the setter consults and clamps
 to \texttt{D3DCAPS9::MaxAnisotropy}.
 
-Multiple render targets are also bounded by the real \texttt{D3DCAPS9::NumSimultaneousRTs}: two
+Multiple render targets are bounded by \texttt{D3DCAPS9::NumSimultaneousRTs}: two
 targets receive one exact-color clear, unbinding restores the back buffer, and requesting one
 more target than the device reports throws rather than silently truncating. This proves D3D9's
 multi-attachment binding and clear semantics. It does not separately prove a shader with several
 fragment outputs, so the result should not be generalized into a G-buffer draw claim.
 
-\subsection{A worked example: one real oracle scene, quoted in full}
+\subsection{One oracle scene}
 
 The oracle's own scene format is a small, declarative text file, not a compiled asset or a
-piece of C\texttt{++} --- the simplest real scene in the corpus, \texttt{colored3d.scene},
-fits in eleven lines and is worth quoting directly rather than only described:
+piece of C\texttt{++}. The simplest scene in the corpus, \texttt{colored3d.scene}, fits in
+eleven lines:
 
 \begin{lstlisting}
 width=256
@@ -150,68 +142,48 @@ vertex=0.0,0.7,0,0,255,0,255
 vertex=0.6,-0.6,0,0,0,255,255
 \end{lstlisting}
 
-This declares exactly the scene Chapter~\ref{ch:stock-effects}'s own \cnaclass{BasicEffect}
-coverage would predict from the flags alone: \texttt{vertexcolor=true} with
-\texttt{lighting=false} is \cnaclass{BasicEffect}'s \texttt{VertexColorEnabled} path with no
-lighting applied, drawing a single red/green/blue-cornered triangle (World/View/Projection all
-implicitly identity) over a \texttt{CornflowerBlue} clear --- the well-known default XNA clear
-color, matching \texttt{Color.CornflowerBlue}'s own real RGBA value exactly
-$(100, 149, 237, 255)$. Both the real XNA~4.0 oracle runtime and \texttt{D3D9} render this
-identical declarative scene independently, and the zero-tolerance diff checks two things a
-screenshot comparison alone would not separate cleanly: the flat-shaded corners prove basic
-vertex-color plumbing works at all, while the \emph{center} of the triangle --- genuinely
-Gouraud-interpolated between three different corner colors, not any one of them --- proves the
-interpolation itself is correct, not merely that three isolated sample points happen to match.
-A more elaborate scene in the same corpus, \texttt{fog\_gradient\_quad}
+With \texttt{vertexcolor=true} and \texttt{lighting=false}, \cnaclass{BasicEffect} draws one
+red/green/blue-cornered triangle under identity transforms over
+\texttt{Color.CornflowerBlue}, RGBA $(100,149,237,255)$. XNA and CNA render the scene
+independently. Matching corners establish vertex-color plumbing; matching interior pixels also
+exercise Gouraud interpolation. The more elaborate \texttt{fog\_gradient\_quad}
 (Chapter~\ref{ch:easygl-backend}'s own negative-\texttt{FogEnd} finding), uses the identical
 file format with a handful of additional \texttt{fog*} keys --- the same declarative scheme
-scales from this eleven-line triangle up to every one of the corpus's now-39 scenes.
+scales from this eleven-line triangle through the corpus's \XnaOracleSceneCount{} scenes.
 
-\subsection{Two real bugs the oracle methodology itself found}
+\subsection{Two defects exposed by the oracle}
 
-Both are worth naming because they demonstrate what a pixel-exact reference actually buys
-you over ordinary unit testing. First, a sort-mode Z-clipping bug: \texttt{zFarPlane=1}
+The first was a sort-mode Z-clipping defect: \texttt{zFarPlane=1}
 mapped a nonzero \cnaclass{SpriteBatch} layer depth outside Direct3D~9's own valid clip-space
 Z range, silently clipping away any sprite with a nonzero layer depth entirely --- fixed by
-using \texttt{zFarPlane=-1} instead. Second, and more interesting because it is not
-\texttt{D3D9}-specific at all: \cnaclass{GraphicsProfile} never actually reached the real
-device, because \texttt{Game}'s own \cnaclass{GraphicsDevice} was eagerly default-constructed
+using \texttt{zFarPlane=-1} instead. The second was shared across renderers:
+\cnaclass{GraphicsProfile} never reached the device because \texttt{Game}'s
+\cnaclass{GraphicsDevice} was eagerly default-constructed
 (hardcoded to \texttt{Reach}) before \cnaclass{GraphicsDeviceManager} even existed to apply a
 game's requested profile --- meaning a game setting \texttt{GraphicsProfile = HiDef;
 ApplyChanges();} had no path to the live device at all. This is a shared, cross-renderer bug,
 only \emph{discovered} while building \texttt{D3D9}'s own tests, because \texttt{D3D9} is the
 one renderer where the profile actually matters enough to notice.
 
-\subsection{A worked example: why \texttt{zFarPlane} sign alone hid every nonzero-depth sprite}
+\subsection{Why the \texttt{zFarPlane} sign hid nonzero-depth sprites}
 
-The Z-clipping bug above is worth working through numerically, since ``\texttt{zFarPlane=1}
-instead of \texttt{-1}'' sounds like a cosmetic sign flip until the actual clip-space
-consequence is spelled out. \cnaclass{SpriteBatch}'s orthographic projection maps a
+The sign controls clip-space placement. \cnaclass{SpriteBatch}'s orthographic projection maps a
 \texttt{layerDepth} value in $[0, 1]$ (XNA's own documented range: 0 = front, 1 = back) onto
 Direct3D~9's own native clip-space Z range, which is $[0, 1]$ --- \emph{not} the
 $[-1, 1]$ range OpenGL-family APIs use. Constructing that projection with
 \texttt{zFarPlane=1} produces a near/far mapping where any \texttt{layerDepth} strictly
 greater than what the incorrect matrix treats as its own valid far bound gets clipped by the
-GPU's own fixed-function Z-clip test --- silently, with no error, exactly like a sprite drawn
-behind the camera would be. A sprite at \texttt{layerDepth=0} (the common case, since most
-2D games never set it explicitly) was never affected, which is precisely why this bug could
-ship unnoticed: it only manifests for a game that actually uses \cnaclass{SpriteSortMode}'s
-depth-based ordering with a nonzero layer value, a real but less common \cnaclass{SpriteBatch}
-usage pattern than the default. The fix, \texttt{zFarPlane=-1}, corrects the matrix so the
+GPU's fixed-function Z-clip test without an error. The default \texttt{layerDepth=0} was
+unaffected, so the defect appeared only with nonzero depth ordering. The
+\texttt{zFarPlane=-1} matrix maps the
 full documented $[0,1]$ \texttt{layerDepth} range maps inside Direct3D~9's own valid clip
 volume instead of partly outside it.
 
-\section{Three resource-lifetime groups, not two, and why the distinction matters}
+\section{Three D3D11 resource-lifetime groups}
 \label{sec:d3d11-lifetime-groups}
 
-Before getting to what \texttt{D3D11} actually renders, one design decision recorded in this
-renderer's own planning document (\texttt{plan\_dx.md}) is worth stating explicitly, because
-getting it wrong is exactly the kind of mistake that makes a hand-rolled Direct3D renderer
-fragile under two of its most routine events --- a window resize and a lost device. A plain
-resize and device-removed recovery touch genuinely different resource sets, and this renderer
-tracks that as three separate groups rather than the two-group split (``device stuff'' versus
-``everything else'') an earlier draft of the same plan itself started from and explicitly
-corrected:
+Window resize and device-removed recovery affect different resource sets. D3D11 separates them
+into three lifetime groups:
 
 \begin{description}
   \item[Device lifetime.] \texttt{ID3D11Device}, \texttt{ID3D11DeviceContext}, the
@@ -228,75 +200,58 @@ corrected:
         \emph{after} it, on every resize and on device-removed recovery alike.
 \end{description}
 
-The payoff of keeping these three separate: an ordinary window resize --- by far the most
-frequent of the two events in practice --- touches only the third group plus one
-\texttt{ResizeBuffers} call on the second, and specifically must \emph{never} re-run the first
-group's factory/tearing-capability query or destroy and recreate the swap-chain object itself.
-Device-removed recovery, the rarer and more disruptive event, is the only path that tears down
-and rebuilds all three groups together. Collapsing swap-chain lifetime into either of the other
-two groups --- treating it as part of ``device stuff'' (recreating it on every resize, wastefully)
-or as part of ``window-size stuff'' (never giving it its own recovery-only teardown point) --- is
-precisely the shape of bug this three-way split exists to rule out by construction, not merely
-by convention.
+Resize releases and recreates only the window-size group, with one \texttt{ResizeBuffers()} call
+on the existing swapchain. Device removal rebuilds all three groups. This division avoids both
+recreating the device on resize and omitting the swapchain from recovery.
 
-A second, smaller decision from the same design-decisions list is worth a brief, concrete
-mention for what it reveals about porting a hand-rolled COM-based renderer under a non-MSVC
-toolchain: every \texttt{ID3D11*} / \texttt{IDXGI*} / \texttt{ID3D12*} interface pointer anywhere in
-this renderer uses \texttt{Microsoft::WRL::ComPtr<T>}, not a bare \texttt{Release()} call or a
-project-local wrapper --- but that was a genuinely verified choice, not an assumed one. Since
-this project's actual primary dev loop is MinGW-w64 on Debian, not real MSVC, the plan records a
-real spike (device creation, \texttt{.As()}, \texttt{GetParent}, and specifically the
-\texttt{ReleaseAndGetAddressOf()} re-population pattern a swap-chain resize needs) that had to
-compile, link, and run correctly under Wine on this project's own machine before the decision
-was finalized, precisely because leaks on resize, double-releases, and forgotten releases on a
-partially-failed initialization are the default failure mode for a hand-rolled COM wrapper that
-was never actually exercised end to end.
+All D3D11, DXGI, and D3D12 interfaces use \texttt{Microsoft::WRL::ComPtr<T>}. A MinGW-w64/Wine
+spike exercised device creation, \texttt{.As()}, \texttt{GetParent()}, and the
+\texttt{ReleaseAndGetAddressOf()} repopulation needed by resize before that ownership model was
+adopted.
 
-\section{DIRECTX10: a deliberate MVP with one dangerous default}
+\section{DIRECTX10: a bounded MVP with one unsafe default}
 
 \texttt{DIRECTX10} uses Wine's D3D10/D3D10.1 forwarding path into DXVK's
 \texttt{d3d10core} and DXGI.  Its two embedded shaders provide colored 2D and 3D submission,
 render targets, and MRT, but it deliberately leaves effect creation, occlusion queries,
 Texture3D, TextureCube, and cube targets at their base null implementations.
 
-The sharpest boundary is not a throw.  The renderer does not override either effect-aware
-extended primitive method, so the base class calls its real colored draw implementation after
+The sharpest boundary is not a throw. The renderer does not override either effect-aware
+extended primitive method, so the base class calls its colored draw implementation after
 discarding \cnaclass{GpuDrawParams}.  A BasicEffect-shaped call can therefore produce pixels
 while silently losing texture, lighting, fog, skinning, PBR, instancing, or custom-effect
-intent.  This is the sole unconditional inherited colored downgrade among all 42 renderer
+intent. This is the sole unconditional inherited colored downgrade among all
+\RendererFamilyCount{} renderer
 families.
 
-That behavior makes capability checks necessary but insufficient.  \texttt{ThreeD} can be true
-because colored geometry is real, while effect semantics are still absent.  A porter should
+That behavior makes capability checks necessary but insufficient. \texttt{ThreeD} can be true
+because colored geometry is implemented while effect semantics remain absent. A porter should
 treat \texttt{DIRECTX10} as an explicit MVP target and verify the exact draw vocabulary used by
 the game rather than infer parity from a successful triangle.
 
-\section{D3D11: the first native, dependency-free Windows path}
+\section{D3D11: native Windows implementation}
 
-\texttt{D3D11} is CNA's first renderer built directly on native Direct3D~11, verified in the
-same MinGW-w64-plus-Wine-plus-DXVK loop as \texttt{D3D9}. It proves out a real
+\texttt{D3D11} is CNA's first renderer built directly on Direct3D~11, verified in the
+same MinGW-w64-plus-Wine-plus-DXVK loop as \texttt{D3D9}. Its covered path includes an
 \texttt{ID3D11Device} / \texttt{ID3D11DeviceContext} pipeline: buffers, textures, and render
 targets (including MSAA and multiple render targets), state objects, all ten stock HLSL
-shader variants across the five stock effects, a real \cnaclass{SpriteBatch}, and --- unique
+shader variants across the five stock effects, \cnaclass{SpriteBatch}, and --- unique
 to this renderer and \texttt{D3D12} --- a runtime-\texttt{D3DCompile()}-backed
 \texttt{ShaderEffect} path for custom shaders, already introduced in
-Chapter~\ref{ch:shader-fx-gap}. All of this is pixel-verified via real GPU readback, not
-merely ``returned \texttt{S\_OK}.''
+Chapter~\ref{ch:shader-fx-gap}. Pixel assertions use GPU readback, so they establish more than
+successful API return codes.
 
-Device-lost/removed recovery here is honestly scoped as \emph{detection-only}: the
-device-removed check is real and correctly wired, but has genuinely never fired in this dev
-loop, since no real device removal has occurred under Wine+DXVK testing --- full recovery
-remains unverified, not because the code is wrong, but because the triggering condition has
-never actually happened. One real, structural bug is worth recounting for what it reveals
-about static linking: an early build hit an \texttt{undefined reference to Effect::Apply()}
-link failure, traced to a genuine circular dependency (the D3D11 \cnaclass{SpriteBatch}
+Device-removed recovery has \emph{detection-only evidence}: the check is wired, but the
+Wine/DXVK campaign did not trigger device removal, so full recovery remains unobserved.
+
+An early build exposed a static-link cycle when the linker could not resolve
+\texttt{Effect::Apply()}: the D3D11 \cnaclass{SpriteBatch}
 renderer calls back into \texttt{Effect::Apply()}, which lives in the main CNA library, which
 itself depends on the renderer). MinGW's single-pass archive resolution never revisited the
 already-searched \texttt{libCNA.a} to satisfy it. The fix was an explicit repeated
-\texttt{target\_link\_libraries(\ldots{} CNA)} for the D3D11/D3D12 targets, deliberately
-exploiting CMake's own documented support for a static-library link cycle --- and the bug was
-confirmed genuinely pre-existing (via \texttt{git stash}, it reproduced identically on the
-base commit), not something the D3D11 work itself introduced.
+\texttt{target\_link\_libraries(\ldots{} CNA)} for the D3D11/D3D12 targets, using CMake's
+documented support for a repeated static-library dependency. The failure reproduced on the base
+revision and was not introduced by the D3D11 work.
 
 \subsection{The public presentation-mode call reaches D3D11 and D3D12, but neither scales yet}
 
@@ -304,7 +259,7 @@ Chapter~\ref{ch:game-loop}'s \texttt{CNAEXT} \texttt{Presentation\allowbreak{}Mo
 reaches these renderers: the public manager/device forwarding path passes the selected enum to each
 renderer. But the final handlers are
 currently intentional no-ops. D3D11 explicitly discards \texttt{mode}; D3D12 has the same
-empty handler. They create and present their swap chain at the real SDL window's pixel size,
+empty handler. They create and present their swap chain at the SDL window's pixel size,
 not a separately rendered logical surface which could be letterboxed, cropped, or stretched.
 
 Their \texttt{SetVirtualResolution(width,height)} methods only retain the supplied integers.
@@ -312,7 +267,7 @@ On D3D11, \texttt{GetViewportSize()} still queries the window's physical pixel s
 the stored virtual dimensions are returned to the caller but do not create a scaling pass.
 Consequently setting \texttt{Letterbox}, \texttt{Overscan}, \texttt{Stretch},
 \texttt{NativeBackBuffer}, or \texttt{FixedHeightDynamicWidth} produces no different
-presentation geometry on either native Direct3D renderer today. This is a real renderer limitation,
+presentation geometry on either native Direct3D renderer today. This is a renderer limitation,
 not an XNA-compatibility promise: the enum itself is a CNA extension, and there is no test that
 could honestly pixel-prove a mode-specific result until a logical render target plus final
 composite/scaling path exists.
@@ -379,11 +334,9 @@ attachments active while public state has already changed. And an SDL fullscreen
 D3D11/12 is not DXGI exclusive fullscreen. The inherited fourteen-product comparison and test boundary
 are in \S\ref{sec:backend-presentation-format-matrix}.
 
-\subsection{A proof ladder for real D3D11 3D draws, not a blanket ``3D works'' claim}
+\subsection{Evidence ladder for D3D11 3D draws}
 
-The D3D11 plan's own 3D work is unusually useful as a verification example because it did not
-stop at compiling a shader or observing that a draw call returned successfully.  It built a
-small ladder of increasingly discriminating GPU-readback checks.  The first rung used only the
+The D3D11 3D checks form a progressively discriminating GPU-readback ladder. The first uses the
 stride-16 \cnaclass{VertexPositionColor} path: a known blue clear was read back, an NDC-space
 opaque-red triangle was then drawn through both indexed and non-indexed calls, and the same
 region had to become red.  That proves the input layout, shaders, constant buffer, primitive
@@ -393,18 +346,17 @@ pass it accidentally.
 The next rung separated texture sampling from vertex-color modulation.  A stride-20 textured
 draw sampled a known texel exactly, through both indexed forms, while the stride-24 variant
 multiplied a known vertex color through a white texture and read back that exact color.  The
-stride-32 lighting path then exercised the real per-light constant buffer: its unlit control is
+stride-32 lighting path then exercises the per-light constant buffer: its unlit control is
 byte-exact, while its lit control must differ from both the unlit result and the clear color.
 That deliberately avoids pretending a hand-derived GPU floating-point result is more stable
-than it is, yet still proves that the lighting branch actually executed.
+than it is, while still distinguishing execution of the lighting branch.
 
 Later tests applied the same discipline to features whose happy paths look deceptively similar.
-Fog draws the same geometry with the flag off (exact vertex red) and on at the exact end distance
-(exact fog green); an environment-map fixture constrains the reflection to the cube's \texttt{-Z}
-face and reads its unique color; and a skinned fixture supplies a genuine identity bone rather
-than relying on an all-zero default matrix.  These are deliberately different falsification
-cases, not redundant screenshots.  By the end of that series the D3D11 smoke executable had
-147 checks, each exercised through real Wine plus DXVK GPU execution.  The result supports the
+Fog draws the same geometry with the flag off (exact vertex red) and at the fog end (exact fog
+green); an environment-map fixture constrains the reflection to the cube's \texttt{-Z} face;
+and a skinned fixture supplies an identity bone instead of an all-zero default matrix. These
+fixtures falsify different failure modes. At the pin, the D3D11 smoke executable contains 147
+checks exercised through Wine and DXVK GPU execution. The result supports the
 specific paths named here; it is not a license to extrapolate that any arbitrary, untested
 D3D11 state combination must therefore be correct.
 
@@ -418,9 +370,9 @@ reads the exact native viewport, depth range, and scissor back through the corre
 getters. That is strong native-state evidence but still one layer short of a public behavioral
 pixel test because the check invokes renderer methods directly.
 
-D3D9's source path is equally real, but its evidence label needed correction. The renderer plan
+D3D9 implements both states, but its evidence label needed correction. The renderer plan
 now calls viewport and scissor ``oracle-proven.'' A direct recount/search of the current
-39-scene \texttt{tools/xna-oracle/scenes} corpus finds cull-mode scenes but no viewport or
+\XnaOracleSceneCount{}-scene \texttt{tools/xna-oracle/scenes} corpus finds cull-mode scenes but no viewport or
 scissor scene, and the D3D9 smoke program's resize check proves a full-size post-reset viewport,
 not a custom sub-region. The safest current claim is therefore native-source implementation
 plus broad D3D9 draw coverage, not a zero-tolerance XNA comparison for these two states.
@@ -444,7 +396,7 @@ independently when a DSV exists. D3D12 mirrors that selection with synchronous c
 Both have strong direct-renderer proof: stencil-plane bytes are read back from the GPU, changed to a second
 value, and depth is distinguished by whether one identical triangle passes. Those tests bypass
 \cnaclass{GraphicsDevice}'s public route, but the route now derives depth and stencil availability
-independently from the actually bound 2D/cube attachment rather than inferring stencil from every
+independently from the bound 2D/cube attachment instead of inferring stencil from every
 non-\texttt{None} depth enum. D3D12 still requires a bound colour resource before its combination
 helper can record any command list; once one is bound, however, a requested depth/stencil aspect
 with no DSV is deliberately a legal no-op, matching D3D11.
@@ -452,13 +404,13 @@ with no DSV is deliberately a legal no-op, matching D3D11.
 D3D9's native \texttt{IDirect3DDevice9::Clear} bits are likewise immediate and individually
 selected, but their final gate consults \texttt{depthStencilFormatOrdinal\_}, the presentation
 format captured for the backbuffer. Binding a differently-formatted 2D or cube target never
-updates that field. A target can therefore lose a real depth clear when the backbuffer has no
+updates that field. A target can therefore lose a depth clear when the backbuffer has no
 depth, or receive a stencil bit selected because the backbuffer has one. The smoke test's seven
 public combinations all use a D24S8 backbuffer and mostly check colour preservation, so they
 cannot reveal this mismatch. See \S\ref{sec:backend-clear-matrix} for the corresponding
 thirteen-product contrast within that audit cohort.
 
-\section{An MRT set has to finish every target, not only the first}
+\section{MRT finalization across all bound targets}
 
 An ordinary single \cnaclass{RenderTarget2D} owns a simple end-of-use rule. When it is unbound,
 its \texttt{ResolveAnd\allowbreak{}Generate\allowbreak{}MipsEXT()} helper asks D3D11 to resolve the
@@ -478,14 +430,14 @@ stored target, invokes its \texttt{ResolveAnd\allowbreak{}Generate\allowbreak{}M
 then binds the next target or restores the back buffer. This matters for all three transitions:
 MRT to back buffer, MRT directly to one target, and MRT to a different MRT set.
 
-\texttt{D3D11\_Smoke} makes the error observable rather than only reading that loop. It binds
+\texttt{D3D11\_Smoke} makes the error observable. It binds
 two distinct \(8\times8\), 4x-MSAA targets, clears the shared MRT pass to
 \((200,30,40,255)\), unbinds it, and reads both targets' \emph{sampleable} textures directly.
 Both must contain that exact color. A repair that resolved only target zero, or that merely left
 the MSAA draw attachment valid, fails the second readback. A second case binds another two-target
 set, clears it to \((5,6,7,255)\), and switches straight to an unrelated single target rather
-than unbinding to null; its first prior target must still read the new value. That separates the
-real state-transition repair from a narrower ``only the null unbind works'' patch.
+than unbinding to null; its first prior target must still read the new value. This distinguishes
+all target transitions from a narrower null-unbind repair.
 
 The shared helper also calls \texttt{GenerateMips()}, but the scope of its proof should remain
 honest. The suite separately reads an \(8\times8\) single-target mipmapped render target's
@@ -495,31 +447,26 @@ MRT and \texttt{mipMap=true} uses the same helper and is therefore wired, but is
 pixel-tested yet. That is a verification boundary, not a claim that the two mechanisms are
 magically proven together.
 
-\section{D3D12: built on D3D11's own foundation, and an honest split verification story}
+\section{D3D12: shared foundations and split verification}
 
-\texttt{D3D12} deliberately reuses \texttt{D3D11}'s own HLSL/DXBC bytecode, format and state
-mapping tables, and constant-buffer layouts --- \texttt{D3DCommon} from
-Chapter~\ref{ch:backend-architecture} is exactly this shared foundation. It proves out a real
-device, command queues, descriptor heaps, command lists, fences with genuine two-frame
-back-pressure, a real per-resource barrier-transition tracker, pipeline state objects with
-runtime-settable state, root signatures, real per-slot dynamic sampler state, buffers, 2D/cube/%
-3D textures, real render targets (including multiple render targets with real mip-chain
-generation and device-queried MSAA), real occlusion queries, all ten stock shader variants
-(reusing \texttt{D3D11}'s own compiled bytecode directly, not re-deriving it), a real
-\cnaclass{SpriteBatch} with the same runtime-compiled custom-shader support as
-\texttt{D3D11}, and a real, functionally-proven device-removed recovery path.
+\texttt{D3D12} reuses D3D11's HLSL/DXBC bytecode, format/state mappings, and constant-buffer
+layouts through \texttt{D3DCommon}. The implemented route includes a device, queues, descriptor
+heaps, command lists, fences, per-resource barriers, pipeline-state objects, root signatures,
+per-slot samplers, buffers, 2D/cube/3D textures, render targets with MRT, mip generation and
+device-queried MSAA, occlusion queries, all ten stock shader variants, \cnaclass{SpriteBatch},
+runtime-compiled sprite shaders, and device-removed recovery.
 
-The single most important structural fact about this renderer's own verification is worth
-stating plainly, because it qualifies every number above: \textbf{the routine CTest suite for
-this renderer is entirely off-screen}. Real swap-chain creation and \texttt{Present()} through
-a live window are proven, but only through a separate, manual diagnostic tool run through a
-Proton-managed launch --- never through the routine, automated CTest run, because a full
-Proton bootstrap was judged too heavy and slow for a normal test run in this dev loop.
+\begin{evidencenote}
+The routine D3D12 CTest suite is entirely off-screen. A separate manual diagnostic, launched
+through Proton, establishes swapchain creation and \texttt{Present()} through a window. That
+manual result is not part of the routine automated suite because the Proton bootstrap is too
+heavy for this development loop.
+\end{evidencenote}
 
 \subsection{Backbuffer readback is not part of the shared D3D11 foundation}
 
 The repeated phrase ``GPU readback'' in this chapter names several different mechanisms.
-D3D11 has a real \texttt{ReadBackbuffer()} override: it always copies
+D3D11 has a \texttt{ReadBackbuffer()} override: it always copies
 \texttt{backBufferTexture\_} into a staging texture, honors \texttt{RowPitch}, and backs the
 public \texttt{GraphicsDevice::GetBackBuffer\allowbreak Data()} route with exact windowed
 clear/draw
@@ -534,7 +481,7 @@ the shared public SpriteBatch example below likewise reads the off-screen render
 quoted as evidence for a public backbuffer bridge that does not exist. The complete renderer
 matrix and FNA contrast are in \S\ref{sec:backend-readback-matrix}.
 
-\subsection{Two frames in flight is a real primitive, not a promise that every call site is non-blocking}
+\subsection{Two frames in flight and blocking call sites}
 
 Unlike the driver-managed D3D11 model, D3D12 makes the command allocator lifetime explicit.
 CNA therefore creates exactly two \texttt{ID3D12CommandAllocator} objects
@@ -547,70 +494,56 @@ slot before allowing its allocator to be reused.  Thus a call for slot~0 may sub
 \texttt{v2} while waiting for older \texttt{v0}; it must not wait for \texttt{v2} itself,
 because doing so would erase the overlap the two slots exist to permit.
 
-The renderer's real smoke test makes that contract observable rather than treating fence
-arithmetic as self-evident.  It invokes the primitive for slots 0, 1, and 0 again, verifies
+The smoke test invokes the primitive for slots 0, 1, and 0 again, verifies
 that \texttt{v0 < v1 < v2}, and, on the second use of slot~0, requires
 \texttt{GetCompletedValue()} to have reached \texttt{v0}.  It intentionally does \emph{not}
 assert that \texttt{v2} has completed on return: \texttt{ID3D12CommandQueue::Signal()} is
 asynchronous, so that would be a race, not a correctness condition.  A separate explicit
-event wait proves eventual completion.  The test goes one step further by placing 48 real
+event wait establishes eventual completion. The test also places 48
 64-MiB GPU copies ahead of the old fence and comparing that wait with an already-complete
-control wait; the loaded wait is measurably slower, establishing that the
-\texttt{WaitForSingleObject()} branch genuinely supplies back-pressure rather than merely
-passing an already-satisfied condition.
+control wait; the loaded wait is measurably slower, establishing that
+\texttt{WaitForSingleObject()} supplies back-pressure.
 
-There is an important present-tense limitation in the distinction.  The reusable
-two-slot primitive is real and directly tested, but the current ordinary clear/draw helper
+The reusable two-slot primitive is directly tested, but the current ordinary clear/draw helper
 uses \texttt{ExecuteCommandListAndWaitEXT()}, its intentionally simpler synchronous sibling:
 it submits a closed list, signals a fresh fence value, and waits for \emph{that} value before
 returning.  \texttt{Present()} likewise uses that synchronous helper for its explicit
 back-buffer transition before calling \texttt{IDXGISwapChain3::Present()}.  Consequently a
-reader should understand ``two frames in flight'' here as tested infrastructure and the
-correct allocator-reuse rule, not as a performance claim that all current CNA D3D12 drawing
-automatically overlaps two CPU frames.  This is an honest staging choice: the off-screen
-test paths prioritize a deterministic readback boundary, while the primitive preserves the
-non-stalling policy a batched production present loop needs when that path is used.
+``Two frames in flight'' therefore describes tested infrastructure and the allocator-reuse rule;
+it does not claim that current ordinary CNA drawing overlaps two CPU frames. The off-screen test
+paths retain a deterministic readback boundary.
 
-The descriptor lifetime model has the same deliberately explicit character.  Render-target,
+Render-target,
 depth-stencil, shader-resource, and sampler descriptors come from four separate heaps; their
 current allocators are fixed-capacity, monotonically advancing bump allocators, not a general
 free-list.  A destroyed resource does not return its descriptor slot during the device's
 lifetime, and exhaustion throws a named \texttt{std::runtime\_error} instead of silently
 aliasing another resource's view.  The capacities in the live renderer --- 64 RTV, 8 DSV,
 64 CBV/SRV/UAV, and 16 sampler descriptors --- are therefore engineering limits of this
-implementation, not Direct3D~12 limits.  The RTV heap has already been raised several times
-when genuine smoke-test render targets, including a six-face cube target, consumed its earlier
-budget.  That history is a useful warning for code that creates and destroys a large number
-of transient CNA render targets: it should not mistake the absence of a descriptor free-list
-for a GPU-memory leak, but it also cannot assume unlimited descriptor churn in one device
-instance.
+implementation, not Direct3D~12 limits. Destroying many transient resources can therefore
+exhaust a descriptor heap even when GPU memory has been released; callers cannot assume
+unlimited descriptor churn during one device lifetime.
 
-\subsection{A genuine architecture mismatch, not a CNA bug}
+\subsection{External Wine/vkd3d architecture mismatch}
 
 Swap-chain creation under \emph{plain} Wine (as opposed to a Proton-managed launch) crashes
 outright, reproduced twice with a full symbolized backtrace pointing to a null-pointer read
-inside Wine's own \texttt{dxgi.dll}. The root cause, once found, is genuinely external to
+inside Wine's own \texttt{dxgi.dll}. The cause is external to
 CNA: a mismatch between Debian's own system \texttt{dxgi.dll} and vkd3d-proton's separately
 overridden \texttt{d3d12.dll} --- two DLLs that were never meant to be paired this way. Once
-launched through Proton properly, which supplies the matched DLL pair vkd3d-proton actually
-expects, swap-chain creation and a genuine ten-frame clear-and-present loop through a real
-window both succeed cleanly, verified twice with zero crashes.
+launched through Proton, which supplies the matched DLL pair expected by vkd3d-proton,
+swapchain creation and a ten-frame clear-and-present loop through a window succeed in two runs.
 
 \subsection{Explicitly corrected claims}
 
-\texttt{D3D12}'s own documentation is unusually direct about its own earlier revisions being
-stale: runtime-settable \cnaclass{BlendState} / \cnaclass{DepthStencilState}/%
-\cnaclass{RasterizerState} feeding real pipeline-state objects, sixteen-slot dynamic sampler
-state, real public render-target and render-target-cube renderers (including multiple render
-targets), real \cnaclass{Texture3D}, and real \cnaclass{TextureCube::GetData()} were all
-previously described as open gaps in earlier documentation passes and are now all real and
-closed --- with the documentation's own closing line telling a reader to re-verify any
-\emph{other} specific claim against the project's own live tracking file before trusting it,
-rather than this book's snapshot alone.
+Earlier D3D12 documentation listed runtime state objects, sixteen-slot sampler state, public 2D
+and cube render targets including MRT, \cnaclass{Texture3D}, and
+\cnaclass{TextureCube::GetData()} as open. They are implemented at the pin. The live tracking
+file remains the authority for revisions after this edition.
 
-\section{One public \texttt{ShaderEffect} API, two fixed Direct3D contracts}
+\section{One public \texttt{ShaderEffect} API, two Direct3D contracts}
 
-Chapter~\ref{ch:shader-fx-gap} now draws an important boundary: D3D11 and D3D12 really do
+Chapter~\ref{ch:shader-fx-gap} draws an important boundary: D3D11 and D3D12
 compile custom HLSL at runtime, but their implementations are \cnaclass{SpriteBatch} custom
 shader facilities, not general replacements for XNA's compiled \texttt{Effect}. The two
 renderers accept the same constructor strings, compile the same \texttt{main} entry points as
@@ -691,12 +624,12 @@ its command list.
 
 That PSO also makes D3D12's boundary stricter and directly visible in source: it is compiled
 for one \texttt{DXGI\_FORMAT\_R8G8B8A8\_UNORM}, single-sample color target, with blending,
-depth, and stencil disabled and culling set to none. Those choices match the real custom-effect
+depth, and stencil disabled and culling set to none. Those choices match the custom-effect
 pixel test. They do not form a dynamic promise that the same object can be reused for an MRT
 set, an MSAA target, another color format, or caller-selected pipeline state; those dimensions
 would require separate PSOs and a cache key that the current effect renderer does not build.
 
-\subsection{A worked example shared by the D3D11 and D3D12 pixel tests}
+\subsection{Shared D3D11/D3D12 pixel-test example}
 
 The two smoke tests use byte-for-byte equivalent HLSL to turn a solid red texture into exact
 cyan. The vertex shader's \texttt{vpSize} field is at byte zero because the renderer fills it;
@@ -761,13 +694,13 @@ GPU readback all participated in one observable public-API draw.
 
 All three Direct3D factories receive the preserve Boolean for 2D and cube targets but need not
 translate it into a native load action: their resources persist across binding. Shared code
-supplies the visible policy instead. \texttt{DiscardContents} clears black plus every real depth
+supplies the visible policy. \texttt{DiscardContents} clears black plus each available depth
 and stencil aspect; \texttt{PreserveContents} and \texttt{PlatformContents} do not. The first
 descriptor controls the same policy for MRT. A redundant bind is not a no-op: native
 resolve/finalization can run before the resource is rebound, and a discard target receives its
 three-aspect clear again.
 
-This is now public pixel evidence rather than inference from persistent allocation. The shared
+Public pixel fixtures establish this policy. The shared
 cube-usage fixture renders an asymmetric face, rebinds it and adds only a small marker, so a
 discard masquerading as preservation cannot pass. Parallel depth and stencil fixtures preserve
 an occluder or stamp across a bind cycle, while pass-boundary and ordered-clear tests separate
@@ -775,69 +708,44 @@ usage policy from explicit clear chronology. D3D9 and D3D11 register these tests
 renderer suites; D3D12 cross-builds the same public fixtures, while its headless/direct smoke
 coverage supplies the local GPU mechanisms. See \S\ref{sec:backend-rendertarget-usage-matrix}.
 
-\section{A reopened feature whose public routing edge is now closed}
+\section{Cube-target MSAA, mip generation, and public finalization}
 
-\texttt{D3DCommon}'s shared HLSL/DXBC and state-mapping tables, named above, make it easy to
-assume the two renderers are near-identical beneath that layer. A late pair of tasks in the
-Direct3D~11/12 implementation plan --- opened well after both renderers were otherwise
-considered feature-complete, once a full feature-matrix percentage audit against \texttt{EasyGL}
-turned up a handful of remaining gaps --- shows a case where that assumption holds
-(\cnaclass{RenderTargetCube} MSAA) and one where it genuinely does not (mip-chain generation).
-An interface-default audit did expose a public routing hole after those mechanisms landed:
+Shared \texttt{D3DCommon} tables do not imply identical resource algorithms. D3D11 and D3D12
+use parallel designs for \cnaclass{RenderTargetCube} MSAA but different mip-generation routes.
+An interface-default audit also exposed a public routing hole after those mechanisms landed:
 early smoke checks invoked \texttt{BindAsRenderTargetFace()} and
 \texttt{UnbindAsRenderTarget()} directly, while the public route never finalized the outgoing
 cube. That defect is now closed. The following subsections describe both the renderer algorithms
-and the tracking edge which makes them public features rather than isolated smoke mechanisms.
+and the tracking edge that connects them to the public device route.
 
-\subsection{\cnaclass{RenderTargetCube} MSAA: a deliberate exclusion, reopened on request}
+\subsection{\cnaclass{RenderTargetCube} MSAA}
 
-Multisampled render-target cubes were, at one point, a matched, deliberate scope exclusion on
-both renderers, not a silent oversight --- the project owner explicitly asked for it to be
-reopened alongside the rest of a late feature-matrix sweep. The two implementations that
-resulted are a real worked example of the same underlying Direct3D constraint solved twice,
-independently, once per API generation. Neither \texttt{D3D11\_RESOURCE\_MISC\_TEXTURECUBE} nor
+Neither \texttt{D3D11\_RESOURCE\_MISC\_TEXTURECUBE} nor
 a \texttt{D3D11\_SRV\_DIMENSION\_TEXTURECUBE} view can ever be multisampled, and \texttt{D3D12}'s
 equivalent \texttt{D3D12\_SRV\_DIMENSION\_TEXTURECUBE} has no multisampled variant either --- so
 on both renderers, the MSAA color resource becomes a plain, non-cube six-slice
 \texttt{Texture2DMSArray} used only as a render-target view, while a second, single-sample,
-genuinely cube-flagged resource is resolved into via \texttt{ResolveSubresource()} on unbind, and
-it is that resolved resource, not the MSAA one, that the real shader-resource view always
-targets. \texttt{D3D12}'s own version of that same resolve additionally requires two explicit
+cube-flagged resource receives \texttt{ResolveSubresource()} on unbind. The shader-resource view
+targets the resolved resource. D3D12 additionally requires two explicit
 resource-barrier transitions (\texttt{RESOLVE\_SOURCE} on the color resource,
 \texttt{RESOLVE\_DEST} on the resolve target) that \texttt{D3D11} does not need at all --- its
 context-level \texttt{ResolveSubresource()} call handles the equivalent state transition
 implicitly. Both renderers resolve only the currently active face on unbind, the same
-one-face-at-a-time convention their mip-chain handling (below) also follows. Real proof on both
-renderers: an $8\times8$ cube face requested at 4x MSAA, cleared, resolved on unbind, and read
-back exactly matching, with an explicit check that \texttt{GetMultiSampleCount()} reports the
-real requested sample count rather than a silent single-sample fallback.
+one-face-at-a-time convention their mip-chain handling follows. On both renderers, an
+$8\times8$ cube face requested at 4x MSAA is cleared, resolved, and read back exactly;
+\texttt{GetMultiSampleCount()} must also report four.
 
 \subsection{Mip-chain generation: one native GPU call versus an explicit CPU round trip}
 
-Generating a \cnaclass{RenderTargetCube}'s mip chain after a face is drawn to is where the two
-renderers' shared foundation runs out. \texttt{D3D11} calls
-\texttt{ID3D11DeviceContext::GenerateMips()} directly on the cube's own shader-resource view ---
-a single native, hardware-accelerated call with no per-face argument at all, since the view it
-operates on spans the whole six-face resource. Calling it after any one face is drawn
-regenerates the entire cube's mip chain from each face's own current level-0 content in one GPU
-call; this is harmless for the five faces that were not just drawn to (their level-0 content did
-not change, so recomputing their mips from it is a no-op in effect) and correct for the one that
-was. \texttt{D3D12} has no equivalent convenience API for generating mips on an arbitrary format
-at all, so \texttt{D3D12RenderTargetCubeRenderer::GenerateMipsEXT()} implements the whole chain by
-hand: for each mip level, it reads the previous level's pixels back from the GPU for the one
-active face only (\texttt{ReadbackSubresourceRGBA8()}), box-filter-downsamples them on the CPU
-(\texttt{BoxFilterDownsample()}), and uploads the result into the next level
-(\texttt{UploadSubresourceRGBA8()}) --- an explicit, per-level CPU round trip, deliberately scoped
-to only the face that was actually just drawn, since repeating that CPU work for all six faces on
-every unbind would be needless cost for five faces whose content had not changed. The two
-mechanisms reach the same visible result --- a correctly downsampled mip chain for the face that
-was drawn --- through genuinely different means: one hardware call operating on the whole
-resource at once, and one explicit, face-scoped software loop working level by level. It is a
-concrete illustration of what ``\texttt{D3DCommon} is the shared foundation'' does and does not
-promise: shared bytecode and state-mapping tables, not identical implementation strategy for
-every individual feature, and a reader porting code that depends on either renderer's own timing
-or cost characteristics for this specific operation should not assume the other renderer behaves
-the same way underneath.
+After drawing one cube face, D3D11 calls
+\texttt{ID3D11DeviceContext::GenerateMips()} on a shader-resource view spanning all six faces.
+The GPU regenerates every face's chain; unchanged level-zero faces reproduce their prior mips.
+D3D12 has no corresponding convenience operation. Its
+\texttt{GenerateMipsEXT()} reads the active face's preceding level through
+\texttt{ReadbackSubresourceRGBA8()}, box-filters it on the CPU, and uploads the next level with
+\texttt{UploadSubresourceRGBA8()}. It repeats this round trip for each level of that face.
+Both routes produce the required chain, but their synchronization and cost differ substantially.
+Shared bytecode and state mappings do not imply a shared resource algorithm.
 
 \subsection{How renderer tracking closes the public finalization edge}
 
@@ -858,69 +766,39 @@ finalization, wrong face/subresource, stale resolve or false preservation visibl
 former caution remains a useful account of how the hole escaped an implementation-local smoke
 test, not a current feature limitation.
 
-\section[\texttt{HeadlessEXT}: letting three D3D12 tests join the routine suite]{\texttt{HeadlessEXT}: the CNAEXT property that let three D3D12 tests join the
-routine suite}
+\section{\texttt{HeadlessEXT}: routine off-screen D3D12 coverage}
 
-Three specific gaps --- D3D12's own \cnaclass{SpriteFont} rendering, its \cnaclass{Model} runtime
-orchestration, and half of \texttt{Texture2D.FromStream} / \texttt{SaveAsPng} --- stayed open
-noticeably longer than every comparable D3D11 row, and a later planning pass traced all three to
-one shared architectural root cause rather than three unrelated gaps: each needs a real
-\cnaclass{GraphicsDevice}, and \cnaclass{GraphicsDevice}'s own constructor unconditionally
-initialized SDL video and created a real window for every renderer except \texttt{HEADLESS}/%
-\texttt{SOFTWARE}. For \texttt{D3D12} specifically, a real window means a real swap chain, which
-on this project's own Linux dev loop only works through the heavy, Proton-managed launcher
-Section~\ref{sec:d3d11-lifetime-groups}'s sibling section above already introduced --- not the
-plain Wine the routine \texttt{ctest} run uses. Three tests genuinely needing a
-\cnaclass{GraphicsDevice} at all, on a renderer whose only route to one was a launcher too slow for
-routine CI, is a real architectural dead end, not a missing-test-case gap ordinary engineering
-effort could close directly.
+\cnaclass{SpriteFont}, \cnaclass{Model}, and part of the
+\texttt{Texture2D.FromStream}/\texttt{SaveAsPng} route require a \cnaclass{GraphicsDevice}.
+That constructor formerly created an SDL window for every renderer except \texttt{HEADLESS} and
+\texttt{SOFTWARE}. On D3D12, window creation also required the Proton-managed swapchain route,
+which was too expensive for the routine plain-Wine test loop.
 
-The fix actually shipped, rather than merely proposed: \cnaclass{PresentationParameters} gained a
-CNAEXT \texttt{HeadlessEXT} property, read directly from the real header:
+\cnaclass{PresentationParameters} therefore gained the CNA-only \texttt{HeadlessEXT} property:
 
 \begin{lstlisting}
-// CNA extension. When true, GraphicsDevice creates no SDL window and never
-// initialises SDL's video subsystem, so it can run with no display server at
-// all -- the same thing the Headless and Software renderers do
-// unconditionally, but as an opt-in for a renderer that normally does want a
-// window. Only renderers that can genuinely operate without a swap chain
-// support this. Today that means D3D12 ... Present() is not meaningful
-// without a swap chain; an off-screen device is for rendering into render
-// targets and reading the result back (tests, server-side rendering,
-// thumbnail generation), not for putting frames on screen.
 CNAEXT bool getHeadlessEXTProperty() const;
 CNAEXT void setHeadlessEXTProperty(bool value);
 \end{lstlisting}
 
-Defaulting to \texttt{false} keeps production behavior byte-identical for every existing renderer
-and caller; only \texttt{D3D12} honors it today, since its own renderer already treated a null
-window as a real off-screen mode internally, while \texttt{D3D11}'s constructor always creates a
-swap chain unconditionally and \texttt{EasyGL}'s GL context is inseparable from a window --- both
-throw if a caller sets \texttt{HeadlessEXT} against them. With the property in place, all three
-previously-stuck rows landed in the \emph{routine}, plain-Wine \texttt{D3D12} \texttt{ctest} run
-like every other check, no Proton launcher required. \texttt{HeadlessEXT} is deliberately framed
-in its own header comment as more than a test convenience: an off-screen \cnaclass{GraphicsDevice}
-is a real, general capability --- server-side rendering and thumbnail generation being the two
-named examples --- that happens to have been motivated by closing a testing gap first.
+The property defaults to \texttt{false}; only D3D12 honors it at the pin. D3D11 always creates a
+swapchain and EasyGL requires a window-bound GL context, so both reject it. A headless D3D12
+device renders only to explicit targets and cannot present. This supports routine tests as well
+as off-screen applications such as server-side rendering and thumbnail generation.
 
-\subsection{Four real bugs a headless \texttt{GraphicsDevice} immediately found on D3D12}
+\subsection{Four D3D12 defects exposed by headless GraphicsDevice tests}
 
-Landing that first real, routine \cnaclass{GraphicsDevice}-driven test coverage on \texttt{D3D12}
-did what this book has found repeatedly elsewhere: it surfaced bugs no amount of reasoning about
-the code in isolation had caught, because nothing had ever driven the shared
-\cnaclass{GraphicsDevice} path against this specific renderer before. \cnaclass{SpriteBatch}
-silently ignored \texttt{SetSamplerFilter} / \texttt{SetSamplerAddressMode} entirely, drawing with
-whatever sampler state an unrelated, prior 3D draw happened to leave bound rather than the one the
-caller actually requested. Render targets never bound their own depth-stencil view at all, so a
-render target constructed \emph{with} a depth buffer silently behaved as though it had none ---
-every depth test against it was inert, and a depth/stencil \texttt{Clear} had nothing real to
-write to. All six combo \texttt{Clear*} variants (color-plus-depth, color-plus-stencil, and so on)
-were still unimplemented throws. Most strikingly, \texttt{SetDepthTestEnabled} /
-\texttt{SetDepthWriteEnabled} / \texttt{SetBlendEnabled} were also still unimplemented throws on
-this renderer --- meaning any real game calling any of these three ordinary, load-bearing
-\cnaclass{GraphicsDevice} methods against \texttt{D3D12} did not render incorrectly, it
-\emph{crashed} outright, found only because the \cnaclass{Model} test was the first thing in the
-project ever to drive that specific call path against this renderer. All four are now fixed; the
-shape of the finding is the more durable lesson than any one bug: a genuinely new, real caller of
-an already-``complete''-looking code path is one of this project's most reliable bug-finding
-techniques, confirmed again here.
+The first routine public-device tests exposed four corrected D3D12 defects:
+
+\begin{itemize}
+  \item \cnaclass{SpriteBatch} ignored sampler filter and address-mode updates, inheriting state
+        from a prior 3D draw;
+  \item render targets failed to bind their depth-stencil views;
+  \item the six combined color/depth/stencil clear variants threw; and
+  \item \texttt{SetDepthTestEnabled}, \texttt{SetDepthWriteEnabled}, and
+        \texttt{SetBlendEnabled} threw when the \cnaclass{Model} route called them.
+\end{itemize}
+
+All four are fixed at the pin. Their discovery also shows why direct renderer smoke tests and
+public \cnaclass{GraphicsDevice} fixtures are complementary: the former had not traversed these
+shared-framework call paths.

@@ -1,0 +1,28 @@
+\begin{figure}[tbp]
+\centering
+\begin{figurealt}{Four distinct shader routes. XNA-shaped stock effects produce GpuDrawParams consumed by renderer-owned implementations. FNA3D internally executes retained stock bytecode through FNA3D and MojoShader. ShaderEffect accepts renderer-specific source or program forms. CNA graphics extensions provide separate post-processing effects. The public arbitrary Effect bytecode constructor is an explicit refusal.}
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[node distance=9mm and 13mm]
+  \node[cna public] (stock) {five stock effects};
+  \node[cna internal, right=of stock] (params) {\texttt{GpuDrawParams}};
+  \node[cna internal, right=of params] (owned) {renderer-owned stock path};
+  \node[cna internal, below=of stock] (blobs) {retained stock \texttt{.fxb} blobs};
+  \node[cna internal, right=of blobs] (fna3d) {FNA3D + MojoShader\\internal stock route};
+  \node[cna public, below=of blobs] (shader) {\texttt{ShaderEffect}};
+  \node[cna internal, right=of shader] (program) {renderer-specific source,\\bytecode, or program};
+  \node[cna public, below=of shader] (ext) {CNA graphics extensions};
+  \node[cna internal, right=of ext] (post) {post-process/material routes};
+  \node[cna warning, above=of owned] (refuse) {\texttt{Effect(device, byte[])}\\throws};
+  \draw[cna flow] (stock) -- (params);
+  \draw[cna flow] (params) -- (owned);
+  \draw[cna flow] (blobs) -- (fna3d);
+  \draw[cna flow] (shader) -- (program);
+  \draw[cna flow] (ext) -- (post);
+  \draw[cna optional] (refuse) -- node[cna label]{not a portable route} (owned);
+\end{tikzpicture}}
+\end{figurealt}
+\caption{CNA's shader and effect strategies are separate APIs and evidence scopes. FNA3D's
+internal stock-bytecode path does not implement the public arbitrary-bytecode constructor.}
+\label{fig:shader-routes}
+\end{figure}
+

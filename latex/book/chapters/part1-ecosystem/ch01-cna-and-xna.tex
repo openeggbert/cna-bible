@@ -8,12 +8,12 @@
 CNA is a native C\texttt{++} reimplementation of the \emph{XNA 4.0} programming model, compiled
 with a C\texttt{++}23 toolchain floor but written in a disciplined C\texttt{++}17/20 idiom. It
 reimplements the game framework Microsoft shipped for the Xbox 360 and Windows from roughly 2006
-to 2013. CNA itself is built on SDL3, with rendering delegated to one of 46 public identities
-chosen at build time and mapped to 42 implementation families.
+to 2013. CNA itself is built on SDL3, with rendering delegated to one of
+\RendererIdentityCount{} public identities chosen at build time and mapped to
+\RendererFamilyCount{} implementation families.
 
-That sentence hides three separate engineering problems, and it is worth pulling them
-apart before going any further, because the rest of this book is organized around exactly
-that separation:
+That description contains three separate engineering problems which organize the rest of the
+book:
 
 CNA is a \emph{translation target}, not a loader or binary compatibility layer.  It cannot run
 an existing C\# assembly.  Porting translates the source to C\texttt{++}; even a property access
@@ -33,13 +33,13 @@ contracts can remain XNA-shaped while the source language and ownership model ca
         project, \texttt{sharp-runtime}, which provides a deliberately partial C\texttt{++}
         subset of the .NET base class library, just deep enough to make the XNA API's
         vocabulary make sense in C\texttt{++}.
-  \item \textbf{Reproduce a GPU.} Real XNA only ever had to run against Direct3D 9 (Xbox 360's
+  \item \textbf{Reproduce a GPU.} XNA only had to run against Direct3D 9 (Xbox 360's
         own GPU API is Direct3D-shaped too). CNA has to make the same \cnaclass{GraphicsDevice}
-        /\cnaclass{SpriteBatch} / \cnaclass{Effect} surface work identically whether the pixels
-        are actually produced by SDL's own 2D renderer, raw OpenGL, Vulkan, BGFX, WebGPU, real
+        /\cnaclass{SpriteBatch} / \cnaclass{Effect} surface available while pixels are produced
+        by SDL's 2D renderer, OpenGL, Vulkan, BGFX, WebGPU,
         Direct3D 9/11/12 under Wine, an HTML \texttt{<canvas>} under Emscripten, or a
-        from-scratch DirectDraw reimplementation. That is the job of the renderer layer covered
-        in Part~\ref{part:renderers}.
+        from-scratch DirectDraw reimplementation. Identical API presence does not imply identical
+        behavior or evidence; Part~\ref{part:renderers} records those distinctions.
 \end{enumerate}
 
 \begin{sourcenote}
@@ -78,7 +78,8 @@ returns to in this book's migration and case-study chapters, using the real port
 as worked examples.
 
 ``Why now'' is not merely an argument from intent.  At the pin, CNA has fourteen physical
-framework modules, 46 public renderer identities over 42 implementation families, a real XNB
+framework modules, \RendererIdentityCount{} public renderer identities over
+\RendererFamilyCount{} implementation families, an XNB
 reader stack, its own CNJ format, a shared runtime/offline glTF importer, and implemented Media
 types backed by file parsing, FFmpeg and SDL3\_mixer.  Those facts establish breadth; they do not
 establish uniform parity.  Later chapters therefore report each route's behavior, host and
@@ -111,8 +112,9 @@ configuration, execution host, driver or translation layer, oracle, and unavaila
 Examples deliberately occupy different tiers:
 
 \begin{itemize}
-  \item the 46-identity / 42-family registry is strong structural evidence, not rendering proof;
-  \item the Direct3D~9 corpus compares 39 scenes with real XNA output, but runs through Wine and
+  \item the \RendererIdentityCount{}-identity / \RendererFamilyCount{}-family registry is strong structural evidence, not rendering proof;
+  \item the Direct3D~9 corpus compares \XnaOracleSceneCount{} scenes with real XNA output, but
+        runs through Wine and
         DXVK rather than native period hardware;
   \item HTML\_DOM has HTTP-served Chromium execution and compositor samples, while a successful
         build of another Web identity proves less;
@@ -140,7 +142,8 @@ It is worth being precise about the negative space, because CNA's own documentat
   \item \textbf{Not universally compiled-shader compatible.} CNA has four distinct answers to
         XNA's \texttt{.fx}: reimplement stock effects, recompile accepted Microsoft source,
         execute FNA's \texttt{.fxb} path on FNA3D, or bypass it with \cnaclass{ShaderEffect}.
-        No one arbitrary bytecode route works identically on all 42 families; Chapter~\ref{ch:shader-fx-gap}
+        No one arbitrary bytecode route works identically on all \RendererFamilyCount{} families;
+        Chapter~\ref{ch:shader-fx-gap}
         separates those contracts.
   \item \textbf{Not binary-compatible with real Xbox Live.} The \cnaclass{GamerServices}
         namespace (Chapter~\ref{ch:gamerservices}) reimplements the public API shape with
@@ -153,7 +156,7 @@ It is worth being precise about the negative space, because CNA's own documentat
         gives the per-method status census.
 \end{itemize}
 
-\section{A framework built to be audited, not just believed}
+\section{Auditability as a framework property}
 
 The single most distinctive thing about how this project is run --- and the reason this book
 can make specific, checkable claims instead of vague ones --- is its verification
@@ -178,8 +181,9 @@ methodology. Three mechanisms recur throughout the codebase and throughout this 
   \item[Pixel-level oracle corpora, not just ``it compiles.''] The \texttt{D3D9} renderer in
         particular ships an oracle corpus that diffs CNA's own render output against
         \emph{the real XNA 4.0 runtime's own render} of the same scene.  The checked-in corpus
-        contains 39 declarative scenes and 39 matching reference PNGs.  Its registered D3D9
-        gate runs all 39 through the absolute per-channel comparator at tolerance zero; that
+        contains \XnaOracleSceneCount{} declarative scenes and the same number of matching
+        reference PNGs. Its registered D3D9 gate runs the full corpus through the absolute
+        per-channel comparator at tolerance zero; that
         wiring is an enforceable contract, while a pass count still requires an identified run.
         Chapter~\ref{ch:direct3d-backends} covers what that verification pipeline (MinGW-w64
         cross-compilation, Wine, DXVK, a real GPU) actually looks like.
@@ -224,10 +228,9 @@ call a hiatus. What the project uses instead of version numbers is a strictly in
 \textbf{Phase} counter, tracked in \texttt{CHECKLIST.md} and the per-subsystem \texttt{plan\_*.md}
 files: each phase names a bounded unit of work (a renderer reaching a specific parity milestone,
 a namespace passing a specific audit), is broken into individually numbered \textbf{Tasks}, and
-is closed only once its own regression suite is re-run clean. Phase~72, for instance, is ``Bgfx:
-full 2D+3D pixel-verified parity'' (Tasks 740--824) --- the work that took the \texttt{BGFX}
-renderer from a narrower feature set up to the same pixel-verified breadth as EasyGL and Vulkan.
-Chapter~\ref{ch:project-practice} covers this Task/Phase discipline itself as a working
+is closed only once its own regression suite is re-run clean. One recorded BGFX phase moved the
+renderer from a narrower feature set to a broad 2D/3D pixel corpus; later work continued beyond
+that historical closure. Chapter~\ref{ch:project-practice} covers the Task/Phase discipline as a working
 methodology, not just a historical curiosity --- what a task actually looks like, how large ones
 get split, and why every task closes with a re-run regression count rather than a checked box
 alone.
@@ -258,5 +261,5 @@ concrete rules (API mirroring, namespace discipline, the \texttt{CNAEXT} tag, th
 other chapter's code examples silently assume. Part~\ref{part:architecture-framework} gets you from a clean checkout to a
 running triangle and then through the core framework types. Parts~\ref{part:graphics-machine}
 and~\ref{part:renderers} are the
-graphics machine, first as an API and then as 42 implementation factories serving 46 public
+graphics machine, first as an API and then as \RendererFamilyCount{} implementation factories serving \RendererIdentityCount{} public
 renderer identities.

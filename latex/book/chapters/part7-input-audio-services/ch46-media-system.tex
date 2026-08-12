@@ -1,425 +1,168 @@
 \chapter{The Media System}
 \label{ch:media-system}
 
-\section{A correction worth stating up front}
+\cnans{Media} is no longer the shell-heavy namespace described by CNA's older README count.
+At the pinned revision it contains file-backed songs and libraries, playlist parsing, queued
+music playback, visualization data, picture libraries, and FFmpeg video on the platforms where
+FFmpeg is enabled. This chapter states those behaviors by subsystem; it does not replace the
+stale README count with another undated test total.
 
-This book's opening chapter quoted CNA's own README verbatim: the \cnans{Media} namespace is
-``25/25 present, but 14 are shells.'' That figure is real, but it is also, at the time of
-writing, \textbf{stale} --- confirmed by directly reading the namespace's own current
-tracking record. A dedicated, from-scratch effort ran sixteen phases and 231 tasks against
-this namespace, closing 224 of them, backed by fifteen independent adversarial external
-review rounds. All 24 \cnans{Media} types are now real implementations backed by genuine file
-parsing --- Vorbis and ID3v2 tag parsing, \texttt{.m3u} / \texttt{.m3u8} playlist parsing,
-FFmpeg-backed video, SDL3\_mixer-backed audio --- not shells. The current media module contains
-285 test cases. The formerly quoted 5{,}471/5{,}467 figure was a whole-suite snapshot with a
-Devices-specific hardware-skip note attached to the wrong namespace. It should not be replaced
-by another context-free total: Chapter~\ref{ch:counting-discipline} derives separate source,
-configured-build, registration, and runtime populations and explains why none is the universal
-``current test count.''
-This is exactly the kind of documentation drift this book's first chapter warned readers to
-watch for: a specific, dated, checkable claim that this book preserves as evidence of the
-project's own earlier state, corrected here against the namespace's own current record rather
-than silently repeated as still current.
+Audio and Media form an intentional static-library cycle. \cnaclass{FrameworkDispatcher} in
+Audio advances \cnaclass{MediaPlayer}, while Media sends song playback to the audio mixer.
+CMake repeats the archives to resolve that link cycle. Removing either edge would require
+reassigning the shared dispatcher and playback responsibilities.
 
-Audio and Media form an explicit static-library cycle: the audio-side
-\cnaclass{FrameworkDispatcher} pumps \cnaclass{MediaPlayer}, while Media routes song playback
-through the audio mixer. CMake records both edges and resolves the archive cycle by repeating
-the libraries. This is genuine XNA-semantic coupling, not an accidental include dependency;
-breaking it requires moving ownership of the shared dispatcher/pump contract, not deleting one
-link line.
+\section{Song contract}
 
-\section{Song, and the one gap even FNA has}
+\cnaclass{Song} can be constructed from a path or discovered by a
+\cnaclass{MediaLibrary} scan. A directly constructed song has null, non-owning
+\texttt{Album}, \texttt{Artist}, and \texttt{Genre} links; a scan supplies those links from
+the library hierarchy. \texttt{IsRated} and the 0--10 \texttt{Rating} are derived from ID3v2
+\texttt{POPM} or Vorbis \texttt{RATING} tags. A source rating of zero means ``unrated.''
+\texttt{IsProtected} is always false because protected files are not indexed.
 
-\cnaclass{Song} is a real, file-backed asset, constructed either from an explicit path or
-discovered through a library scan (\S\ref{sec:medialibrary}). \texttt{Album} / \texttt{Artist}/%
-\texttt{Genre} back-references are non-owning and remain null unless the song was actually
-discovered by a scan rather than constructed directly. \texttt{IsRated} / \texttt{Rating}
-(on XNA's 0--10 scale) are populated from real ID3v2 \texttt{POPM} or Vorbis \texttt{RATING}
-tags, with \texttt{IsRated} deliberately reporting false for an explicit rating of zero,
-since both tag formats reserve that value to mean ``unrated'' rather than ``rated zero.''
-\texttt{IsProtected} is always false --- correctly, since a DRM-wrapped file is not something
-a local library scan could index in the first place.
-
-One finding here is worth its own paragraph, because of what it reveals about verifying
-against the wrong reference: FNA's own \texttt{Song} class omits \texttt{Album},
-\texttt{Artist}, \texttt{Genre}, and \texttt{ToString()} relative to the real XNA~4.0
-reference assemblies --- a gap invisible across eight separate audit rounds, because every
-one of them diffed against FNA's source rather than against Microsoft's own original
-reference documentation directly. It was only found by finally diffing against the real
-XNA~4.0 API surface itself (the same \texttt{xna4-spec} resource covered in
-Chapter~\ref{ch:xna4-spec-auditing}). This is the sharpest illustration in this entire book of
-why this book's first chapter insisted on distinguishing ``matches FNA'' from ``matches real
-XNA'' as two different claims: here, they were not the same claim at all, and treating FNA as
-an infallible stand-in for the real spec cost eight rounds of review before the gap surfaced.
-
-\subsection{Full property reference, and two deliberate deviations}
-
-Beyond the library back-references already covered, \cnaclass{Song} exposes
-\texttt{Duration} (settable, since \cnaclass{MediaPlayer} rewrites it once the real decoded
-duration is known --- see below), \texttt{PlayCount} (also settable, and reset by
-\cnaclass{MediaPlayer}\texttt{::Stop()}), and \texttt{Handle}, a CNAEXT extension exposing the
-backend file path or handle a worked example needing direct file access can read without
-going through \cnaclass{MediaLibrary}. \texttt{Equals} compares by handle, and
-\texttt{GetHashCode} is deliberately \emph{content}-based --- a hash of the resolved file
-handle --- in explicit, documented contrast to FNA's own identity-based
-\texttt{base.GetHashCode()}. That FNA choice means two FNA \cnaclass{Song}s that are
-\texttt{Equals}-equal (same handle) can still report different hash codes, violating the usual
-Equals/GetHashCode contract; CNA does not replicate that inconsistency, on the reasoning that a
-known-broken FNA behavior is not owed parity the way a genuine XNA behavior is.
+\texttt{Duration} and \texttt{PlayCount} are mutable. Playback replaces the duration with the
+decoder-reported value, and \texttt{MediaPlayer::Stop()} resets play counts across the current
+queue. \texttt{Handle} is a CNAEXT path/handle accessor. \texttt{Equals} compares handles;
+\texttt{GetHashCode} hashes the resolved handle. The latter deliberately avoids FNA's
+identity-hash inconsistency for two equal songs.
 
 \begin{lstlisting}
-// Worked example: constructing a standalone Song outside any MediaLibrary
-// scan (Album/Artist/Genre all stay nullptr, matching a song with no
-// library context), then handing it directly to MediaPlayer. FromUri()
-// returns an owning raw pointer; keep that ownership explicit. Play()
-// clones the Song into its own queue rather than adopting this pointer.
-std::unique_ptr<Song> introTrack(
+std::unique_ptr<Song> intro(
     Song::FromUri("Intro Theme", "Content/Audio/intro.ogg"));
-MediaPlayer::Play(introTrack.get());
-
-// Duration is whatever the caller supplied (zero, if none) until playback
-// actually starts -- MediaPlayer overwrites it with the real decoded
-// duration read back from the audio backend once the file is opened.
+MediaPlayer::Play(intro.get());
+// MediaPlayer clones the Song; the caller still owns intro.
 \end{lstlisting}
 
-\subsection{The resolver advertises two undecodable extensions}
+The fragment assumes the Media header, \texttt{<memory>}, and the applicable namespaces.
 
-\cnaclass{MediaLibrary} correctly avoids indexing AAC and WMA, but the loose-file
-\texttt{SongTypeReader} separately advertises \texttt{.aac} and \texttt{.wma} alongside MP3,
-Ogg, WAV, FLAC, and Opus. CNA's vendored SDL3\_mixer build does have an Opus decoder, and the
-library scanner deliberately includes \texttt{.opus}; it has no AAC or WMA decoder.
-Loose-file resolution can therefore select an AAC or WMA path that construction can represent
-but the playback backend cannot decode. This is a real inconsistency between extension
-discovery and the playback dependency, not a promise that every listed extension works.
+\begin{historynote}{FNA is not the complete API oracle}
+FNA's \cnaclass{Song} omits \texttt{Album}, \texttt{Artist}, \texttt{Genre}, and
+\texttt{ToString()} from the XNA 4.0 surface. Repeated FNA-only reviews missed the difference;
+comparison with the pinned \texttt{xna4-spec} data found it. Chapter~\ref{ch:xna4-spec-auditing}
+explains why API parity with FNA and with XNA are separate claims.
+\end{historynote}
 
-\section{The library hierarchy}
+\begin{limitationnote}{Advertised loose-file extensions}
+The ContentManager song reader advertises \texttt{.aac} and \texttt{.wma}, but CNA's vendored
+SDL3\_mixer has no decoder for either format. The MediaLibrary scanner omits them. A loose-file
+resolution match therefore establishes that a \cnaclass{Song} can name the file, not that the
+mixer can decode it. MP3, Ogg, WAV, FLAC, and Opus follow the installed decoder routes.
+\end{limitationnote}
+
+\section{MediaLibrary and metadata}
 \label{sec:medialibrary}
 
-\cnaclass{SongCollection}, \cnaclass{Album} / \texttt{AlbumCollection},
-\cnaclass{Artist} / \texttt{ArtistCollection}, and \cnaclass{Genre} / \texttt{GenreCollection}
-form a real, populated hierarchy, built by \cnaclass{MediaLibrary} through a genuine
-filesystem scan of the host's music and pictures roots. \texttt{Album::GetAlbumArt()}/%
-\texttt{GetThumbnail()} return a real \texttt{System::IO::Stream}, resolved either by
-filename convention (\texttt{cover.jpg}, \texttt{folder.jpg}) or extracted on demand from an
-embedded ID3v2 \texttt{APIC} or FLAC \texttt{PICTURE} frame --- extraction directly from an
-embedded frame at scan time, rather than on demand, is a documented, deliberate future
-increment, not a bug. \cnaclass{Picture} / \texttt{PictureAlbum} and their collections form a
-parallel, real hierarchical tree for image libraries; \texttt{MediaLibrary::SavePicture()}
-lazily creates a real ``Saved Pictures'' node the first time it is needed.
+\cnaclass{MediaLibrary} scans the host music and picture directories returned by
+\texttt{SDL\_GetUserFolder}; a CNAEXT override makes tests independent of the CI account's
+files. It builds \cnaclass{SongCollection}, \cnaclass{Album}, \cnaclass{Artist}, and
+\cnaclass{Genre} relationships, plus the parallel picture hierarchy. \texttt{SavePicture()}
+creates a ``Saved Pictures'' node on first use.
 
-\subsection{How the scan actually reads tags}
-
-The host's Music and Pictures roots themselves are resolved through SDL's own
-\texttt{SDL\_GetUserFolder()}, giving each platform its real, conventional folder rather than a
-hardcoded path guess --- with a CNAEXT static override hook specifically so the test suite does
-not depend on whatever music a given CI machine's real user account happens to have. Tag
-reading is a genuine, from-scratch, dependency-free parser, not a third-party library
-wrapper: real Ogg Vorbis-comment parsing, real ID3v2.3/2.4 text-frame parsing (\texttt{TIT2}/%
-\texttt{TPE1} / \texttt{TALB} / \texttt{TCON} / \texttt{TRCK}, including correct handling of all four
-ID3v2 text-encoding bytes --- Latin-1, UTF-16 with a byte-order mark, UTF-16BE, and UTF-8), and
---- beyond what this chapter's introduction above already covers --- real native-FLAC
-\texttt{VORBIS\_COMMENT} metadata-block parsing and real Ogg-Opus \texttt{OpusTags} comment-header
-parsing as well, so both of those container formats get real tags too, not just Ogg Vorbis and
-MP3. A file with no readable tags at all --- or an unsupported format --- falls back to
-deriving \texttt{Title} / \texttt{Album} / \texttt{Artist} from the file's own path (filename,
-parent directory, and grandparent directory respectively), so a scan never simply drops an
-otherwise-playable file for lacking metadata.
-
-\texttt{TRCK} deserves its own note, because the fix here is a different shape of bug than
-anything else in this section --- not a missing parser, but a parsed value silently discarded
-one layer up. The tag parser itself always genuinely read and stored a real track number; the
-bug was that \cnaclass{MediaLibrary}'s own \cnaclass{Song}-construction call only ever passed
-through \texttt{(path, title)} or \texttt{(path, title, durationMs)}, with no parameter slot
-for the track number at all, so \texttt{Song::TrackNumber} stayed hardcoded at~0 regardless of
-what the file actually tagged. The real, mutation-verified fixture that caught this uses four
-distinct, independently-confirmed track numbers on purpose --- \emph{Sunrise}=1,
-\emph{Twilight}=1, \emph{Daybreak}=2, \emph{{\'E}toile}=3 --- specifically so an
-all-zero-or-all-one stub implementation cannot accidentally pass by coincidence the way a
-single-fixture test might. This is worth remembering as a general testing lesson beyond this
-one property: a bug that silently drops a correctly-parsed value one layer up in the call chain
-is invisible to any test that only checks the parser in isolation, and a fixture whose expected
-values are not all identical is what actually forces a real, non-stub implementation to exist.
-
-The user-rating conversion is a real, if underspecified, corner: ID3v2's \texttt{POPM} frame
-uses a 0--255 byte, while the Vorbis \texttt{RATING} comment has no agreed standard at all ---
-different taggers write 0--100, 0--5, or 0--10 into it in practice. Neither real XNA nor FNA
-defines a conversion for either case, since neither one reads tags from arbitrary files at all;
-the scale mapping CNA applies to reach the 0--10 range \cnaclass{Song::Rating} exposes is
-therefore a CNA decision, recorded as such in the namespace's own tracking documentation rather
-than presented as a spec-mandated conversion. Embedded cover-art extraction (ID3v2
-\texttt{APIC}, or the FLAC \texttt{METADATA\_BLOCK\_PICTURE} block type~6) prefers the
-front-cover picture type when a file embeds more than one image, falling back to whichever
-image comes first otherwise.
-
-Playlist scanning tolerates real-world messiness the same way: a \texttt{.m3u} / \texttt{.m3u8}
-entry pointing at a file that no longer exists is silently skipped, not treated as a fatal
-parse error, matching FNA's own general ``missing content degrades gracefully'' posture; and
-both extensions are read identically, as raw UTF-8 bytes, with no separate legacy-encoding path
-for plain \texttt{.m3u} --- verified directly against a non-ASCII fixture file name to confirm
-the round-trip actually holds, not merely assumed from the two formats sharing a parser.
-
-\section{Playback: MediaPlayer, MediaQueue, Playlist}
-
-\cnaclass{MediaPlayer} is the static playback controller familiar from real XNA:
-\texttt{Play(Song*)} / \texttt{Play(SongCollection)}, \texttt{Pause} / \texttt{Resume}/%
-\texttt{Stop}, a real \cnaclass{MediaQueue} with shuffle and repeat, and
-\texttt{GetVisualizationData()}. Playback position tracking is real, timer-based state, with
-an explicit fallback song-end detector for cases where no native ``track finished'' signal is
-available from the underlying decoder. \cnaclass{Playlist} / \texttt{PlaylistCollection}
-support genuine, read-only \texttt{.m3u} / \texttt{.m3u8} parsing --- there is no write API, but
-that matches real XNA's own \cnaclass{Playlist} being read-only too, not a CNA-specific
-limitation.
-
-\subsection{MediaQueue's ownership model, and why Play() clones its songs}
-
-\cnaclass{MediaQueue}\texttt{::Add(Song*)} takes ownership of the pointer it's given --- reading
-\texttt{MediaQueue.cpp} directly confirms it wraps every added song in a
-\texttt{std::unique\_ptr} internally, and \texttt{Clear()} (called at the start of every
-\texttt{Play()}) destroys whatever the queue currently owns. This creates a real hazard
-\cnaclass{MediaPlayer} has to defend against: \cnaclass{SongCollection}, the type
-\texttt{Play(const SongCollection\&)} accepts, explicitly does \emph{not} own the songs it
-holds --- it is a thin, non-owning view over songs that belong to a \cnaclass{MediaLibrary} (or
-to the caller). Handing those same non-owning pointers directly to an owning queue would mean
-the very next \texttt{Play()} call's \texttt{Clear()} deletes songs the library still expects
-to be alive. \cnaclass{MediaPlayer} avoids this by never storing the caller's own
-\cnaclass{Song} pointers at all: its private \texttt{LoadSong()} helper constructs a fresh,
-independent \texttt{new Song(song->getHandle(), song->getNameProperty())} clone for every song
-it enqueues, and it is that clone the queue owns and eventually destroys --- the original,
-externally-owned \cnaclass{Song} is never touched.
-
-A second, easy-to-miss behavior: \texttt{MediaPlayer::Stop()} does not just stop playback ---
-it walks the entire current queue and resets every song's \texttt{PlayCount} back to zero, not
-only the song that was actually playing. And when no native ``track finished'' signal is
-available from the underlying decoder (a build without \texttt{SOUND\_ENABLED}), the
-\texttt{Update()} fallback branch calls \texttt{DetectSongEndedByElapsedTime} exactly once per
-frame, comparing elapsed playback time against the song's own \texttt{Duration} and only
-reporting ``ended'' once that duration is genuinely known (greater than zero) --- a
-\cnaclass{Song} with an unset, zero \texttt{Duration} simply never auto-advances this way, on
-the reasoning that a false trigger at time zero would be worse than never advancing at all. A
-normal, sound-enabled build instead relies on a real \texttt{MIX\_SetTrackStoppedCallback} fired
-from the audio thread, so the elapsed-time fallback exists purely for the no-audio build
-configuration, not as the primary end-of-track mechanism.
-
-\begin{lstlisting}
-// Worked example: MediaPlayer::Stop() resets play counts for the WHOLE
-// queue, not just the song that was playing -- easy to miss if you only
-// read the method name.
-SongCollection* songs = library.getSongsProperty();
-MediaPlayer::Play((*songs)[0]);
-// ... song plays through, MediaPlayer::MoveNext() advances a few times ...
-MediaPlayer::Stop();
-// Every song MediaPlayer cloned into its queue now reports PlayCount() == 0
-// again, even ones that had already finished playing earlier in the queue.
-\end{lstlisting}
-
-\texttt{MoveNext()} / \texttt{MovePrevious()} both stop the current track first, then pick the
-next index: shuffled mode draws a uniform random index over the whole queue (so the same song
-can, correctly, play again back-to-back by chance --- this matches a simple ``pick any index''
-shuffle, not a shuffle-bag that guarantees no repeats), while linear mode clamps the index
-within bounds unless repeat is on, in which case reaching the last song wraps back to index
-zero instead of clamping there. Streamed playback itself does not fully predecode a song file
-up front (the backend is asked to stream it), which matters for a long music track's memory
-footprint; and \cnaclass{Song}\texttt{::Duration} is deliberately overwritten with the real
-duration read back from the decoded audio asset once playback actually starts, regardless of
-whatever value --- including zero --- the \cnaclass{Song} was constructed with.
-
-\subsection{Volume and mute are independent state, and events fire late on purpose}
-
-\cnaclass{MediaPlayer}\texttt{::Volume} and \texttt{IsMuted} read as if muting might simply
-force the volume to zero, but reading \texttt{setVolumeProperty()} /
-\texttt{setIsMutedProperty()} directly in \texttt{MediaPlayer.cpp} shows they are genuinely
-independent state, both funneled through the same private \texttt{ApplyMusicVolume(volume,
-muted)} helper:
-
-\begin{lstlisting}
-void MediaPlayer::setVolumeProperty(float value)
-{
-    volume_ = MathHelper::Clamp(value, 0.0f, 1.0f);
-    ApplyMusicVolume(volume_, isMuted_);   // muted flag re-applied, volume_ untouched
-}
-
-void MediaPlayer::setIsMutedProperty(bool value)
-{
-    isMuted_ = value;
-    ApplyMusicVolume(volume_, isMuted_);   // volume_ re-applied, isMuted_ untouched
-}
-
-// Inside ApplyMusicVolume: MIX_SetTrackGain(track, muted ? 0.0f : vol);
-\end{lstlisting}
-
-\texttt{volume\_} is never overwritten by muting, and \texttt{isMuted\_} is never cleared by
-changing the volume --- only the actual SDL3\_mixer gain call, \texttt{MIX\_SetTrackGain()},
-substitutes \texttt{0.0f} for the real value while muted. A game that calls
-\texttt{setVolumeProperty(0.3f)} while already muted, then later calls
-\texttt{setIsMutedProperty(false)}, hears \texttt{0.3f} immediately --- the volume set while
-silent was never lost, and unmuting does not require the caller to remember and re-apply it.
-
-A second, easy-to-miss design decision: \texttt{MediaStateChanged} and \texttt{ActiveSongChanged}
-do not fire the instant \texttt{setStateProperty()} or a queue-advance actually changes
-something. Both setters only flip a static flag on \cnaclass{FrameworkDispatcher}
-(\texttt{FrameworkDispatcher::MediaStateChanged = true;}); the events themselves are raised
-later, from \texttt{FrameworkDispatcher::Update()}, which checks the flag, calls
-\texttt{MediaPlayer::OnMediaStateChanged()} if it is set, and clears it again. This is not a
-CNA-specific quirk --- real XNA's own \cnaclass{FrameworkDispatcher}\texttt{.Update()} is a
-documented API a game must call once per frame, and CNA's \cnaclass{Game} base class already
-calls it automatically as part of its own update cycle, so an ordinary game observes no
-difference from immediate dispatch. The real, checkable consequence is that changing
-\texttt{MediaPlayer} state and then reading the event's own fired-or-not status \emph{before}
-the next \texttt{FrameworkDispatcher::Update()} call would see it not yet fired --- exactly
-what the real regression test for this confirms, by driving the check through the actual
-dispatcher call chain rather than invoking \texttt{OnMediaStateChanged()} directly:
-
-\begin{lstlisting}
-Song song(kFixtureA, "A");
-MediaPlayer::Play(&song);  // flips both flags: new active song + Stopped -> Playing
-
-Microsoft::Xna::Framework::FrameworkDispatcher::Update();  // events actually fire HERE
-
-// Only after Update() do the ActiveSongChanged/MediaStateChanged subscribers see anything.
-\end{lstlisting}
-
-\section{Video and VideoPlayer}
-
-\cnaclass{Video} / \texttt{VideoPlayer} are real, backed by genuine FFmpeg decoding, CNA's own
-graphics-renderer frame rendering, and SDL3 audio streaming, on Linux and macOS.
-\texttt{VideoPlayer::Play()} deliberately throws \texttt{InvalidOperationException} if a
-video's own declared width, height, or frame-rate metadata does not match what the decoded
-file itself actually reports --- a real, checked consistency guard rather than a silent
-mismatch. \cnaclass{VideoSoundtrackType} (\texttt{Music} / \texttt{Dialog}/%
-\texttt{MusicAndDialog}) is confirmed metadata-only in both FNA and CNA alike; neither
-implements any actual audio-ducking or muting behavior tied to this value.
-
-\subsection{A real disposed-state gap, closed with one deliberate, C\texttt{++}-specific exception}
-
-\cnaclass{VideoPlayer} once had \texttt{getIsDisposedProperty()} but nothing that actually
-consulted it: every public method touched the player's own state unconditionally after
-\texttt{Dispose()}, whether or not anything was still safe to touch. The fix reproduces real
-FNA's own \texttt{checkDisposed()} guard --- called at the top of eight public methods --- down
-to its exact, faithfully-reproduced message: \texttt{throw
-System::ObjectDisposedException("VideoPlayer")}, a hardcoded literal type-name string matching
-FNA's own choice rather than anything reflection-derived, for message fidelity rather than mere
-behavioral parity. One call site is a deliberate, reasoned exception rather than an oversight:
-\texttt{Dispose()} itself does \emph{not} call this guard, even though real FNA's own
-\texttt{Dispose()} does (throwing on a second call). The reason is specific to C\texttt{++}, not
-a parity shortfall --- \texttt{\textasciitilde VideoPlayer()} unconditionally calls
-\texttt{Dispose()}, and a destructor is implicitly \texttt{noexcept} in C\texttt{++}, so a second
-explicit \texttt{Dispose()} call followed by ordinary destruction would throw from inside a
-destructor and terminate the program outright, rather than merely surprising a caller the way
-the equivalent double-\texttt{Dispose()} does in C\#. \texttt{Dispose()} is kept safely
-idempotent instead, and every other public method keeps the real, faithful throw --- a small,
-precise illustration of this book's own recurring theme: a documented, reasoned divergence from
-FNA, not a silent one, and specifically motivated by a real language-level constraint C\# does
-not share.
-
-\subsection{Multi-track selection, and three real bugs an external review found}
-
-Both \cnaclass{Video} and \cnaclass{VideoPlayer} expose \texttt{SetAudioTrackEXT(track)} /
-\texttt{SetVideoTrackEXT(track)} --- an FNA extension beyond the original XNA~4.0 surface (note
-the \texttt{EXT} suffix; not a CNA invention) for selecting among multiple audio or video
-streams inside one container file. Switching either track live, mid-playback, is exactly the
-scenario a real external code-review pass targeted, and it found three separate, genuine bugs
-rather than a hypothetical concern:
+The in-tree metadata parser handles:
 
 \begin{itemize}
-  \item A video playing with \emph{no} audio device available (or a video-only track selected)
-  used to accumulate its entire decoded audio track in memory for the rest of playback ---
-  potentially hundreds of megabytes for a long video --- because the old buffer-draining code
-  only cleared its buffer inside the branch that checks for a live audio stream, never in the
-  no-stream case, and \texttt{CloseDecoder()} did not clear it either. Worse, stale audio left
-  over from a failed-device \texttt{Play()} could then be fed into a genuinely opened stream on
-  a later, successful \texttt{Play()} call. The fix, \texttt{DrainAndFlushAudioBuffer()}, always
-  clears the buffer after handing it off, whether or not a live stream exists to receive it.
-  \item Switching video tracks mid-playback can change frame dimensions, but the existing frame
-  texture used to silently keep its old size regardless --- a stale-size bug invisible until a
-  file with differently-sized video tracks was actually tested with a live track switch.
-  \texttt{ReconfigureVideoOutputForCurrentTrack()} now recreates the frame texture to match
-  whichever track is actually active.
-  \item Audio and video track reconfiguration used to be a single function always invoked
-  together, so switching only the video track needlessly tore down and reopened the SDL audio
-  stream too --- discarding whatever audio was already queued for playback --- and, symmetrically,
-  an audio-only switch needlessly recreated the video texture. The fix splits the two into
-  independent helpers, one per side: \texttt{ReconfigureAudioOutputForCurrentTrack()} handles
-  the audio stream.
-
-  \texttt{ReconfigureVideoOutputForCurrentTrack()} handles the frame texture. A track switch
-  now only reconfigures whichever side actually changed.
+  \item Ogg Vorbis comments and Ogg Opus \texttt{OpusTags};
+  \item ID3v2.3/2.4 title, artist, album, genre, track, rating, and picture frames;
+  \item Latin-1, UTF-16 with byte-order mark, UTF-16BE, and UTF-8 ID3 text;
+  \item native FLAC \texttt{VORBIS\_COMMENT} and picture blocks;
+  \item \texttt{.m3u} and \texttt{.m3u8} playlists as UTF-8.
 \end{itemize}
 
+Files without readable tags fall back to filename, parent directory, and grandparent directory
+for title, album, and artist. Missing playlist entries are skipped. Album art comes from
+\texttt{cover.jpg}/\texttt{folder.jpg} or embedded ID3/FLAC pictures; the front-cover picture
+type wins when present.
+
+The conversion from ID3's 0--255 rating and the various informal Vorbis rating scales to XNA's
+0--10 property is CNA policy, not an XNA rule. Likewise, scans are synchronous snapshots;
+there is no \texttt{MediaLibrary::Refresh()}.
+
+\begin{historynote}{Testing values across layer boundaries}
+The tag parser once read \texttt{TRCK} correctly while MediaLibrary discarded the value when
+constructing \cnaclass{Song}. A fixture with several distinct track numbers exposed the drop;
+a parser-only test could not. The current integration fixture checks the values after library
+construction.
+\end{historynote}
+
+\section{Playback and queue ownership}
+
+\cnaclass{MediaPlayer} supplies song and collection playback, pause, resume, stop, shuffle,
+repeat, queue navigation, events, and visualization. \cnaclass{Playlist} is read-only, as on
+XNA. \cnaclass{MediaQueue}\texttt{::Add(Song*)} adopts its pointer, whereas
+\cnaclass{SongCollection} is non-owning. To keep the queue from deleting library-owned songs,
+\texttt{MediaPlayer::Play} clones each input song and enqueues the clone.
+
+In linear mode, next/previous clamp at the ends unless repeat is enabled. With repeat, the end
+wraps to the beginning. Shuffle chooses uniformly from the full queue, so a track may repeat
+immediately. Sound-enabled builds use SDL3\_mixer's stopped callback to advance. The no-sound
+fallback compares elapsed time with a known, nonzero duration; a zero-duration song does not
+auto-advance.
+
+Volume and mute are independent state. Setting volume while muted retains the new value for the
+next unmute; the mixer alone receives zero gain while muted. \texttt{MediaStateChanged} and
+\texttt{ActiveSongChanged} are deferred until \cnaclass{FrameworkDispatcher}\texttt{::Update()}.
+\cnaclass{Game} calls the dispatcher during its normal update loop, but a caller using the
+static media API outside \cnaclass{Game} must pump it explicitly.
+
+\section{Visualization}
+
+\texttt{MediaPlayer::GetVisualizationData()} consumes samples captured by SDL3\_mixer's
+post-mix callback. The callback writes to a single-producer/single-consumer ring buffer without
+allocation, locking, or exceptions. Sample slots are \texttt{std::atomic<float>} with relaxed
+ordering so audio-thread writes and game-thread reads are defined C++ behavior. A reader may
+still observe samples spanning adjacent callback batches; the resulting one-frame visual
+imprecision is accepted.
+
+A 512-sample Hann-windowed radix-2 FFT produces XNA's 256 bins. CNA scales a full-amplitude sine
+to approximately 1.0 in its bin; XNA did not document a normalization. Disabled or not-yet-fed
+visualization returns zero-filled arrays. Tests cover failed installation and removal of the
+mixer tap so the enabled flag does not claim a callback that is absent or cannot be removed.
+
+\section{Video contract}
+
+Where \texttt{CNA\_FFMPEG\_AVAILABLE} is enabled, \cnaclass{VideoPlayer} uses FFmpeg for
+decoding, a CNA renderer texture for frames, and SDL3 audio streaming. \texttt{Play()} rejects
+a declared width, height, or frame rate that disagrees with the decoded stream.
+\cnaclass{VideoSoundtrackType} is metadata only in both CNA and FNA; it does not duck or mute
+tracks.
+
+The public methods check disposed state and throw \texttt{ObjectDisposedException} after
+\texttt{Dispose()}. \texttt{Dispose()} itself is idempotent. This differs from FNA because the
+C++ destructor also calls \texttt{Dispose()}; throwing during that destructor could terminate
+the process.
+
+\texttt{SetAudioTrackEXT} and \texttt{SetVideoTrackEXT} select streams independently. A live
+audio switch reopens only the audio output; a live video switch recreates the frame texture if
+dimensions change. The audio buffer is cleared even when no audio device or audio track is
+active, preventing unbounded accumulation and stale samples on a later play. Tests use a
+multi-track fixture to observe sample-rate change and verify that the unrelated video texture
+is retained.
+
 \begin{lstlisting}
-// Worked example: a container with two audio tracks (say, two dubbed
-// languages) and one video track. Switching languages mid-playback no
-// longer touches the video output at all, thanks to the split above.
 VideoPlayer player;
 player.Play(introVideo);
-// ... later, the player picks a different language track ...
-player.SetAudioTrackEXT(1);  // only the audio stream is torn down and reopened
+player.SetAudioTrackEXT(1); // switches audio without recreating video output
 \end{lstlisting}
 
-\subsection{Visualization: a genuine, from-scratch pipeline, not a stub}
+\section{Platform limitations}
 
-\texttt{MediaPlayer::GetVisualizationData()} is backed by a real, working pipeline end to end,
-not a hardcoded or randomized placeholder. SDL3\_mixer's post-mix callback --- which runs on
-the \emph{audio thread}, under a real-time constraint of no allocation, no locking, and no
-exceptions --- feeds every mixed buffer into a lock-free, single-producer/single-consumer ring
-buffer sized to hold more than one FFT window at a time. Reading directly from that ring
-buffer's own header comment surfaces a genuinely subtle, verified finding: its sample storage
-is \texttt{std::atomic<float>}, accessed with relaxed memory ordering, specifically because a
-plain \texttt{float} written by the audio thread while the game thread reads it is a data race
-and therefore undefined behavior in C++ regardless of how harmless the generated machine code
-looks --- relaxed atomics make the same access well-defined at effectively zero runtime cost on
-every mainstream platform, since a relaxed load or store of a naturally-aligned float compiles
-to the exact same instruction a plain access would. What the design deliberately does
-\emph{not} guard against is a reader observing a window whose samples span two different
-callback batches --- a torn read in the logical sense, not the undefined-behavior sense --- and
-that residual imprecision is accepted as a one-frame visual artifact in a visualizer, not
-something worth a lock on the audio path.
+The pinned CMake configuration disables FFmpeg on Windows (MinGW and MSVC), Android, and
+Emscripten. Video translation units are excluded on those targets, so using
+\cnaclass{Video}/\cnaclass{VideoPlayer} is a link-time failure, not a runtime
+\texttt{NotSupportedException}. Linux and macOS are the intended FFmpeg-enabled routes when
+the required development packages are available.
 
-The frequency-domain half comes from a genuine, dependency-free, from-scratch radix-2 FFT: a
-512-real-sample transform (XNA exposes exactly 256 frequency bins for visualization, so a
-textbook transform of twice that size is entirely sufficient, and pulling in a third-party FFT
-library for it would be disproportionate), with a Hann window applied first to reduce spectral
-leakage and a 2/512 magnitude-scaling factor chosen so that a full-scale sine wave maps
-to approximately~1.0 in its own bin --- a CNA-chosen normalization recorded as such, since XNA
-itself never documented its own scale for this API. Two further, real bugs an external review
-found and fixed in the surrounding enable/disable logic are worth naming directly: an early
-version set the ``visualization enabled'' flag \emph{before} even confirming a mixer could be
-obtained, so a failed mixer acquisition left \texttt{IsVisualizationEnabled} reporting true with
-no mixer and no callback actually installed; and a failed attempt to \emph{un}install the tap
-used to leave the internal ``still running'' flag stuck false (matching the caller's request for
-off) even though the callback might still genuinely be live, so a later retry never actually
-tried again. \texttt{GetVisualizationData()} itself does not throw when visualization is off or
-no data has been captured yet --- it fills both arrays with zero, matching
-\cnaclass{VisualizationData}'s own zero-initialized construction rather than treating that state
-as exceptional.
+There is also a native-Windows guard mismatch. CMake's unavailable set includes \texttt{WIN32},
+but two \texttt{ContentManager.cpp} preprocessor guards check Emscripten, Android, and MinGW;
+one repeats \texttt{\_\_MINGW32\_\_} and neither checks \texttt{\_WIN32}. An MSVC build can
+therefore retain \cnaclass{Video} dispatch references after the implementations were excluded.
+This is an open pinned-revision build defect.
 
-\section{The one genuinely open gap: Windows, Android, and Emscripten video}
+\section{Evidence status}
 
-The one area of this namespace still genuinely open, rather than merely undocumented, is
-real FFmpeg-backed video on Windows, Android, and Emscripten --- excluded from those builds
-entirely via a \texttt{CNA\_FFMPEG\_AVAILABLE} CMake gate. Using \texttt{Video}/%
-\texttt{VideoPlayer} there today is a \emph{link error}, not a runtime stub throwing a
-graceful exception --- a direct consequence of the project owner explicitly rejecting a
-\texttt{NotSupportedException}-stub approach in favor of holding out for a real FFmpeg
-integration on those platforms instead. This is not closeable from a Linux-only development
-environment, and is recorded here as exactly that kind of gap: not silently missing, not
-falsely claimed complete, but named and left for real cross-platform FFmpeg packaging work.
-
-There is also a concrete native-Windows build defect in the two-layer gate. CMake disables the
-video translation units for \texttt{WIN32}, MinGW, Emscripten, and Android, but
-\texttt{ContentManager.cpp}'s matching include guard repeats \texttt{\_\_MINGW32\_\_} and never
-checks native \texttt{\_WIN32}. An MSVC build can therefore retain the \cnaclass{Video} include
-and dispatch reference while the implementation was excluded, producing a link failure. The
-comment beside that guard also omits \texttt{WIN32} when describing the CMake rule. Whenever a
-feature is gated in both build code and C++, test their truth tables rather than trusting two
-similar-looking expressions.
-
-\section{Deliberate, documented non-gaps}
-
-A short list of choices that look like gaps but are not: \texttt{.m4a} / \texttt{.aac}/WMA
-files are deliberately not indexed by \cnaclass{MediaLibrary} at all, because SDL3\_mixer
-ships no AAC decoder --- indexing a song the player could never actually play would be worse
-than not listing it. There is no \texttt{MediaLibrary::Refresh()}, because a library scan is
-a deliberate one-time synchronous snapshot, not a live-updating view. And
-\texttt{MediaPlayer::Update()}'s fallback branch for a build with sound disabled is,
-confirmed directly, dead code in every build configuration this project currently produces
---- untestable as a consequence of that, and not a Media-specific concern.
+Source and focused tests establish parsing, hierarchy construction, queue ownership, event
+timing, visualization state, disposal, and multi-track reconfiguration. FFmpeg fixture tests
+exercise decoding on the configured host. Those results do not establish video availability on
+the CMake-excluded targets, nor do extension lists establish decoder support. The platform gate
+and Windows mismatch are source-proven; no Windows video execution is claimed.

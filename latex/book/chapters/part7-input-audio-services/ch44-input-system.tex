@@ -9,27 +9,16 @@ keyboard, mouse, gamepad, touchscreen, IME, and high-DPI verification.
 
 \section{Architecture: event-driven, not poll-driven}
 
-The most important structural fact about this namespace, and the one place CNA's input
-model genuinely diverges from FNA's own: FNA re-queries SDL fresh every time
-\texttt{GetState()} is called; CNA instead accumulates input state as SDL events are pumped.
-The pipeline runs in one
-direction: once per frame, \texttt{Game::PollEvents()} drains the SDL event queue, funneling
-every event through a single dispatcher --- \texttt{SdlInputBridge::ProcessEvent} --- which
-updates \texttt{InputManager}'s internal state, \texttt{TextInputEXT}'s internal state, and
-\cnaclass{TouchPanel}'s gesture detector as appropriate; ordinary \texttt{Keyboard} /
-\texttt{Mouse} / \texttt{GamePad} / \texttt{TouchPanel::GetState()} calls then read that
-accumulated state.
-\texttt{FrameworkDispatcher::Update()} (this book's game-loop chapter) drives
-\cnaclass{TouchPanel}'s own per-frame gesture update. For ordinary once-per-frame calling
-code this is behaviorally equivalent to FNA's approach. Repeated reads without another pumped
-event return the same keyboard, absolute-mouse, gamepad and touch state where FNA might observe a
-change between polls. Relative mouse mode is the deliberate exception: its first
-\texttt{Mouse::GetState()} drains the accumulated motion delta, so the next read returns zero
-until another motion event arrives. This entire pipeline is deliberately
-single-threaded and unsynchronized --- safe only because both halves (the event pump and the
-\texttt{Update} / \texttt{Draw} reads) run on the same game-loop thread, matching both SDL's own
-requirement that events be pumped on the video thread and XNA/FNA's own single-threaded
-assumption.
+FNA queries SDL when \texttt{GetState()} is called. CNA caches state from the events drained by
+\texttt{Game::PollEvents()}. \texttt{SdlInputBridge::ProcessEvent} updates
+\texttt{InputManager}, \texttt{TextInputEXT}, and the touch gesture detector; the public
+\texttt{GetState()} methods read those snapshots. \texttt{FrameworkDispatcher::Update()} drives
+the per-frame touch gesture update.
+
+Repeated reads without another event return the same keyboard, absolute-mouse, gamepad, and touch
+state. Relative mouse mode is the exception: the first \texttt{Mouse::GetState()} drains its
+motion accumulator, and a second read returns zero until more motion arrives. The event pump and
+state reads are single-threaded and unsynchronized; both belong on the game-loop/video thread.
 
 Two ordinary keys have an additional framework side effect: \texttt{F9} and \texttt{F10}
 simulate graphics-context loss and restoration in \texttt{Game::PollEvents()}. The event is sent
@@ -37,22 +26,18 @@ to \texttt{SdlInputBridge::ProcessEvent} first, so both keys still reach
 \texttt{Keyboard::GetState()}; application code may observe them but cannot suppress the debug
 action. Avoid binding gameplay to them unless that game-loop behavior is changed.
 
-Three tags recur through this namespace's own headers and documentation, and are worth
-knowing before reading further: \textbf{STRICT} (must match FNA's real surface exactly),
+Three tags recur in the headers: \textbf{STRICT} (the frozen FNA/XNA-shaped surface),
 \textbf{EXT} (an FNA-compatible extension, using the \texttt{...EXT} suffix convention from
 this book's game-loop chapter), and \textbf{CNAEXT} (a CNA-only addition with no FNA counterpart
-at all). A dedicated compile-time test suite (\texttt{PublicApiInputSignatureFreezeTests.cpp})
-pins the exact strict-XNA member set this namespace promises never to silently change.
+at all). \texttt{PublicApiInputSignatureFreezeTests.cpp} compile-checks the strict member set.
 
 \section{Keyboard}
 
 \cnaclass{Keyboard} is static-only, offering \texttt{GetState()} and a
-per-\cnaclass{PlayerIndex} overload. \cnaclass{KeyboardState} deliberately deviates from
-FNA's own storage layout --- backed by a \texttt{std::unordered\_set<Keys>} rather than
-FNA's native bitfield --- on the reasoning that the observable \emph{contract}
-(\texttt{IsKeyDown}, \texttt{GetPressedKeys()} returning ascending-sorted keys, a specific
-\texttt{GetHashCode()} formula reconstructing FNA's own eight-32-bit-word XOR layout) is what
-must match, not the internal representation producing it. \cnaclass{Keys} itself has exactly
+per-\cnaclass{PlayerIndex} overload. \cnaclass{KeyboardState} stores keys in a
+\texttt{std::unordered\_set<Keys>} instead of FNA's bitfield while preserving the observable
+queries, sorted \texttt{GetPressedKeys()} result, and FNA-shaped hash formula. \cnaclass{Keys} has
+exactly
 160 values, independently confirmed byte-for-byte identical to FNA's numeric values,
 including several distinctly odd hexadecimal outliers (\texttt{Pause = 0x13},
 \texttt{Kana = 0x15}, \texttt{ChatPadGreen = 0xCA}) preserved exactly rather than renumbered
@@ -62,47 +47,33 @@ several browser/media keys therefore cannot round-trip through the \texttt{EXT} 
 helpers. Typed text must go through \texttt{TextInputEXT}, not through assumptions that every
 Unicode character has a \cnaclass{Keys} value.
 
-\subsection{Full method reference: KeyboardState and Keyboard's EXT surface}
+\subsection{KeyboardState and keyboard extensions}
 
-\cnaclass{KeyboardState}'s own public surface, read directly from its header, is smaller than
-its internal \texttt{std::unordered\_set<Keys>} storage might suggest:
+\cnaclass{KeyboardState}'s public surface is compact:
 
 \begin{description}
 \item[\texttt{KeyboardState(std::initializer\_list<Keys> keys)}] the ordinary way application
-  and test code constructs one directly --- \texttt{KeyboardState\{Keys::W, Keys::LeftShift\}}
-  for a manually-composed state.
+  and test code constructs one, for example
+  \texttt{KeyboardState\{Keys::W, Keys::LeftShift\}}.
 \item[\texttt{getItem(Keys key)} / \texttt{operator[](Keys key)}] both return a
-  \cnaclass{KeyState} (\texttt{Down} or \texttt{Up}) for one key --- the indexer form XNA
-  itself exposes as \texttt{keyboardState[Keys.W]}.
-\item[\texttt{IsKeyDown(key)} / \texttt{IsKeyUp(key)}] the ordinary boolean queries --- what
-  almost all application code actually calls.
+  \cnaclass{KeyState} (\texttt{Down} or \texttt{Up}) for one key.
+\item[\texttt{IsKeyDown(key)} / \texttt{IsKeyUp(key)}] boolean key queries.
 \item[\texttt{GetPressedKeys()}] returns every currently-down key as an ascending-sorted
-  \texttt{std::vector<Keys>} --- the ascending-sort guarantee is explicit and load-bearing:
-  it is part of the observable contract this chapter's own intro named as what CNA
-  deliberately preserves even though the backing storage (a hash set) has no inherent order
-  of its own.
+  \texttt{std::vector<Keys>}; the sort is part of the contract because the backing hash set has
+  no stable iteration order.
 \end{description}
 
-Beyond \cnaclass{KeyboardState} itself, \cnaclass{Keyboard} (the static entry point) exposes a
-cluster of \texttt{EXT} methods with no FNA equivalent, all revolving around one real gap
-XNA's own \cnaclass{Keys} enum has: it is fundamentally a \emph{layout-dependent} enum (its
-values correspond to US-QWERTY key positions and their typical labels), while SDL3 itself
-tracks both a layout-independent \emph{scancode} (physical key position) and a
-layout-\emph{dependent} keycode. \texttt{GetKeyFromScancodeEXT(scancode)} maps a physical
-position, represented by its US-layout \cnaclass{Keys} identity, into the current layout --- the
-mechanism a non-US keyboard layout needs to implement ``WASD, but by physical position rather
-than by label'' correctly. There is no general keycode-to-physical-key inverse in this public
-surface; the inverse helpers below apply only to textual names.
-\texttt{GetModStateEXT()} returns the live modifier-key bitmask (shift/ctrl/alt/etc.)
-\cnaclass{Keys} alone cannot represent as a single down/up state per key.
-\texttt{GetScancodeNameEXT} / \texttt{GetKeyNameEXT} (and their name-to-key inverses) return a
-human-readable, current-layout-aware label for a key or scancode --- what a ``press any key to
-continue'' or key-rebinding UI should actually display, since \texttt{Keys::W} should read as
-``Z'' on an AZERTY layout, not literally ``W''.
+\cnaclass{Keyboard}'s \texttt{EXT} methods bridge XNA's US-QWERTY-shaped \cnaclass{Keys} enum
+and SDL3's distinction between a physical scancode and a layout-dependent keycode.
+\texttt{GetKeyFromScancodeEXT()} maps a US-named physical position into the current layout,
+which supports position-based movement controls on non-US keyboards. The public API has no
+general keycode-to-physical-position inverse; the inverse helpers apply to textual names.
+\texttt{GetModStateEXT()} returns SDL's modifier mask. \texttt{GetScancodeNameEXT} and
+\texttt{GetKeyNameEXT}, plus their name-to-key forms, provide current-layout labels for rebinding
+interfaces.
 
 \begin{lstlisting}
-// Worked example: physical-position movement keys that stay correct on a
-// non-QWERTY layout -- the real reason GetKeyFromScancodeEXT exists.
+// Physical-position movement keys for a non-QWERTY layout.
 // WASD's physical positions, expressed as scancodes rather than as the
 // QWERTY-specific Keys::W/A/S/D values directly.
 const Keys forwardKey = Keyboard::GetKeyFromScancodeEXT(Keys::W);
@@ -110,8 +81,7 @@ const Keys leftKey    = Keyboard::GetKeyFromScancodeEXT(Keys::A);
 const Keys backKey     = Keyboard::GetKeyFromScancodeEXT(Keys::S);
 const Keys rightKey   = Keyboard::GetKeyFromScancodeEXT(Keys::D);
 
-// On an AZERTY keyboard, forwardKey now resolves to the physical key an
-// AZERTY user actually presses for "forward" (labelled Z, not W) --
+// On an AZERTY keyboard, forwardKey resolves to the physical key labelled Z.
 // GetKeyFromScancodeEXT(Keys::W) treats Keys::W as identifying the
 // physical scancode a US layout would call W, then maps that scancode
 // back through the *current* layout to find what key is physically there.
@@ -125,23 +95,21 @@ if (keyboard.IsKeyDown(forwardKey))
 \section{Mouse}
 
 \cnaclass{Mouse} is static-only: \texttt{GetState()} and \texttt{SetPosition(x, y)}, the
-latter attempting to convert logical coordinates to real window coordinates before calling
+latter converting logical coordinates to physical window coordinates before calling
 SDL's warp function. The shared routing first asks an associated SDL renderer, then a
 registered graphics renderer, then falls back to pass-through. Those tiers make the result
-renderer- and presentation-dependent rather than a universal guarantee; the audit below and
+renderer- and presentation-dependent; the audit below and
 Chapter~\ref{ch:backend-architecture}'s matrix state the exact boundary.
 \cnaclass{MouseState} carries the expected X/Y, five buttons, and a cumulative,
 120-units-per-notch \texttt{ScrollWheelValue}; a \texttt{CNAEXT} horizontal-scroll addition is
 deliberately excluded from \texttt{Equals} / \texttt{GetHashCode} / \texttt{ToString} specifically
 so those stay byte-identical to FNA's own output despite the extra field existing. A wholly
 \texttt{CNAEXT} class, \cnaclass{MouseCursor}, wraps \texttt{SDL\_Cursor*} with eleven lazily
-created, process-lifetime stock system cursors --- a case where CNA's design is deliberately
-\emph{more} defensive than the MonoGame implementation it is closest to: MonoGame's own
+created, process-lifetime stock system cursors. MonoGame's
 \texttt{PlatformDispose()} frees a shared stock cursor handle unconditionally, which can
-corrupt the shared handle if any other code still holds it; CNA makes \texttt{Dispose()} a
-safe no-op for the shared stock instances specifically to avoid that failure mode.
+invalidate other users; CNA makes \texttt{Dispose()} a no-op for shared stock instances.
 
-\subsection{Full method reference: MouseState and Mouse's EXT surface}
+\subsection{MouseState and mouse extensions}
 
 \cnaclass{MouseState} is a plain data carrier --- \texttt{X} / \texttt{Y}, five
 \cnaclass{ButtonState} properties (\texttt{LeftButton} / \texttt{RightButton} /
@@ -149,8 +117,8 @@ safe no-op for the shared stock instances specifically to avoid that failure mod
 \texttt{ScrollWheelValue} already named above, and (\texttt{CNAEXT}) a parallel
 \texttt{HorizontalScrollWheelValueEXT} for horizontal scroll, deliberately excluded from
 \texttt{Equals} / \texttt{GetHashCode} / \texttt{ToString} as already noted. \cnaclass{Mouse}
-itself, beyond \texttt{GetState()} and \texttt{SetPosition}, exposes a real, working relative
-(pointer-lock-style) mouse mode and a small cluster of window/capture-related \texttt{EXT}
+itself, beyond \texttt{GetState()} and \texttt{SetPosition}, exposes relative
+(pointer-lock-style) mouse mode and window/capture-related \texttt{EXT}
 methods:
 
 \begin{description}
@@ -159,38 +127,27 @@ methods:
   than an absolute, screen-clamped position --- the standard technique for an FPS-style camera
   look. Both accessors are safe to call with no window at all (no published window handle and
   no focused window): the getter simply reports \texttt{false} rather than querying SDL with a
-  null window (whose behavior SDL itself leaves undefined), and the setter is a silent no-op
-  for the same reason. Reading \texttt{InputManager::GetMouseState()} directly shows precisely
-  how the substitution works: while relative mode is active, each
+  null window (whose behavior SDL leaves undefined), and the setter is a no-op. While relative
+  mode is active, each
   \texttt{SDL\_EVENT\_MOUSE\_MOTION} adds its relative delta to a separate accumulator;
   motion outside that mode is not accumulated, and toggling the mode flushes stale deltas.
   \texttt{MouseState}'s public \texttt{X} / \texttt{Y} read and immediately drain that
-  accumulator in relative mode; otherwise they report the ordinary absolute position. This is
-  why \texttt{MouseState.X} / \texttt{Y}
-  genuinely mean two different things depending on \texttt{IsRelativeMouseModeEXT}, not just a
-  documentation convention.
-\item[\texttt{SetPosition(x, y)}] is itself a documented no-op while relative mouse mode is
-  active --- read directly from \texttt{Mouse.cpp}: the method's very first check returns
-  immediately if \texttt{getIsRelativeMouseModeEXTProperty()} is true, before ever calling
-  SDL's warp function, since an absolute position warp is meaningless once the mouse is
-  reporting relative deltas instead.
+  accumulator in relative mode; otherwise they report the absolute position.
+\item[\texttt{SetPosition(x, y)}] is a documented no-op in relative mode because an absolute
+  warp has no meaning while the mouse reports deltas.
 \item[\texttt{SetCaptureEXT(enabled)}] engages OS-level mouse capture (input keeps arriving
-  even if the cursor leaves the window bounds) --- distinct from relative mode, and combinable
+  even if the cursor leaves the window bounds), distinct from relative mode and combinable
   with it.
 \item[\texttt{GetGlobalPositionEXT} / \texttt{WarpGlobalEXT}] read or set the mouse position in
-  \emph{desktop} (not window-relative) coordinates --- the form a multi-window or
-  multi-monitor application needs, where an ordinary \texttt{GetState()} position is
-  meaningless across window boundaries.
+  \emph{desktop} rather than window-relative coordinates.
 \item[\texttt{ClickedEXT}] a \texttt{CNAEXT System::MulticastAction<int>} event (Chapter~\ref{ch:sharp-runtime-namespaces}
-  covers this \texttt{sharp-runtime} type in full) firing once per real click with the button
+  covers this \texttt{sharp-runtime} type) firing once per click with the button
   index, for code that wants a discrete click event rather than polling button state every
   frame.
 \end{description}
 
 \begin{lstlisting}
-// Worked example: an FPS-style mouse-look camera using relative mouse
-// mode -- SetPosition would be silently ineffective here, which is
-// exactly the point: relative mode reports motion as deltas instead.
+// FPS-style camera input: relative mode reports motion as deltas.
 game.setIsMouseVisibleProperty(false);
 Mouse::setIsRelativeMouseModeEXTProperty(true);
 
@@ -214,7 +171,7 @@ touch together, while relative mouse motion deliberately remains an unscaled del
 The SDL\_RENDERER route has the strongest existing proof. A test creates a
 $100\times100$ logical presentation inside a $200\times200$ window, injects a physical motion
 event at $(100,100)$, and observes logical $(50,50)$ through
-\texttt{Mouse::GetState()}. Separate conversion tests cover the inverse and a real horizontal
+\texttt{Mouse::GetState()}. Separate conversion tests cover the inverse and a horizontal
 letterbox offset. The latter tests cannot inspect the OS cursor under Wayland, however:
 \texttt{SetPosition()} writes the requested logical point into \texttt{InputManager}
 \emph{before} attempting conversion and warp, so immediately reading that point back proves
@@ -267,30 +224,18 @@ CNA-only additions with no FNA counterpart at all (player-index assignment, powe
 button-label queries, device name/path/serial/firmware, Steam handle, connection state,
 touchpad finger tracking).
 
-\subsection{Real bugs found and fixed}
+\subsection{Bugs found and fixed}
 
-Several concrete, historically real bugs are worth naming. \texttt{SDL\_INIT\_GAMEPAD} was
-never actually initialized, meaning zero gamepad events were ever delivered until fixed.
-\texttt{GetCapabilities()} itself used to \emph{cancel active rumble} as a side effect ---
-it probed rumble support by calling \texttt{SDL\_RumbleGamepad(0, 0, 0)}, which is itself a
-stop-vibration call; fixed by switching to a non-mutating capability property query instead.
-A stick-normalization bug divided the negative half of an analog stick's range by 32768
-rather than FNA's own 32767 for \emph{both} halves, meaning every non-endpoint negative
-sample diverged slightly from FNA's expected value (for example, a raw value of $-16384$
-producing $-0.5$ in CNA against FNA's $-0.50001$) --- fixed to match FNA's asymmetric divisor
-exactly, a good small example of how ``obviously correct-looking'' code can still diverge
-from a reference implementation's own specific numerical quirks. A fourth, smaller gap
-surfaced during this namespace's own later audit rather than its original implementation:
-\texttt{SDL\_INIT\_GAMEPAD} was correctly initialized at startup but never explicitly quit
-anywhere, a genuine asymmetry against FNA's own shutdown path, which quits
-\texttt{SDL\_INIT\_VIDEO} and \texttt{SDL\_INIT\_GAMEPAD} together as its very last SDL call ---
-not a crash or leak risk on its own, since the OS reclaims SDL state at process exit either
-way, but a real gap for any \cnaclass{GraphicsDevice}-recreate-without-process-exit scenario.
-Fixed by adding a dedicated, idempotent \texttt{ShutdownGamepadSubsystem()} internal helper,
-mirroring the existing startup helper's own safe-to-call-repeatedly contract, wired into
-\cnaclass{Game}'s own disposal path right after the graphics device service.
+\begin{historynote}
+The gamepad route originally omitted \texttt{SDL\_INIT\_GAMEPAD}, so it received no events.
+Another implementation queried rumble support by calling \texttt{SDL\_RumbleGamepad(0,0,0)},
+which stopped active vibration; it now uses a non-mutating property query. Stick normalization
+used 32768 for negative samples instead of FNA's 32767, making $-16384$ yield $-0.5$ instead of
+approximately $-0.50001$. Finally, the initialized gamepad subsystem was not shut down on device
+recreation. An idempotent \texttt{ShutdownGamepadSubsystem()} now runs during game disposal.
+\end{historynote}
 
-\subsection{Full method reference: GamePadState and the three GamePadDeadZone modes}
+\subsection{GamePadState and dead-zone modes}
 
 \cnaclass{GamePadState} composes four sub-structures, each a plain value carrier read directly
 from its header: \cnaclass{GamePadThumbSticks} (\texttt{Left} / \texttt{Right}, each a
@@ -300,31 +245,18 @@ face/shoulder/stick-click/back/start/big button --- plus a \texttt{ButtonStateFr
 convenience for looking one up by the \cnaclass{Buttons} flag enum instead of by name), and
 \cnaclass{GamePadDPad} (\texttt{Up} / \texttt{Down} / \texttt{Left} / \texttt{Right}, each a
 \cnaclass{ButtonState}). \cnaclass{GamePadState} itself adds \texttt{IsConnected},
-\texttt{PacketNumber} (increments whenever the underlying hardware state actually changes ---
-the standard XNA technique for detecting ``did anything change since I last checked'' without
-comparing every field by hand), and \texttt{IsButtonDown} / \texttt{IsButtonUp} convenience
+\texttt{PacketNumber} (incremented when the hardware state changes), and
+\texttt{IsButtonDown} / \texttt{IsButtonUp} convenience
 wrappers over the same \cnaclass{Buttons} flag enum.
 
-The dead-zone handling is worth reading precisely rather than assuming all three
-\cnaclass{GamePadDeadZone} modes merely differ in threshold size --- they differ in
-\emph{shape}. Reading \cnaclass{GamePadThumbSticks}'s constructor directly: \texttt{None}
-applies no filtering at all. \texttt{IndependentAxes} --- the one-argument
-\texttt{GamePad::GetState}'s own default choice --- excludes each axis's dead zone
-independently, one call to \texttt{ExcludeAxisDeadZone} per axis: a stick pushed diagonally
-near the dead-zone boundary can end up with one axis zeroed while the other still reports a
-nonzero value, a small directional distortion right at the boundary. \texttt{Circular} instead
-measures the stick's combined magnitude and excludes the dead zone radially, avoiding that
-per-axis distortion at the cost of the extra trigonometry. Both non-\texttt{None} modes also
-differ in \emph{clamp shape} after the dead zone is applied: \texttt{Circular} clamps the
-result to a unit \emph{circle}; \texttt{None} and \texttt{IndependentAxes} both clamp to a unit
-\emph{square} instead (independently per axis) --- so switching dead-zone modes can change a
-stick's maximum diagonal magnitude, not merely its small-input behavior.
+The three \cnaclass{GamePadDeadZone} modes differ in shape as well as threshold.
+\texttt{None} filters nothing. The default \texttt{IndependentAxes} excludes and clamps each
+axis separately, which can distort direction near the boundary. \texttt{Circular} excludes by
+vector magnitude and clamps to the unit circle. \texttt{None} and \texttt{IndependentAxes}
+retain a square clamp, so changing modes can also change maximum diagonal magnitude.
 
 \begin{lstlisting}
-// Worked example: dead-zone-aware movement plus rumble feedback, choosing
-// Circular explicitly for the smoother diagonal response it gives over
-// the IndependentAxes default -- most noticeable exactly at the boundary
-// this book's own reading of GamePadThumbSticks's constructor identified.
+// Dead-zone-aware movement with a circular clamp and rumble feedback.
 const GamePadState pad = GamePad::GetState(PlayerIndex::One, GamePadDeadZone::Circular);
 if (pad.getIsConnectedProperty())
 {
@@ -333,23 +265,19 @@ if (pad.getIsConnectedProperty())
 
     if (pad.IsButtonDown(Buttons::A))
     {
-        // Rumble briefly on jump -- SetVibration takes independent
-        // left/right motor strengths in [0, 1], matching real Xbox 360
-        // controllers' two distinct (low-frequency/high-frequency) motors.
+        // Independent left/right motor strengths in [0, 1].
         GamePad::SetVibration(PlayerIndex::One, 0.0f, 0.6f);
     }
 }
 \end{lstlisting}
 
-Beyond the strict surface, a handful of the \texttt{EXT} methods named earlier are worth a
-second, more concrete look: \texttt{GetGyroEXT} / \texttt{GetAccelerometerEXT} expose a modern
-controller's own built-in motion sensors (distinct from a host device's own sensors, covered
-later in this chapter) --- real only on hardware that actually reports them, and
+Beyond the strict surface, \texttt{GetGyroEXT} / \texttt{GetAccelerometerEXT} expose a
+controller's built-in motion sensors, distinct from host-device sensors. They require hardware
+that reports them, and
 \texttt{GamePadCapabilities::getHasGyroEXTProperty()} / \texttt{getHasAccelerometerEXTProperty()}
 exist specifically so calling code can check before relying on either. \texttt{SetLightBarEXT}
-and \texttt{SetTriggerVibrationEXT} (independent per-trigger rumble motors, distinct from the
-two whole-controller motors \texttt{SetVibration} drives) are both real, modern-controller-only
-capabilities with no XNA-era precedent at all, gated the same way behind their own
+and \texttt{SetTriggerVibrationEXT} (independent trigger motors rather than the two
+whole-controller motors) are modern-controller extensions, gated by their
 \texttt{GamePadCapabilities} flags.
 
 \section{Touch and gestures}
@@ -364,35 +292,29 @@ One value is \texttt{None}; all ten actual gesture types are implemented by
 \texttt{GestureDetector}, including both completion events. There is no declared gesture that
 silently lacks a detector.
 
-Several real bugs were found and fixed here too. \texttt{SDL\_EVENT\_FINGER\_CANCELED} was
-simply unhandled, leaving a canceled touch stuck as if still active --- fixed to release it
-the same way a genuine finger-up event would. \texttt{TouchPanel::GetCapabilities()} used to
-consult only a sticky ``has this ever been touched'' flag rather than real device
-enumeration, meaning a genuinely present but not-yet-touched touchscreen incorrectly reported
-as disconnected on every non-Windows platform --- fixed to query the real SDL device list on
-every call, keeping the sticky flag only as a fallback. And a frame-accuracy bug had touch
-state advancement (promoting a touch from Pressed to Moved, retiring a Released touch) happen
-\emph{inside} \texttt{GetState()} itself, meaning the number of times a frame happened to
-call \texttt{GetState()} changed observable behavior --- fixed by splitting the operation
-into a pure state read plus a separate, genuinely once-per-frame
-\texttt{AdvanceTouchFrame()} step.
+\begin{historynote}
+The touch route once ignored \texttt{SDL\_EVENT\_FINGER\_CANCELED}, leaving canceled touches
+active. \texttt{GetCapabilities()} used only an observed-touch flag, so an untouched enumerated
+device appeared disconnected. Touch-state advancement also occurred inside \texttt{GetState()},
+making repeated reads mutate a frame. The current implementation handles cancellation, enumerates
+SDL devices with the observed flag as a fallback, and advances state once per frame through
+\texttt{AdvanceTouchFrame()}.
+\end{historynote}
 
-\subsection{Full method reference: TouchCollection, TouchLocation, and GestureSample}
+\subsection{TouchCollection, TouchLocation, and GestureSample}
 
-\cnaclass{TouchCollection} (returned by \texttt{TouchPanel::GetState()}) is a fixed, per-frame
-snapshot of every currently-tracked touch, read directly from its header:
+\cnaclass{TouchCollection} is a per-frame snapshot of tracked touches. It provides
 \texttt{Count} / \texttt{IsConnected} (the sticky ``a touch has been observed'' flag described
 below), the by-index \texttt{operator[]}, and the same general
 ordered-container surface Chapter~\ref{ch:math-core-types}'s own \cnaclass{CurveKeyCollection} coverage already
 described --- \texttt{Contains} / \texttt{IndexOf}, a \texttt{CNAEXT} \texttt{empty()}, and
 \texttt{CNAEXT} iterator support for range-based \texttt{for}. Each \cnaclass{TouchLocation} inside it carries
-an \texttt{Id} (stable across frames for the same physical finger, the correct key for
-tracking one finger's motion over time), a \texttt{State} (\cnaclass{TouchLocationState}:
+an \texttt{Id} stable across frames for one finger, a \texttt{State} (\cnaclass{TouchLocationState}:
 \texttt{Pressed}, \texttt{Moved}, \texttt{Released}, or \texttt{Invalid} for a stale/expired
 entry), a \texttt{Position}, and (\texttt{CNAEXT}) a \texttt{PressureEXT} reading on hardware
 that reports one. \cnaclass{GestureSample} (returned by \texttt{TouchPanel::ReadGesture()})
 carries a \texttt{GestureType}, a \texttt{Timestamp}, and up to two positions/deltas
-(\texttt{Position} / \texttt{Position2}, \texttt{Delta} / \texttt{Delta2}) --- the second pair used
+(\texttt{Position} / \texttt{Position2}, \texttt{Delta} / \texttt{Delta2}); the second pair is used
 only by two-finger gestures like \texttt{Pinch}, left at their default for single-finger
 gestures.
 
@@ -404,10 +326,7 @@ false for an enumerated but untouched device until the first finger-down event. 
 for device discovery and the collection's count for whether a finger is currently tracked.
 
 \begin{lstlisting}
-// Worked example: per-finger drag tracking using TouchLocation's stable
-// Id -- the field that makes tracking *one* finger's motion possible,
-// since a touch's index within the TouchCollection is not stable
-// frame-to-frame the way its Id is.
+// Per-finger drag tracking uses the stable Id, not collection position.
 const TouchCollection touches = TouchPanel::GetState();
 for (const TouchLocation& touch : touches)
 {
@@ -447,29 +366,15 @@ while (TouchPanel::getIsGestureAvailableProperty())
 }
 \end{lstlisting}
 
-Two details worth calling out precisely, both readable directly from the enum/property
-definitions rather than assumed: \texttt{EnabledGestures} is a genuine filter, not merely
-advisory --- \texttt{ReadGesture()} only ever returns gesture types the caller has opted into,
-so a UI that never enables \texttt{GestureType::Pinch} will never see one, even on hardware
-that fully supports it; and \texttt{GestureType} being a proper bit-flag enum (its values are
-powers of two, \texttt{Tap = 1} through \texttt{PinchComplete = 512}) means
-\texttt{EnabledGestures} is genuinely a combinable set, not a single choice --- the
-\texttt{|} composition in the worked example above is the ordinary, intended way to opt into
-more than one gesture type at once.
+\texttt{EnabledGestures} is an active filter: \texttt{ReadGesture()} returns only enabled
+types. \texttt{GestureType} uses powers of two from \texttt{Tap = 1} through
+\texttt{PinchComplete = 512}, so callers combine selections with \texttt{|}.
 
-\cnaclass{GestureSample}'s own \texttt{Timestamp} field is worth one more precise note, since
-it is a case where CNA deliberately declines to reproduce a real bug in FNA's own source rather
-than faithfully copying it. FNA's own gesture-timestamp computation is
+\cnaclass{GestureSample::Timestamp} deliberately differs from an FNA defect. FNA computes it as
 \texttt{TimeSpan.FromTicks(Environment.TickCount)} --- but \texttt{TickCount} is a millisecond
-value, while \texttt{FromTicks} expects 100-nanosecond units, a real, roughly ten-thousand-times
-unit mismatch relative to what FNA's own doc comment states the method intends. CNA's
-equivalent instead converts milliseconds to ticks correctly. This is a judged, documented
-deviation rather than an oversight, precisely because \texttt{GestureSample.Timestamp} has no
-defined absolute reference point in either engine --- only relative ordering between
-successive gestures actually matters in practice, and CNA's own regression test pins exactly
-that property (non-negative, strictly increasing across two gestures separated by an advanced
-test clock) rather than any specific numeric value that would depend on which of the two
-engines' conventions it followed.
+value, while \texttt{FromTicks} expects 100-nanosecond units. CNA converts milliseconds to ticks.
+Neither engine defines an absolute epoch for the field; the regression establishes non-negative,
+strictly increasing values across two gestures under an advanced test clock.
 
 \section{TextInputEXT and CNA-only CNAEXT extensions}
 
@@ -481,15 +386,14 @@ input-rectangle placement. The implementation has three event channels: committe
 \texttt{TextEditingCandidatesEXT} candidate-list event. CNA also adds an explicit
 on-screen-keyboard/IME type hint.
 
-Beyond input in the strict XNA sense, the \texttt{CNA::Input} namespace hosts several wholly
-\texttt{CNAEXT} subsystems already named in passing in this book's overview chapter:
+The \texttt{CNA::Input} namespace also hosts these \texttt{CNAEXT} subsystems:
 \cnaclass{Clipboard} (system clipboard text); \cnaclass{Joysticks} (the raw, unmapped SDL
 joystick API --- axes, buttons, hats, trackballs --- deliberately independent of
 \cnaclass{GamePad}'s own mapped view of the same physical device); \cnaclass{Sensors} (host
 device accelerometer/gyroscope, distinct from a gamepad's own motion sensors covered above);
-\cnaclass{Power} (battery state); and \cnaclass{Haptics} (SDL3's own force-feedback API, with
-a full effect-building lifecycle --- real actuation requires genuinely FFB-capable hardware
-\emph{and} an initialized SDL haptic subsystem, since most ordinary gamepads only support simple
+\cnaclass{Power} (battery state); and \cnaclass{Haptics} (SDL3 force feedback). Haptic actuation
+requires capable hardware
+\emph{and} an initialized SDL haptic subsystem; most gamepads support only simple
 rumble and this layer does not initialize \texttt{SDL\_INIT\_HAPTIC} itself).
 This entire \texttt{CNA::Input} extension layer is compiled unconditionally, even when
 \texttt{CNA\_DEVICES} and \texttt{CNA\_CNAEXT} are off. \cnaclass{Clipboard} and
@@ -497,34 +401,19 @@ This entire \texttt{CNA::Input} extension layer is compiled unconditionally, eve
 \texttt{CNA\_DEVICES} defaults off, the input versions are the only clipboard and host-power
 APIs present in a default build.
 
-\subsection{Full method reference: TextInputEXT}
+\subsection{TextInputEXT contract}
 
-Reading \texttt{TextInputEXT.hpp} directly shows a small, deliberately event-driven surface,
-not a polled one: \texttt{TextInput} (a \texttt{CNAEXT System::MulticastAction<charcs>} ---
-Chapter~\ref{ch:sharp-runtime-namespaces} covers this \texttt{sharp-runtime} event type in full)
-fires once per composed UTF-16 code unit, already IME-resolved --- a non-BMP code point therefore
-arrives as a surrogate pair, and this remains the correct event for accumulating actual typed text ---
-while \texttt{TextEditing} fires for \emph{in-progress}, not-yet-committed IME composition text
-(candidate string, cursor start, selection length), letting a text field draw a live composition
-preview before the user commits it. \texttt{StartTextInput()} / \texttt{StopTextInput()} bracket
-the period during which either event can fire at all --- text input is off by default, matching
-XNA's own model where keyboard events are always raw key presses unless a caller explicitly
-opts into IME-aware text composition. \texttt{IsTextInputActive()} reports whether that period
-is currently open; \texttt{SetInputRectangle(rectangle)} tells the platform IME where on screen
-to position any composition popup it draws, in window-relative logical coordinates.
-\texttt{IsScreenKeyboardShown()} reports whether a platform on-screen keyboard is currently
-visible (relevant primarily on Android/iOS/Steam Deck-style touch-first platforms).
-\texttt{StartTextInputWithTypeEXT(type)} is a \texttt{CNAEXT} addition with no FNA analog at
-all --- a hint (\texttt{TextInputTypeEXT}: e.g.\ plain text, numeric, email) that lets a mobile
-platform's on-screen keyboard present the right key layout for the field being edited, rather
-than always the general-purpose one.
+\texttt{TextInput} is a \texttt{System::MulticastAction<charcs>} that fires once per composed
+UTF-16 unit; a non-BMP code point arrives as a surrogate pair. \texttt{TextEditing} carries the
+uncommitted IME candidate, cursor start, and selection length. \texttt{StartTextInput()} and
+\texttt{StopTextInput()} enable or disable this event period, and
+\texttt{IsTextInputActive()} reports it. \texttt{SetInputRectangle()} positions a composition
+popup in logical window coordinates, while \texttt{IsScreenKeyboardShown()} reports a platform
+keyboard. The CNA-only \texttt{StartTextInputWithTypeEXT()} adds a plain-text, numeric, email,
+or similar mobile keyboard hint.
 
 \begin{lstlisting}
-// Worked example: an in-game chat box, using TextInputEXT's event-driven
-// composition instead of reading Keyboard::GetState() key-by-key -- the
-// only approach that gets IME composition (accented characters, CJK
-// input methods, etc.) right instead of only ever seeing raw US-layout
-// key presses.
+// An in-game chat box consumes composed text rather than raw key states.
 System::MulticastAction<charcs>::Token textInputToken =
     System::MulticastAction<charcs>::InvalidToken;
 
@@ -548,13 +437,11 @@ void ChatBox::Close()
 }
 \end{lstlisting}
 
-\subsection{Worked examples: the CNAEXT-only device subsystems}
+\subsection{CNAEXT-only device subsystem examples}
 
-The five subsystems named above share a common shape worth noting once: each is a small,
-static, purely \texttt{CNAEXT} class with no FNA or real-XNA precedent at all, since none of
-them has any equivalent in the original Xbox~360-era API surface. \cnaclass{Clipboard}'s
-entire surface is three methods --- \texttt{GetTextEXT()}, \texttt{SetTextEXT(text)}, and
-\texttt{HasTextEXT()} --- a direct wrap of SDL's own clipboard text API. \cnaclass{Joysticks}
+These five subsystems are small static \texttt{CNAEXT} classes with no XNA counterpart.
+\cnaclass{Clipboard} wraps SDL with \texttt{GetTextEXT()}, \texttt{SetTextEXT(text)}, and
+\texttt{HasTextEXT()}. \cnaclass{Joysticks}
 exposes the \emph{raw}, unmapped view of connected joystick hardware
 (\texttt{GetJoysticksEXT()} enumerates every connected device;
 \texttt{GetCapabilitiesEXT(id)} / \texttt{GetStateEXT(id)} read one device's shape and current
@@ -574,10 +461,7 @@ output parameters --- the host device's own battery state, not a gamepad's (that
 \texttt{GamePad::GetPowerInfoEXT} instead).
 
 \begin{lstlisting}
-// Worked example: a low-battery warning that checks both the host
-// device's own battery (laptop, handheld) and each connected gamepad's
-// battery separately -- these are two distinct power sources with two
-// distinct query methods, easy to conflate.
+// Host and controller batteries use separate query methods.
 int hostSecondsLeft = 0, hostPercent = 0;
 if (Power::GetInfoEXT(hostSecondsLeft, hostPercent) == PowerStateEXT::OnBattery
     && hostPercent < 15)
@@ -593,8 +477,8 @@ if (GamePad::GetPowerInfoEXT(PlayerIndex::One, gamepadPercent) == PowerStateEXT:
 }
 \end{lstlisting}
 
-\cnaclass{Haptics} is the one subsystem with real internal state and lifecycle, rather than a
-handful of stateless static queries: \texttt{GetHapticsEXT()} enumerates force-feedback-capable
+\cnaclass{Haptics} maintains device and effect lifetimes. \texttt{GetHapticsEXT()} enumerates
+force-feedback-capable
 devices, and \texttt{OpenEXT(id)} / \texttt{OpenFromJoystickEXT(joystickId)} /
 \texttt{OpenFromMouseEXT()} each return an owning \cnaclass{HapticDevice} handle. That handle's
 own surface splits cleanly into two tiers: a simple \texttt{InitRumbleEXT()} /
@@ -603,9 +487,8 @@ single-motor-strength case (the same conceptual level as \texttt{GamePad::SetVib
 reachable for non-gamepad haptic hardware too), and a full \texttt{HapticEffectEXT}
 lifecycle --- \texttt{CreateEffectEXT} / \texttt{UpdateEffectEXT} / \texttt{RunEffectEXT} /
 \texttt{StopEffectEXT} / \texttt{DestroyEffectEXT}, plus \texttt{GetEffectStatusEXT} to poll
-whether a specific effect is still running --- for genuinely shaped force-feedback (a
-directional recoil kick, a sustained engine rumble curve), real only on the smaller set of
-devices \texttt{IsEffectSupportedEXT} confirms actually support the specific effect requested.
+whether an effect is running. Shaped feedback such as a directional kick or sustained curve is
+available only when \texttt{IsEffectSupportedEXT} accepts that effect type.
 
 Like \cnaclass{Sensors}, this wrapper assumes its SDL subsystem already exists. No input-module
 path calls \texttt{SDL\_InitSubSystem(SDL\_INIT\_HAPTIC)}, and the focused haptic tests replace
@@ -614,9 +497,7 @@ initialized it, enumeration/open calls can fail before hardware capability is re
 subsystem ownership as an application integration requirement for both extension families.
 
 \begin{lstlisting}
-// Worked example: a simple rumble pulse on a haptic-capable mouse -- a
-// case GamePad::SetVibration cannot reach at all, since it only ever
-// addresses gamepad hardware specifically.
+// A haptic-capable mouse is outside GamePad::SetVibration's scope.
 if (Haptics::IsMouseHapticEXT())
 {
     HapticDevice mouseHaptic = Haptics::OpenFromMouseEXT();
@@ -628,89 +509,66 @@ if (Haptics::IsMouseHapticEXT())
 }
 \end{lstlisting}
 
-\section{Focus loss: what happens to \texttt{Game::IsActive}, and to held input}
+\section{Focus loss and held input}
 
-Two connected findings, closed together by the same recent audit remediation pass, are worth
-knowing as one story rather than two unrelated facts. Real FNA's own SDL3 platform loop raises
-\texttt{Game.IsActive} on \emph{both} a mobile-style background/foreground transition and an
-ordinary desktop focus switch (Alt-Tab, clicking another window) --- but for a real stretch of
-this project's own history, \texttt{Game::PollEvents()} handled only the mobile-style
-background/foreground SDL event pair (\texttt{WILL\_ENTER\_BACKGROUND} /
-\texttt{DID\_ENTER\_FOREGROUND}). It had no case at all for the desktop-style focus-change pair,
-\texttt{SDL\_EVENT\_WINDOW\_FOCUS\_LOST} / \texttt{FOCUS\_GAINED}. The practical consequence: an
-ordinary desktop window losing focus
-never raised \texttt{Activated} / \texttt{Deactivated} at all, and \texttt{getIsActiveProperty()}
-stayed \texttt{true} indefinitely regardless of whether the game window was actually focused ---
-confirmed and fixed by adding the two missing \texttt{switch} cases, matching FNA's own handler
-exactly for this specific toggle. A related scope gap was found and deliberately \emph{not}
-folded into the same fix: FNA's own handler for these two events also restores an X11
-``fullscreen desktop'' window flag and toggles the OS screensaver, both left undone here and
-recorded as an intentional, out-of-scope difference rather than silently matched or silently
-ignored.
+\begin{contractnote}
+Desktop focus loss and gain update \texttt{Game::IsActive} and raise the corresponding events.
+Keyboard and mouse snapshots are retained across focus loss, matching FNA. Gate gameplay input on
+\texttt{IsActive}; do not expect focus loss to synthesize key-up or button-up events.
+\end{contractnote}
 
-The second finding is a genuine policy question this fix resolved, not a second bug, and it
-connects directly to the \cnaclass{Keyboard} / \cnaclass{Mouse} worked examples earlier in this
-chapter: neither says what happens to a held key or an in-progress mouse drag when the game
-window loses focus mid-frame. The answer, confirmed correct and deliberately unchanged by the
-\texttt{IsActive} fix above: nothing --- keyboard and mouse state is retained across a focus
-loss, matching FNA's own real behavior exactly, rather than cleared, locked in by a dedicated
-test named precisely for what it guarantees
-(\texttt{WindowFocusLostDoesNotClearHeldKeysMatchingFna}). Before the \texttt{IsActive} fix, this
-retention policy was quietly unsafe in combination: a held key could look permanently,
-indistinguishably stuck to game code with no accompanying ``the window is not actually focused
-right now'' signal to gate on, since \texttt{IsActive} never actually changed on desktop. With
-both halves now fixed together, the documented, correct pattern is exactly what \cnaclass{Game}'s
-own field already promises rather than anything the input classes themselves need to do:
+\begin{historynote}
+\texttt{Game::PollEvents()} once handled only mobile background/foreground events. It now also
+handles \texttt{SDL\_EVENT\_WINDOW\_FOCUS\_LOST} and \texttt{FOCUS\_GAINED}. FNA additionally
+restores an X11 fullscreen-desktop flag and toggles the screensaver; CNA does not reproduce those
+side effects at the pin. \texttt{WindowFocusLostDoesNotClearHeldKeysMatchingFna} preserves the
+held-state policy.
+\end{historynote}
 
 \begin{lstlisting}
-// Worked example: the documented, correct pattern for trusting held-key
-// state, now that IsActive genuinely toggles on a desktop focus change
-// too, not only on a mobile background/foreground transition.
+// Gate held input on the current focus state.
 void MyGame::Update(GameTime& gameTime)
 {
     if (!getIsActiveProperty())
     {
-        // Alt-Tabbed away, or the window otherwise lost focus. Keyboard/
-        // Mouse state below is still real (CNA deliberately does not
-        // clear it, matching FNA) but is not meaningful right now.
+        // CNA retains keyboard and mouse snapshots while unfocused, but
+        // gameplay should ignore them here.
         return;
     }
 
     const KeyboardState keyboard = Keyboard::GetState();
     if (keyboard.IsKeyDown(Keys::Space))
     {
-        // Only trusted here, now that IsActive is known to be correct.
+        // Process held input only while the window is active.
     }
 }
 \end{lstlisting}
 
-\section{Platform-specific behavior worth knowing}
+\section{Platform-specific boundaries}
 
-A handful of platform facts are worth stating plainly, because they are not CNA bugs even
-though they look like gaps from inside a single platform: on Wayland,
+A few platform constraints are external to CNA. On Wayland,
 \texttt{SDL\_GetGlobalMouseState} silently returns $(0,0)$, because the compositor's own
 security model forbids querying the global pointer position at all --- absolute mouse
 warping is similarly focus-gated, while relative (pointer-lock) mouse mode works normally.
-On Windows, XInput controllers report no real USB vendor/product ID, so the \texttt{EXT}
-GUID query returns the literal string \texttt{"xinput"} rather than a real hex identifier.
+On Windows, XInput controllers report no USB vendor/product ID, so the \texttt{EXT}
+GUID query returns \texttt{"xinput"} instead of a hexadecimal identifier.
 Some platforms enumerate a touch device only after its first interaction. CNA's capability query
 therefore combines live SDL enumeration with an observed-touch fallback; the separate collection
 flag retains the first-touch boundary described above. In a browser via Emscripten, gamepads
 remain invisible to SDL until the user
 presses a button on one, a browser privacy restriction, and relative mouse mode maps onto the
 Pointer Lock API, which itself requires a preceding user gesture to engage. Non-US keyboard
-layouts introduce a genuine, structural XNA limitation rather than a CNA one: several
+layouts expose an XNA limitation: several
 accented and non-ASCII characters common on European layouts have no corresponding
 \cnaclass{Keys} enum value at all and are simply dropped in keycode mode --- \texttt{TextInputEXT}
 is the correct API for capturing that text instead.
 
 \section{Status}
 
-At the pinned source revision, the input module contains 522 input-specific test cases. The
-fifteen formally blocked campaign tasks are exclusively
-real-hardware-only checks (physical keyboard/mouse/gamepad/touchscreen/IME verification, and
-high-DPI display behavior) that cannot be automated at all, not gaps awaiting more
-engineering effort. The \cnaclass{Joysticks} / \cnaclass{Sensors} / \cnaclass{Power}
+The 522-case corpus stated at the chapter opening remains bounded by fifteen formally blocked,
+hardware-only campaign tasks: physical keyboard, mouse, gamepad, touchscreen, IME, and high-DPI
+display checks. These are absent observations, not automated passes. The \cnaclass{Joysticks} /
+\cnaclass{Sensors} / \cnaclass{Power}
 \texttt{CNAEXT} extensions have fake-backend unit coverage but no demo-UI or manual-hardware
 verification pass; \cnaclass{Sensors} also has the concrete subsystem-initialization gap
 described above.

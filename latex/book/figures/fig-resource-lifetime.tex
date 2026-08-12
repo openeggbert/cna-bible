@@ -1,0 +1,27 @@
+\begin{figure}[tbp]
+\centering
+\begin{figurealt}{GraphicsDevice tracks raw addresses of public GraphicsResource objects. Each resource owns or shares a renderer resource handle, which owns the native object. During explicit device disposal, tracked resources are disposed before the renderer. Copying or moving a live resource can leave an alias or object address outside the tracking relation.}
+\resizebox{0.9\textwidth}{!}{%
+\begin{tikzpicture}[node distance=11mm and 17mm]
+  \node[cna public] (device) {\texttt{GraphicsDevice}};
+  \node[cna internal, below left=of device] (tracker) {raw-address tracker};
+  \node[cna public, below=of device] (resource) {\texttt{GraphicsResource}\\public object};
+  \node[cna internal, below=of resource] (handle) {renderer resource owner\\shared or unique by type};
+  \node[cna internal, below=of handle] (native) {native/CPU resource};
+  \node[cna warning, right=of resource] (alias) {copy/move alias\\or relocated address};
+  \node[cna evidence, left=of handle] (order) {explicit device disposal:\\resources first, renderer last};
+  \draw[cna flow] (device) -- node[cna label,left]{owns} (tracker);
+  \draw[cna optional] (tracker) -- node[cna label,left]{non-owning} (resource);
+  \draw[cna flow] (resource) -- node[cna label,right]{owns/shares} (handle);
+  \draw[cna flow] (handle) -- (native);
+  \draw[cna optional] (resource) -- (alias);
+  \draw[cna optional] (alias) -- node[cna label,right]{tracking may not follow} (handle);
+  \draw[cna flow] (order) -- (resource);
+  \draw[cna flow] (order) -- (device);
+\end{tikzpicture}}
+\end{figurealt}
+\caption{Resource ownership and address tracking at the pin. Value-like syntax does not supply
+CLR lifetime semantics; live copies and relocation require explicit care.}
+\label{fig:resource-lifetime}
+\end{figure}
+
