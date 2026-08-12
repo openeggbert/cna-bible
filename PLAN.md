@@ -1497,3 +1497,5 @@ build and visual passes are available again.
 - Rebuilt final HEAD from a fresh tracked archive with exact `latex`/`tools` trees `406104d...` /
   `db45ed9...`; the sealed artifact passed all checks and matched the workspace PDF byte-for-byte,
   with no snapshot residue. Removed the isolated fixture afterward.
+- Enabled `pipefail` in the sealed release and visual renderer, aligning all public artifact tools
+  so a failed pipeline producer cannot be masked by a successful text/count consumer.

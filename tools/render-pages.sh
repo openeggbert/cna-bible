@@ -13,7 +13,7 @@
 #
 # Prints the generated PNG paths in ascending physical-page order for direct inspection.
 
-set -eu
+set -eu -o pipefail
 
 system_dirname=$(command -v dirname) || {
     printf 'ERROR: missing required rendering command: dirname\n' >&2

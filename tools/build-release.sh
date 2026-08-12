@@ -5,7 +5,7 @@
 # fingerprint requires the same independent clean-build and visual-review workflow recorded in
 # NEXT.md and PLAN.md; do not update these constants merely to make the command green.
 
-set -eu
+set -eu -o pipefail
 
 usage() {
     printf 'Usage: %s\n' "${0##*/}"

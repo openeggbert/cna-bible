@@ -889,6 +889,10 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      `db45ed9...`; no ignored workspace PDF or auxiliary entered it. The full sealed transaction
      rebuilt and verified the exact 3,314,744-byte `7c877ef...` artifact, byte-identical to the
      reviewed workspace PDF, with zero snapshot residue; the fixture was then removed.
+137. **All public artifact pipelines propagate producer failure.** The sealed release and visual
+     renderer now join the verifier in enabling Bash `pipefail`. A failed hash/parser/filesystem
+     producer cannot be hidden by a successful trailing `awk`, `sort`, `wc` or `sed` consumer in
+     their command substitutions and validation pipelines.
 
 ## Do this next
 
