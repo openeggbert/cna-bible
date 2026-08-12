@@ -125,12 +125,31 @@ trap 'exit 143' TERM
 pdftoppm -png -r 120 -f "$first" -l "$last" "$pdf" "$run_dir/page"
 rendered_count=$(find "$run_dir" -maxdepth 1 -type f -name 'page-*.png' | wc -l)
 expected_count=$((last - first + 1))
-if [ "$rendered_count" -ne "$expected_count" ]; then
-    printf 'ERROR: rendered %s PNGs, expected %s\n' "$rendered_count" "$expected_count" >&2
+actual_names=$(find "$run_dir" -maxdepth 1 -type f -name 'page-*.png' -printf '%f\n' \
+    | LC_ALL=C sort)
+expected_names=""
+page=$first
+while [ "$page" -le "$last" ]; do
+    expected_name=$(printf 'page-%03d.png' "$page")
+    if [ -n "$expected_names" ]; then
+        expected_names="$expected_names
+$expected_name"
+    else
+        expected_names=$expected_name
+    fi
+    page=$((page + 1))
+done
+if [ "$rendered_count" -ne "$expected_count" ] || [ "$actual_names" != "$expected_names" ]; then
+    if [ "$rendered_count" -ne "$expected_count" ]; then
+        printf 'ERROR: rendered %s PNGs, expected %s\n' "$rendered_count" "$expected_count" >&2
+    fi
+    if [ "$actual_names" != "$expected_names" ]; then
+        printf 'ERROR: rendered PNG names do not exactly cover requested physical pages\n' >&2
+    fi
     exit 1
 fi
 render_complete=1
 trap - HUP INT TERM
 
 echo "rendered physical pages $first..$last of $total into $run_dir:"
-find "$run_dir" -maxdepth 1 -type f -name 'page-*.png' -print | LC_ALL=C sort
+printf '%s\n' "$actual_names" | sed "s|^|$run_dir/|"

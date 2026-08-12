@@ -774,6 +774,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      symlink, wrong owner or different mode before allocating a run child. Explicit output parents
      remain caller-controlled. README records both paths, and the previous shared 0775 default can
      no longer redirect or expose newly rendered review pages.
+113. **Rendered filenames prove exact page coverage.** After Poppler returns, the visual driver now
+     compares the complete sorted basename set with shell-generated `page-%03d.png` names for every
+     physical page from FIRST through LAST, in addition to the count. A same-cardinality set with
+     a duplicate/substituted page number or unexpected naming convention can no longer be reported
+     as the requested review span.
 
 ## Do this next
 
