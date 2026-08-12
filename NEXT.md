@@ -784,6 +784,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      produced at the fixed 120 DPI—and sends the entire image through Netpbm `pngtopnm`. A truncated,
      header-only, wrong-size or wrong-colour-mode file fails and the run child is removed before any
      paths are offered for human/model visual inspection.
+115. **The hardened visual path produced and displayed a clean real page.** Physical page 709 was
+     rendered through the private default/shared-lock/exact-name/profile/full-decode pipeline and
+     opened at original resolution. The final two-column index page is sharp and complete, with no
+     clipping, overlap or malformed tail; it ends naturally at `XnbReadLimits`. The isolated run
+     child was then removed.
 
 ## Do this next
 

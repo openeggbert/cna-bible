@@ -445,6 +445,7 @@ log grep replaces.
 | 2026-08-12 | Post-G private default visual output | Changed implicit page-render output to `/tmp/cna-bible-pages-$EUID`, requiring a real effective-user-owned mode-0700 directory before allocating the isolated run child; explicit `OUTDIR` remains caller-controlled and README documents both paths, closing the predictable shared-0775 default |
 | 2026-08-12 | Post-G exact rendered-page filenames | Supplemented PNG count with exact sorted basename equality against shell-generated `page-%03d.png` names for every requested physical page FIRST–LAST; same-cardinality duplicate/substituted or unexpectedly named outputs can no longer masquerade as complete visual coverage |
 | 2026-08-12 | Post-G rendered-PNG integrity | Require every exact page output to have the fixed 120-DPI A4 profile (993×1404, 8-bit RGB, non-interlaced) and fully decode through Netpbm `pngtopnm`; truncated/header-only/wrong-size/wrong-mode outputs fail and their run child is cleaned before paths are reported |
+| 2026-08-12 | Post-G hardened visual-path smoke | Rendered physical page 709 through the private-default/shared-lock/exact-name/profile/full-decode path and opened it at original resolution; the final two-column index page is sharp, complete and free of clipping/overlap/malformed tail through `XnbReadLimits`; isolated run child removed |
 
 ---
 
@@ -1442,3 +1443,5 @@ build and visual passes are available again.
   not merely the expected number of PNG files.
 - Bound every visual-review file to the fixed 120-DPI A4 RGB PNG profile and a complete Netpbm
   decode, rejecting truncated or structurally wrong images before reporting their paths.
+- Exercised that hardened visual path on physical page 709 and read the original-resolution image
+  clean through the final index entry, then removed the isolated run output.
