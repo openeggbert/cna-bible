@@ -67,8 +67,9 @@ consumer configure/build cases, compile-only platform probes, and audit document
 but they are not GoogleTest registrations and must not be added to 16{,}310.
 
 The test corpus contains 102{,}342 lines, about 30\% more than the 78{,}934 production lines.
-That ratio signals investment, not proof. Missing adversarial UTF-8 cases, untested interface
-components, and recorded failures remain visible despite the large total.
+That ratio signals investment, not proof. Dedicated malformed-UTF-8 tests now close one formerly
+reported gap, while untested components and recorded failures remain visible despite the large
+total.
 
 \section{Negative consumers prove absence}
 
@@ -106,10 +107,11 @@ repair requires approval, unavailable evidence, a platform, or an intentional de
 ``Remediated'' records a landed correction. Freezing identifiers prevents later batches from
 making the denominator look better by renumbering or discarding inconvenient findings.
 
-The supporting apparatus is large in its own right: 73 design, plan, and migration documents,
-plus a tracked 7.4 MiB SQLite plan database. These artifacts are not runtime code and should not
-inflate implementation size, but they explain how a multi-thousand-file audit remains
-navigable and resumable.
+The supporting apparatus is large in its own right: 72 tracked Markdown documents under
+\texttt{docs/}, plus the root \texttt{plan.md}.  Maintainers also use a local, git-ignored
+\texttt{plan.sqlite3} database measuring 7{,}471{,}104 bytes (about 7.13 MiB) in this checkout.
+These artifacts are not runtime code and should not inflate implementation size, but they
+explain how a multi-thousand-file audit remains navigable and resumable.
 
 \section{A completed task list triggered more skepticism}
 
@@ -179,10 +181,13 @@ and \texttt{ccache} were absent too. Existing source comments and audits may acc
 past comparison, but a new contributor cannot reproduce every line-by-line reference check from
 the repository alone.
 
-There is a fail-fast local gate, but no tracked hosted workflow. That is a deployment decision,
-not evidence that every commit ran in an external service. Platform build claims require the
-same scope discipline: a native test pass, a successful cross-compile of libraries, and actual
-execution of cross-built tests are three separate results.
+There is a fail-fast local gate and a tracked Ubuntu GitHub Actions workflow. Its matrix runs
+nine selective component/consumer configurations, the full compatibility gate, and Doxygen
+warning validation on pushes and pull requests with a two-job ceiling. Workflow presence is not
+proof that every historical revision completed it, and it supplies no Windows, macOS, or
+Emscripten execution. Platform claims still require the same scope discipline: a native test
+pass, a successful cross-compile of libraries, and actual execution of cross-built tests are
+three separate results.
 
 Sharp-runtime's strongest verification property is therefore not a perfect green number. It is
 the ability to state what each layer proved, preserve failures and gates under stable IDs, and

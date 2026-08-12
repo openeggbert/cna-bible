@@ -11,7 +11,7 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
 |---|---|
 | cna-bible branch | `next`; local commits are ahead of `origin/next` (push requires explicit external-publication approval) |
 | CNA pinned SHA | `7a64362efef4119bf880459ef1704fb2c52199e2` (`develop` == `origin/develop`, 2026-08-11) |
-| Book builds | **yes** — 707 pages, all automated checks green; all completed Phase D/E writing and twelve Phase F corrective batches are visually verified |
+| Book builds | **yes** — 707 pages, all automated checks green; all completed Phase D/E writing and thirteen Phase F corrective batches are visually verified |
 | Phase | **A–E complete; F in progress:** Chapters 19–79 and Appendices A–H are complete. Phase F has filled omitted Chapters 8–11 and 18, corrected early graphics/lifecycle drift, and continues the whole-book consistency sweep. |
 
 ## What is done
@@ -252,6 +252,16 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     renderer evidence boundary. The book remains 707 pages; all physical pages 499–530 were
     rendered and read in eight contact sheets, with dense examples and the two repaired closing
     pages inspected full-size and visually clean.
+32. **Phase F corrective batch 13 is complete and verified.** Chapters 53–58 now match the pinned
+    sharp-runtime tree rather than older continuation prose. The public surface is 1,032 headers
+    plus five private implementation headers; the component graph has 92 direct production edges;
+    and the repository now has a nine-configuration selective GitHub Actions matrix plus full and
+    Doxygen jobs. Task cancellation, generic continuations, UTF-8 tests, writable-buffer
+    `MemoryStream`, atomic `TimeSpan` diagnostics, GC sentinel behavior, delegate tiers, crypto
+    scope and platform/compiler boundaries are reconciled to source. The audit database is
+    correctly described as local and git-ignored. The book remains 707 pages; all physical pages
+    533–568 were rendered and read. Full-size review found two prose overflows on pages 522–523;
+    both were rewritten, rebuilt and re-rendered cleanly.
 
 ## Do this next
 
@@ -277,10 +287,10 @@ bounded correction batch; finish with an edition-wide visual and automated pass 
 
 ## Verification status
 
-Everything through Phase E and Phase F corrective batch 12 is verified:
+Everything through Phase E and Phase F corrective batch 13 is verified:
 
 - `make -C latex book` succeeds; **707 pages**.
-- makeindex: 2,188 entries accepted, 0 rejected, 0 warnings.
+- makeindex: 2,185 entries accepted, 0 rejected, 0 warnings.
 - No undefined references, no undefined control sequences, no duplicate labels, no doubled-
   backslash `\ref`, no hard-coded chapter numbers.
 - `git diff --check` clean.
@@ -363,6 +373,11 @@ Everything through Phase E and Phase F corrective batch 12 is verified:
   were also read full-size. The persistence, storage and networking examples, avatar renderer proof,
   repaired Task 13.2 prose and closing comparison table showed no clipping, overlap, malformed
   listing/table, broken heading or other visual defect.
+- Phase F corrective batch 13 rendered and reviewed every physical page 533–568 across Chapters
+  53–58. Five contact sheets covered the full sharp-runtime span; chapter openers, component and
+  namespace tables, task/stream listings, permanent-deviation boundaries and audit totals were
+  read at full size. Two overflows on printed pages 522–523 were corrected, the full verification
+  rerun, and physical pages 552–554 re-rendered cleanly.
 
 **No completed writing batch is pending PDF verification.** Continue with the Phase F whole-book
 consistency sweep, then perform Phase G final verification.
@@ -380,7 +395,7 @@ consistency sweep, then perform Phase G final verification.
 Ten source-audit reports and the 42-family draw-path matrix are complete against pinned CNA
 `7a64362e`. Phase B settled a 12-Part, 79-chapter, 8-appendix edition; Phase C put it on disk,
 migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–7
-rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: twelve verified
+rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: thirteen verified
 batches filled omitted Chapters 8–11 and 18, removed stale totals/terminology, reconciled the
 early graphics, lifecycle and math narrative, and separated the four current shader strategies
 from the still-missing arbitrary-effect path. State, stream, instancing and programmable-GL
@@ -393,5 +408,6 @@ also match the integrated remediation state. The Model/glTF/CNJ chapters now dis
 hierarchies, stride and animation contracts from their remaining validation and conformance gaps;
 Input, Audio, Media and both device-service layers now match their live event, ownership,
 capability and callback boundaries. GamerServices, Storage, networking and Avatar now also match
-their live persistence, path, session and rendering contracts. Continue the remaining whole-book
-consistency sweep.
+their live persistence, path, session and rendering contracts. The sharp-runtime chapters now
+also match the current modular graph, task/stream behavior, parity boundaries, test surfaces and
+tracked CI. Continue the remaining whole-book consistency sweep.

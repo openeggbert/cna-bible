@@ -8,8 +8,9 @@ alone might suggest.
 
 \section{Scale}
 
-At the audited revision, \texttt{sharp-runtime} contains 1{,}037 public headers, 217
-implementation files, and 78{,}934 lines of production C/C\texttt{++}. Its tests are larger
+At the audited revision, \texttt{sharp-runtime} contains 1{,}032 public headers plus five
+private implementation headers, 217 implementation files, and 78{,}934 lines of production
+C/C\texttt{++}. Its tests are larger
 still: 102{,}342 lines, roughly 30\% more than production. The registered GoogleTest surface
 contains 16{,}310 tests across 37 executables; the repository's continuation record reports
 16{,}303 passing, one skipped, and six failing, rather than concealing those failures behind
@@ -129,14 +130,12 @@ token = newParent->onTransformChanged.Add(       // resubscribe to the new ances
 
 \cnaclass{System::TimeSpan}, the type underlying \cnaclass{GameTime} and
 \cnaclass{SensorBase::TimeBetweenUpdates} throughout this book, stores its value internally
-as 100-nanosecond ticks and carries one small, diagnostic-only surprise: a static, atomic
-copy/move counter, exposed for test instrumentation. This counter is also the subject of one
-specific, deliberately accepted, benign finding: a project-wide ThreadSanitizer run reports
-exactly one pre-existing race, in this counter's own increment, explicitly carved out as
-out-of-scope in at least one downstream consumer's own sanitizer configuration (the
-\cnans{Microsoft::Devices} work covered in Chapter~\ref{ch:devices-sensors}) --- a real,
-known, harmless race in a debug-only diagnostic field, not in \cnaclass{TimeSpan}'s actual
-timing behavior.
+as 100-nanosecond ticks and carries one small, diagnostic-only surprise: static copy and move
+counters exposed for test instrumentation. Both counters are now \texttt{std::atomic<int>};
+loads, resets and increments use relaxed atomics because only each final count matters, not an
+ordering relationship with the copied value. A downstream sanitizer suppression that still
+describes their increments as a known \cnaclass{TimeSpan} race therefore documents an older
+implementation, not the pinned runtime.
 
 \cnaclass{Collections::Generic::List<T>} and \cnaclass{Dictionary<TKey,TValue>} both
 implement .NET's fail-fast collection-modified-during-enumeration behavior via an internal
@@ -197,36 +196,34 @@ System::Threading::Tasks::Task continuation = loadTask.ContinueWith(
     });
 \end{lstlisting}
 
-\subsection{WhenAll and WhenAny: the same exception-sniffing bug, found twice}
+\subsection{WhenAll cancellation and the external-future bridge}
 
 \cnaclass{Task::WhenAll} and \cnaclass{Task::WhenAny} round out the async surface, and
 \texttt{WhenAny} specifically was rebuilt to match real .NET's own zero-extra-thread design
 (\texttt{TaskFactory.CommonCWAnyLogic}'s completion-registration strategy) rather than the
-naive one-watcher-thread-per-input-task approach it started as --- \texttt{WhenAny}'s own
-header comment records that the original version \texttt{join()}'d its losing watcher threads,
-making the whole call as slow as its slowest input, fixed by \texttt{detach()}ing them instead
-once \texttt{ContinueWith}'s continuation-registration mechanism made a dedicated watcher
-thread unnecessary in the first place. \texttt{WhenAll} waits on every input task to completion
+naive one-watcher-thread-per-input-task approach it started as. The current implementation
+registers an inline callback on each input's shared state; the first callback wins an atomic
+compare-exchange and later callbacks become cheap no-ops. No losing watcher is joined or
+detached because the current path creates no watcher threads at all. \texttt{WhenAll} waits on
+every input task to completion
 (never short-circuiting on the first fault, matching real .NET) and, if one or more faulted,
 rethrows the first one encountered in input order when the returned task is waited on --- a
 deliberate simplification versus real .NET's \texttt{AggregateException} wrapping, consistent
-with the same choice \cnaclass{Task::Wait} already makes for a single faulted task.
+with the same choice \cnaclass{Task::Wait} already makes for a single faulted task. If no input
+faults but one is canceled, the action implementing \texttt{WhenAll} throws
+\cnaclass{TaskCanceledException}; because that returned task has no associated cancellation
+token, its constructor records the escape as \emph{Faulted}, not Canceled. Waiting still throws
+the expected exception type, but the status flags remain a documented deviation from .NET.
 
-Both methods needed to distinguish a genuinely canceled input task from one that faulted with a
-directly-thrown \cnaclass{TaskCanceledException}, and both hit the identical bug independently
-before the fix: an earlier version of the underlying completion watcher used
-\texttt{catch (const TaskCanceledException\&)} to detect cancellation, which cannot tell a real
-cancellation apart from a caller-supplied \cnaclass{TaskCanceledException} passed to
-\texttt{TaskCompletionSource::SetException()}, since \texttt{TrySetCanceled()} completes its own
-promise with a \cnaclass{TaskCanceledException} internally too --- silently discarding the
-caller's actual exception object and message, confirmed via a standalone repro rather than
-inferred from a code read. The fix, applied in both places once found, does not sniff the
-exception type at all: a separate, out-of-band atomic cancellation flag is set only by the
-genuine producer-side cancellation path (\texttt{TrySetCanceled()}), and the watcher
-checks that flag instead of pattern-matching the caught exception --- so a task whose action
-throws \cnaclass{TaskCanceledException} itself, with no cooperative
-\cnaclass{CancellationToken} involved, now correctly reports Faulted rather than being
-misclassified as Canceled.
+\texttt{WhenAll} must distinguish that genuine canceled-input state from a task that merely
+faulted with a directly thrown \cnaclass{TaskCanceledException}; it now checks the input task's
+status instead of sniffing the exception type. The same category of defect previously existed
+in the external-future bridge used by \texttt{TaskCompletionSource}: both
+\texttt{TrySetCanceled()} and a caller's \texttt{SetException(TaskCanceledException)} settle a
+promise with that exception type. A separate producer-set atomic flag now identifies only the
+genuine cancellation path, preserving the caller's exception and Faulted state otherwise.
+\texttt{WhenAny} needs neither rule: its outer \texttt{TaskT<Task>} always completes successfully
+with the first terminal input, whose own fault/cancellation status the caller inspects.
 
 \cnaclass{Threading::Thread} is a thin wrapper over \texttt{std::thread} that deliberately does
 not start at construction --- a second call to \texttt{Start()} throws
@@ -247,9 +244,10 @@ Chapter~\ref{ch:parity-philosophy} (the three-tier \texttt{Action} / \texttt{Del
   \item[Reflection] (\cnaclass{System::Type}, \cnaclass{System::Activator},
   \texttt{Enum.GetNames} / \texttt{GetValues}) --- ``completely out of scope. Stubs are the
   correct end state,'' not a gap awaiting engineering effort.
-  \item[GC] (\texttt{System::GC}) --- every method is a real, callable no-op; memory is managed
-  by RAII / \texttt{std::shared\_ptr} throughout, so there is no garbage collector for these
-  calls to meaningfully forward to.
+  \item[GC] (\texttt{System::GC}) --- mutating operations are callable no-ops and queries return
+  documented sentinel values (for example zero, false, \texttt{NotApplicable}, or the constant
+  three-generation maximum); memory is managed by RAII / \texttt{std::shared\_ptr} throughout,
+  so there is no garbage collector for these calls to meaningfully forward to.
   \item[Serialization] (\texttt{[Serializable]}, \texttt{SerializationInfo}) --- ignored
   outright; not needed for game code.
   \item[P/Invoke and interop] --- out of scope entirely.
@@ -258,9 +256,11 @@ Chapter~\ref{ch:parity-philosophy} (the three-tier \texttt{Action} / \texttt{Del
   \texttt{X509Certificates}, \texttt{SslStream}) --- out of scope by an explicit, dated decision
   (2026-07-07): correctly implementing this needs either a large new external dependency
   (OpenSSL/mbedTLS) or a hand-rolled, security-critical implementation, and neither is worth it
-  for game code. This deviation is deliberately narrow, not a blanket ``no crypto'' rule: hash
-  algorithms (\texttt{MD5} / \texttt{SHA*} / \texttt{HMAC} / \texttt{PBKDF2}) carry no key material and
-  no confidentiality guarantee to get wrong, so they remain in scope and are already ported.
+  for game code. This deviation is deliberately narrow, not a blanket ``no crypto'' rule:
+  digest, authentication, and derivation APIs (\texttt{MD5} / \texttt{SHA*} / \texttt{HMAC} /
+  \texttt{PBKDF2}) remain in scope and are already ported. HMAC keys and PBKDF2 passwords are
+  sensitive material even though these APIs do not provide reversible confidentiality, X.509
+  validation, or a TLS channel.
 \end{description}
 
 \subsection{Reflection's real stub, and the one contradiction it deliberately accepts}
@@ -302,24 +302,22 @@ implementation calls SDL3 path APIs, so a parent such as CNA must have created a
 \texttt{SDL3::SDL3} target before adding the runtime. This conditional edge does not turn SDL
 into a universal runtime dependency.
 
-\section{A local CI gate exists; a tracked CI pipeline deliberately does not}
+\section{Local and tracked CI gates have different scope}
 
-The absence of a GitHub Actions workflow is not evidence that sharp-runtime has no repeatable
-quality gate. Its local gate configures and builds under strict shell failure handling and
-rejects compiler warnings and errors. The modular test topology is finer-grained than the old
+The local gate configures and builds under strict shell failure handling and rejects compiler
+warnings and errors. The modular test topology is finer-grained than the old
 single-binary design: 36 component executables plus one integration executable feed GoogleTest
 discovery. Each component test links its own component and declared test-only dependencies,
 so an undeclared cross-module use can fail at link time instead of remaining hidden inside a
 monolith. Python meta-tests and deliberately failing consumer fixtures add build-boundary
 checks that ordinary positive unit tests cannot express.
 
-What is deliberately absent is a tracked remote trigger: sharp-runtime's current \texttt{NEXT.md}
-records that no \texttt{.github/workflows/*.yml} exists, and that adding one was offered to the
-project owner then declined. That is an external-resource decision, not a missing C\texttt{++}
-feature: a workflow activates real GitHub Actions execution, so the repository's own instructions
-forbid adding it unilaterally. The correct operational claim is therefore narrower than either
-``no CI'' or ``CI covers every change'': there is a concrete, fail-fast local gate, but it is
-not automatically run by a hosted service.
+The pinned repository also tracks \texttt{.github/workflows/components.yml}. On every push and
+pull request it runs nine selective Ubuntu configurations, a full compatibility build, and a
+separate Doxygen-warning job, with the build-job ceiling fixed at two. That proves a hosted
+trigger and named Linux jobs exist; it does not prove Windows, macOS, Emscripten, or every
+historical commit ran successfully. Older continuation prose saying no workflow existed was
+superseded by the workflow now present in the pinned tree.
 
 \subsection{Recorded failures and platform claims need scope}
 

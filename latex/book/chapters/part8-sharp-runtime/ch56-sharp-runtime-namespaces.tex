@@ -9,7 +9,8 @@ then applies them to representative text, stream, encoding, and task types.
 
 \section{Two public roots, no umbrella}
 
-Approximately 1{,}037 public headers are reachable below two roots. \texttt{System/} contains
+Exactly 1{,}032 public headers are reachable below two roots; five further \texttt{.hpp} files
+are private implementation headers below module \texttt{src/} trees. \texttt{System/} contains
 the literal .NET namespace tree; \texttt{SharpRuntime/} contains project-specific aliases and
 source-porting helpers. There is no catch-all header. Private headers below a module's
 \texttt{src/} directory are not added to consumer include paths.
@@ -146,9 +147,17 @@ public:
     SharpRuntime::intcs Read(SharpRuntime::bytecs buffer[],
                              SharpRuntime::intcs offset, SharpRuntime::intcs count) override
     {
+        if (buffer == nullptr && count != 0)
+            throw System::ArgumentNullException("buffer");
+        if (offset < 0)
+            throw System::ArgumentOutOfRangeException("offset");
+        if (count < 0)
+            throw System::ArgumentOutOfRangeException("count");
+
         SharpRuntime::intcs n = std::min<SharpRuntime::intcs>(
             count, static_cast<SharpRuntime::intcs>(data_.size()) - position_);
-        std::memcpy(buffer + offset, data_.data() + position_, n);
+        if (n != 0)
+            std::memcpy(buffer + offset, data_.data() + position_, n);
         position_ += n;
         return n;
     }
@@ -166,48 +175,38 @@ private:
 };
 \end{lstlisting}
 
-\subsection{\cnaclass{MemoryStream}, and a small, deliberately-left divergence in its own constructor}
+\subsection{\cnaclass{MemoryStream}: writable by default, read-only when requested}
 
 \cnaclass{System::IO::MemoryStream} is the concrete \texttt{Stream} subclass this ecosystem
 actually uses in practice --- CNA's own \texttt{ContentManager} reaches for it to wrap data
 loaded from sources like Android APK assets, where a real filesystem path is not available at
-all. Its default constructor creates an empty, writable buffer, matching real .NET exactly. The
-single-buffer constructor is where a small, real, currently accepted divergence lives:
+all. Its default constructor creates an empty, writable buffer, matching real .NET. The
+buffer-copy constructor now makes the same default explicit while retaining a C\texttt{++}-only
+way to request a read-only copy:
 
 \begin{lstlisting}
-MemoryStream(const bytecs* buffer, intcs size);   // real signature, MemoryStream.hpp
+MemoryStream(const bytecs* buffer, intcs size, bool writable = true);
 \end{lstlisting}
 
-Real .NET's own equivalent single-array constructor, \texttt{MemoryStream(byte[] buffer)},
-defaults to a \emph{writable} stream --- its own documented implementation is literally
-\texttt{this(buffer, true)}, forwarding to the two-argument overload with \texttt{writable}
-explicitly \texttt{true}. This port's constructor instead defaults \texttt{writable\_} to
-\texttt{false}, confirmed directly in \texttt{MemoryStream.cpp}:
-
-\begin{lstlisting}
-MemoryStream::MemoryStream(const bytecs* buffer, intcs size)
-    : data_(buffer, buffer + size), position_(0), writable_(false) {}
-\end{lstlisting}
-
-This was found, not invented, incidentally while writing regression tests for an unrelated
-audit ticket --- and deliberately left as-is right there rather than fixed on the spot, to
-avoid scope creep into a ticket that was not about this constructor at all. It remains a
-real, open, precisely-scoped divergence today: code that passes a raw buffer to this
-constructor and then calls \texttt{Write} on the result will get a real
-\texttt{NotSupportedException} in this port, where the equivalent real .NET call would have
-succeeded. A caller that genuinely wants a writable copy of existing buffer contents should
-construct an empty \cnaclass{MemoryStream} and \texttt{Write} the source bytes into it
-explicitly, rather than relying on this specific constructor's own writability default.
+The implementation validates before forming the vector range. A negative size is reported as
+\cnaclass{ArgumentOutOfRangeException}; a null pointer with non-zero size is reported as
+\cnaclass{ArgumentNullException}. The one deliberate source-language adaptation is
+\texttt{nullptr, 0}, accepted as an empty range because C\texttt{++} can express an empty pointer
+range whereas .NET's array overload simply rejects a null array. Passing \texttt{false} creates
+a readable, seekable, non-writable copy whose \texttt{Write} and \texttt{WriteByte} calls throw
+\cnaclass{NotSupportedException}; omitting it matches the writable .NET array constructor.
 
 \subsection{Closing a memory stream closes operations, not the bytes it already owns}
 
-The constructor difference above should not be confused with this class's much more carefully
-matched close/dispose behavior.  \texttt{MemoryStream::Close()} changes only its
+The constructor policy above should not be confused with this class's close/dispose behavior.
+\texttt{MemoryStream::Close()} changes only its
 \texttt{isOpen\_} state; it deliberately retains both the vector of bytes and the current
 position.  After close, \texttt{Read}, \texttt{Write}, \texttt{WriteByte}, \texttt{Seek},
 \texttt{Length}, and \texttt{Position} correctly reject use with
-\cnaclass{ObjectDisposedException}, while \texttt{CanSeek} returns false.  In deliberate
-contrast, \texttt{ToArray()} and \texttt{GetBuffer()} remain usable:
+\cnaclass{ObjectDisposedException}, while \texttt{CanRead} and \texttt{CanSeek} return false.
+A closed stream created as writable deliberately retains \texttt{CanWrite == true}: .NET's own
+property reports the construction-time writable flag even though subsequent writes throw.
+In further deliberate contrast, \texttt{ToArray()} and \texttt{GetBuffer()} remain usable:
 
 \begin{lstlisting}
 System::IO::MemoryStream stream;
@@ -220,9 +219,9 @@ std::vector<SharpRuntime::bytecs> saved = stream.ToArray();  // still {1,2,3,4}
 // stream.Read(buffer, 0, 1);   // throws ObjectDisposedException
 \end{lstlisting}
 
-That asymmetry is intentional, not a use-after-dispose loophole.  Real .NET's own
-\texttt{MemoryStream.Dispose(bool)} explicitly preserves its buffer so post-disposal
-\texttt{TryGetBuffer}, \texttt{GetBuffer}, and \texttt{ToArray} can still retrieve data; the
+That asymmetry is intentional, not a use-after-dispose loophole. Real .NET explicitly preserves
+the buffer in its own dispose implementation, \texttt{MemoryStream::Dispose(bool)}, so
+post-disposal \texttt{TryGetBuffer}, \texttt{GetBuffer}, and \texttt{ToArray} can still retrieve data; the
 runtime's \texttt{ensureNotClosed()} guard follows the same rule by guarding operations but not
 the two extraction methods.  CNA callers can therefore finish producing an in-memory content
 blob, close the stream to catch accidental later I/O, and still hand a stable copy to a consumer.
@@ -231,9 +230,9 @@ safe across later stream writes, whereas \texttt{GetBuffer()} is a reference to 
 and may be invalidated by a reallocation.
 
 The same implementation also has two less obvious safety properties whose tests prevent a
-``memory only'' stream from becoming an unchecked byte container.  Null buffers and negative
-offsets/counts are rejected with the real \cnaclass{ArgumentNullException} or
-\cnaclass{ArgumentOutOfRangeException} rather than being mistaken for an EOF return of zero.
+``memory only'' stream from becoming an unchecked byte container. Null buffers produce
+\cnaclass{ArgumentNullException}; negative offsets or counts produce
+\cnaclass{ArgumentOutOfRangeException}. Neither case is mistaken for an EOF return of zero.
 And a caller may legally set \texttt{Position} past the current end, but a later write computes
 \texttt{position + count} in \texttt{int64\_t} before resizing.  If that sum exceeds the
 runtime's signed \texttt{intcs} range it throws \cnaclass{IO::IOException} (``Stream was too
@@ -243,7 +242,7 @@ reproduced under UBSan in a related slicing path, and \texttt{StreamTests.cpp} n
 \texttt{Position = 2147483647} followed by a ten-byte write specifically to require the
 exception rather than an allocation or memory corruption.
 
-\section{\cnaclass{UTF8Encoding}: real conformance validation, an untested fallback path}
+\section{\cnaclass{UTF8Encoding}: conformance validation and fallback evidence}
 
 \cnaclass{Text::UTF8Encoding}'s own class comment states a real, specific guarantee that is
 easy to assume any UTF-8 encoder provides and that this port genuinely earns rather than
@@ -323,36 +322,34 @@ observable behavior for the identical input, confirmed by working through the .N
 own documented per-byte fallback-and-resynchronize algorithm for UTF-8 decoding rather than
 assumed by analogy.
 
-None of this specific malformed-input behavior has a dedicated regression test anywhere in the
-project today --- \texttt{EncodingTests.cpp}'s own \texttt{UTF8*} cases cover only well-formed
-round-trips (\texttt{UTF8GetBytesHello}, \texttt{UTF8RoundTrip}, empty-string and offset
-handling), never an overlong encoding, a bare continuation byte, a truncated multi-byte
-sequence, or a directly-encoded surrogate. The conformance logic above is real and correctly
-grounded in the UTF-8 grammar by direct code reading, but --- consistent with this chapter's
-own recurring theme --- its correctness currently rests entirely on that reading, not on a
-passing test asserting it.
+This behavior now has direct regression evidence. \texttt{UTF8EncodingTests} covers malformed
+continuations, overlong input, truncated sequences, directly encoded surrogates and exception
+fallbacks, including the one-replacement-per-byte resynchronization used above. The separate
+\texttt{Utf8Tests} family validates overlong sequences, surrogates, code points above
+\texttt{U+10FFFF}, truncation and lone continuation bytes through the span-oriented validator.
+The source read explains the algorithm; these two distinct test surfaces pin both the encoding
+facade's observable substitutions and the lower-level validity classification.
 
-\section{A deliberately incomplete continuation surface: \texttt{TaskT<TResult>}}
+\section{Generic continuations exist; generic combinators do not}
 
-The non-generic \cnaclass{Task} now has a real \texttt{ContinueWith} implementation: it keeps a
-mutex-protected callback list, invokes registered continuations inline when the antecedent
-completes, and is tested for success, fault, cancellation, chaining, and multiple registrations.
-That machinery also let \texttt{Task::WhenAny} stop spawning one watcher thread per input task.
-It is tempting to infer that the generic-result \texttt{TaskT<TResult>} has the same surface;
-it does not. Its own \texttt{State} intentionally contains only the completion mutex and
-condition variable needed to block \texttt{Wait()} / \texttt{getResultProperty()} for a
-future-less \texttt{WhenAny} result. It has no continuations list and no
-\texttt{TaskT<TResult>::ContinueWith} method.
+Both non-generic \cnaclass{Task} and generic-result \texttt{TaskT<TResult>} have real
+\texttt{ContinueWith} implementations. Their shared-state shapes each contain a mutex,
+condition variable, and callback list; registered callbacks execute inline on the thread that
+completes the antecedent, or synchronously on the caller when it is already complete.
+\texttt{TaskT<TResult>} provides both an action overload returning \cnaclass{Task} and a
+result-producing overload returning \texttt{TaskT<TNewResult>}. The tests cover success, fault,
+cancellation inspection, filtered options, result chaining, empty callables, and release of
+captured state. Both implementations capture the antecedent state weakly to avoid a cycle from
+that state's own continuation list back to itself.
 
-This is a real, recorded limitation rather than an accidental omission hidden by a stub. The
-existing state already supplies the synchronization groundwork, but a faithful implementation
-still needs a callback list and the same weak-pointer cycle-avoidance policy as \cnaclass{Task}.
-The current \texttt{WhenAny}/\texttt{WhenAll} helpers operate only on non-generic
-\cnaclass{Task}, so they did not require that API to close their own work. A caller can await a
-generic result or consume it with \texttt{getResultProperty()}, but cannot attach a continuation
-that receives the completed \texttt{TaskT<TResult>} object. That boundary is preferable to a
-plausible-looking method which silently executes on the wrong lifetime or scheduler model; it
-should remain documented as open until its generic continuation semantics and tests land.
+The narrower missing surface is aggregation over generic tasks. Static \texttt{WhenAll} and
+\texttt{WhenAny} accept only \texttt{std::vector<Task>}; there is no corresponding overload for
+\texttt{std::vector<TaskT<TResult>>} that produces a result array or a winning generic task.
+Thus callers can attach a continuation to one generic result, but cannot express .NET's generic
+multi-task combinators through this API. A second minor boundary is that the lightweight
+antecedent reconstructed for a callback shares terminal status/result/exception state but not
+the original separately-held cancellation-token object, so its token property reports
+\texttt{None}.
 
 \section{Reading a dependency from source}
 
@@ -364,7 +361,7 @@ but the component registry --- particularly compatibility umbrellas and the \tex
 alias --- is the authority when they do not.
 
 The representative types in this chapter also show why include availability is weaker than
-semantic parity. \cnaclass{UTF8Encoding} contains real malformed-input validation but lacks
-dedicated adversarial tests; \cnaclass{TaskT<TResult>} is present but has no generic
-\texttt{ContinueWith}. A mechanically correct path proves that a type can be named. It does not
-prove that every .NET behavior behind that name exists.
+semantic parity. \cnaclass{UTF8Encoding}'s malformed-input behavior is implemented and directly
+tested; \cnaclass{TaskT<TResult>} has generic continuations but not generic multi-task
+combinators. A mechanically correct path proves that a type can be named. It does not prove that
+every .NET behavior behind that name exists.
