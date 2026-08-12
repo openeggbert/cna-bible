@@ -923,6 +923,9 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
 143. **Rendered-page inventories fail closed and cleanly.** A `find` fixture emitted the correct
      page-709 PNG inventory and then exited 89. The renderer rejected the run at its count guard,
      returned status 1 and removed every entry from its private run directory.
+144. **Physical text-bound parsing is status-bound.** The bounding-box Perl pass must complete
+     successfully before its zero-outside-word result can pass. A targeted stub emitted the real
+     zero and then exited 97; exactly the physical-edge verdict failed.
 
 ## Do this next
 

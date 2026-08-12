@@ -721,7 +721,8 @@ fi
 # found 44 clipped words despite a successful build and clean contact-sheet overview.
 bbox_file=$(mktemp /tmp/cna-bible-bbox.XXXXXX.html)
 if pdftotext -bbox-layout "$pdf" "$bbox_file" 2>/dev/null; then
-    outside=$(
+    bbox_parser_ok=1
+    if ! outside=$(
         perl -0777 -ne '
             $n = 0;
             while (/<page width="([0-9.]+)" height="([0-9.]+)">(.*?)<\/page>/sg) {
@@ -732,8 +733,11 @@ if pdftotext -bbox-layout "$pdf" "$bbox_file" 2>/dev/null; then
             }
             END { print $n; }
         ' "$bbox_file"
-    )
-    if [ "$outside" -eq 0 ]; then
+    ); then
+        outside=unknown
+        bbox_parser_ok=0
+    fi
+    if [ "$bbox_parser_ok" -eq 1 ] && [ "$outside" -eq 0 ]; then
         pass "no extracted text crosses a physical page edge"
     else
         fail "$outside extracted word(s) cross a physical page edge"

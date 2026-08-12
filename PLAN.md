@@ -1523,3 +1523,5 @@ build and visual passes are available again.
   and recursive EXIT cleanup left no verifier scratch directory.
 - Proved the renderer's newly status-bound inventory with a correct-output/exit-89 `find` stub:
   the page-709 run failed at the count guard and recursively removed its private output child.
+- Bound the PDF bounding-box aggregation status to the zero-outside-word verdict. A parser stub
+  emitted the correct zero then exited 97; exactly the physical-edge check failed.
