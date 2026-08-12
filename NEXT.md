@@ -723,6 +723,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      creates that parent as `0700` and refuses it unless it is a real directory owned by the
      effective user with exactly that mode. This preserves cross-invocation locking without a
      symlink/open redirection surface at the public temporary-directory level.
+103. **The public workflow documentation matches the hardened tools.** README now names
+     `pdftoppm` for mandatory visual rendering and `flock` for sealed serialization, and explains
+     transactional restoration/removal of the PDF on a failed sealed attempt. Users can therefore
+     provision the full toolchain and interpret failed releases without reverse-engineering the
+     scripts; this documentation-only change has no typesetting delta.
 
 ## Do this next
 

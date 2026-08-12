@@ -433,6 +433,7 @@ log grep replaces.
 | 2026-08-12 | Post-G serialized release transaction | Acquire a non-blocking kernel `flock` keyed by the absolute repository path before Git/source preflight and PDF snapshot; a concurrent sealed invocation now fails immediately rather than racing on shared auxiliaries, release log, output PDF or restore state |
 | 2026-08-12 | Post-G rollback snapshot retention | Hardened the exceptional rollback path: if restoring the prior PDF itself fails, retain the only snapshot and print its exact recovery path instead of deleting it during cleanup; normal success and successful rollback still remove their temporary snapshot |
 | 2026-08-12 | Post-G private release-lock path | Moved the predictable repository-keyed lock below a per-effective-user `/tmp` directory that must be a real owner-matching mode-0700 directory; cross-invocation serialization remains stable without allowing a public-`/tmp` symlink to redirect the lock-file open |
+| 2026-08-12 | Post-G workflow dependency/transaction docs | Updated README to name Poppler `pdftoppm` for the visual-page driver and util-linux `flock` for sealed serialization, and documented prior-PDF restoration/partial removal on sealed failure; documentation only, no typesetting delta |
 
 ---
 
@@ -1405,3 +1406,5 @@ build and visual passes are available again.
   preferring recoverability over cleanup in that exceptional storage/permission failure.
 - Moved the stable release lock beneath a validated owner-only (`0700`) per-user directory,
   removing the predictable public-`/tmp` symlink/open redirection surface.
+- Reconciled README with the hardened workflow's real dependencies and transactional PDF behavior
+  (`pdftoppm`, `flock`, restore/remove semantics); documentation only, no release delta.
