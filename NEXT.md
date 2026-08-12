@@ -618,6 +618,12 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     emitted by MuPDF with the sequence in `main.out`, byte-for-byte. The release order matches;
     swapping any two records changes two sequence positions even when all former set checks stay
     green. This verifier-only closure has no PDF delta.
+82. **The visible TOC preserves source order.** Physical TOC pages contain six legitimate extra
+    duplicate links from surrounding navigation, so the verifier filters to the first occurrence
+    of each expected destination. The resulting 1,066-link sequence matches `main.toc`
+    byte-for-byte. This supplements the existing target coverage, visible identity and landing
+    checks: swapping two otherwise-valid rows preserves their set but fails the new order guard.
+    The release artifact is unchanged.
 
 ## Do this next
 

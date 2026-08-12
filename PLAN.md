@@ -412,6 +412,7 @@ log grep replaces.
 | 2026-08-12 | Post-G TeX recorder provenance | Compared `main.fls` with a filesystem-derived exact set of 98 project inputs: main.tex, shared preamble, 91 front/content TeX sources and five PNGs; explicit path/type filtering excludes TeX-distribution and generated auxiliary inputs; current recorder has zero missing/unexpected project files, independently confirming what TeX actually opened; no PDF delta |
 | 2026-08-12 | Post-G external-link text identity | Extended the all-link MuPDF text/geometry pass to require each of three URI action targets to equal the URL visibly printed under its rectangle after terminal sentence punctuation removal; SDL Init and both Microsoft Present URLs match byte-for-byte; swapping two approved target values preserves the exact URI allowlist/cardinality but produces two identity failures, closing a semantic gap without PDF delta |
 | 2026-08-12 | Post-G outline order integrity | Added byte-for-byte comparison of the unsorted 1,066-destination MuPDF outline sequence with source `main.out`; destination/title/parent set checks alone could not detect two otherwise-valid subtrees trading positions, while the sequence guard does; current order matches exactly, with no PDF delta |
+| 2026-08-12 | Post-G visible-TOC order integrity | Filtered physical TOC annotations to the first occurrence of each expected destination, excluding six legitimate duplicate surrounding-navigation links; the resulting 1,066-destination sequence matches `main.toc` byte-for-byte, closing row-order swaps that coverage/identity/landing set checks could miss; no PDF delta |
 
 ---
 
@@ -1332,3 +1333,6 @@ build and visual passes are available again.
 - Bound outline order, not only its sorted destination/title/parent sets: all 1,066 MuPDF outline
   destinations must occur in the exact `main.out` sequence. The current release is byte-identical;
   swapping two otherwise-valid records fails the new guard without relying on aggregate counts.
+- Bound visible TOC order using the first occurrence of each expected destination, which excludes
+  six legitimate duplicate navigation links while retaining all 1,066 structural rows. The PDF
+  sequence matches `main.toc` byte-for-byte; row swaps now fail even if set checks remain green.

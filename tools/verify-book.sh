@@ -1034,6 +1034,8 @@ EOF
             # is clickable, so collect every Link target on those pages and require the exact
             # 1,066-entry visible TOC set. Long rows may legitimately use two rectangles.
             toc_link_result_file=$(mktemp /tmp/cna-bible-toc-links.XXXXXX.txt)
+            toc_pdf_order_file=$(mktemp /tmp/cna-bible-toc-pdf-order.XXXXXX.txt)
+            toc_source_order_file=$(mktemp /tmp/cna-bible-toc-source-order.XXXXXX.txt)
             perl -e '
                 my ($objects, $pages, $toc) = @ARGV;
                 open P, "<", $pages or die $!;
@@ -1056,6 +1058,7 @@ EOF
                         next unless $annotation =~ m{/Subtype/Link};
                         next unless $annotation =~ m{/D\(([^()]*)\)};
                         $actual{$1}++;
+                        push @order, $1 unless $seen_order{$1}++;
                         $links++;
                     }
                 }
@@ -1070,7 +1073,15 @@ EOF
                 for $destination (keys %actual) { $differences++ unless exists $expected{$destination}; }
                 print "SUMMARY " . ($links + 0) . " " . scalar(keys %actual) . " "
                     . scalar(keys %expected) . " " . $differences . "\n";
-            ' "$objects_file" "$page_objects_file" "$book_dir/main.toc" > "$toc_link_result_file"
+                open Q, ">", $ARGV[3] or die $!;
+                print Q "$_\n" for grep { exists $expected{$_} } @order;
+                close Q;
+            ' "$objects_file" "$page_objects_file" "$book_dir/main.toc" "$toc_pdf_order_file" \
+                > "$toc_link_result_file"
+            perl -ne '
+                print "$1\n"
+                    if /\\contentsline \{(?:part|chapter|section|subsection)\}.*\{([^{}]+)\}%$/;
+            ' "$book_dir/main.toc" > "$toc_source_order_file"
             read -r _ toc_link_count toc_link_target_count toc_expected_target_count bad_toc_link_count <<EOF
 $(tail -1 "$toc_link_result_file")
 EOF
@@ -1082,7 +1093,15 @@ EOF
                 fail "TOC clickable-coverage audit failed ($toc_link_count links, $toc_link_target_count actual targets, $toc_expected_target_count expected targets, $bad_toc_link_count differing)"
                 grep -v '^SUMMARY ' "$toc_link_result_file" | head -10 | sed 's/^/        /'
             fi
-            rm -f "$toc_link_result_file"
+            if [ "$(wc -l < "$toc_pdf_order_file")" -eq 1066 ] \
+               && cmp -s "$toc_pdf_order_file" "$toc_source_order_file"; then
+                pass "all 1066 visible TOC destinations preserve source order"
+            else
+                fail "visible TOC destination order differs from main.toc"
+                diff -u "$toc_source_order_file" "$toc_pdf_order_file" | head -20 \
+                    | sed 's/^/        /'
+            fi
+            rm -f "$toc_link_result_file" "$toc_pdf_order_file" "$toc_source_order_file"
 
             # Coverage alone would miss two TOC annotations whose valid destinations were
             # swapped. Independently extract visible text under every rectangle and require the
