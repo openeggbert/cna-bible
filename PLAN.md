@@ -346,6 +346,7 @@ log grep replaces.
 | 2026-08-12 | Phase E, Appendices A–H | **685 pages**, build clean; makeindex 2,096 / 0 / 0; stale exhaustive catalogs replaced by source-oriented API, renderer, repository, CNAEXT, ecosystem, verification and glTF evidence references; physical pages 641–678 rendered and reviewed as 5 contact sheets, high-risk tables inspected full-size, five identifier/factor collisions corrected and re-rendered clean; final index page 685 also inspected |
 | 2026-08-12 | Phase F corrective batch 1 | **699 pages**, build clean; makeindex 2,179 / 0 / 0; stale context-free 6,171-test claims removed, residual graphics uses of “backend” corrected, and previously title-only Chapters 8–11 and 18 written from pinned source evidence; physical pages 107–126 and 203–210 plus 13 isolated terminology/count pages rendered and read, with the Chapter 8 layout table and Chapter 18 interface names inspected full-size; all detected overflows corrected and re-rendered clean |
 | 2026-08-12 | Phase F corrective batch 2 | **703 pages**, build clean; makeindex 2,176 / 0 / 0; early identity/build/graphics/effects and service-lifecycle drift reconciled, recorded test campaigns separated from universal totals, verifier manual terms made whole-word exact; 31 touched physical pages rendered and read as six contact sheets, all visually clean |
+| 2026-08-12 | Phase F corrective batch 4 | **707 pages**, build clean; makeindex 2,176 / 0 / 0; Chapter 17 separated stock reimplementation, D3D9 source recompilation, FNA3D/MojoShader stock-bytecode execution and renderer-specific ShaderEffect, while Chapters 2/17 dropped the stale 23-of-86 current-sample claim; physical page 42 and Chapter 17 pages 200–208 rendered and read, all visually clean |
 
 ---
 
@@ -615,3 +616,20 @@ mid-session at the owner's direction, so the build and visual passes are availab
   automated checks green. Rendered and read every physical page 55–108 (the complete Chapters
   5–7 range) in fifteen contact sheets. The Emscripten table, listings, long identifiers, source
   warnings and all chapter boundaries were visually clean.
+
+### 2026-08-12 — Phase F corrective batch 4: four shader answers and the real `.fx` boundary
+
+- Rebuilt Chapter 17's premise against the pinned renderer tree. CNA-owned stock shader variants,
+  D3D9's recompilation of six Microsoft/FNA sources, FNA3D's execution of six committed stock
+  `.fxb` blobs through MojoShader, and public renderer-specific `ShaderEffect` are now four
+  separate mechanisms rather than one alleged absence of bytecode support.
+- Named the actual general-effect gap: the throwing public bytecode constructor and known-
+  unsupported XNB reader have neither arbitrary-program loading nor reflected parameter plumbing
+  through the closed `GpuDrawParams` contract. Preserved FNA3D's `CustomEffects == false` boundary
+  and D3D9's measured 61-of-66 instruction-stream comparison.
+- Removed the stale “23 of 86 samples” current-cost claim from Chapters 2 and 17. The early
+  ecosystem overview now agrees with the pinned catalog chapter's 153 entries and warns that
+  historical placeholders require retesting before they become present-tense compatibility data.
+- Ran `tools/verify-book.sh`: 707 pages, makeindex 2,176 accepted / 0 rejected / 0 warnings, all
+  automated checks green. Rendered and read physical page 42 plus every Chapter 17 page 200–208;
+  the new headings, long identifiers, renderer matrix, listings and summary were visually clean.
