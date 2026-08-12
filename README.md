@@ -30,6 +30,18 @@ For a fresh build plus the complete source and PDF-artifact verification suite:
 tools/verify-book.sh
 ```
 
+To reproduce the sealed reviewed release with its fixed source date, exact byte fingerprint and
+the complete verifier, run:
+
+```bash
+tools/build-release.sh
+```
+
+That command must produce a 3,314,744-byte PDF with SHA-256
+`7c877ef20bdb20042bdd32483b2e79cb07e81dec7a8d86dc24f6d29d4a04b2af`. A manuscript or layout
+change is expected to fail this gate until a new release has been independently reproduced and
+reviewed; do not update the fingerprint merely to make the command pass.
+
 The suite checks the build, references, structure, index, physical page bounds,
 fonts, PDF navigation, page labels, link geometry and action safety, plus
 independent Ghostscript processing. It does not replace visual verification: render and inspect every
@@ -47,6 +59,7 @@ physical PDF page changed by a content batch.
   an active status or source path guide.
 - `tools/cna-screenshot-infra/` — reproducible real-screenshot support for
   graphics chapters.
+- `tools/build-release.sh` — fixed-date sealed release build, fingerprint check and full verifier.
 
 ## Contribution rules
 

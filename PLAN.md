@@ -403,6 +403,7 @@ log grep replaces.
 | 2026-08-12 | Post-G release-cardinality guards | Bound makeindex to exactly 2,389 accepted / 0 rejected / 0 warning entries and the PDF to exactly 3,653 targeted in-A4 link rectangles; added full Poppler layout-mode text extraction requiring 302,448 words and zero NUL or U+FFFD corruption; reduced-population predicates fail and the fixed-date release PDF passes the complete expanded verifier |
 | 2026-08-12 | Post-G annotation/action allowlist | Complete object census proves all 3,653 annotations are Link actions: 3,650 internal GoTo plus exactly three reviewed HTTPS URI actions, with no direct-destination or unclassified annotation; verifier now requires this positive distribution as well as the existing unsafe-action blacklist and exact URI allowlist, preventing unknown media/widget/attachment action types from passing by omission; no PDF delta |
 | 2026-08-12 | Post-G PDF catalog allowlist | Normalized volatile object numbers and bound the catalog to only Pages, Outlines, destination Names, UseOutlines mode, en-US language, exact PageLabels and OpenAction; Names contains only Dests and OpenAction is internal GoTo/Fit to the actual first page object; synthetic `/AA` root addition fails exact comparison, closing root-level script/name-tree expansion independently of action census; no PDF delta |
+| 2026-08-12 | Post-G sealed release command | Added `tools/build-release.sh`: forces full latexmk rebuild under `SOURCE_DATE_EPOCH=1786529214`, requires 3,314,744 bytes and SHA-256 `7c877ef20bdb20042bdd32483b2e79cb07e81dec7a8d86dc24f6d29d4a04b2af`, then runs the complete verifier; README documents the command and makes fingerprint changes contingent on a new independent reproducibility and visual-review checkpoint |
 
 ---
 
@@ -1292,3 +1293,7 @@ build and visual passes are available again.
   UseOutlines, en-US, exact PageLabels and OpenAction only. Names may contain only Dests, and the
   opening action must be an internal GoTo/Fit to the first actual page object. A synthetic `/AA`
   branch fails exact comparison; this verifier-only hardening has no PDF delta.
+- Added a sealed release entry point, `tools/build-release.sh`. It forces a complete fixed-date
+  rebuild, requires the reviewed 3,314,744-byte / `7c877ef...` fingerprint and then runs the full
+  verifier. README records the workflow and explicitly requires a new independent reproduction
+  and visual checkpoint before changing fingerprint constants.

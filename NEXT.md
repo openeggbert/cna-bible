@@ -564,6 +564,12 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     opening action is an internal `GoTo /Fit` to the actual first page object. A synthetic extra
     `/AA` catalog branch fails exact comparison. This closes script/name-tree additions at the
     document root independently of the annotation-action census, with no PDF delta.
+73. **The reviewed release has a single reproducible entry point.** `tools/build-release.sh`
+    forces a complete `latexmk` rebuild with `SOURCE_DATE_EPOCH=1786529214`, requires exactly
+    3,314,744 bytes and SHA-256 `7c877ef...`, then runs the complete verifier on that artifact.
+    The fixed fingerprint is intentionally a sealed-release gate: manuscript or layout changes
+    fail until a new independent reproducibility and visual-review checkpoint authorizes new
+    constants. README documents the command and warns against hash-only updates.
 
 ## Do this next
 
