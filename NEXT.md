@@ -794,6 +794,10 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      now rejects wider canonical-decimal strings before its first shell arithmetic comparison;
      710–999 still reach the real PDF bound diagnostic, while arbitrarily long input exits 2
      immediately without creating a run directory or rendering any page.
+117. **Every sealed run identifies the exact reviewed code that produced its verdict.** After the
+     clean source/tool preflight, the release header now records the repository commit plus the
+     committed `latex/` and `tools/` tree IDs. The fingerprint remains defined by the exact PDF,
+     while logs can now be tied unambiguously to both the manuscript and verification logic.
 
 ## Do this next
 

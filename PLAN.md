@@ -1448,3 +1448,5 @@ build and visual passes are available again.
   clean through the final index entry, then removed the isolated run output.
 - Bounded visual-page operands to the release's three-digit domain before shell arithmetic, so an
   arbitrarily long decimal cannot overflow comparisons and trigger an unintended Poppler render.
+- Added exact repository-commit, manuscript-tree and tool-tree identities to every sealed-build
+  header after the clean-input preflight, making archived release logs independently traceable.

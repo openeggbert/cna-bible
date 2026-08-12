@@ -58,7 +58,9 @@ if ! git -C "$repo_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     printf 'ERROR: sealed release build requires a Git worktree\n' >&2
     exit 1
 fi
+actual_head=$(git -C "$repo_root" rev-parse HEAD)
 actual_latex_tree=$(git -C "$repo_root" rev-parse HEAD:latex 2>/dev/null || true)
+actual_tools_tree=$(git -C "$repo_root" rev-parse HEAD:tools)
 latex_status=$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all -- latex)
 tools_status=$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all -- tools)
 if [ "$actual_latex_tree" != "$expected_latex_tree" ] || [ -n "$latex_status" ] \
@@ -117,7 +119,9 @@ fi
 transaction_started=1
 
 printf '%s\n' '== The CNA Bible: sealed release build =='
+printf 'repository HEAD: %s\n' "$actual_head"
 printf 'latex tree: %s\n' "$actual_latex_tree"
+printf 'tools tree: %s\n' "$actual_tools_tree"
 printf 'SOURCE_DATE_EPOCH=%s\n' "$source_date_epoch"
 if ! (
     cd "$book_dir"
