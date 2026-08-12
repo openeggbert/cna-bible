@@ -150,6 +150,17 @@ else
     pass "no doubled-backslash \\ref"
 fi
 
+# \cnaclass and \cnans feed their entire argument to makeindex. Pointer/reference declarators
+# therefore create misleading keys such as "Album*" or "Game& game" instead of indexing the
+# underlying symbol. Keep declarators outside the semantic macro (e.g. \cnaclass{Album}\texttt{*}).
+if grep -rEn '\\(cnaclass|cnans)\{[^}]*(\*|\\&)[^}]*\}' "$chapters" "$front" \
+    > /tmp/cna-bible-index-declarators.txt 2>/dev/null; then
+    fail "pointer/reference declarators inside semantic index macros"
+    head -10 /tmp/cna-bible-index-declarators.txt | sed 's/^/        /'
+else
+    pass "no pointer/reference declarators inside semantic index macros"
+fi
+
 # These source identifiers and build options were removed by CNA's renderer/CNAEXT
 # naming migration. Unlike ordinary prose uses of "backend", none is contextually valid in
 # the current manuscript. Historical discussion should spell out the old name without using

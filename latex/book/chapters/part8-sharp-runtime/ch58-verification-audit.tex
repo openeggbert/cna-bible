@@ -1,4 +1,5 @@
 \chapter{Verification and Audit in sharp-runtime}
+\index{sharp-runtime!verification}\index{audit database}
 \label{ch:sharp-verification-audit}
 
 Sharp-runtime's verification system is not one test executable and a green badge. It combines
@@ -150,7 +151,9 @@ heap overflow and XML node leaks. UndefinedBehaviorSanitizer reached a vendored 
 an invalid empty-buffer pointer contract.
 
 One particularly instructive non-sanitizer race lived between two valid-looking operations.
-\cnaclass{TaskCompletionSource<TResult>::TrySetResult} atomically claimed completion before
+\texttt{TaskCompletionSource<TResult>::TrySetResult}%
+\index{TaskCompletionSource<TResult>::TrySetResult@TaskCompletionSource<TResult>::\allowbreak{}TrySetResult}
+atomically claimed completion before
 copying the result into its promise. If \texttt{TResult}'s copy constructor threw, the claim
 remained set but the promise never became ready; no later producer could settle it and all
 waiters hung. The repair catches the copy failure, stores it into the promise so waiters become

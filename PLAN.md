@@ -73,7 +73,7 @@ current, not stale.
 | **C — structural migration** | **Complete.** The 12-Part / 79-chapter / 8-appendix migration, context-sensitive terminology pass, current selector/identifier migration, and module-owned source-path sweep are complete and PDF-verified clean at 645 pages. |
 | **D — chapter writing** | **Complete.** Seven verified batches rewrote Chapters 19–79 against the pinned source and sibling evidence. |
 | **E — appendices** | **Complete.** Appendices A–H were rebuilt against pinned source and the completed chapter text, then verified as one bounded batch. |
-| **F — whole-book consistency** | **In progress.** Nineteen verified corrective batches removed stale totals/terminology, filled five structurally present but unwritten chapters (8–11 and 18), reconciled every subject area with pinned evidence, and made Part/chapter/appendix/section references restructure-safe. Continue the edition-wide duplication, index and visual sweep. |
+| **F — whole-book consistency** | **In progress.** Twenty verified corrective batches removed stale totals/terminology, filled five structurally present but unwritten chapters (8–11 and 18), reconciled every subject area with pinned evidence, made structural references durable, and expanded the index from an API-symbol list into a whole-book navigation surface. Continue the edition-wide final visual sweep. |
 | **G — final verification** | Not started. |
 
 ### 3.1 Phase A research areas — all delivered
@@ -362,6 +362,7 @@ log grep replaces.
 | 2026-08-12 | Phase F corrective batch 17 | **709 pages**, build clean; makeindex 2,183 / 0 / 0; Chapters 74–79 and cross-chapter ecosystem/sharp-runtime claims reconciled to free-direct's remediated blit path and follow-up benchmark, actual inaudible pan boundary, retained Timidity decoder, exact tracked SQLite blob and bounded Android evidence; physical pages 39–42, 563–568 and 637–668 rendered and read as eight contact sheets plus full-size risk pages, all visually clean |
 | 2026-08-12 | Phase F corrective batch 18 | **709 pages**, build clean; makeindex 2,183 / 0 / 0; Appendices A–H mechanically re-audited, edition pins separated from later branch movement, CNAEXT token/header inventory made exact, MIDI decoder/public-route and Android install/frame evidence boundaries corrected; physical pages 665–702 rendered and read as seven contact sheets plus full-size risk pages; one malformed monospace paragraph on printed page 649 corrected and re-rendered clean |
 | 2026-08-12 | Phase F corrective batch 19 | **709 pages**, build clean; makeindex 2,183 / 0 / 0; four stale numeric listing references corrected, twelve Parts labelled, and all live Part/appendix/section citations migrated to stable references; verifier expanded to all source refs, singular/plural structural-number forms and literal tab/CR defects; a whole-PDF pixel comparison against batch 18 identified 53 visibly changed physical pages, all rendered and read clean |
+| 2026-08-12 | Phase F corrective batch 20 | **709 pages**, build clean; makeindex 2,387 / 0 / 0; 43 glossary terms, all 46 renderer selectors and the platform/testing/porting chapter topics gained canonical index destinations; malformed pointer/reference keys removed and verifier hardened against recurrence; 684 unique keys versus 517 before the batch; only index pages 703–709 changed visibly, all rendered and read clean at full size |
 
 ---
 
@@ -1005,3 +1006,23 @@ mid-session at the owner's direction, so the build and visual passes are availab
   isolated 53 changed physical pages. Every changed page was rendered at review resolution and
   read in contact sheets, with the four multi-page reflow spans inspected separately; no clipping,
   overlap, malformed listing, broken heading or unintended blank page was found.
+
+### 2026-08-12 — Phase F corrective batch 20: whole-book index coverage
+
+- Audited the generated index rather than counting only explicit `\index` commands: the existing
+  `\cnaclass`/`\cnans` macros supplied most of its 2,183 entries, but 25 process-oriented chapters
+  had no index destination and the 517 unique keys were overwhelmingly API symbols.
+- Added one canonical destination for all 46 accepted renderer selectors, all 43 glossary terms,
+  and the principal concepts of the module, content, glTF, platform, verification, sibling-library
+  and porting chapters. The resulting 684 unique keys make CMake, Wine, Emscripten, CTest, CI,
+  differential testing, Android, migration and re-audit material discoverable without indexing
+  every incidental prose occurrence.
+- Removed polluted keys such as `Album*`, `Gamer*`, `NetworkSession*`, `IAsyncResult*`, namespace
+  wildcards and `Game& game` by keeping declarators outside semantic index macros. Added a verifier
+  invariant that rejects pointer/reference declarators inside `\cnaclass` or `\cnans`. Four long
+  index identifiers now use explicit display-only breakpoints.
+- Set only the back-of-book index in `\footnotesize`, retaining the main manuscript typography.
+  This fits the enlarged index in seven readable pages without overfull boxes or a near-empty tail.
+  The complete verifier reports 709 pages and makeindex 2,387 accepted / 0 rejected / 0 warnings.
+  A checkpoint-PDF pixel comparison isolated only physical pages 703–709; all seven were rendered
+  and read at full size, with first, middle and final pages inspected separately and clean.

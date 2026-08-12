@@ -312,6 +312,13 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     returns. The book remains 709 pages. A whole-PDF rendered-pixel comparison against batch 18
     isolated 53 changed physical pages; every one was rendered and read, with four reflow spans
     checked separately and no visual defect found.
+39. **Phase F corrective batch 20 is complete and verified.** The generated index was audited as
+    a navigation surface, not merely counted. All 46 renderer selectors, 43 glossary terms and
+    the principal platform/testing/porting concepts now have canonical destinations; unique keys
+    rose from 517 to 684. Pointer/reference pollution such as `Album*`, `Gamer*` and `Game& game`
+    was removed, and the verifier rejects recurrence. A compact `\footnotesize` index retains the
+    709-page book size while accepting 2,387 entries with zero rejection/warning. Only physical
+    pages 703–709 changed visibly against checkpoint 19; all seven were rendered and read clean.
 
 ## Do this next
 
@@ -337,7 +344,7 @@ bounded correction batch; finish with an edition-wide visual and automated pass 
 
 ## Verification status
 
-Everything through Phase E and Phase F corrective batch 19 is verified:
+Everything through Phase E and Phase F corrective batch 20 is verified:
 
 - `make -C latex book` succeeds; **709 pages**.
 - makeindex: 2,183 entries accepted, 0 rejected, 0 warnings.
@@ -457,6 +464,10 @@ Everything through Phase E and Phase F corrective batch 19 is verified:
   and read in contact sheets; multi-page reflow spans 99–107, 256–258, 422–431 and page 529 were
   reviewed separately. No clipping, overlap, malformed listing, broken heading or unintended
   blank page was found.
+- Phase F corrective batch 20 compared all rendered pages against the batch-19 checkpoint. Only
+  the seven index pages 703–709 changed; all seven were rendered at review resolution and read,
+  with first, middle and final pages inspected full-size. The enlarged 684-key index has no
+  overfull box, clipped entry or sparse tail page.
 
 **No completed writing batch is pending PDF verification.** Continue with the Phase F whole-book
 consistency sweep, then perform Phase G final verification.
@@ -474,7 +485,7 @@ consistency sweep, then perform Phase G final verification.
 Ten source-audit reports and the 42-family draw-path matrix are complete against pinned CNA
 `7a64362e`. Phase B settled a 12-Part, 79-chapter, 8-appendix edition; Phase C put it on disk,
 migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–7
-rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: nineteen verified
+rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: twenty verified
 batches filled omitted Chapters 8–11 and 18, removed stale totals/terminology, reconciled the
 early graphics, lifecycle and math narrative, and separated the four current shader strategies
 from the still-missing arbitrary-effect path. State, stream, instancing and programmable-GL
@@ -489,5 +500,6 @@ Input, Audio, Media and both device-service layers now match their live event, o
 capability and callback boundaries. GamerServices, Storage, networking and Avatar now also match
 their live persistence, path, session and rendering contracts. The sharp-runtime chapters now
 also match the current modular graph, task/stream behavior, parity boundaries, test surfaces and
-tracked CI. All live structural citations are now stable references, and the verifier enforces
-that invariant. Continue the remaining whole-book duplication/index/visual consistency sweep.
+tracked CI. All live structural citations are stable references, and the index now covers both
+API symbols and the book's major platform, verification and porting concepts. Continue the final
+whole-book visual consistency sweep.
