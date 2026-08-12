@@ -693,6 +693,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     orphaned. The verifier now requires exactly five case-correct `images/*.png` targets, each
     matching one of the five source files exactly once, with no duplicate, orphan or missing/
     non-PNG target before checking their embedded RGB/alpha pixels.
+97. **Visual rendering fails cleanly on unreadable inputs and allocation errors.** The page-range
+    tool now requires `pdfinfo` success plus a numeric total before comparing bounds, and gives a
+    dedicated error when its private output directory cannot be created. A damaged PDF or invalid
+    output parent therefore cannot leak shell arithmetic or partial-render confusion into the
+    mandatory visual review.
 
 ## Do this next
 

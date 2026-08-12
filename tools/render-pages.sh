@@ -62,14 +62,27 @@ fi
 
 [ -f "$pdf" ] || { echo "no built PDF at $pdf -- run 'make -C latex book' first" >&2; exit 1; }
 
-total=$(pdfinfo "$pdf" | awk '/^Pages:/ {print $2}')
+pdf_info=$(pdfinfo "$pdf" 2>/dev/null) || {
+    printf 'ERROR: pdfinfo could not parse %s\n' "$pdf" >&2
+    exit 1
+}
+total=$(printf '%s\n' "$pdf_info" | awk '/^Pages:/ {print $2}')
+case "$total" in
+    ''|*[!0-9]*)
+        printf 'ERROR: pdfinfo did not report a numeric page count for %s\n' "$pdf" >&2
+        exit 1
+        ;;
+esac
 if [ "$last" -gt "$total" ]; then
     echo "requested page $last but the book has only $total pages" >&2
     exit 1
 fi
 
 mkdir -p "$outdir"
-run_dir=$(mktemp -d "$outdir/render-${first}-${last}.XXXXXX")
+run_dir=$(mktemp -d "$outdir/render-${first}-${last}.XXXXXX") || {
+    printf 'ERROR: could not create a private render directory under %s\n' "$outdir" >&2
+    exit 1
+}
 render_complete=0
 cleanup_failed_render() {
     if [ "$render_complete" -eq 0 ]; then

@@ -427,6 +427,7 @@ log grep replaces.
 | 2026-08-12 | Post-G PDF parse fail-fast | Consolidated the verifier's initial Poppler inspection into one `pdfinfo` result and require a numeric page count before any geometry, metadata, extraction or navigation audit; unreadable containers now stop with one primary diagnostic rather than propagating empty arithmetic into secondary failures |
 | 2026-08-12 | Post-G scratch bootstrap preflight | Resolve `mktemp` before the verifier's first scratch allocation and diagnose both a missing command and directory-creation failure explicitly; bootstrap failure can no longer precede and undermine the normal dependency report |
 | 2026-08-12 | Post-G source-image graph closure | Parsed every compiled `includegraphics` target and compared it case-sensitively with the five source PNG paths: exactly five includes map one-to-one with no orphan, duplicate or missing/non-PNG target, complementing the recorder set and embedded RGB/alpha pixel audit |
+| 2026-08-12 | Post-G visual-render fail-fast | Require successful `pdfinfo` parsing and a numeric page total before visual-range arithmetic, and diagnose private render-directory allocation failure separately; damaged artifacts and invalid output parents now stop before `pdftoppm` with one primary error |
 
 ---
 
@@ -1387,3 +1388,5 @@ build and visual passes are available again.
   directory allocation now fail once, explicitly, before any temporary path is consumed.
 - Closed the declared image graph independently of TeX's set-like recorder: all five case-correct
   PNG paths must be included exactly once, with no duplicate, orphan or missing/non-PNG target.
+- Made visual rendering fail fast on Poppler parse/page-count and private-directory allocation
+  errors, before bound arithmetic or `pdftoppm` can produce secondary/partial output.
