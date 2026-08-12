@@ -51,14 +51,16 @@ for that frame entirely, the mechanism \cnaclass{GraphicsDeviceManager}
 available yet. A game can also override \texttt{ShowMissingRequirementMessage(const
 std::exception\&)} and the protected \texttt{Dispose(bool disposing)}.
 
-The presence of \texttt{UnloadContent()} in that list is not a promise that CNA currently calls
-it at ordinary game shutdown. The live \cnaclass{Game} implementation has no call site for its
-own virtual, and its graphics manager's \texttt{DeviceDisposing} route is unreachable for the
-game-owned device topology. An override may still be useful to an application which invokes it
-itself, but it must not be the sole release path for a game's resources. The component-level
-\texttt{UnloadContent()} contract is separate: \cnaclass{DrawableGameComponent::Dispose(bool)}
-does invoke that component virtual. Chapter~\ref{ch:graphicsdevice} traces the manager disposal
-and callback-lifetime consequences in detail.
+\texttt{UnloadContent()} is a live part of explicit shutdown. During initialization,
+\cnaclass{Game} subscribes that virtual to the registered graphics-device service's
+\texttt{DeviceDisposing} event. \cnaclass{GraphicsDeviceManager::Dispose(bool)} raises the event
+even though the ordinary game-attached manager does not own the game-valued device it points at;
+only deletion of the device remains ownership-gated. Thus the public
+\texttt{Game::Dispose()} route reaches the game's override exactly once through the service.
+The component-level contract is separate: explicit game disposal first disposes each
+\texttt{IDisposable} component, and \cnaclass{DrawableGameComponent::Dispose(bool)} invokes that
+component's own virtual. Normal C\texttt{++} destruction still does not execute either explicit
+callback path. Chapter~\ref{ch:graphicsdevice} traces the manager ordering and ownership boundary.
 
 \subsection{\texttt{Exit()} requests a stop; \texttt{Exiting} describes the completed loop}
 
@@ -93,7 +95,9 @@ loop has zero ticks, and desktop \texttt{RunLoop()} still raises \texttt{Exiting
 zero-tick exit boundary unless application code sets that public CNA extension true again.
 \texttt{RunOneFrame()}, by contrast, performs its one-time initialization and one \texttt{Tick()}
 only. It does not call \texttt{BeginRun()}, \texttt{BeforeLoop()}, \texttt{EndRun()},
-\texttt{AfterLoop()}, or \texttt{OnExiting()}. Browser builds use an Emscripten callback rather
+\texttt{AfterLoop()}, or \texttt{OnExiting()}. Because only \texttt{BeforeLoop()} activates the
+game, \texttt{IsActive} remains false throughout \texttt{RunOneFrame()} --- an easy trap for a
+test harness or editor host which uses that entry point. Browser builds use an Emscripten callback rather
 than the blocking desktop loop, but likewise raise \texttt{Exiting} only when that callback
 observes the false loop flag and cancels the browser loop.
 
@@ -105,8 +109,10 @@ implements \texttt{IDisposable}. It then disposes the content manager, the cache
 service when one has been resolved, and the SDL gamepad subsystem. It sets the private disposed
 flag only after that sequence. The public wrapper subsequently raises \texttt{Game::Disposed}.
 Consequently, explicit disposal is the route that makes a \cnaclass{DrawableGameComponent}'s
-virtual \texttt{Dispose(bool)} call its \texttt{UnloadContent()} hook; it does \emph{not} call
-\texttt{Game::UnloadContent()}.
+virtual \texttt{Dispose(bool)} call its \texttt{UnloadContent()} hook. Later in the same sequence,
+disposing the resolved graphics service raises \texttt{DeviceDisposing}; the subscription installed
+by \texttt{Game::Initialize()} then calls \texttt{Game::UnloadContent()} before the manager's own
+\texttt{Disposed} event. These are two distinct virtual calls on two distinct objects.
 
 The destructor instead calls \texttt{Dispose(false)}, then shuts down audio, and ordinary member
 destruction happens afterward. The false path deliberately skips the component loop, explicit
@@ -133,7 +139,10 @@ disposed. Thus a second ordinary \texttt{Dispose()} raises the event again; a ha
 \texttt{Dispose()} recursively re-enters that wrapper. This wrapper shape also matches the
 current FNA \texttt{Game} source, but it is still a reason for a handler to release only its own
 state and never dispose the notifying game again. No located CNA \texttt{Game} test exercises
-normal destruction, repeated public disposal, handler exceptions, or this re-entrancy boundary.
+normal destruction, handler exceptions, or this re-entrancy boundary. Repeated public disposal
+\emph{is} covered: the regression test proves that the manager's one-shot guard prevents a second
+\texttt{DeviceDisposing} raise and hence a second game \texttt{UnloadContent()}, even though the
+public \texttt{Game::Disposed} notification is raised again.
 
 \subsection{The timing loop, ported wholesale from FNA}
 
@@ -154,7 +163,29 @@ One platform-conditional block is CNA-specific rather than ported: under
 \texttt{EmscriptenLoopState} struct and an \texttt{EmscriptenMainLoopCallback()}, because a
 blocking \texttt{while} loop is not a viable main-loop shape in a browser --- Emscripten
 instead requires yielding control back to the browser's own event loop via a registered
-callback. This book's Web/Emscripten chapter covers this in full.
+callback. It is not merely another scheduler for the same \texttt{Tick()} body; it replaces that
+body and therefore changes observable contracts:
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{0.24\textwidth}XX}
+\toprule
+Aspect & Desktop \texttt{Tick()} & Emscripten callback \\
+\midrule
+Clock and pacing & High-resolution \texttt{SDL\_GetPerformanceCounter}; adaptive delay/yield pacing & Millisecond \texttt{SDL\_GetTicks}; browser-driven cadence, no sleep/spin ring \\
+Step policy & Honors \texttt{IsFixedTimeStep} & Always drains fixed target-sized steps; ignores the property \\
+Lag handling & 500ms clamp and five-tick \texttt{IsRunningSlowly} hysteresis & 250ms clamp; \texttt{IsRunningSlowly} forced false every step \\
+Control methods & \texttt{SuppressDraw()} is consumed; \texttt{ResetElapsedTime()} affects variable-step mode & Neither field is consulted, so both calls are no-ops \\
+Draw cadence & One draw attempt per tick & Draw only when at least one update ran \\
+Lifetime & Loop returns, then \texttt{EndRun()} and \texttt{AfterLoop()} run & Registered infinite loop does not return; those hooks never run \\
+State ownership & Per-game timing members & One static loop-state slot, hence one running \texttt{Game} per process \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+The callback still cancels itself and raises \texttt{Exiting} after observing
+\texttt{RunApplication == false}. Chapter~\ref{ch:web-emscripten} covers the more dangerous
+object-lifetime consequence of Emscripten's non-returning registration and WASM exception mode.
 
 \subsection{Two global debug keys hidden in the ordinary event pump}
 
@@ -212,7 +243,12 @@ still real hitch: a texture streaming in, a burst of physics work, an OS schedul
 accumulator holds roughly three whole steps' worth of time. \texttt{Tick()} therefore calls
 \texttt{Update()} three times in a row, each with \texttt{gameTime.ElapsedGameTime} pinned to
 exactly one \texttt{TargetElapsedTime} (16.6667ms), \emph{before} \texttt{Draw()} runs once for
-that call to \texttt{Tick()}. This is the mechanism, not an edge case: a game's \texttt{Update()}
+that call to \texttt{Tick()}. Immediately before drawing, however, the loop rewrites
+\texttt{ElapsedGameTime} to \texttt{TargetElapsedTime * stepCount}; in this example the single
+\texttt{Draw()} observes about 50ms, while each of the three updates observed 16.6667ms. This
+update/draw asymmetry is intentional catch-up accounting, not an unstable clock.
+
+This is the mechanism, not an edge case: a game's \texttt{Update()}
 must be safe to call multiple times between draws, and must never assume ``one \texttt{Update()}
 call happened since the last \texttt{Draw()}'' --- exactly the invariant
 Chapter~\ref{ch:first-game}'s own \texttt{Update} / \texttt{Draw} split already depends on
@@ -280,6 +316,22 @@ place), but it is easy to call defensively after a load screen and assume it did
 when --- for the large majority of CNA games, which leave \texttt{IsFixedTimeStep} at its
 default --- it silently did not.
 
+\subsection{The base Update and Draw calls are framework work, not optional ceremony}
+
+The default \texttt{Game::Update(GameTime\&)} first snapshots and updates enabled components,
+then ends with \texttt{FrameworkDispatcher::Update()}. A derived override which never calls
+\texttt{Game::Update(gameTime)} therefore disables more than automatic components: it silently
+stops dynamic-stream buffer dispatch, microphone checks, media-player transitions, and touch-panel
+updates. The safe shape is to perform game-specific work and call the base exactly once per update
+step. If a port intentionally replaces the component loop, it must still arrange one dispatcher
+call itself; calling both paths would pump those services twice.
+
+The parallel rule for \texttt{Game::Draw(gameTime)} is simpler but still important: the base
+method draws the visible registered components in ascending \texttt{DrawOrder}. An override that
+never calls it suppresses every \cnaclass{DrawableGameComponent}. Presentation is different again:
+the outer tick calls \texttt{EndDraw()} after the override returns, and the registered manager
+presents there. Application \texttt{Draw()} code should not call \texttt{Present()} itself.
+
 \section{GameTime: three fields, one privileged writer}
 
 \cnaclass{GameTime} is deliberately small: \texttt{TotalGameTime} and
@@ -296,9 +348,11 @@ freely but never falsify.
 \cnaclass{GameComponent} implements \texttt{IGameComponent}, \texttt{IUpdateable}, and
 \texttt{System::IComparable<GameComponent>} in one base: a component knows its owning
 \cnaclass{Game} (get-only), can be individually \texttt{Enabled}, has an
-\texttt{UpdateOrder}, and compares to other components \emph{by} update order via
-\texttt{CompareTo} --- which is what lets \cnaclass{GameComponentCollection} keep components
-processed in a stable, predictable sequence rather than insertion order.
+\texttt{UpdateOrder}, and exposes \texttt{CompareTo}. That method returns
+\texttt{other.UpdateOrder - this.UpdateOrder}, inverted relative to the usual compare-to sign
+convention; this is an FNA quirk preserved by CNA. The game itself does not depend on that sign:
+its insertion comparator explicitly sorts updateables by ascending \texttt{UpdateOrder}, with
+equal-order components retaining their existing relative order.
 \cnaclass{DrawableGameComponent} layers \texttt{IDrawable} on top, adding
 \texttt{GraphicsDevice} (get-only), \texttt{DrawOrder}, and \texttt{Visible}, and --- notably
 --- overrides \texttt{Initialize()} and calls \texttt{LoadContent()} there. In the ordinary
@@ -486,6 +540,13 @@ API of its own''). The \texttt{EXT} suffix convention here is a sibling of \text
 mark non-XNA additions, but \texttt{EXT} specifically marks methods bolted onto an otherwise
 XNA-shaped class, kept visually distinct from the XNA members around them.
 
+Mutating window properties is not uniformly best-effort. SDL failures in setters such as title,
+size, border, resizability, orientation, minimize, and restore become
+\texttt{std::runtime\_error}. The deliberate exception is a read: if
+\texttt{SDL\_GetWindowSize()} transiently fails during the browser backend's asynchronous startup,
+\texttt{ClientBounds} returns its last-known rectangle and lets a later resize event correct it
+rather than unwinding the game loop.
+
 \texttt{GetNativeSdlWindowEXT()} is a borrowed pointer, not an ownership transfer. In an ordinary
 windowed game it views the device-created SDL window; in a headless configuration it can be null.
 Never destroy it from game code or retain it across explicit graphics-device disposal: the wrapper
@@ -497,8 +558,8 @@ Chapter~\ref{ch:backend-architecture}, \S\ref{sec:backend-native-handle-boundary
 \label{sec:graphicsdevicemanager-in-loop}
 
 \cnaclass{GraphicsDeviceManager} --- already seen configuring the game-owned device in
-Chapter~\ref{ch:first-game} --- implements \cnaclass{IGraphicsDeviceManager}'s two-method
-contract (\texttt{BeginDraw() -> bool}, \texttt{CreateDevice()}, plus \texttt{EndDraw()}),
+Chapter~\ref{ch:first-game} --- implements \cnaclass{IGraphicsDeviceManager}'s three-method
+contract (\texttt{BeginDraw() -> bool}, \texttt{CreateDevice()}, and \texttt{EndDraw()}),
 which is exactly what \cnaclass{Game::BeginDraw()} / \texttt{EndDraw()} delegate to: if
 \texttt{GraphicsDeviceManager::BeginDraw()} returns \texttt{false} (no device available yet),
 \texttt{Game} skips \texttt{Draw} / \texttt{EndDraw} for that frame rather than crashing on a
@@ -511,6 +572,16 @@ answer only whether a device pointer exists. A subclass override of \texttt{Rank
 therefore choose a higher-resolution adapter in today's CNA. The detailed event ordering,
 manager/device distinction, and the one-operation nature of \texttt{PreparingDeviceSettings}
 are documented in Chapter~\ref{ch:graphicsdevice}.
+
+Construction deliberately registers the manager's two services without calling
+\texttt{ApplyChanges()}: \texttt{Game::DoInitialize()} soon calls \texttt{CreateDevice()}, which
+is the single initial configuration pass. That pass applies graphics profile, presentation mode,
+a real in-place \texttt{GraphicsDevice::Reset()}, and viewport refresh in that order. Only after
+the settle-in reset does the manager subscribe to the device's own
+\texttt{DeviceResetting}/\texttt{DeviceReset} events, so startup reports \texttt{DeviceCreated}
+rather than a synthetic reset pair. A later \texttt{ApplyChanges()} follows the same reset path;
+the device raises its pair and the manager forwards it exactly once instead of raising a duplicate
+pair itself. Forwarded reset and disposing events report the manager as sender, matching FNA.
 
 One CNA-specific extension lives directly alongside this class rather than inside it: a
 \texttt{CNAEXT enum class PresentationMode} with five values ---
@@ -614,11 +685,29 @@ path content is resolved relative to, exposing it under two accessor names --- b
 specifically ``to match XNA property name'' alongside CNA's own \texttt{getXProperty}
 convention. They are an independent direct-file facility, not the stream layer below
 \cnaclass{ContentManager}; their exact path, lifetime, Android, and test contract is
-\S\ref{sec:title-container-contract}. \cnaclass{FrameworkDispatcher}, also static-only, drives framework-level polling
-(dynamic audio streams, media, touch input) through a single \texttt{Update()} entry point
-that a game is expected to call once per frame; internally it tracks registered
-\texttt{Audio::DynamicSoundEffectInstance*} streams behind a mutex --- a thread-safety
-addition beyond FNA's own single-threaded assumption.
+\S\ref{sec:title-container-contract}. \cnaclass{FrameworkDispatcher}, also static-only, drives
+dynamic audio streams, microphones, media, and touch through one \texttt{Update()} entry point.
+The base \texttt{Game::Update()} calls it after components on every update step. Its dynamic-stream
+list is protected by a mutex, but callbacks execute after a snapshot has been copied and the lock
+released: a \texttt{BufferNeeded} handler may dispose its own stream without deadlocking on the
+same non-recursive mutex. This locking is a CNA thread-safety addition beyond FNA's ordinary
+single-threaded assumption.
+
+\section{One catch clause for the framework boundary}
+
+The framework core does not translate failures into one XNA exception hierarchy. The pinned
+\texttt{modules/runtime} implementation has 30 explicit throw sites and all use raw standard
+C\texttt{++} types: \texttt{std::out\_of\_range}, \texttt{std::runtime\_error},
+\texttt{std::invalid\_argument}, \texttt{std::logic\_error}, or \texttt{std::bad\_alloc}.
+Elsewhere in CNA, some public exceptions derive from \texttt{std::runtime\_error}, while audio,
+network, sensor, and project exceptions derive from \texttt{System::Exception}.
+
+The hierarchy detail that matters at a porting boundary is that
+\texttt{System::Exception : std::exception}, not \texttt{std::runtime\_error}. Consequently a
+\texttt{catch (const std::runtime\_error\&)} misses the \texttt{System::*} family, and a
+\texttt{catch (const System::Exception\&)} misses raw standard failures. Only
+\texttt{catch (const std::exception\&)} spans both families. Catch narrowly when recovery depends
+on the exact contract; use \texttt{std::exception} for a top-level log-and-exit boundary.
 
 \section{What this buys a porting engineer}
 

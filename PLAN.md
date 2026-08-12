@@ -592,3 +592,26 @@ mid-session at the owner's direction, so the build and visual passes are availab
   133–134, 157, 167, 169, 175, 177, 181–182, 186–188, 269, 271, 278, 298, 473, 513 and 669 as
   six contact sheets. Chapter openers, source-note boxes, listings, long identifiers and the
   glossary were visually clean.
+
+### 2026-08-12 — Phase F corrective batch 3: executable game-loop and math contracts
+
+- Repaired all four Chapter 5 game examples against the live loop: each calls base `Update` and
+  `Draw`, while `GraphicsDeviceManager::EndDraw` performs the sole `Present`. The prose now makes
+  component and dispatcher loss explicit instead of teaching the stale README double-present
+  pattern.
+- Reconciled Chapter 6 with the completed framework audit: explicit service disposal reaches
+  `Game::UnloadContent`; repeated disposal coverage is stated narrowly; `RunOneFrame` remains
+  inactive; fixed-step `Draw` sees aggregated elapsed time; the Emscripten callback's clock,
+  clamp, draw, lifecycle and singleton differences are tabulated; manager reset forwarding,
+  GameWindow failure policy, dispatcher locking and the split exception hierarchy are current.
+- Corrected Chapter 7's convention layer: matrix multiplication applies the left operand first,
+  quaternion multiplication the right; depth is `[0,1]`; `ToColumnMajor` copies rather than
+  transposes; the former Plane inverse-transpose example is replaced by the live aliased-
+  transpose defect; Color's exact 141/140/139 counts and 24-byte object boundary are explicit.
+  Added MathHelper/vector semantic divergences, unchecked degeneracies, Ray/Curve epsilon splits,
+  exception-family asymmetry, marker-free bounds gaps and the 818-case/no-numeric-oracle evidence
+  boundary.
+- Ran `tools/verify-book.sh`: 705 pages, makeindex 2,173 accepted / 0 rejected / 0 warnings, all
+  automated checks green. Rendered and read every physical page 55–108 (the complete Chapters
+  5–7 range) in fifteen contact sheets. The Emscripten table, listings, long identifiers, source
+  warnings and all chapter boundaries were visually clean.

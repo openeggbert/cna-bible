@@ -1,8 +1,9 @@
 \chapter{Your First CNA Game}
 \label{ch:first-game}
 
-This chapter walks through the smallest complete CNA program --- the minimal XNA-style game
-skeleton given in CNA's own README --- line by line, as a concrete anchor for the framework
+This chapter walks through the smallest complete CNA program --- adapted from the minimal
+XNA-style skeleton in CNA's own README, with the base-loop calls made explicit --- line by line,
+as a concrete anchor for the framework
 concepts explained more fully in the chapters that follow.
 
 \section{The whole program}
@@ -35,22 +36,19 @@ protected:
 
     void Update(GameTime& gameTime) override
     {
-        (void)gameTime;
         // Update game state here.
+        Game::Update(gameTime);
     }
 
     void Draw(const GameTime& gameTime) override
     {
-        (void)gameTime;
-
         auto& device = getGraphicsDeviceProperty();
         device.Clear(CornflowerBlue);
 
         spriteBatch_->Begin();
         spriteBatch_->Draw(*logo_, 100.0f, 80.0f);
         spriteBatch_->End();
-
-        device.Present();
+        Game::Draw(gameTime);
     }
 
 private:
@@ -100,19 +98,21 @@ raw-asset-plus-JSON-descriptor content model that makes
 Chapter~\ref{ch:content-and-assets}.
 
 \textbf{\texttt{Update(GameTime\&)} and \texttt{Draw(const GameTime\&)} are the two halves of
-every frame, and note the constness difference.} \texttt{Update} takes a mutable
+every frame, and note both the constness difference and the base calls.} \texttt{Update} takes a mutable
 \texttt{GameTime\&} (some XNA game loops advance simulation-only clocks here);
 \texttt{Draw} takes a \texttt{const GameTime\&}, since rendering should not mutate timing
-state. Chapter~\ref{ch:game-loop} covers the full \cnaclass{Game} lifecycle this pair of
-overrides plugs into --- \texttt{Initialize()}, \texttt{LoadContent()}, the
-\texttt{Update} / \texttt{Draw} loop itself, and shutdown.
+state. Calling \texttt{Game::Update(gameTime)} runs registered updateable components and the
+framework dispatcher; calling \texttt{Game::Draw(gameTime)} runs registered drawable components.
+Omitting the first call silently stops dynamic audio, media, and touch polling. Chapter~\ref{ch:game-loop}
+covers the full lifecycle and the ordering choices this pair of overrides plugs into.
 
 \textbf{The draw call is the canonical \cnaclass{SpriteBatch} triad:
 \texttt{Begin()} / \texttt{Draw(...)} / \texttt{End()}.} \cnaclass{GraphicsDevice::Clear} takes a
 named XNA color constant (\cnaclass{Color::CornflowerBlue} --- traditionally XNA's default
 clear color in generated project templates, preserved here rather than swapped for something
-``more CNA''), and \cnaclass{GraphicsDevice::Present()} is the final call of the frame,
-regardless of which public renderer identity from Part~IV is actually doing the presenting.
+``more CNA''). Application \texttt{Draw()} does not call \cnaclass{GraphicsDevice::Present()}
+itself: after the override returns, \texttt{Game::EndDraw()} delegates to the manager, which
+presents exactly once regardless of which public renderer identity from Part~IV is active.
 Chapter~\ref{ch:spritebatch} covers the full \cnaclass{SpriteBatch} API, including the
 overloads of \texttt{Draw} beyond the two-float-position form used here.
 
@@ -153,19 +153,19 @@ class MyGame final : public Game {
         if (keys.IsKeyDown(Keys::Right)) position_.X += speed * seconds;
         if (keys.IsKeyDown(Keys::Up))    position_.Y -= speed * seconds;
         if (keys.IsKeyDown(Keys::Down))  position_.Y += speed * seconds;
+
+        Game::Update(gameTime);
     }
 
     void Draw(const GameTime& gameTime) override
     {
-        (void)gameTime;
         auto& device = getGraphicsDeviceProperty();
         device.Clear(CornflowerBlue);
 
         spriteBatch_->Begin();
         spriteBatch_->Draw(*logo_, position_, Color::White);
         spriteBatch_->End();
-
-        device.Present();
+        Game::Draw(gameTime);
     }
 
 private:
@@ -247,6 +247,7 @@ class MyGame final : public Game {
         if (position_.Y > maxY)   { position_.Y = maxY; hitEdge = true; }
 
         if (hitEdge) bounceSound_->Play();
+        Game::Update(gameTime);
     }
 
 private:
@@ -319,11 +320,12 @@ class MyGame final : public Game {
                 bounceSound_->Play();
             }
         }
+
+        Game::Update(gameTime);
     }
 
     void Draw(const GameTime& gameTime) override
     {
-        (void)gameTime;
         auto& device = getGraphicsDeviceProperty();
         device.Clear(CornflowerBlue);
 
@@ -331,8 +333,7 @@ class MyGame final : public Game {
         spriteBatch_->Draw(*logo_, position_, Color::White);
         if (!collected_) spriteBatch_->Draw(*coin_, coinPosition_, Color::White);
         spriteBatch_->End();
-
-        device.Present();
+        Game::Draw(gameTime);
     }
 
 private:

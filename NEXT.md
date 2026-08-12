@@ -11,7 +11,7 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
 |---|---|
 | cna-bible branch | `next`; local commits are ahead of `origin/next` (push requires explicit external-publication approval) |
 | CNA pinned SHA | `7a64362efef4119bf880459ef1704fb2c52199e2` (`develop` == `origin/develop`, 2026-08-11) |
-| Book builds | **yes** — 703 pages, all automated checks green; all completed Phase D/E writing and both Phase F corrective batches are visually verified |
+| Book builds | **yes** — 705 pages, all automated checks green; all completed Phase D/E writing and three Phase F corrective batches are visually verified |
 | Phase | **A–E complete; F in progress:** Chapters 19–79 and Appendices A–H are complete. Phase F has filled omitted Chapters 8–11 and 18, corrected early graphics/lifecycle drift, and continues the whole-book consistency sweep. |
 
 ## What is done
@@ -136,6 +136,15 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     verification script's manual-term scan now uses whole-word matching. The consolidated book is
     703 pages; all 31 touched physical pages were rendered and read in six contact sheets with no
     visual defect.
+22. **Phase F corrective batch 3 is complete and verified.** Chapters 5–7 now teach the live
+    base-loop contract instead of the stale README pattern: examples call base `Update`/`Draw`,
+    presentation occurs once in `EndDraw`, explicit disposal reaches `Game::UnloadContent`, and
+    the desktop/Emscripten timing split is tabulated. The math reference now states opposite
+    matrix/quaternion composition orders, `[0,1]` depth, copy-only `ToColumnMajor`, the live
+    aliased-transpose defect in `Plane::Transform`, 141/140/139 Color counts, non-four-byte Color
+    layout, degenerate-input behavior, exception splits, and three marker-free geometry gaps.
+    The consolidated book is 705 pages; every physical page 55–108 was rendered and read, with no
+    clipping, collision, broken float, or table defect.
 
 ## Do this next
 
@@ -161,10 +170,10 @@ bounded correction batch; finish with an edition-wide visual and automated pass 
 
 ## Verification status
 
-Everything through Phase E and Phase F corrective batch 2 is verified:
+Everything through Phase E and Phase F corrective batch 3 is verified:
 
-- `make -C latex book` succeeds; **703 pages**.
-- makeindex: 2,176 entries accepted, 0 rejected, 0 warnings.
+- `make -C latex book` succeeds; **705 pages**.
+- makeindex: 2,173 entries accepted, 0 rejected, 0 warnings.
 - No undefined references, no undefined control sequences, no duplicate labels, no doubled-
   backslash `\ref`, no hard-coded chapter numbers.
 - `git diff --check` clean.
@@ -201,6 +210,10 @@ Everything through Phase E and Phase F corrective batch 2 is verified:
   130, 133–134, 157, 167, 169, 175, 177, 181–182, 186–188, 269, 271, 278, 298, 473, 513 and 669.
   Chapter openers, source-note boxes, code listings, long identifiers and the glossary were read
   in six contact sheets; all were clean on the first visual pass.
+- Phase F corrective batch 3 rendered and reviewed every physical page 55–108 across Chapters
+  5–7. The four evolving game examples, Emscripten divergence table, composition/depth contracts,
+  Plane warning, Color/MathHelper reference, geometry gaps, long code listings and chapter
+  boundaries were read in fifteen contact sheets; all were clean on the first visual pass.
 
 **No completed writing batch is pending PDF verification.** Continue with the Phase F whole-book
 consistency sweep, then perform Phase G final verification.
@@ -220,5 +233,5 @@ Ten source-audit reports and the 42-family draw-path matrix are complete against
 migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–7
 rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: two verified
 batches filled omitted Chapters 8–11 and 18, removed stale totals/terminology, and reconciled the
-early graphics and lifecycle narrative with pinned source. The book is 703 pages; continue the
+early graphics, lifecycle and math narrative with pinned source. The book is 705 pages; continue the
 remaining whole-book consistency sweep.
