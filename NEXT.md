@@ -824,6 +824,10 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      missing only `paste`, the sealed entry point exited 1 with the exact dependency diagnostic
      before locking or transaction setup. The reviewed PDF hash and release-log size/mtime were
      unchanged, and the prior-PDF snapshot population remained zero before and after the run.
+124. **Symlink invocation cannot split the artifact lock namespace.** A live negative test first
+     held the physical repository's exclusive lock, then acquired an incorrect independent shared
+     lock by invoking through a `/tmp` directory symlink. All public artifact tools now derive
+     `repo_root` with physical `pwd -P`, so path aliases hash to the same lock and contend correctly.
 
 ## Do this next
 

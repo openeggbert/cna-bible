@@ -21,7 +21,9 @@ system_dirname=$(command -v dirname) || {
     printf 'ERROR: missing required verification command: dirname\n' >&2
     exit 1
 }
-repo_root="$(cd "$("$system_dirname" "${BASH_SOURCE[0]}")/.." && pwd)"
+# Canonicalize the physical repository root. Otherwise invoking this same script through a
+# directory symlink hashes a different lock key while still reading/writing the same PDF inode.
+repo_root="$(cd "$("$system_dirname" "${BASH_SOURCE[0]}")/.." && pwd -P)"
 book_dir="$repo_root/latex/book"
 log="$book_dir/main.log"
 pdf="$book_dir/main.pdf"

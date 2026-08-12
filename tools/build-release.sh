@@ -27,7 +27,8 @@ system_dirname=$(command -v dirname) || {
     printf 'ERROR: missing required sealed-pipeline command: dirname\n' >&2
     exit 1
 }
-repo_root="$(cd "$("$system_dirname" "${BASH_SOURCE[0]}")/.." && pwd)"
+# The artifact lock must key the physical repository, not an invocation alias through a symlink.
+repo_root="$(cd "$("$system_dirname" "${BASH_SOURCE[0]}")/.." && pwd -P)"
 book_dir="$repo_root/latex/book"
 pdf="$book_dir/main.pdf"
 lock_helper="$repo_root/tools/book-lock.sh"

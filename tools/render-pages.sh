@@ -19,7 +19,8 @@ system_dirname=$(command -v dirname) || {
     printf 'ERROR: missing required rendering command: dirname\n' >&2
     exit 1
 }
-repo_root="$(cd "$("$system_dirname" "${BASH_SOURCE[0]}")/.." && pwd)"
+# The artifact lock must key the physical repository, not an invocation alias through a symlink.
+repo_root="$(cd "$("$system_dirname" "${BASH_SOURCE[0]}")/.." && pwd -P)"
 pdf="$repo_root/latex/book/main.pdf"
 lock_helper="$repo_root/tools/book-lock.sh"
 [ -r "$lock_helper" ] || { printf 'ERROR: missing tools/book-lock.sh\n' >&2; exit 1; }

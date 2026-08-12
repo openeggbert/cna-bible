@@ -1464,3 +1464,5 @@ build and visual passes are available again.
   masquerade as proof that a forbidden pattern is absent.
 - Proved the sealed dependency preflight non-mutating with an isolated PATH lacking only `paste`:
   status 1, exact diagnostic, unchanged PDF hash and release-log size/mtime, and zero snapshots.
+- Closed a live symlink-alias lock split: all public artifact tools now canonicalize the physical
+  repository root before hashing the lock key, so aliases to the same PDF share one lock inode.
