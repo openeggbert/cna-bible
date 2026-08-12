@@ -332,7 +332,7 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     build reproduced the 709-page artifact. Mechanical proofreading removed two duplicated
     function words and regularized two awkward constructions; all four affected pages were
     rendered and read clean. The verifier now checks every page's A4 geometry and rotation, the
-    roman-to-arabic page-label transition, all 1,076 unique internal targets, all 1,802 link
+    roman-to-arabic page-label transition, all 1,076 unique internal targets, all 1,803 link
     rectangles, the printed-page landing of all 1,065 numbered TOC entries, and complete
     Ghostscript interpretation. It fails early rather than silently reducing coverage when a
     required PDF tool is unavailable. Two clean builds under the same `SOURCE_DATE_EPOCH` are
@@ -373,6 +373,13 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     and now additionally proves that all 1,066 PDF outline entries have non-empty titles and unique
     destinations. Only physical pages 5 and 37 changed; both were rendered and read full-size,
     clean.
+48. **The preface again matches the completed structure and evidence horizon.** Its Part III
+    overview no longer assigns 3D models to the graphics-machine chapters; it names draw geometry
+    and vertex streams, leaving the model runtime and asset pipeline in Part VI. Its date note now
+    distinguishes July-dated facts quoted from CNA's documentation from this edition's complete
+    repository-pin audit on 2026-08-11. The stable Appendix D reference raises the current link-
+    annotation total to 1,803; every target and rectangle remains valid. The complete verifier is
+    green, and both physical preface pages 3–4 were rendered and read full-size, clean.
 
 ## Do this next
 
@@ -543,6 +550,10 @@ Everything through Phase G is verified:
   book's publication license, and its D3D9 derivation wording correctly names the vendored HLSL
   sources. Physical pages 5 and 37 were rendered and read clean. The verifier also checks all
   1,066 outline entries for non-empty titles and unique destinations.
+- The preface's Part map now keeps 3D models in Part VI and describes Part III's actual geometry/
+  vertex-stream remit. Its evidence note binds the complete audit to the 2026-08-11 repository
+  pins via Appendix D; all 1,803 current link annotations validate. Physical pages 3–4 were read
+  full-size and are clean.
 
 **No known writing, correction or PDF-verification defect is pending.**
 

@@ -378,6 +378,7 @@ log grep replaces.
 | 2026-08-12 | Phase G final verification | **709 pages**, complete verifier green; readable unencrypted PDF 1.7 on A4, 27/27 fonts embedded/subsetted/Unicode-mapped, 12/79/8 Part/chapter/appendix outline, 302,443-word searchable text layer wholly inside the MediaBoxes, clean round-trip parse, no forms or JavaScript, and no pending visual page review |
 | 2026-08-12 | Post-G release hardening | **709 pages**, independent clean-tree build and complete verifier green; two duplicated function words and two awkward constructions corrected, with all four affected pages rendered and read clean; all 89 compiled content sources, 709 page boxes/rotations, page-label transition, 1,076 unique internal targets, 1,802 link rectangles, three reviewed HTTPS links and 1,065 numbered TOC landings validated; all pages independently interpreted by Ghostscript; fixed-date clean builds byte-identical; negative tests proved repeated-word, displaced-TOC and unreviewed-URI failure paths |
 | 2026-08-12 | Post-G licensing/outline clarification | **709 pages**, CNA's Ms-PL software-license section distinguished from the book's undecided publication license; D3D9 vendored Stock Effects corrected from bytecode to the six `.fx` sources plus four `.fxh` includes present at the pin; all 1,066 outline entries checked for non-empty titles and unique destinations; complete verifier green; physical pages 5 and 37 rendered and read clean |
+| 2026-08-12 | Post-G preface reconciliation | **709 pages**, Part III overview corrected from 3D models to draw geometry/vertex streams, preserving Part VI's model-runtime remit; edition-wide audit dated to the recorded 2026-08-11 pins rather than conflated with July-dated source snapshots; new stable Appendix D link brings the current artifact to 1,803 valid link annotations; complete verifier green; physical pages 3–4 rendered and read clean |
 
 ---
 
@@ -1132,3 +1133,8 @@ build and visual passes are available again.
   plus four `.fxh` includes rather than nonexistent vendored bytecode. Extended the artifact
   verifier to require 1,066 non-empty outline entries with unique destinations. The complete
   verifier is green; physical pages 5 and 37 were rendered and read full-size without defect.
+- Reconciled the preface with the final Part structure: Part III now describes draw geometry and
+  vertex streams while 3D models remain in Part VI. Distinguished July-dated facts quoted from
+  CNA documentation from the edition-wide audit at the 2026-08-11 repository pins and linked the
+  recorded map in Appendix D. The added internal reference produces 1,803 valid link annotations;
+  the complete verifier is green and physical pages 3–4 were read full-size without defect.
