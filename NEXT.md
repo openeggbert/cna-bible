@@ -492,6 +492,14 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     1,850 valid links, and the artifact to 3,653 link annotations / 1,542 unique internal targets.
     A verifier guard rejects the stale wording. A whole-artifact pixel comparison isolated only
     physical page 47 and index pages 706--709; all five were rendered and read full-size, clean.
+63. **The physical-module no-loss inventory uses the source evidence's unit of measure.** A broad
+    numeric-claim audit directly recounted all 1,776 records in the seven cited move commits and
+    confirmed every record is `R100`. The pinned reconciliation does preserve 1,357 before and
+    after, split into 1,287 byte-identical moves and 70 directive-only edits, but these are
+    production *files*, not translation units: the committed inventory also includes headers.
+    Chapter 9 now uses the correct term without changing any count, and the verifier rejects the
+    misleading old label. The complete build is green; physical page 117 was rendered and read
+    full-size, clean.
 
 ## Do this next
 

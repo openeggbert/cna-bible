@@ -254,6 +254,13 @@ else
     pass "Graphics include count distinguishes 107 direct and 18 PackedVector headers"
 fi
 
+if grep -rEn 'production translation units' "$chapters" "$front" \
+    > /tmp/cna-bible-stale-production-unit-label.txt 2>/dev/null; then
+    fail "production-file inventory mislabeled as translation units"
+else
+    pass "physical-module inventory is labeled as production files"
+fi
+
 if grep -rEn 'CNA(_|\\_)GRAPHICS(_|\\_)RENDERER=(EASYGL|DX3|D3D9|D3D11|D3D12|ASCII)' "$chapters" "$front" > /tmp/cna-bible-obsolete-selectors.txt 2>/dev/null; then
     n=$(wc -l < /tmp/cna-bible-obsolete-selectors.txt)
     fail "removed renderer selector in a live CMake assignment: $n"

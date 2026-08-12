@@ -393,6 +393,7 @@ log grep replaces.
 | 2026-08-12 | Post-G all-link visible-text overlap | One MuPDF structured-text pass over all 709 pages proved positive-area visible-text overlap for all 3,652 Link rectangles; a PDF fixture moved only preface object 4302 to in-bounds blank rectangle `[10 10 20 20]`, leaving target/geometry checks green while the new guard alone found one empty hotspot on physical page 3; verifier-only change, no PDF delta |
 | 2026-08-12 | Post-G complete named-destination geometry | All 5,054 names map one-to-one to 5,054 destination objects on the 709 actual page objects, with in-A4 numeric XYZ positions and inherited zoom; a PDF fixture changed only `part.1` Y from 558.81 to 900, leaving link/landing/outline checks green while the new guard alone found the invalid target on page object 5587; verifier-only change, no PDF delta |
 | 2026-08-12 | Post-G Graphics-header inventory correction | Stale “106 headers” corrected to the pinned tree's 125 `.hpp` files: 107 directly in the Graphics namespace directory plus 18 in its PackedVector child; nested namespace preserved; two intentional semantic index entries bring makeindex to 2,389, index links to 1,850 and artifact links/targets to 3,653/1,542; stale-count guard added; whole-PDF diff isolated physical pages 47 and 706–709, all read clean |
+| 2026-08-12 | Post-G physical-module inventory terminology | Directly recounted 1,776 records across the seven cited pure-rename commits, all `R100`; confirmed the pinned 1,357 → 1,357 reconciliation and its 1,287 byte-identical / 70 directive-only split; corrected “production translation units” to the evidence's “production files,” because the inventory includes headers; regression guard added; complete build green and physical page 117 read full-size, clean |
 
 ---
 
@@ -1230,3 +1231,8 @@ build and visual passes are available again.
   link annotations / unique targets to 3,653 / 1,542; the verifier rejects the stale wording. A
   whole-PDF pixel comparison isolated only physical page 47 and index pages 706--709; all five
   were rendered and read full-size, clean.
+- Recounted the seven physical-module move commits directly: all 1,776 changed records are `R100`.
+  The pinned no-loss evidence also confirms 1,357 production files before and after, split into
+  1,287 byte-identical moves and 70 directive-only edits. Corrected Chapter 9's misleading
+  “translation units” label because the inventory includes headers; added a verifier guard. The
+  complete build is green and physical page 117 was rendered and read full-size, clean.
