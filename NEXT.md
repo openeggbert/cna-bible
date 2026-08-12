@@ -442,6 +442,13 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     the complete build is green with 3,652 valid link annotations, and a whole-artifact pixel
     comparison isolated only physical pages 318, 319 and 645; all three were rendered and read
     full-size, clean.
+56. **PDF bookmark titles now have source-level integrity.** The verifier already proved that
+    the 1,066 outline destinations equal the visible Part-through-subsection TOC destinations;
+    it now also decodes all 1,066 UTF-16 entries in `main.out` and requires the exact
+    `(destination, title)` set emitted by MuPDF. A fixture changing only `Preface` to `PrefacX`
+    while retaining `chapter*.1` and the untouched PDF failed with exactly two differing pairs.
+    The current artifact has zero title mismatch. This is verifier-only hardening and does not
+    change any PDF page.
 
 ## Do this next
 

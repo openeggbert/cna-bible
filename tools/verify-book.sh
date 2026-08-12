@@ -451,6 +451,9 @@ if command -v mutool >/dev/null 2>&1; then
         outline_dests_file=$(mktemp /tmp/cna-bible-outline-dests.XXXXXX.txt)
         toc_outline_dests_file=$(mktemp /tmp/cna-bible-toc-outline-dests.XXXXXX.txt)
         outline_toc_diff_file=$(mktemp /tmp/cna-bible-outline-toc-diff.XXXXXX.txt)
+        outline_titles_file=$(mktemp /tmp/cna-bible-outline-titles.XXXXXX.txt)
+        source_bookmarks_file=$(mktemp /tmp/cna-bible-source-bookmarks.XXXXXX.txt)
+        outline_title_diff_file=$(mktemp /tmp/cna-bible-outline-title-diff.XXXXXX.txt)
         grep -o '#nameddest=[^[:space:]]*' "$outline_file" | sed 's/#nameddest=//' \
             | sort > "$outline_dests_file"
         perl -ne '
@@ -458,6 +461,20 @@ if command -v mutool >/dev/null 2>&1; then
                 if /\\contentsline \{(part|chapter|section|subsection)\}.*\{([^{}]+)\}%$/;
         ' "$book_dir/main.toc" | sort > "$toc_outline_dests_file"
         comm -3 "$outline_dests_file" "$toc_outline_dests_file" > "$outline_toc_diff_file"
+        perl -ne '
+            if (/"(.*)"\s+#nameddest=([^\s]+)$/) { print "$2\t$1\n"; }
+        ' "$outline_file" | LC_ALL=C sort > "$outline_titles_file"
+        perl -MEncode=decode -ne '
+            BEGIN { binmode STDOUT, ":encoding(UTF-8)"; }
+            if (/^\\BOOKMARK \[[^]]*\]\[[^]]*\]\{([^}]*)\}\{(.*)\}\{[^}]*\}%/) {
+                ($destination, $title) = ($1, $2);
+                $title =~ s/\\([0-7]{3})/chr(oct($1))/ge;
+                $title = decode("UTF-16BE", $title);
+                $title =~ s/^\x{FEFF}//;
+                print "$destination\t$title\n";
+            }
+        ' "$book_dir/main.out" | LC_ALL=C sort > "$source_bookmarks_file"
+        comm -3 "$outline_titles_file" "$source_bookmarks_file" > "$outline_title_diff_file"
         outline_entries=$(grep -c '#nameddest=' "$outline_file" || true)
         outline_destinations=$(grep -o '#nameddest=[^[:space:]]*' "$outline_file" \
             | sort -u | wc -l)
@@ -486,7 +503,19 @@ if command -v mutool >/dev/null 2>&1; then
             fail "PDF outline/TOC mismatch ($outline_toc_diff_count differing destinations)"
             head -10 "$outline_toc_diff_file" | sed 's/^/        /'
         fi
-        rm -f "$outline_dests_file" "$toc_outline_dests_file" "$outline_toc_diff_file"
+        outline_title_count=$(wc -l < "$outline_titles_file")
+        source_bookmark_count=$(wc -l < "$source_bookmarks_file")
+        outline_title_diff_count=$(wc -l < "$outline_title_diff_file")
+        if [ "$outline_title_count" -eq 1066 ] \
+           && [ "$source_bookmark_count" -eq "$outline_title_count" ] \
+           && [ "$outline_title_diff_count" -eq 0 ]; then
+            pass "all 1066 PDF outline titles match their source bookmarks exactly"
+        else
+            fail "PDF outline title mismatch ($outline_title_count PDF, $source_bookmark_count source, $outline_title_diff_count differing pairs)"
+            head -10 "$outline_title_diff_file" | sed 's/^/        /'
+        fi
+        rm -f "$outline_dests_file" "$toc_outline_dests_file" "$outline_toc_diff_file" \
+            "$outline_titles_file" "$source_bookmarks_file" "$outline_title_diff_file"
     else
         fail "mutool could not read the PDF outline"
     fi

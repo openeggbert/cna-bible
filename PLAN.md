@@ -386,6 +386,7 @@ log grep replaces.
 | 2026-08-12 | Post-G interactive-index reproducibility | Two clean builds of commit `4b217a1` in different paths under the same fixed source date are byte-identical, SHA-256 `b62f0644740a28fc05c8a5cb76320c563c49a55461e6503c5b48054ed13fd010`; one clean output passed the complete current verifier, superseding the retained pre-hyperindex artifact hash |
 | 2026-08-12 | Post-G Git-citation provenance audit | Sixteen compiled commit-like spellings representing fourteen distinct objects checked across CNA and all eleven sibling repositories; every prefix is unique in its owner and resolves to a commit; Emscripten repair, sharp-runtime database, rewritten easy-gl/meta-gl heads and cna-template pin/drift roles confirmed; numeric hex-like literals excluded; no correction or PDF delta |
 | 2026-08-12 | Post-G filename-citation provenance audit | 295 filename-like occurrences / 194 distinct spellings classified against pinned trees and explicit external, negative, wildcard or historical cases; two stale pre-normalization `dx3_*` test basenames corrected to their registered `freedirect_*` files; untracked supplemental `free-eggbert/cna.md` distinguished from immutable Git pins by size and SHA-256; verifier guard added; complete build green with 3,652 links; whole-PDF comparison isolated physical pages 318, 319 and 645, all visually clean |
+| 2026-08-12 | Post-G outline-title integrity | All 1,066 UTF-16 source bookmark records decoded from `main.out` and matched exactly by `(destination, title)` to MuPDF's PDF outline; a title-only `Preface` → `PrefacX` fixture failed with two differing pairs while destination checks remained green; verifier-only change, no PDF delta |
 
 ---
 
@@ -1180,3 +1181,9 @@ build and visual passes are available again.
   rejects both stale test names, the complete build is green with 3,652 valid link annotations,
   and a whole-PDF pixel comparison isolated only physical pages 318, 319 and 645; all three were
   rendered and read full-size, clean.
+- Closed the remaining outline-content gap by decoding all 1,066 UTF-16 bookmark records in
+  `main.out` and comparing exact `(destination, title)` pairs with MuPDF's artifact outline.
+  A title-only negative fixture changed `Preface` to `PrefacX` without moving `chapter*.1`; the
+  prior destination checks stayed green and the new guard alone reported the expected two set
+  differences. The current artifact has zero mismatch; this verifier-only hardening has no PDF
+  or visual delta.
