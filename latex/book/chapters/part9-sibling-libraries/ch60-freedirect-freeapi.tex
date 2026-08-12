@@ -16,11 +16,13 @@ DirectX symbol exists merely because the header name does. It needs its own call
 an explicit decision about widening the library.
 
 The audited public headers make that boundary measurable. Across \texttt{ddraw.h},
-\texttt{dplay.h}, and \texttt{dsound.h}, all 95 public methods carry a status tag:
+\texttt{dplay.h}, and \texttt{dsound.h}, their documentation contains 95 explicit status
+annotations. These tags cover functions and interfaces but also some supporting structures and
+constant groups, so 95 is a documentation-marker census, not a public-method count:
 
 \begin{table}[htbp]
   \centering
-  \caption{Free-direct's public-method status census.}
+  \caption{Free-direct's public-header status-annotation census.}
   \label{tab:freedirect-status}
   \begin{tabular}{@{}lrrr@{}}
     \toprule
@@ -36,7 +38,8 @@ The audited public headers make that boundary measurable. Across \texttt{ddraw.h
 \end{table}
 
 The table is stronger than a narrative ``mostly implemented'' claim because it can be
-regenerated from the headers. A status still needs semantic reading: DirectDraw's
+regenerated from the headers, provided the unit is not mislabeled as methods. A status still
+needs semantic reading: DirectDraw's
 \texttt{IsLost()} and \texttt{Restore()} are honest stubs returning \texttt{DD\_OK}, whereas a
 partial operation may implement the game-used path and reject other flags.
 
@@ -48,10 +51,13 @@ texture upload on \texttt{Flip}. Surface registration allows renderer invalidati
 deepest and most directly exercised part of CNA's 2D compositor.
 
 \textbf{DirectSound} opens a real SDL3 audio device and stream behind a shared, mutex-protected
-device. Static PCM buffers, volume, and constant-power pan are implemented; volume uses
-$10^{cB/2000}$. The subsystem enforces a 64 MiB buffer ceiling and contains a deliberate
-\texttt{PCMWAVEFORMAT} versus \texttt{WAVEFORMATEX} layout correction. Some playback controls
-remain narrower than Microsoft's device model.
+device. Static PCM buffers and volume are implemented; volume uses $10^{cB/2000}$. Pan is a
+sharper boundary than its helper name suggests: \texttt{SetPan()} clamps and stores the value,
+and a constant-power helper computes left/right gains for mono, but \texttt{applyGain()} then
+discards those gains because an SDL stream channel map cannot express them. Pan is therefore
+not audibly applied yet. The tests lock in success and no-crash behavior rather than samples.
+The subsystem also enforces a 64 MiB buffer ceiling and contains a deliberate
+\texttt{PCMWAVEFORMAT} versus \texttt{WAVEFORMATEX} layout correction.
 
 \textbf{DirectPlay} implements sessions, players, unicast, broadcast, and host-side relay
 behind a transport interface. A default build has only in-process loopback. Real UDP peers and
@@ -90,8 +96,10 @@ own build file never calls \texttt{add\_subdirectory} for it.
 
 CNA's renderer is not a thin adapter. Its 1{,}374-line implementation creates DirectDraw
 surfaces, performs locked pixel write/read/clear operations, composites quads on the CPU, and
-maintains a shadow-backbuffer resize transaction with failure injection. Eight registered CNA
-test binaries exercise it under SDL's dummy video driver and inspect shadow-buffer pixels.
+maintains a shadow-backbuffer resize transaction with failure injection. Twenty-one registered
+CNA test binaries now exercise its renderer-specific and shared graphics contracts under SDL's
+dummy video driver, including shadow-buffer pixels, resize transactions, sampling, 3D refusal,
+resource-transfer and render-pass ordering boundaries.
 
 \section{The \texttt{fopen} macro is a real containment cost}
 

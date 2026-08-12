@@ -18,8 +18,9 @@ call surface (typed enum-class wrappers, \texttt{std::span}-based views, lightwe
 handles, no RAII of its own); \texttt{easy-gl} then layers real object-oriented, RAII,
 move-only ownership semantics on top. The dependency is real and direct in the build system
 (\texttt{meta-gl} is pulled in as a sibling \texttt{add\_subdirectory} and linked publicly),
-and in the source (19 of \texttt{easy-gl}'s own header files include \texttt{meta-gl} headers
-directly). The layering is worth remembering precisely because it clarifies what
+and in the source: 19 production files include \texttt{meta-gl} headers directly, comprising
+three public headers and sixteen implementation files. The layering is worth remembering
+precisely because it clarifies what
 ``toolkit-independent'' actually means here: independent of the host windowing/event toolkit,
 not independent of every other C\texttt{++} abstraction below it.
 
@@ -90,9 +91,8 @@ else
     UseFallbackSubdivision();  // e.g. desktop GL < 4.0, or GLES < 3.2
 }
 
-// Device::require() throws immediately if the feature is genuinely
-// missing, matching Device::initialize()'s own "fail loudly at startup,
-// not mid-frame" posture for its hard-required baseline capabilities.
+// With the default Config::throw_on_missing_feature == true,
+// Device::require() throws immediately if the feature is missing.
 device.require(easygl::Feature::FramebufferObject);
 \end{lstlisting}
 
@@ -254,16 +254,17 @@ reveals a fuller picture worth spelling out on its own: \texttt{easy-gl} actuall
 \emph{two} separate mechanisms for surviving a lost GL context, at two different levels of
 commitment, and only one of them is currently used by anything real.
 
-The first tier is universal and effectively free. Every single GL object class inherits a
-common base class,
+The first tier covers every integer-named GL resource class and is effectively free. Those
+eleven classes inherit a common base class,
 \texttt{easygl::\allowbreak{}detail::\allowbreak{}GenerationTracked}. It stamps each
 resource with the \texttt{meta-gl}-tracked context generation number at creation time
 (\texttt{creation\_generation()}) and exposes \texttt{is\_valid\_for\_current\_generation()} so
 any caller can cheaply ask ``was this handle created against the context that is actually
-current right now, or a since-lost one'' without any registration step at all --- every
-resource gets this check purely by existing, and \texttt{reset\_handle\_no\_gl()} (used
-internally after a detected loss) zeroes the handle without issuing a single \texttt{gl*} call,
-since a lost context cannot be trusted to process one correctly anyway.
+current right now, or a since-lost one'' without any registration step at all. The pointer-
+shaped \cnaclass{Sync} object is the exception: it has its own creation and no-generation reset
+surface, so it can discard a stale handle but cannot answer the generation-validity query.
+\texttt{reset\_handle\_no\_gl()} zeroes either representation without issuing a single
+\texttt{gl*} call, since a lost context cannot be trusted to process one correctly anyway.
 
 The second tier is the opt-in, full self-healing mechanism this chapter already covers:
 \cnaclass{RecoverableResource}'s \texttt{release\_gl\_handle\_only()} / \texttt{recreate\_gl\_resource()}
@@ -274,10 +275,10 @@ implementing it means a resource class must retain enough CPU-side state (raw pi
 source text, buffer contents) to rebuild the GPU object from scratch, not merely notice that its
 handle went stale.
 
-\textbf{A genuinely worth-knowing gap}: reading every header and source file in the library that
-mentions \cnaclass{RecoverableResource} finds exactly one production consumer,
-\cnaclass{ResourceRegistration} itself (the generic RAII wrapper) --- and \emph{zero} concrete
-resource classes. \cnaclass{Texture}, \cnaclass{Buffer}, \cnaclass{VertexArray},
+\textbf{A genuinely worth-knowing gap}: the infrastructure has production implementations ---
+\cnaclass{ResourceRegistry} dispatches the two lifecycle calls and
+\cnaclass{ResourceRegistration} supplies RAII add/remove --- but \emph{zero concrete resource
+classes} adopt it. \cnaclass{Texture}, \cnaclass{Buffer}, \cnaclass{VertexArray},
 \cnaclass{Framebuffer}, and every other real GL object class inherit \texttt{GenerationTracked}
 (tier one) but none of them implement \texttt{RecoverableResource} (tier two). The library's own
 planning document confirms this is a known, tracked state rather than an oversight this chapter
@@ -321,33 +322,32 @@ the sibling library CNA's own EasyGL implementation is built on.
 
 \section{Testing without a GPU}
 
-Easy-gl's suite has four hand-rolled, mock-loader binaries:
-\texttt{easy-gl-smoke-tests}, \texttt{easy-gl-resource-smoke-tests},
-\texttt{easy-gl-context-lifecycle-tests}, and \texttt{easy-gl-webgl-tests}. The mechanism
-making them useful without any real GPU or display is worth describing directly: a fake
-\texttt{GLGetProcAddressFn} loader
-returns hand-written function pointers only for the handful of GL entry points
-\texttt{Device::initialize()} actually calls, returning literal hardcoded strings (for
-instance, \texttt{"OpenGL ES 3.0"}) and literal hardcoded enum values in place of real driver
-responses. This lets the entire \cnaclass{ContextInfo} / \cnaclass{Capabilities} detection
-pipeline run and be asserted against genuinely, entirely off-GPU --- every other GL function
-pointer the loader might be asked for resolves to a non-null but non-callable sentinel, so a
-test can exercise detection logic without ever risking an actual GPU call.
+Easy-gl's suite has four hand-rolled, mock-loader binaries: the initialization, resource,
+context-lifecycle, and WebGL smoke suites. Their CMake target names all begin
+\texttt{easy-gl-} and end in \texttt{-tests}. The mechanism making them useful without any
+real GPU or display is worth describing directly: fake \texttt{GLGetProcAddressFn} loaders
+return hard-wired callbacks, literal strings such as \texttt{"OpenGL ES 3.0"}, and literal
+enum values in place of driver responses. The smallest loaders provide the context-query
+handful needed by \texttt{Device::initialize()} and use a non-callable sentinel for other
+loaded core functions; the resource suite supplies a broader set of callable stubs for the
+operations it actually exercises. This lets context/capability detection and resource
+lifecycle assertions execute entirely off-GPU without accidentally issuing a real GL call.
 
 The lifecycle suite drives context loss and restoration; the WebGL suite checks explicit
 classification, ES2/ES3 tiers, OES vertex-array gating, and exception-not-crash behavior for
-unavailable entry points. The desktop-shaped initialization and resource smoke tests are
-skipped under Emscripten because their invented version strings cannot occur in a real WebGL
-host. This is an honest test-model boundary, not proof that the corresponding browser behavior
-was executed.
+unavailable entry points. The desktop-shaped initialization and resource smoke binaries are
+not built or registered under Emscripten because their invented version strings cannot occur
+in a real WebGL host. This is an honest test-model boundary, not proof that the corresponding
+browser behavior was executed.
 
-Nested build defaults are asymmetric. Easy-gl defaults both tests and examples ON, and CNA does
-not override those options, so each of CNA's five GL-profile builds also compiles the four test
-binaries. Its SDL hello-triangle example may configure too because CNA already supplies SDL.
-Meta-gl defaults all tests, GPU tests, examples, documentation, sanitizers, and debug options
-OFF when nested. CNA therefore inherits extra work from the upper library but not the lower
-one. This is a configuration fact; the read-only source audit did not build the siblings to
-measure its wall-clock cost.
+Nested build defaults are asymmetric. Easy-gl defaults both tests and examples ON. CNA's
+\texttt{web} preset explicitly sets both \texttt{EASYGL\_BUILD\_*} options to OFF, but CNA's
+root CMake and renderer-selection helper do not force either value. A direct GL-profile
+configuration that does not use that preset or pass its own overrides therefore inherits the
+four test binaries, and its SDL hello-triangle example can configure because CNA already supplies
+SDL. Meta-gl defaults all tests, GPU tests, examples, documentation, sanitizers, and debug
+options OFF when nested. The effective extra work consequently depends on the CNA configure
+entry point; the read-only source audit did not build the siblings to measure its wall-clock cost.
 
 Meta-gl's standalone tests add compile, mock-loader, release-contract, thread, desktop-tier,
 SONAME, export-symbol, and installed-package checks. A real EGL/Mesa smoke test is separately

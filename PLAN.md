@@ -73,7 +73,7 @@ current, not stale.
 | **C — structural migration** | **Complete.** The 12-Part / 79-chapter / 8-appendix migration, context-sensitive terminology pass, current selector/identifier migration, and module-owned source-path sweep are complete and PDF-verified clean at 645 pages. |
 | **D — chapter writing** | **Complete.** Seven verified batches rewrote Chapters 19–79 against the pinned source and sibling evidence. |
 | **E — appendices** | **Complete.** Appendices A–H were rebuilt against pinned source and the completed chapter text, then verified as one bounded batch. |
-| **F — whole-book consistency** | **In progress.** Thirteen verified corrective batches removed stale totals/terminology, filled five structurally present but unwritten chapters (8–11 and 18), and reconciled lifecycle, math, graphics, renderer, Content/XNB, Model/glTF/CNJ, input/media/services and sharp-runtime claims with pinned evidence. Continue the edition-wide factual, cross-reference, duplication, index and visual sweep. |
+| **F — whole-book consistency** | **In progress.** Fourteen verified corrective batches removed stale totals/terminology, filled five structurally present but unwritten chapters (8–11 and 18), and reconciled lifecycle, math, graphics, renderer, Content/XNB, Model/glTF/CNJ, input/media/services, sharp-runtime, sibling-library and Windows-platform claims with pinned evidence. Continue the edition-wide factual, cross-reference, duplication, index and visual sweep. |
 | **G — final verification** | Not started. |
 
 ### 3.1 Phase A research areas — all delivered
@@ -356,6 +356,7 @@ log grep replaces.
 | 2026-08-12 | Phase F corrective batch 11 | **707 pages**, build clean; makeindex 2,184 / 0 / 0; Chapters 44–48 reconciled to live input state/drain semantics, dynamic-audio and microphone gaps, Media ownership/codec truth, sensor dispatch/lifecycle distinctions and optional host-device callback boundaries; physical pages 455–498 rendered and read as six contact sheets, RAII and concurrency pages inspected full-size, all visually clean |
 | 2026-08-12 | Phase F corrective batch 12 | **707 pages**, build clean; makeindex 2,188 / 0 / 0; Chapters 49–52 reconciled to GamerServices persistence/replay, Storage path/disposal, networking migration/receive/stub and Avatar content/rig/rendering contracts; physical pages 499–530 rendered and read as eight contact sheets, dense examples and repaired closing pages inspected full-size, all visually clean |
 | 2026-08-12 | Phase F corrective batch 13 | **707 pages**, build clean; makeindex 2,185 / 0 / 0; Chapters 53–58 reconciled to sharp-runtime's current public-header/component graph, tracked CI, task/stream/UTF-8 behavior, GC/delegate/crypto/platform boundaries and audit metadata; physical pages 533–568 rendered and read as five contact sheets; two prose overflows on printed pages 522–523 corrected, full verification repeated and physical pages 552–554 re-rendered clean |
+| 2026-08-12 | Phase F corrective batch 14 | **707 pages**, build clean; makeindex 2,184 / 0 / 0; Chapters 59–63 reconciled to current easy-gl/meta-gl layering and context-loss adoption, free-direct/free-api annotation/test/audio boundaries, platform taxonomy, MinGW fallback and Wine engagement evidence; physical pages 569–594 rendered and read as five contact sheets plus full-size risk pages; one target-name overflow on printed page 545 corrected, full verification repeated and physical page 575 re-rendered clean |
 
 ---
 
@@ -866,3 +867,28 @@ mid-session at the owner's direction, so the build and visual passes are availab
   533–568 across Chapters 53–58 as five contact sheets and full-size pages. Visual review found
   two prose overflows on printed pages 522–523; both were rephrased, and physical pages 552–554
   were rebuilt, re-rendered and read cleanly.
+
+### 2026-08-12 — Phase F corrective batch 14: sibling and Windows-platform truth
+
+- Reconciled easy-gl/meta-gl layering to exact source scope: 19 production meta-gl includes are
+  three public headers plus sixteen implementation files; `Device::require()` throws only under
+  its enabled configuration policy; eleven integer-named resources use generation tracking while
+  pointer-shaped `Sync` does not. ResourceRegistry/ResourceRegistration implement recovery
+  infrastructure, but no concrete resource adopts `RecoverableResource`. Emscripten omits rather
+  than skips two desktop-shaped test binaries, and CNA's nested test/example defaults depend on
+  configure entry point.
+- Corrected free-direct/free-api evidence. The 95 status tags are public-header documentation
+  annotations, not 95 methods; CNA now has 21 registered FREEDIRECT renderer/shared test binaries.
+  DirectSound volume is audible, but `SetPan()` only stores a clamped value: its constant-power
+  helper's gains are discarded because SDL's channel map cannot apply them, and tests assert
+  success/no-crash rather than output samples.
+- Made the cross-platform taxonomy two-level rather than claiming seven flat identities, recorded
+  that the generic MinGW fallback retains an x86_64 processor declaration after selecting i686,
+  and rechecked workflow, emulator and engagement-gate claims against current CMake/scripts. The
+  DirectDraw, DXVK and vkd3d wrappers fail closed with status 3 outside explicitly named discovery
+  or diagnostic bypasses.
+- Ran `tools/verify-book.sh` after prose edits and again after the visual repair: 707 pages,
+  makeindex 2,184 accepted / 0 rejected / 0 warnings, all automated checks green. Rendered and
+  read physical pages 569–594 across Chapters 59–63 as five contact sheets plus full-size risk
+  pages. One long test-target name overflowed printed page 545; the paragraph was made both
+  shorter and more accurate, and physical page 575 was rebuilt, re-rendered and read cleanly.

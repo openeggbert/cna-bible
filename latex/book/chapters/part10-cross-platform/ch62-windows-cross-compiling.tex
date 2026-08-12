@@ -21,6 +21,11 @@ cmake -B build-windows \
 cmake --build build-windows
 \end{lstlisting}
 
+The fallback is not a fully self-consistent 32-bit identity: the file leaves
+\texttt{CMAKE\_SYSTEM\_PROCESSOR} at \texttt{x86\_64} even after selecting the i686 compiler
+and search root. It can rescue compiler discovery, but it must not be treated as equivalent to
+the dedicated i686 lane when processor-keyed caches or ABI gates matter.
+
 The separate \texttt{mingw-w64-i686.cmake} is not merely a convenience alias. GLIDE's native
 ABI represents a window handle as a 32-bit \texttt{FxU32}, and the available Glide DLL is x86.
 That toolchain fixes the processor and all compiler names to i686. As the final section shows,
