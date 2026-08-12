@@ -39,7 +39,13 @@ esac
 
 first=$1
 last=$2
-outdir="${3:-${TMPDIR:-/tmp}/cna-bible-pages}"
+if [ "$#" -eq 3 ]; then
+    outdir=$3
+    default_outdir=0
+else
+    outdir="${TMPDIR:-/tmp}/cna-bible-pages-$EUID"
+    default_outdir=1
+fi
 
 case "$first:$last" in
     :*|*:|*[!0-9:]*|0*:*|*:0*)
@@ -83,7 +89,24 @@ if [ "$last" -gt "$total" ]; then
     exit 1
 fi
 
-mkdir -p "$outdir"
+if [ "$default_outdir" -eq 1 ]; then
+    if ! mkdir -m 700 "$outdir" 2>/dev/null && [ ! -d "$outdir" ]; then
+        printf 'ERROR: could not create private default render directory\n' >&2
+        exit 1
+    fi
+    read -r outdir_owner outdir_mode <<EOF
+$(stat -c '%u %a' "$outdir" 2>/dev/null || true)
+EOF
+    if [ -L "$outdir" ] || [ ! -d "$outdir" ] || [ "$outdir_owner" != "$EUID" ] \
+       || [ "$outdir_mode" != "700" ]; then
+        printf 'ERROR: unsafe default render directory (owner=%s mode=%s)\n' \
+            "${outdir_owner:-missing}" "${outdir_mode:-missing}" >&2
+        exit 1
+    fi
+elif ! mkdir -p "$outdir"; then
+    printf 'ERROR: could not create requested render directory: %s\n' "$outdir" >&2
+    exit 1
+fi
 run_dir=$(mktemp -d "$outdir/render-${first}-${last}.XXXXXX") || {
     printf 'ERROR: could not create a private render directory under %s\n' "$outdir" >&2
     exit 1

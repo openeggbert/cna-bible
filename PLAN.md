@@ -442,6 +442,7 @@ log grep replaces.
 | 2026-08-12 | Post-G explicit lock platform contract | Documented Linux procfs `/proc/self/fd`, GNU `stat` and util-linux `flock` as the descriptor-lock platform boundary, and made missing procfs fail with its own prerequisite diagnostic instead of a misleading descriptor mismatch |
 | 2026-08-12 | Post-G parallel shared-lock verification | Ran two complete `verify-book.sh --no-build` processes concurrently under shared repository locks; both passed every source/PDF/navigation/rewrite/Ghostscript check, exited 0 and removed their independently isolated scratch directories, proving real reader concurrency after lock unification |
 | 2026-08-12 | Post-G real reader/writer exclusion | During a complete no-build verifier, a default build verifier failed immediately at exclusive-lock acquisition without changing the PDF hash or `latex/build.log` timestamp/size; the original shared-lock reader continued through every check and exited 0, proving real artifact exclusion without reader disruption |
+| 2026-08-12 | Post-G private default visual output | Changed implicit page-render output to `/tmp/cna-bible-pages-$EUID`, requiring a real effective-user-owned mode-0700 directory before allocating the isolated run child; explicit `OUTDIR` remains caller-controlled and README documents both paths, closing the predictable shared-0775 default |
 
 ---
 
@@ -1433,3 +1434,5 @@ build and visual passes are available again.
   both passed and cleaned all private scratch state under shared locks.
 - Proved the opposite boundary with live processes: an in-flight reader rejected a default-build
   writer before PDF/log mutation and then completed its own full verifier successfully.
+- Made the implicit visual-output parent private (`0700`), per effective user and symlink-safe;
+  explicit third-operand output directories remain intentionally caller-controlled.

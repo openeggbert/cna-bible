@@ -53,7 +53,9 @@ removes a newly created partial artifact) while retaining its log for diagnosis.
 The suite checks the build, references, structure, index, physical page bounds,
 fonts, PDF navigation, page labels, link geometry and action safety, plus
 independent Ghostscript processing. It does not replace visual verification: render and inspect every
-physical PDF page changed by a content batch.
+physical PDF page changed by a content batch. `tools/render-pages.sh FIRST LAST` writes each run to
+a fresh child below the private default `/tmp/cna-bible-pages-$EUID`, or below an explicit third
+`OUTDIR` operand.
 
 ## Repository guide
 

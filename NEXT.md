@@ -769,6 +769,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      PDF hash and `latex/build.log` timestamp/size stayed unchanged; the original reader then
      completed every check and exited 0. Writer exclusion therefore protects actual artifacts and
      does not disrupt or downgrade an in-flight audit.
+112. **Default visual output is private and symlink-safe.** Without an explicit `OUTDIR`, the page
+     renderer now uses `/tmp/cna-bible-pages-$EUID`, creates it as mode `0700` and refuses a
+     symlink, wrong owner or different mode before allocating a run child. Explicit output parents
+     remain caller-controlled. README records both paths, and the previous shared 0775 default can
+     no longer redirect or expose newly rendered review pages.
 
 ## Do this next
 
