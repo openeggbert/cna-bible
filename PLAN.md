@@ -349,6 +349,7 @@ log grep replaces.
 | 2026-08-12 | Phase F corrective batch 4 | **707 pages**, build clean; makeindex 2,176 / 0 / 0; Chapter 17 separated stock reimplementation, D3D9 source recompilation, FNA3D/MojoShader stock-bytecode execution and renderer-specific ShaderEffect, while Chapters 2/17 dropped the stale 23-of-86 current-sample claim; physical page 42 and Chapter 17 pages 200–208 rendered and read, all visually clean |
 | 2026-08-12 | Phase F corrective batch 5 | **707 pages**, build clean; makeindex 2,178 / 0 / 0; Chapters 16/18 reconciled to BlendWriteState, sampler-mip hooks, live SpriteBatch rasterizer routing, declaration exceptions, stream semantic composition and current capability contradictions; physical pages 191–200 and 209–216 rendered and read; one full-size overflow fixed and re-rendered clean |
 | 2026-08-12 | Phase F corrective batch 6 | **707 pages**, build clean; makeindex 2,183 / 0 / 0; Chapters 19/22 reconciled to the complete vertex-stream and instancing bridge, current capability/refusal classes, coherent singular/plural bindings, live SpriteBatch state and EasyGL's post-remediation MRT/wireframe/fog/colour-mask/mip/viewport contracts; physical pages 235–239, 248–250 and 262–270 rendered and read, high-risk table/listing pages inspected full-size, all visually clean |
+| 2026-08-12 | Phase F corrective batch 7 | **707 pages**, build clean; makeindex 2,161 / 0 / 0; normalized 2D/cube target binding, shared usage, aspect-selective ordered clears and per-command viewport/scissor semantics reconciled across the shared device and Vulkan/BGFX/WebGPU/SDL_GPU; current renderer-specific closures and bounded gaps recorded; Chapters 26–27 audited without correction; 31 touched physical pages rendered and read, dense matrices and representative renderer pages inspected full-size, all visually clean |
 
 ---
 
@@ -678,3 +679,27 @@ mid-session at the owner's direction, so the build and visual passes are availab
   automated checks green. Rendered and read physical pages 235–239, 248–250 and 262–270; the
   two-page instancing table and pages 237–238, 264 and 269 were inspected full-size. No clipping,
   overlap, broken listing, overfull box or other visual defect was found.
+
+### 2026-08-12 — Phase F corrective batch 7: deferred target, clear and viewport truth
+
+- Reconciled the shared `GraphicsDevice` contract across Chapters 12, 14 and 19: singular 2D and
+  cube binds normalize through slot-aligned render-target descriptors; cube faces remain tracked;
+  compatibility, duplicate-subresource and disposal validation is centralized; only
+  `DiscardContents` discards; and color, depth and stencil clear aspects are independently masked.
+- Replaced stale last-value accounts in Chapters 19, 23 and 24 and the WebGPU/SDL_GPU fragments
+  with the current ordered replay model. Vulkan, BGFX, WebGPU and SDL_GPU preserve clear issue
+  order across draw boundaries and snapshot viewport/scissor state per command or segment. Usage
+  behavior covers 2D, cube, multisampled, depth and stencil targets without treating
+  `PlatformContents` as discard.
+- Updated renderer-specific evidence: BGFX supports one per-vertex plus one per-instance stream,
+  emulates instance frequency by expansion and retains a non-GLSL matrix-construction fault;
+  SDL_GPU closes its former bias, anisotropy, MRT lifetime, authored-mip and lazy-backbuffer-
+  readback gaps while retaining three precisely bounded limits; WebGPU closes the SpriteBatch
+  target-size and single-attachment blend gaps but retains wireframe, stencil-pipeline and custom-
+  effect limits; Sokol's Texture3D claim is bounded to exact CPU voxel transfer, not shader-visible
+  native volume textures. Chapters 26–27 were checked against the pin and needed no edit.
+- Ran `tools/verify-book.sh` twice after the manuscript changes: 707 pages, makeindex 2,161
+  accepted / 0 rejected / 0 warnings, all automated checks green. Rendered and read physical pages
+  140, 154–155, 177, 197, 243–248, 274–277, 286–290, 294–301, 307–309 and 312 as five contact
+  sheets; pages 244, 246, 248, 286, 289, 295, 299 and 307 were inspected full-size. No clipping,
+  overlap, malformed listing, broken heading or other visual defect was found.

@@ -43,10 +43,14 @@ distinct developer dependency even though consuming an already-generated header 
 when the build exposes the renderer's GL readback/extension path.  That conditional answer is
 important: the public identity alone is insufficient to predict these features.
 
-The current Texture3D path illustrates a different danger.  Capability reporting can say
-true while the object remains CPU storage with no GPU allocation.  Code that only constructs
-and round-trips bytes may pass without proving that a shader ever sampled a volume texture.
-For this renderer, resource evidence must cross the draw boundary.
+The current Texture3D path illustrates a different danger.  Capability reporting says true
+because the object has exact per-mip CPU voxel storage and real box-region
+\texttt{SetData}/\texttt{GetData} transfers, while it deliberately owns no
+\texttt{sg\_image} and no shader path samples it.  The answer therefore proves CNA's bounded
+resource-transfer contract, not a GPU-samplable volume texture. Code that only constructs and
+round-trips bytes must not be promoted into evidence that a shader sampled the volume; for
+that stronger claim, resource evidence would have to cross a draw boundary that this renderer
+does not presently expose.
 
 \section{WICKED: an experimental Vulkan adapter}
 

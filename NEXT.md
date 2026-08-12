@@ -11,7 +11,7 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
 |---|---|
 | cna-bible branch | `next`; local commits are ahead of `origin/next` (push requires explicit external-publication approval) |
 | CNA pinned SHA | `7a64362efef4119bf880459ef1704fb2c52199e2` (`develop` == `origin/develop`, 2026-08-11) |
-| Book builds | **yes** — 707 pages, all automated checks green; all completed Phase D/E writing and five Phase F corrective batches are visually verified |
+| Book builds | **yes** — 707 pages, all automated checks green; all completed Phase D/E writing and seven Phase F corrective batches are visually verified |
 | Phase | **A–E complete; F in progress:** Chapters 19–79 and Appendices A–H are complete. Phase F has filled omitted Chapters 8–11 and 18, corrected early graphics/lifecycle drift, and continues the whole-book consistency sweep. |
 
 ## What is done
@@ -177,6 +177,18 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     from the real base-vertex, RGBA8/recovery, effect-unbind and 16-bit batch boundaries. The book
     remains 707 pages; physical pages 235–239, 248–250 and 262–270 were rendered and read, with the
     instancing table, long identifiers and `SetDataRaw` listing inspected full-size and clean.
+26. **Phase F corrective batch 7 is complete and verified.** Chapters 12, 14, 16, 19, 23–25
+    and the SDL_GPU/WebGPU renderer fragments now agree on the normalized 2D/cube render-target
+    descriptor, shared `DiscardContents` predicate, aspect-selective ordered clears and deferred
+    per-command viewport/scissor state. Vulkan, BGFX, WebGPU and SDL_GPU accounts describe their
+    current segmented replay rather than the superseded last-value model. Renderer-specific
+    corrections close stale SDL_GPU validation, lifetime, bias, anisotropy, mip and lazy-
+    backbuffer-readback gaps; record BGFX's one-plus-one instancing transport and non-GLSL matrix-
+    profile fault; close WebGPU's target-size and one-attachment blend gaps; and bound Sokol
+    Texture3D support to exact CPU-side resource transfer rather than GPU volume sampling.
+    Chapters 26–27 were audited against the same pin and required no correction. The book remains
+    707 pages; all 31 touched physical pages were rendered and read, with dense matrices and
+    representative WebGPU, SDL_GPU and BGFX pages inspected full-size and visually clean.
 
 ## Do this next
 
@@ -202,10 +214,10 @@ bounded correction batch; finish with an edition-wide visual and automated pass 
 
 ## Verification status
 
-Everything through Phase E and Phase F corrective batch 6 is verified:
+Everything through Phase E and Phase F corrective batch 7 is verified:
 
 - `make -C latex book` succeeds; **707 pages**.
-- makeindex: 2,183 entries accepted, 0 rejected, 0 warnings.
+- makeindex: 2,161 entries accepted, 0 rejected, 0 warnings.
 - No undefined references, no undefined control sequences, no duplicate labels, no doubled-
   backslash `\ref`, no hard-coded chapter numbers.
 - `git diff --check` clean.
@@ -259,6 +271,11 @@ Everything through Phase E and Phase F corrective batch 6 is verified:
   tail, EasyGL gap reconciliation, long GL identifiers, `SetDataRaw` listing and test-baseline
   transition were read in contact sheets; pages 237–238, 264 and 269 were also inspected full-size.
   The final rebuild and rerender were visually clean with no overfull box in the LaTeX log.
+- Phase F corrective batch 7 rendered and reviewed physical pages 140, 154–155, 177, 197,
+  243–248, 274–277, 286–290, 294–301, 307–309 and 312. Five contact sheets covered every
+  touched page; matrices on pages 244, 246 and 248 and representative WebGPU, SDL_GPU and BGFX
+  pages 286, 289, 295, 299 and 307 were inspected full-size. No clipping, overlap, malformed
+  listing, broken heading or other visual defect was found.
 
 **No completed writing batch is pending PDF verification.** Continue with the Phase F whole-book
 consistency sweep, then perform Phase G final verification.
@@ -276,10 +293,11 @@ consistency sweep, then perform Phase G final verification.
 Ten source-audit reports and the 42-family draw-path matrix are complete against pinned CNA
 `7a64362e`. Phase B settled a 12-Part, 79-chapter, 8-appendix edition; Phase C put it on disk,
 migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–7
-rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: six verified
+rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: seven verified
 batches filled omitted Chapters 8–11 and 18, removed stale totals/terminology, reconciled the
 early graphics, lifecycle and math narrative, and separated the four current shader strategies
 from the still-missing arbitrary-effect path. State, stream, instancing and programmable-GL
-contracts now also match the pinned renderer interface and post-audit remediation state. The book
-is 707 pages; continue the remaining whole-book
+contracts now also match the pinned renderer interface and post-audit remediation state. Shared
+render-target binding, usage, ordered-clear and dynamic viewport/scissor semantics now match the
+four deferred modern renderers as well. The book is 707 pages; continue the remaining whole-book
 consistency sweep.

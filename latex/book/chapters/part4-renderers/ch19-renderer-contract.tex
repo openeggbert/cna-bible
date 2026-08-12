@@ -1587,15 +1587,12 @@ active risk without tracing where it actually leads.
 \section{Render-target binding identity and usage in the fourteen-product audit cohort}
 \label{sec:backend-rendertarget-usage-matrix}
 
-The public enum is small; the execution contract is not. CNA has three independent shared
-routes. The singular 2D route always calls \texttt{SetRenderTarget2D}, replaces the tracked
-binding list, resets viewport/scissor, and, for exact
-\texttt{DiscardContents}, clears black plus optional depth. The singular cube route calls
-\texttt{SetRenderTargetCubeFace}, clears the tracked list, keeps only a Boolean, resets the
-rectangles, and performs no usage-dependent clear. The plural route copies the caller's list
-but converts only \cnaclass{RenderTarget2D} objects to renderer pointers; the first 2D target
-controls dimensions, implicit clear, and usage. An empty list restores the backbuffer without
-ever reading \texttt{PresentationParameters.RenderTargetUsage}.
+The public enum is small; the execution contract is not. CNA now has one shared target-binding
+route. Singular 2D and cube calls normalize into \texttt{SetRenderTargets}; every binding
+becomes a slot-aligned descriptor naming either a 2D target or a cube face, its dimensions,
+and its renderer-applied sample count. The first target controls viewport/scissor dimensions,
+implicit usage clear, and the shared usage policy. An empty list restores the backbuffer
+without reading \texttt{PresentationParameters.RenderTargetUsage}.
 
 Three shared consequences precede any renderer difference:
 
@@ -1604,17 +1601,14 @@ Three shared consequences precede any renderer difference:
         target again and resets viewport/scissor; an identical repeated cube/MRT/backbuffer
         bind resets state and can redo renderer finalization. FNA compares target identity and
         cube face and returns early before any of those operations.
-  \item \texttt{RenderTarget2D} passes
-        \texttt{usage == PreserveContents} to its factory, but the shared clear tests
-        \texttt{usage == DiscardContents}. Thus \texttt{PlatformContents} reaches a consuming
-        renderer as ``discard'' without receiving CNA's shared black clear. FNA passes every
-        non-discard value as the native preserve request.
-  \item The 2D discard clear requests target and optional depth, never stencil. The cube-target
-        factory has no usage parameter at all. Its plural binding form becomes a null renderer
-        pointer despite being public: common consequences include silently targeting the
-        backbuffer, D3D11 binding a null RTV, D3D12 throwing, and Vulkan/D3D9 or multi-target
-        EasyGL dereferencing null. This is not a renderer capability that callers can probe
-        safely.
+  \item Both target classes pass one centralized predicate to their factories:
+        \texttt{usage != DiscardContents}. Platform therefore follows Preserve, matching FNA,
+        while only exact Discard selects the shared implicit clear.
+  \item Discard requests target plus each depth/stencil aspect the first descriptor reports as
+        real. Cube faces remain in the tracked public list, so their own format participates in
+        this mask. Null/disposed bindings, nonzero 2D slices, mismatched dimensions or applied
+        sample counts, and duplicate subresources are rejected before native binding. A renderer
+        may still reject an otherwise valid mixed/cube MRT shape explicitly.
 \end{enumerate}
 
 ``Preserve'' in the table means what the implementation retains across separate bind cycles,
@@ -1649,55 +1643,52 @@ uses the presentation/backbuffer usage. ``P'' below abbreviates \texttt{Preserve
   & No cube or MRT; non-empty plural calls delegate, while empty restores the private target.
   & Exact off-screen readback proves a P target survives redirection; no complete usage pair. \\
 \texttt{EasyGL}
-  & Persistent texture/FBO; factory ignores preserve. Shared clear makes Discard lose
-    color/optional depth (not stencil); P and Platform retain them.
-  & Cube usage is invisible and no implicit cube clear occurs, so single-sample storage
-    generally survives. MRT follows the first 2D target's shared clear, but mip finalization
-    remains separate.
-  & Strong direct-FBO pixels prove non-MSAA 2D color Discard versus P only. \\
+  & Persistent texture/FBO; factory need not consume preserve because the shared three-aspect
+    bind clear distinguishes Discard from P/Platform.
+  & Usage reaches cube faces and MRT through normalized descriptors; the first target controls
+    the shared clear, while mip finalization remains separate.
+  & Shared 2D/cube/depth-stencil usage fixtures provide discriminating pixels. \\
 \texttt{VULKAN}
-  & Non-MSAA Discard clears every real attachment; P loads color but discards depth/stencil.
-    Platform is passed as false and discards. P+MSAA is also discard-shaped.
-  & Every cube and MRT pass uses clear/discard load ops regardless of public usage. Binding
-    is deferred; identical calls can still alter global clear/target state.
-  & Strong two-frame partial-draw pixels prove only non-MSAA 2D color Discard versus P. \\
+  & Discard clears each real aspect; P/Platform load and store colour, depth, and stencil for
+    single-sample and MSAA targets.
+  & Usage reaches cube faces and MRT. Cube colour is per face; one target-wide depth/stencil
+    image is shared across faces, matching FNA.
+  & 2D/cube usage, per-face MSAA, and depth/stencil discriminators cover all three enums. \\
 \texttt{BGFX}
-  & P explicitly sets the target view to \texttt{CLEAR\_NONE}; Discard's shared clear
-    configures color/depth/stencil. Platform is false but receives no shared clear, so a reused
-    view may inherit earlier clear state.
-  & Cube binding never resets its view clear from usage; MRT allocates a view without a
-    P-specific reset. Both can therefore retain or repeat stale clear policy.
-  & The named usage test is smoke/no-crash only; it reads no discriminating pixel. \\
+  & Discard's shared three-aspect clear becomes an ordered view; P/Platform create no bind clear,
+    so persistent attachments load by construction under \texttt{CLEAR\_NONE}.
+  & The same rule reaches cube faces and MRT, including per-face multisample colour and shared
+    depth/stencil usage.
+  & Cube usage, per-face MSAA, and depth/stencil tests add discriminating pixels to the old smoke. \\
 \texttt{WEBGPU}
-  & A 2D pass loads color/depth/stencil for P. Discard and Platform both force all three clear
-    load ops because only exact P reached the factory as true.
-  & Cube passes always discard. The renderer inherits first-target-only MRT fallback rather
-    than implementing simultaneous targets.
-  & Source-proven. Existing 2D/cube pixel tests use Discard; none compare usages. \\
+  & First-segment load ops clear all real aspects for Discard and load them for P/Platform;
+    explicit clears remain separately ordered.
+  & Cube faces follow the same policy. More than one simultaneous target is rejected rather
+    than silently reduced to the first.
+  & Cube-usage and depth/stencil-usage fixtures distinguish all enums; MRT rejection is tested. \\
 \texttt{SDL\_GPU}
-  & Factory ignores preserve; per-target load ops follow pending flags. Shared Discard queues
-    color and optional depth but not stencil; P and Platform load all stored attachments.
-  & Every cube usage is load/preserve-like unless the caller explicitly clears. Real MRT
-    follows the first target's shared clear and queues it for all color siblings.
-  & Strong render-target tests exist, but no usage discriminator or stencil-discard check. \\
+  & Segment load ops clear real colour/depth/stencil for Discard and load them for P/Platform;
+    explicit clear requests override the policy aspect by aspect.
+  & Cube faces and real MRT retain owning attachment state; MSAA Preserve keeps per-face samples
+    with \texttt{RESOLVE\_AND\_STORE}.
+  & Cube, MSAA-face, depth/stencil, and pass-boundary tests discriminate policy and chronology. \\
 \texttt{D3D9}
-  & Persistent native surfaces; shared Discard clears color/optional depth, P and Platform do
-    not. Stencil is omitted from the implicit request.
-  & Cube usage is invisible and persistent. MRT uses the first 2D usage for the shared clear;
+  & Persistent native surfaces; shared Discard clears each real aspect, P and Platform do not.
+  & Cube faces and MRT receive normalized descriptors; the first target controls usage, while
     redundant binds can repeat resolve/rebind work.
-  & Source and broad RT smoke evidence; no usage-specific pixel comparison. \\
+  & Shared usage fixtures cover colour/depth/stencil; native clear-format gating is separate. \\
 \texttt{D3D11}
-  & Persistent resources; same shared Discard versus P/Platform split, with no implicit
-    stencil clear. Rebinding the same 2D target unbinds/resolves it first.
-  & Cube usage is invisible; the existing public cube-to-null transition also fails to restore
-    the backbuffer. MRT preservation follows the first target's shared clear.
-  & Source-proven; direct target tests do not exercise these public usage transitions. \\
+  & Persistent resources; shared Discard clears each real aspect, P/Platform retain them.
+    Rebinding the same target still performs native finalization/rebind work.
+  & Cube faces and real MRT use normalized descriptors; the first target controls the shared
+    usage clear.
+  & Shared cube and depth/stencil usage fixtures exercise public transitions. \\
 \texttt{D3D12}
-  & Persistent resources; same shared Discard versus P/Platform split and redundant
-    unbind/rebind/finalization behavior.
-  & Cube usage is invisible; public null restore skips cube resolve/mips. MRT binds real RTVs,
-    while stock draws still write only target~0.
-  & Source-proven; no public usage discriminator. \\
+  & Persistent resources; shared Discard clears each real aspect, P/Platform retain them;
+    redundant binds still repeat native work.
+  & Cube faces and real MRT use normalized descriptors. MRT binds real RTVs, while stock draws
+    still write only target~0.
+  & Shared usage fixtures provide public colour/depth/stencil discrimination. \\
 \texttt{SOFTWARE}
   & Persistent CPU color/depth arrays. Shared Discard clears both when present; P and Platform
     retain them. There is no stencil plane.
@@ -1706,7 +1697,8 @@ uses the presentation/backbuffer usage. ``P'' below abbreviates \texttt{Preserve
 \texttt{HEADLESS}
   & The enum changes only whether shared code emits a synthetic clear/counter update;
     target pixels are not rendered and readback repeats one renderer-global last-clear color.
-  & Synthetic cube bind has no usage path; inherited MRT uses only its first pointer.
+  & Cube faces and MRT arrive as normalized descriptors; behavior remains synthetic rather
+    than attachment preservation.
   & Trace/counter evidence only, never preservation pixels. \\
 \texttt{CANVAS}
   & Browser off-screen canvas is persistent; shared Discard overwrites black while P/Platform
@@ -1722,12 +1714,11 @@ uses the presentation/backbuffer usage. ``P'' below abbreviates \texttt{Preserve
 \end{longtable}
 \endgroup
 
-The safe portable subset is narrower than the enum names suggest. Use singular 2D bindings;
-do not put a cube in \cnaclass{RenderTargetBinding}; avoid redundant bind calls; explicitly
-clear every attachment whose starting value matters; and treat \texttt{PlatformContents} as
-non-portable until the two comparisons are unified. If old color must survive, use
-\texttt{PreserveContents} with non-MSAA 2D targets and consult the row above: even that does
-not currently preserve Vulkan depth/stencil or repair renderer-specific finalization gaps.
+The portable rule is now direct: Discard replaces every real aspect on bind; Preserve and
+Platform retain them. Singular 2D/cube calls and one-element \cnaclass{RenderTargetBinding}
+lists share that route. Still avoid redundant bind calls because CNA lacks FNA's identity
+early-return, and consult the renderer row before requesting several simultaneous attachments.
+The presentation backbuffer's own usage remains outside this policy.
 
 \section{ClearOptions: seven shared routes in the fourteen-product audit cohort}
 \label{sec:backend-clear-matrix}
@@ -1737,9 +1728,9 @@ methods for the seven non-empty combinations of target/depth/stencil. Before tha
 validates a requested depth value and applies the active-target mask described in
 \S\ref{sec:clearoptions}. FNA's mask uses the actual \cnaclass{DepthFormat}: \texttt{None}
 retains target only, while every format except \texttt{Depth24Stencil8} removes stencil. CNA
-currently has only a binary depth-storage query, and its singular cube binding is absent from
-the tracked target list. The table begins \emph{after} those shared differences; ``exact'' means
-exact only for the flags that survived shared routing.
+now asks depth and stencil independently from the first bound normalized 2D/cube descriptor,
+and asks the backbuffer renderer independently when no target is bound. The table begins
+\emph{after} that shared routing; ``exact'' means exact for the flags that survived it.
 
 \begingroup
 \footnotesize
@@ -1773,56 +1764,48 @@ exact only for the flags that survived shared routing.
   & The plain colour hook incorrectly includes \texttt{GL\_DEPTH\_BUFFER\_BIT} without forcing
     depth writes. Thus public \texttt{Target} and the raw-float overload can clear depth too,
     or fail to do so according to the prior depth mask. Other combinations select their bits.
-  & Public overload/range tests, generic depth tests, and cross-frame stencil pixel proof
-    exist. No test discriminates target-only depth preservation, depth-only formats, or the
-    cube-format mask. \\
+  & Public overload/range tests, generic depth tests, cross-frame stencil, clear-options, and
+    ordered-clear pixels exist. The plain colour-hook coupling remains distinct. \\
 \texttt{VULKAN}
-  & Deferred render-pass clears. The backbuffer and discard-content targets clear every
-    existing attachment at pass start from final global values.
-  & Not option-selective. A preserve-content target loads colour and uses
-    \texttt{DONT\_CARE} for depth/stencil even after an explicit clear; \texttt{ClearDepth}
-    also fails to mark an otherwise-unused target. Calls before queued draws are reordered to
-    pass start.
-  & Cross-frame depth/stencil tests prove values on the backbuffer; the clear-only RT
-    regression proves Task~875's pass is now recorded for the default discard case. Neither
-    proves preserve-content or same-pass ordering. \\
+  & Leading clears may fold into load ops; later clears become
+    \texttt{vkCmdClearAttachments} between ordered draw slices.
+  & Exact per-aspect selection after shared format masking, on backbuffer, 2D, cube, and MRT;
+    preserve-content explicit clears remain effective.
+  & Eight-mask clear-options and no-flush ordered-clear suites prove isolated aspects,
+    clear-only segments, target kinds, and draw--clear order. \\
 \texttt{BGFX}
-  & Every prepared view installs
-    \texttt{COLOR|DEPTH|STENCIL} through \texttt{setViewClear}; values are global and apply
-    once when the view executes.
-  & Not option-selective. \texttt{ClearDepth} changes only the scalar and does not touch an
-    otherwise-empty view; with a later submission all three attachments clear. Multiple calls
-    collapse to final values before all submissions.
-  & Generic colour+depth and cross-frame stencil tests pass. They deliberately do not exercise
-    depth-only no-draw behavior or same-view issue ordering. \\
+  & Every public clear owns an ordered touched view carrying its exact
+    \texttt{BGFX\_CLEAR\_*} mask and values.
+  & Exact per-aspect selection after shared masking; full-target clear is independent of custom
+    viewport, and subsequent work receives another view.
+  & Shared clear-options/ordered-clear suites prove depth-only no-draw, repeated clears,
+    draw--clear order, cube, and MRT behavior. \\
 \texttt{WEBGPU}
-  & Backbuffer and 2D-target passes use independent pending colour/depth/stencil load ops;
-    a discard target forces all three. Calls are consumed when the outgoing target/pass flushes.
-  & Selective for backbuffer and preserve-content 2D targets after shared masking.
-    Cube passes always clear all three attachments because the renderer interface did not convey
-    cube preserve usage; final global values win there.
-  & Same-call colour readback and combined 2D-target depth usage are proven. No isolated
-    depth/stencil or cube-option test was found. \\
+  & Ordered clear entries partition a bind cycle into native pass segments; a leading clear
+    may become a load action and a post-draw clear opens the next segment.
+  & Exact per-aspect selection after shared masking for backbuffer, 2D, and cube. MRT is an
+    explicit capability rejection, not a silently narrowed clear.
+  & Shared clear-options and ordered-clear suites prove isolated aspects, same-pass chronology,
+    and target transitions. \\
 \texttt{SDL\_GPU}
-  & Independent pending flags and values exist per backbuffer, 2D target/MRT attachment, and
-    cube face; each becomes the matching SDL GPU load operation when the deferred pass begins.
-  & Selective after shared routing. A pass still collapses repeated calls before queued draws,
-    and shared code cannot inspect a singular cube's format.
-  & Smoke/render-state tests exercise the full combined form; no isolated option-order or
-    cube-format discriminator was found. \\
+  & Per-destination pass segments coalesce only consecutive pre-draw clears; a post-draw clear
+    opens another load/clear segment at the public position.
+  & Exact per-aspect selection after shared masking for backbuffer, 2D, cube, and real MRT;
+    later MSAA segments preserve samples they must load.
+  & Shared clear-options, ordered-clear, pass-boundary, and backbuffer-order tests distinguish
+    masks, chronology, and destinations. \\
 \texttt{D3D11}
   & Immediate full-view clears: all bound colour RTVs, plus exactly requested native
     depth/stencil flags when a DSV exists.
-  & Renderer selection is exact. Shared routing wrongly retains stencil for
-    \texttt{Depth16}/\texttt{Depth24}; the former has no stencil plane, while the latter is
-    physically mapped to D24S8 despite its depth-only public name.
+  & Renderer selection is exact. Shared routing drops stencil for public
+    \texttt{Depth16}/\texttt{Depth24} even if an implementation uses a combined native format.
   & Strong direct-renderer GPU readback proves stencil values and depth-only colour
     preservation; ordinary public tests do not cover the format-mask edge. \\
 \texttt{D3D12}
   & Immediate, synchronous command lists clear bound off-screen/swap-chain RTVs and selected
     DSV flags exactly.
-  & Same format-mask issue as D3D11. In an off-screen device with no colour resource bound,
-    every combination helper checks that colour binding first, so even a depth-only no-op
+  & Shared format masking is exact as above. In an off-screen device with no colour resource
+    bound, every combination helper checks that colour binding first, so even a depth-only no-op
     throws \texttt{NotYetImplemented}.
   & Strong direct-renderer depth-test and stencil-plane readback proof exists. It bypasses the
     shared public mask and requires a real bound target. \\
@@ -1864,11 +1847,10 @@ exact only for the flags that survived shared routing.
 \endgroup
 
 No \cnaclass{GraphicsCapability} value reports clear selectivity or same-pass ordering.
-Portable code should use \texttt{Clear(Color)} for the conventional frame-start operation,
-avoid the raw-float overload, pass only attachments the active target publicly owns, and place
-clear calls before drawing. Even that discipline cannot repair Vulkan preserve-content clears,
-EasyGL target-only depth coupling, or a renderer's cube-format routing; those are implementation
-gaps, not caller preconditions.
+Portable code should still pass only aspects the active target publicly owns and avoid the
+raw-float overload, whose semantics differ from \texttt{Clear(Color)}. The four audited modern
+deferred renderers now preserve issue order and masks; EasyGL's target-only depth coupling and
+D3D9's backbuffer-format gating remain renderer-specific exceptions, not caller preconditions.
 
 \section{Viewport and scissor in the fourteen-product audit cohort}
 \label{sec:backend-viewport-scissor-matrix}
@@ -1914,30 +1896,29 @@ clear operations are a separate native-API question.
     flush overwrites the GL viewport with full window/target size and does not restore it; its
     scissor remains effective. \\
 \texttt{VULKAN}
-  & Stored until command recording; custom value is read for the backbuffer pass only.
-  & Stored Boolean/rectangle is read for the backbuffer pass only; target passes force their
-    full rectangle.
-  & One live value governs all queued sprites and 3D draws when the pass is recorded, not each
-    draw's issue-time value. Both features have backbuffer pixel tests; target-reset proof does
-    not prove a custom target sub-region. \\
+  & Captured per SpriteBatch batch/3D draw and applied dynamically on its own backbuffer or
+    target segment, including depth range.
+  & Rectangle and enable are captured per command; disabled/degenerate becomes full target.
+  & Target-specific plus shared deferred-capture pixel tests prove several unflushed state
+    changes cannot collapse last-wins. \\
 \texttt{BGFX}
-  & Applied before each backbuffer 3D submit only; SpriteBatch and render-target views remain
-    full-size. Min/max depth is discarded.
+  & View-level state preserved by ordered target/viewport segments for 3D and SpriteBatch;
+    min/max depth is discarded.
   & Independent Boolean and rectangle, re-applied before every SpriteBatch and 3D submit.
-  & Dedicated public pixel tests prove both features. Scissor is per submit; viewport is a
-    per-view rectangle with the stated 3D/backbuffer limit. \\
+  & Subregion, deferred-viewport/scissor, multi-viewport, and SpriteBatch-transform tests cover
+    backbuffer and target scope. \\
 \texttt{WEBGPU}
-  & Stored, clamped to target bounds, and applied once when each pass is encoded.
-  & Independent Boolean/rectangle; disabled or zero becomes the full target, otherwise it is
-    clamped and applied once per pass.
-  & Backbuffer, 2D-target, and cube passes use the live record-time value for all queued sprite
-    and 3D commands. \texttt{WebGPU\_GraphicsState} has exact inside/outside pixel checks. \\
+  & Captured per command, clamped at dynamic application, and applied on backbuffer, 2D, and
+    cube passes.
+  & Independent captured Boolean/rectangle; disabled or zero becomes full target, enabled is
+    clamped at replay.
+  & Deferred pixel oracles prove chronology; cardinality tests prove no pipeline/pass/submit
+    multiplication and skip redundant same-state setter calls. \\
 \texttt{SDL\_GPU}
-  & No hook.
-  & Independent Boolean/rectangle, applied once per backbuffer, 2D-target, or cube pass; disabled
-    or zero becomes full target.
-  & Live pass-flush state, not part of each queued command's otherwise-rich snapshot. The
-    render-state test pixel-proves a half-target clip. \\
+  & Captured per command and applied through \texttt{SDL\_SetGPUViewport}, including depth range.
+  & Captured Boolean/rectangle applied per command; disabled or zero becomes full target.
+  & Shared deferred viewport/scissor fixtures cover backbuffer, 2D, cube, and multiple changes
+    in one unflushed bind cycle. \\
 \texttt{D3D11}
   & Immediate \texttt{RSSetViewports}, including depth range.
   & Immediate \texttt{RSSetScissorRects}; cached rasterizer state controls

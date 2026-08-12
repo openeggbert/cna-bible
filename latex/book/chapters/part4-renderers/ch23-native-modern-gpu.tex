@@ -69,8 +69,9 @@ two-sided stencil mode, and reference-stencil propagation) each separately confi
 failure mode. The fix added real per-pipeline depth-compare operations, full front- and
 back-face \texttt{VkStencilOpState} configuration, and dynamic-state reference/mask values ---
 and, as a direct side effect of the same fix, connected \texttt{ReferenceStencil}'s
-independent-override path (Chapter~\ref{ch:state-objects}) on Vulkan specifically, something
-still broken on EasyGL and BGFX. A second, smaller bug found in the same investigation: depth
+independent-override path (Chapter~\ref{ch:state-objects}) on Vulkan specifically. BGFX has
+since closed the same gap with its own dynamic rebuild and differential test; EasyGL remains
+the audited exception. A second, smaller bug found in the same investigation: depth
 format selection tried a stencil-\emph{less} format before it tried any stencil-capable
 alternative.
 
@@ -150,15 +151,13 @@ device.Clear(Color::CornflowerBlue);
 device.SetRenderTarget(nullptr); // no intervening draw: the former Task 875 trigger
 \end{lstlisting}
 
-The fix adds the active target to a deduplicated \texttt{clearedRTs\_} list from both
-\texttt{Clear()} and \texttt{ClearColorAndDepth()}; command recording seeds its used-target
-list from there before scanning queued SpriteBatch and 3D draws. The dedicated clear-only
-\cnaclass{RenderTarget2D} regression fills two targets without a draw, forces the necessary
-frame boundaries, then samples both. Disabling both insertions
-reproduced black; restoring them returned the exact fills. One important limit remains:
-\texttt{clearedRTs\_} guarantees that a pass exists, but does not make the pass's attachment
-load operations reflect each \cnaclass{ClearOptions} subset
-(\S\ref{sec:backend-clear-matrix}).
+The first repair added a deduplicated target list so a clear could create a pass without a
+draw. The current architecture has superseded that intermediate mechanism: each public
+\texttt{Clear()} is now a \texttt{PendingClear} carrying its target, bind-cycle segment,
+monotonic command order, selected aspects, values, and an owning target reference. Command
+recording discovers clear-only segments from that stream itself. The dedicated clear-only
+\cnaclass{RenderTarget2D} regression still fills two targets without a draw and samples both,
+while the newer ordered-clear suite proves this is no longer merely a pass-existence fix.
 
 Task~876 was the separate all-six-faces path: real SpriteBatch content was rendered into a
 \cnaclass{RenderTargetCube}, unbound, then sampled through \cnaclass{EnvironmentMapEffect}.
@@ -169,30 +168,33 @@ Task~907 cube-view/layout rework is the leading inference, but its most obvious 
 is mip-count-gated while this regression uses one level. The honest current conclusion is
 therefore ``verified closed, precise historical fixing commit unknown,'' not ``still open.''
 
-\section{Clear values are real; \texttt{ClearOptions} selectivity is not}
+\section{Clear is aspect-selective and issue-ordered}
 
-Task~871's cross-frame tests establish that colour, depth, and stencil values can all reach a
-real Vulkan attachment. They do not make \cnaclass{ClearOptions} an issue-ordered command.
-The backbuffer render pass always uses \texttt{LOAD\_OP\_CLEAR} for every existing attachment,
-and a discard-content render target does the same. All calls made before queued draws merely
-replace global clear scalars; the final values apply once at pass start, before every draw,
-regardless of call order.
+Task~871 first established that colour, depth, and stencil values reach real Vulkan
+attachments. \texttt{REMED-GFX-129} then closed the more demanding contract: every public
+clear is now an ordered command at its exact position among SpriteBatch and 3D draws, with
+independent target/depth/stencil flags. A leading clear on a discard cycle may fold into the
+render-pass load action; a clear after any draw is emitted as \texttt{vkCmdClearAttachments}
+after replaying the preceding command slice. Preserve targets use the latter path even for a
+leading explicit clear, so their load operation does not swallow it. \texttt{ClearDepth()}
+also records a clear-only segment rather than merely updating a global fallback value.
 
-Preserve-content targets expose a different failure: their render pass fixes colour to
-\texttt{LOAD} and depth/stencil to \texttt{DONT\_CARE}. Adding the target to
-\texttt{clearedRTs\_} guarantees a pass will exist, but an explicit clear does not select a
-different render-pass variant. \texttt{ClearDepth()} is narrower still: it changes only the
-global depth scalar and does not add an otherwise-unused current target to that list. These
-limits are separate from Task~875's now-fixed ``no pass at all'' defect and are tabulated
-against the other audited renderer families in \S\ref{sec:backend-clear-matrix}.
+Two renderer-neutral suites make those details observable. The eight-mask
+\texttt{Vulkan\_GraphicsDevice\_ClearOptions} fixture establishes old colour/depth/stencil
+contents and encodes each surviving aspect into distinct colour probes. The ordered-clear
+fixture queues draw--clear, clear--draw, multiple-clear, backbuffer, 2D-target, cube-face, and
+MRT sequences without an intervening readback or present. A renderer that collapsed them into
+one pass-opening value would therefore fail even if its eventual clear colour were correct.
 
-The constructor comparison creates two additional usage boundaries. Only exact
-\texttt{Preserve\allowbreak{}Contents} reaches the renderer as true, so
-\texttt{Platform\allowbreak{}Contents} selects the discard pass even though shared code issues
-no matching black clear. The MSAA pass has no load variant at all, so Preserve+MSAA also
-discards. Cube targets cannot convey usage through the common factory, and MRT uses a separate
-always-clear pass; both discard for every enum. The non-MSAA two-frame usage test proves only
-the color Discard/Preserve split, not these depth, MSAA, cube, MRT, or Platform cases. See
+Render-target usage now follows one shared predicate: only \texttt{DiscardContents} maps to
+discard; \texttt{PreserveContents} and \texttt{PlatformContents} both map to preservation.
+Vulkan receives that Boolean for 2D and cube targets. Its single-sample and MSAA render-pass
+caches provide matching clear/load variants, and preserving depth/stencil attachments receive
+the layouts and store operations needed to survive a full unbind/rebind cycle. Cube colour is
+per face while its depth/stencil image is deliberately shared by all six faces, matching FNA.
+The cube-usage, per-face-MSAA, and depth/stencil-usage suites distinguish those paths, including
+Platform. Discard still produces the deterministic shared black/max-depth/zero-stencil bind
+clear, and an explicit ordered clear supersedes either usage policy. See
 \S\ref{sec:backend-rendertarget-usage-matrix}.
 
 \section{A confirmed non-gap: device-feature gating}
@@ -242,24 +244,21 @@ after its render pass ends --- the direct Vulkan equivalent of EasyGL's own
 \texttt{glGenerateMipmap}-on-unbind. Render-target MSAA is real for both
 \cnaclass{RenderTarget2D} and \cnaclass{RenderTargetCube} (the cube case exactly as described
 above). And \texttt{SetViewport()} genuinely reaches \texttt{vkCmdSetViewport} at
-command-buffer-record time, mirroring \texttt{SetScissorRect}'s own identical storage-then-apply
-shape --- with one honestly-scoped limitation worth stating precisely rather than rounding up to
-``fixed'': a custom sub-region \cnaclass{Viewport} is only honored for the backbuffer pass. A
-render-target pass stays hardcoded to that target's own full size, because this renderer's
-deferred, potentially-multiple-render-targets-per-frame recording model has no way to recover
-\emph{which} \cnaclass{Viewport} was actually active at the moment each render target's own draws
-were originally issued, by the time a frame's commands actually get recorded.
+command-buffer-record time. The first repair covered the backbuffer only;
+\texttt{REMED-GFX-062} then snapshots the active viewport into every SpriteBatch batch and 3D
+draw and applies that captured value while replaying the draw's own render-target segment.
+Custom sub-regions now work on the backbuffer and \cnaclass{RenderTarget2D}, rather than
+collapsing to a full-target reset or to the final live value at \texttt{Present()} time.
+Dedicated target and shared deferred-capture pixel tests cover both scopes and multiple
+viewport changes inside one unflushed bind cycle.
 
-The same scope limit applies to scissor, not only viewport. Each render-target pass hardcodes
-both a full-target \texttt{VkViewport} and \texttt{VkRect2D}; the stored custom values are read
-only for the backbuffer pass, with \texttt{ScissorTestEnable=false} or a zero rectangle falling
-back to the full swapchain. One dynamic viewport/scissor pair is installed before both
-\texttt{drawSpritesFor()} and \texttt{draw3DFor()}, so the last live state when the command
-buffer is recorded governs every queued sprite and 3D draw in that backbuffer pass. It is not
-snapshotted per draw at the time the game issued it. Dedicated pixel tests prove the custom
-backbuffer viewport and enabled/disabled scissor cases; the shared render-target reset test
-proves the full-size reset visible after switching targets, not a custom sub-region inside a
-Vulkan target.
+Scissor follows the same per-command rule. Each queued draw retains both the rectangle and
+\texttt{ScissorTestEnable}; replay clamps an enabled rectangle to the current target and
+expands disabled or degenerate state to its full extent before \texttt{vkCmdSetScissor}. The
+target-scissor fixture and cross-renderer deferred-scissor oracle prove that a later rectangle,
+target switch, or ordinary full-state restore cannot retroactively unclip earlier queued
+draws. The pass-opening full-target viewport/scissor calls remain valid defaults, but every
+real draw overrides them from its own snapshot.
 
 \section{How a swapchain gets built: format, color space, and present mode}
 \label{sec:vulkan-swapchain}

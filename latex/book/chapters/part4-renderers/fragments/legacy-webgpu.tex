@@ -114,20 +114,22 @@ defect in the \emph{test itself} (a missing \texttt{RasterizerState::CullNone}),
 MSAA implementation. \cnaclass{EnvironmentMapEffect} and genuine hardware instancing were
 added together, with instancing implemented as a real per-instance vertex stream needing no
 bind-group changes, unlike the effect families that do require one per draw.
-\cnaclass{RenderTargetCube} support surfaced a new, cross-cutting, still-unfixed bug worth
-flagging directly: sprite geometry is computed from the back buffer's own logical dimensions
-unconditionally, never from whichever render target is currently bound --- meaning a
-\cnaclass{SpriteBatch::Draw()} call into a smaller or differently-sized off-screen target may
-not actually cover it the way a caller would expect. Mip generation for \cnaclass{Texture2D}
+\cnaclass{RenderTargetCube} support surfaced a cross-cutting sprite-geometry bug that has since
+been fixed: the original queue path computed clip-space positions from the backbuffer's logical
+dimensions even while a differently-sized off-screen target was bound. \texttt{REMED-GFX-019}
+now derives dimensions from the current \cnaclass{RenderTarget2D} or cube face instead. Mip
+generation for \cnaclass{Texture2D}
 and \cnaclass{TextureCube} is implemented as a genuine filtered downsample (a series of
 full-screen-triangle render passes, since \texttt{wgpu-native} v29 has no direct
-blit-image-equivalent call) --- and, notably, this renderer auto-regenerates mip content on
-every level-0 write to a plain \cnaclass{Texture2D} / \cnaclass{TextureCube}, which neither real
-XNA/FNA nor any other CNA renderer does (every other renderer only regenerates mips on
-render-target unbind). This is documented explicitly as a deliberate divergence that makes
-this specific behavior strictly \emph{better} than every other renderer's, while still being
-genuinely different --- worth knowing if you are relying on mip regeneration timing to match
-across renderers.
+blit-image-equivalent call). Notably, this renderer auto-regenerates the chain after every
+level-zero write to a plain \cnaclass{Texture2D} or \cnaclass{TextureCube}. Real XNA/FNA and
+the other audited plain-texture paths keep upper levels explicitly authored; SDL\_GPU is the
+narrow exception for plain cubes, where a complete level-zero face upload also invokes its
+native generator, while its plain 2D and 3D textures remain authored-level resources.
+WebGPU's behavior prevents undefined upper levels after a level-zero upload, but it is a
+deliberate timing divergence rather than an unqualified superiority: a later level-zero write
+can overwrite upper levels that a game authored earlier. Render-target mip generation remains
+the separate unbind/pass-finalization contract.
 
 \begin{sourcenote}
 The default surface is equally independent of public presentation-format fields, but its
@@ -140,11 +142,10 @@ the next frame detects its physical size and reconfigures the surface, but neith
 format enum participates.
 \end{sourcenote}
 
-\subsection{A worked example: the still-open render-target-size trap}
+\subsection{A worked example: the closed render-target-size trap}
 
-The \cnaclass{RenderTargetCube} sprite-geometry bug named above is easy to reproduce
-mentally, and worth walking through precisely because it produces no error of any kind ---
-only a subtly wrong result:
+The former sprite-geometry bug is worth walking through because it produced no error of any
+kind --- only a subtly wrong result:
 
 \begin{lstlisting}
 // e.g. a 256x256 render target, while the game window itself is 1920x1080:
@@ -154,18 +155,19 @@ spriteBatch.Draw(sourceTexture, Vector2::Zero, Color::White); // "fill the targe
 spriteBatch.End();
 \end{lstlisting}
 
-On a renderer without this bug, a sprite meant to cover the entire currently-bound render
-target is sized and positioned relative to \emph{that target's own} dimensions. On this
-renderer, sprite geometry is instead computed from the back buffer's logical dimensions
-unconditionally --- so the same \texttt{Draw()} call above, intended to fill a
-$256\times256$ off-screen target, is actually sized as though it were filling the full
-$1920\times1080$ window, silently covering far more (or, depending on aspect ratio,
-differently-shaped) area than the render target it is actually being drawn into. Nothing about
-this throws or logs; the only symptom is visually wrong content in the resulting render
-target, which then propagates into whatever samples it afterward. The practical mitigation
-until this is fixed: avoid drawing \cnaclass{SpriteBatch} content into a render target whose
-dimensions differ from the back buffer's own on this specific renderer, or verify the result
-with an actual pixel readback rather than trusting the call to behave as documented.
+Before \texttt{REMED-GFX-019}, the same \texttt{Draw()} call intended for the
+$256\times256$ target was converted as though the target were the $1920\times1080$ window,
+silently changing its scale and placement. The current \texttt{QueueSprite()} instead selects
+the bound 2D target's width/height, the bound cube face's size, or the backbuffer logical
+viewport as three explicit cases before converting pixels to NDC.
+
+The dedicated \texttt{WebGPU\_SpriteBatch\_RenderTarget} regression makes the distinction
+discriminating rather than visual-only: a $96\times72$ backbuffer is paired with asymmetric
+$48\times32$ and $64\times40$ targets; the same destination rectangle must occupy the same
+target-relative pixels in both. It also covers target--backbuffer--target isolation, a
+non-identity SpriteBatch transform, texture orientation, and a $48\times48$ cube face. Probe
+pixels inside the old half-scale rectangle but outside the correct one must remain black. The
+old practical prohibition on differently-sized targets is therefore no longer needed.
 
 \subsection{A worked example: \texttt{RenderTargetCube} and its former silent cast failure}
 
@@ -302,45 +304,48 @@ remains visible under the other. Scissor and viewport are genuine dynamic render
 logical-versus-physical-size hazard: CNA's stored logical viewport can exceed the real
 swapchain dimensions. The renderer therefore clamps it at application time, which is both a
 WebGPU API requirement and what restored the pre-existing 2D and 3D regression tests.
-The application point is once per encoded pass --- backbuffer, 2D render target, or cube face
---- before that pass's queued SpriteBatch and 3D commands. Thus both draw families and all
-three target kinds see the feature, but they all see the one live value sampled when the pass
-is recorded; changing viewport/scissor repeatedly between deferred draws in the same pass is
-not preserved as per-draw history. A disabled or zero scissor is expanded to the full current
-target instead of issuing an invalid zero-area native rectangle.
+Every queued SpriteBatch or 3D command captures its own viewport and scissor state at the public
+draw call. Replay applies those snapshots dynamically through the two native setters on the
+backbuffer, 2D-target, and cube-face paths; consecutive commands with identical state skip the
+redundant native call. Thus several changes inside one deferred pass no longer collapse to the
+last live value. The shared deferred pixel fixtures prove the per-command result, while the
+WebGPU cardinality tests prove it did not require a pipeline variant, render-pass split, extra
+submit, or one setter call for every same-state draw. A disabled or zero scissor expands to the
+full current target instead of issuing an invalid zero-area rectangle.
 
 Third, this is not a claim that every state object is complete. \cnaclass{FillMode}'s
-\texttt{WireFrame} value is stored but has no effect because the pinned WebGPU API offers no
-polygon-mode switch; full \cnaclass{BlendState} mapping remains incomplete; and the renderer
-stores the complete stencil configuration but has deliberately not yet baked stencil operations
+\texttt{WireFrame} value is stored but polygon draws now refuse it because the pinned WebGPU API
+offers no polygon-mode switch. The renderer stores the complete stencil configuration but has
+deliberately not yet baked stencil operations
 into its many pipeline families. The last deferral is evidence-based rather than cosmetic:
 the cull-mode mapping itself required a pixel test to correct an initially plausible but wrong
 winding interpretation, so copying a stencil front/back mapping without an equivalent
 differential stencil test would risk making an invisible wrongness look ``implemented.''
 
-\section{Clear is selective on two target types, unconditional on the third}
+\section{Clear ordering and usage are consistent across target types}
 
-Three pending Booleans independently select colour, depth, and stencil load operations for the
-backbuffer and a preserve-content \cnaclass{RenderTarget2D}; a discard-content target forces all
-three, as its usage permits. Switching targets flushes the outgoing pass and consumes the
-flags. Values are nevertheless global, so repeated clears before that flush collapse rather
-than interleave with already-queued draws.
+Each public clear enters the same ordered stream as all eleven deferred draw families, carrying
+independent colour, depth, and stencil flags and values. Replay partitions one bind cycle into
+native pass segments: leading/consecutive clears can fold into the next segment's load actions,
+while a clear after a draw closes that segment so the following pass observes it at the exact
+public position. A discard-content target may clear its first segment as its usage permits;
+later explicit clears remain ordered rather than becoming one global final value. The shared
+clear-options and ordered-clear fixtures cover backbuffer, 2D-target, cube-face, and MRT-rejection
+boundaries without an intervening flush.
 
-``Preserve-content'' here means only the exact Preserve enum value. Shared construction treats
-Platform as a false preserve Boolean, so WebGPU forces all three clear load ops for Platform
-too even though shared bind code issues no implicit black clear. Conversely, the backbuffer's
-\texttt{Presentation\allowbreak{}Parameters.Render\allowbreak{}Target\allowbreak{}Usage} is
-never consulted, and plural binding inherits the interface's first-target-only fallback rather
-than creating MRT.
+The shared FNA predicate maps only \texttt{DiscardContents} to discard; Preserve and Platform
+both preserve. WebGPU receives that Boolean for 2D and cube targets, and the first native
+segment selects clear versus load for colour, depth, and stencil together. Later segments load
+prior contents unless an explicit ordered clear selects an aspect. A cube face owns its colour
+view while all faces share the target's depth/stencil attachment, matching the reference
+contract. Cube-usage and depth/stencil-usage regressions distinguish all three enums and the
+six faces rather than inferring behavior from a combined clear.
 
-\cnaclass{RenderTargetCube} is different. The renderer interface never conveyed the cube's
-preserve-contents usage, so every cube-face pass unconditionally clears all three attachments
-from the current global values. Shared \cnaclass{GraphicsDevice} also fails to retain the
-singular cube in its active-target list, leaving its depth format invisible to the FNA-style
-mask. Existing readback proves immediate colour replacement and the combined 2D-target path;
-it does not isolate these cube/option edges. The full comparison is
-\S\ref{sec:backend-clear-matrix}; the separate usage matrix is
-\S\ref{sec:backend-rendertarget-usage-matrix}.
+The backbuffer's
+\texttt{Presentation\allowbreak{}Parameters.Render\allowbreak{}Target\allowbreak{}Usage} remains
+outside this off-screen policy, and plural binding still rejects MRT rather than creating more
+than one attachment. The full comparison is \S\ref{sec:backend-clear-matrix}; the separate
+usage matrix is \S\ref{sec:backend-rendertarget-usage-matrix}.
 
 \section{What remains open}
 
@@ -350,9 +355,13 @@ covers exactly why, and why it is a shared architectural gap rather than a per-r
 and the cross-renderer design change that would make it reachable from a real game remains
 larger than any one renderer task. Specific to this renderer: multiple simultaneous render
 targets, actual stencil-operation mapping (not merely the already-stored state and dynamic
-reference value), complete \cnaclass{BlendState} mapping, \texttt{WireFrame} rendering,
+reference value), \texttt{WireFrame} rendering,
 custom \cnaclass{SpriteBatch} effects, and custom WGSL effects authored outside the stock-effect
-set. The two \cnaclass{RenderTargetCube} scope cuts also remain honest: mipmapped cube targets
+set. \cnaclass{BlendState} is no longer on that list for the one attachment WebGPU can bind:
+all source/destination factors and operations, dynamic \texttt{BlendFactor}, slot-zero
+\texttt{ColorWriteChannels}, and \texttt{MultiSampleMask} reach keyed SpriteBatch and 3D
+pipelines with dedicated differential tests. Slots 1--3 remain inapplicable until MRT exists.
+The two \cnaclass{RenderTargetCube} scope cuts also remain honest: mipmapped cube targets
 throw at construction, and their per-target MSAA request is accepted but reports zero rather
 than claiming an unimplemented multisampled array-texture resolve. Browser/Emscripten WebGPU is
 entirely out of scope so far --- this renderer is native \texttt{wgpu-native} only.

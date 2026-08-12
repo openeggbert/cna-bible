@@ -38,27 +38,27 @@ restyle the window, after which \texttt{EnsureViewState()} notices the dimension
 \texttt{bgfx::reset}; the empty presentation-format hook does not prevent that window route.
 \end{sourcenote}
 
-\section{One view clear is broader than seven public combinations}
+\section{Clear owns an ordered, aspect-selective view}
 
-\texttt{EnsureViewState()} always installs the colour, depth, and stencil
-\texttt{BGFX\_CLEAR} flags; it does not vary those flags with
-\cnaclass{ClearOptions}. Colour and stencil entry points also touch the view, while
-\texttt{ClearDepth()} merely changes the global scalar and cannot initiate an otherwise-empty
-view. If a draw is later submitted, the full three-attachment clear still happens once at view
-start. Multiple public clears in one unadvanced frame consequently collapse to the last global
-values and precede all submitted draws. The cross-frame stencil regression proves the stencil
-value is real, not same-view issue ordering or attachment selectivity; see
-\S\ref{sec:backend-clear-matrix}.
+BGFX exposes clearing through view state rather than an issue-ordered clear command, so CNA
+now makes each public clear its own view. \texttt{RecordClear()} allocates the next per-frame
+view, binds the current backbuffer/2D/cube/MRT destination, installs exactly the requested
+\texttt{BGFX\_CLEAR\_COLOR}, \texttt{DEPTH}, and/or \texttt{STENCIL} mask and values, then
+touches the view so a clear-only cycle is observable. A later draw or clear receives another
+view; \texttt{bgfx::setViewOrder()} remaps those views into public call order. Clear therefore
+ignores a custom viewport and covers the full target, while draw--clear, clear--draw, repeated
+clear, target-switch, cube-face, and MRT sequences retain their chronology. The shared
+clear-options and ordered-clear suites discriminate masks and order rather than merely proving
+that a final colour appeared; see \S\ref{sec:backend-clear-matrix}.
 
-BGFX's persistent view state makes target usage observable. When a 2D target requests
-Preserve, the renderer disables view clearing with
-\texttt{BGFX\_\allowbreak{}CLEAR\_\allowbreak{}NONE}; Discard relies on the shared implicit
-clear to install all three flags. Platform is passed to the renderer as ``not preserve'' but
-receives no shared clear, so it can inherit whatever clear flags that recycled view ID last
-held. Cube binding and MRT creation likewise lack a usage-specific clear reset. The named BGFX
-usage test only proves two-frame bind/unbind does not crash; despite its comments, it contains
-no pixel oracle. The full distinction is
-\S\ref{sec:backend-rendertarget-usage-matrix}.
+BGFX's explicit-view model implements target usage without a native load-policy object. The
+shared layer maps only \texttt{DiscardContents} to a deterministic black/max-depth/zero-stencil
+clear on every bind; that request becomes its own ordered clear view. Preserve and Platform
+issue no bind clear, so the attachment survives by construction under \texttt{CLEAR\_NONE}.
+The same rule now reaches 2D targets and cube faces, including per-face multisample colour;
+depth/stencil follows it too. The cube-usage, per-face-MSAA, and depth/stencil-usage pixel suites
+distinguish Discard, Preserve, and Platform rather than relying on the older no-crash usage
+smoke test. The full comparison is \S\ref{sec:backend-rendertarget-usage-matrix}.
 
 \section{Recorded BGFX campaign and the Phase 72 closure}
 
@@ -316,64 +316,75 @@ buffer; CNA's current fix instead shares whichever view the game's own 3D draw a
 targets --- a real, acknowledged architecture gap against true scene-depth query correctness,
 not yet attempted.
 
-\section{Instancing: a real, working implementation with no dedicated test of its own}
+\section{Instancing: exact transport, with a native-profile shader fault}
 \label{sec:bgfx-instancing}
 
 \cnaclass{GraphicsDevice}\allowbreak{}\texttt{::DrawInstancedPrimitives()} reaches a real
 renderer implementation --- \texttt{BgfxRenderer::DrawInstancedPrimitivesEx()} is a
-genuine, roughly seventy-line implementation, not a stub --- but grepping
-\texttt{modules/renderers/bgfx/examples/CMakeLists.txt} directly for anything instancing-related finds nothing at
-all, in contrast to \texttt{D3D9}, \texttt{EasyGL}, \texttt{Vulkan}, and \texttt{WebGPU}, each
-of which has its own dedicated instancing test file under its renderer module's \texttt{examples/} tree (a real
-\texttt{*instanced*.cpp} naming pattern, one file per renderer). This renderer is the one real
-gap in that otherwise complete cross-renderer picture --- implemented, never independently
-pixel-verified.
+substantial implementation, not a stub. There is no standalone
+\texttt{modules/renderers/bgfx/examples/*instanced*.cpp} binary, but concluding ``untested''
+from that filename search would now be wrong. The shared graphics suite contains BGFX-specific
+pixel, cache-cardinality, submission-count, exact native-range, transient-allocation, wireframe,
+and \texttt{InstanceFrequency} cases. These prove considerably more than a no-throw smoke test
+while also exposing a profile-dependent defect described below.
 
-The real mechanism, read directly from \texttt{GraphicsDevice.cpp}: a game marks one bound
-\cnaclass{VertexBuffer} as the per-instance data source by giving its
+The shared transport is no longer the old pointer-only bridge. A game marks a bound
+\cnaclass{VertexBuffer} as per-instance data by giving its
 \cnaclass{VertexBufferBinding} an \texttt{InstanceFrequency} greater than zero when calling
-\texttt{SetVertexBuffers()}; \texttt{DrawInstancedPrimitives()} then scans every currently
-bound binding, takes the \emph{first} one whose \texttt{InstanceFrequency} is positive, and
-passes only that one buffer's renderer pointer through as \texttt{GpuDrawParams::instanceVb}:
+\texttt{SetVertexBuffers()}. \texttt{GraphicsDevice} composes every semantically contributing
+binding into the same immutable \texttt{GpuDrawParams::vertexStreams} array used by ordinary
+draws, preserving slot, renderer pointer, declaration stride, vertex offset, frequency, and
+element count by value. The classic BGFX-supported shape is exactly one stream of each input
+rate:
 
 \begin{lstlisting}
-for (const auto& binding : currentVertexBuffers_) {
-    if (binding.getInstanceFrequencyProperty() > 0) {
-        if (auto* vb = binding.getVertexBufferProperty()) {
-            p.instanceVb = &vb->GetRenderer();
-            break;
-        }
-    }
-}
+FillVertexStreamBindings(p, /*foldedOffset=*/0,
+                         /*allowLegacyEmptyDeclarationFallback=*/false);
+ValidateVertexStreamRanges(p, baseVertex + minVertexIndex, numVertices,
+                           "numVertices", std::to_string(numVertices));
+ValidateInstanceStreamRanges(p, instanceCount);
+ValidateVertexStreamCapability(p);
 \end{lstlisting}
 
-This pointer-only bridge is why ``fully wired'' would overstate compatibility. The actual
-frequency value is discarded after its greater-than-zero test, both bindings' offsets are
-discarded, and every later positive-frequency stream is ignored. BGFX therefore receives no
-way to reproduce a divisor above one or a third input stream. Its fixed instancing program
-consumes the narrower CNA convention rather than the complete binding array FNA sends to
-FNA3D. Chapter~\ref{ch:backend-architecture},
-\S\ref{sec:drawex-instancing-matrix}, compares that public narrowing and its proof boundary
-across every renderer.
+BGFX reads the lowest-slot positive-frequency entry as the instance stream and explicitly
+rejects more than one per-vertex or more than one per-instance stream. This is why its
+\texttt{MultiStreamVertexInput} capability remains false: a declaration cannot be split across
+two geometry buffers and two instance buffers cannot contribute independently. The ordinary
+one-plus-one instancing shape does not require that capability and remains valid.
 
-Two real, silent-failure paths follow directly from this renderer's own implementation of the
-receiving end, worth naming precisely rather than assuming instancing either works or throws:
-if no bound \cnaclass{VertexBufferBinding} has a positive \texttt{InstanceFrequency} at all
-(an easy mistake --- \texttt{SetVertexBuffers()} still succeeds with an ordinary,
-zero-frequency binding), \texttt{p.instanceVb} stays \texttt{nullptr}, and
-\texttt{DrawInstancedPrimitivesEx()}'s own first line, \texttt{if (params.instanceVb ==
-nullptr) return;}, draws nothing at all --- no exception, no logged warning, just an
-instanced draw call that silently does not happen. Separately, even with a correctly-marked
-instance buffer, \texttt{bgfx::getAvailInstanceDataBuffer()} is checked against the requested
-instance count \emph{before} any data is copied or submitted, and an insufficient result
-(this specific renderer or driver genuinely cannot supply enough transient instance-buffer
-capacity for the requested count) takes the identical silent early return --- a real, correct
-response to a real bgfx-level capacity ceiling, but indistinguishable, from the caller's own
-point of view, from the missing-\texttt{InstanceFrequency} mistake above. A game relying on
-GPU instancing on this renderer --- a large tiled foliage field, a particle system driven
-through the instanced path rather than \cnaclass{SpriteBatch} --- that silently renders
-nothing should check both of these specific conditions before assuming a deeper rendering
-bug.
+Both binding offsets are now real. The geometry stream's \texttt{VertexOffset} is added to
+\texttt{baseVertex} through \texttt{bgfx::setVertexBuffer}'s start-vertex term, while the
+instance stream begins copying at its own \texttt{VertexOffset}. BGFX exposes no native
+instance divisor in \texttt{setInstanceDataBuffer}; CNA therefore expands frequency grouping
+when filling the transient instance buffer: destination instance $i$ copies source record
+$\textit{VertexOffset}+\lfloor i/\textit{InstanceFrequency}\rfloor$. Frequency one stays a
+single bulk copy. Shared validation first proves that every geometry stream covers the
+declared vertex window and that each instance stream contains
+$1+\lfloor(n-1)/f\rfloor$ source records, so an undersized binding throws before native
+submission instead of reading uninitialized transient memory. Chapter~\ref{ch:backend-architecture},
+\S\ref{sec:drawex-instancing-matrix}, compares this transport and its proof boundary across
+every renderer.
+
+Two silent exits remain, but their current mechanisms are narrower than the former
+pointer-only account. If no semantically contributing binding has a positive
+\texttt{InstanceFrequency}, \texttt{FirstInstanceStream(params)} returns null and the renderer
+draws nothing. A transient-capacity shortage reported by
+\texttt{bgfx::getAvailInstanceDataBuffer()} also skips the draw. Invalid vertex or instance
+ranges no longer share that outcome: they throw during the validation described above. A game
+whose large instanced batch disappears on BGFX should therefore check that one binding really
+is per-instance and then consider transient instance-buffer pressure; malformed ranges should
+already have produced a diagnostic.
+
+The remaining correctness fault is in the checked-in instancing shader, not this transport.
+\texttt{vs\_instanced3d.sc} constructs the world matrix as
+\texttt{mat4(i\_data0, i\_data1, i\_data2, i\_data3)}. BGFX's GLSL profile treats those
+arguments as columns, but its HLSL/SPIR-V/Metal/WGSL profiles interpret the generated matrix
+constructor differently; BGFX supplies \texttt{mtxFromCols()} precisely to normalize this
+cross-profile difference. The dedicated test proves per-instance transforms on OpenGL/OpenGL ES
+and pins their failure on Vulkan. Thus ``working'' is justified only for the verified GLSL
+native profile today. Exact ranges, frequency expansion, and one-submit behavior remain proven
+independently of that shader-orientation bug; changing the source to \texttt{mtxFromCols()} and
+regenerating \texttt{bgfx\_shaders.hpp} is the distinct remaining repair.
 
 One further real detail is worth stating precisely because it is easy to assume otherwise:
 the draw call's own \texttt{world} matrix parameter is explicitly unused on this path (a
@@ -418,7 +429,7 @@ partial rectangle, a three-level volume mip round trip, and a per-face cube mip 
 Together they distinguish a correct transfer from reading level zero, the wrong cube face, or a
 CPU buffer left untouched by the former interface default.
 
-\section{Viewport and scissor deliberately have different submission scope}
+\section{Viewport uses ordered views; scissor remains per draw}
 
 Both public setters first become stored BGFX-side values, but that similarity ends at
 submission. An enabled, nonzero scissor is reissued through \texttt{bgfx::setScissor()} before
@@ -427,24 +438,31 @@ resets to ``none.'' The Boolean from \cnaclass{RasterizerState} is retained inde
 the rectangle. \texttt{bgfx\_scissor\_test} proves both halves, then disables the test again to
 exclude a one-way/stuck-state implementation.
 
-Viewport is a view-level rectangle rather than per-draw state. CNA reapplies a stored custom
-rectangle only before 3D submissions and only when the current view ID is zero, the backbuffer.
-SpriteBatch's \texttt{EnsureViewState()} establishes its own full-size view, and render-target
-views stay full target because one frame-global viewport value cannot reconstruct which value
-belonged to which deferred target. The public min/max depth values are discarded as an explicit
-bgfx limitation. The dedicated sub-region test is nevertheless a real public 3D pixel proof:
-a full-NDC quad fills only the left half under a custom viewport, then both halves after the
-full viewport is restored. Section~\ref{sec:backend-viewport-scissor-matrix} places that strong
-test beside its narrower SpriteBatch/render-target scope.
+Viewport is view-level state rather than a draw bit, so CNA preserves changes by selecting an
+ordered view segment before each 3D draw or SpriteBatch batch. Consecutive work with the same
+target, viewport, and --- for sprites --- Begin transform reuses the segment; a changed viewport
+or sprite transform allocates the next view, binds the same target with \texttt{CLEAR\_NONE},
+and keeps execution order through the frame's explicit view-order table. This works for the
+backbuffer and render targets. SpriteBatch keeps the view rectangle full-sized so a public
+clear still covers the target, then folds the captured viewport origin into its orthographic
+matrix; 3D sets the sub-rectangle directly. The public min/max depth values remain discarded as
+an explicit bgfx limitation.
+
+The original single-subregion proof now sits beside \texttt{Bgfx\_Deferred\_Viewport}, which
+queues several viewport changes without a flush, and the transform-specific regression that
+separates two Begin matrices even when the viewport is unchanged. The analogous deferred
+scissor oracle proves that each draw still receives its own captured rectangle and enable bit.
+Section~\ref{sec:backend-viewport-scissor-matrix} records that broader current scope.
 
 \section{Where this leaves the renderer}
 
 The original Phase~72 closure is a useful historical snapshot, but not a freeze-frame: the
 later readback and mip work above is one example of a real capability that would be invisible if
 the old ``only depth bias remains'' shorthand were repeated literally. The still-deliberate
-\texttt{SlopeScaleDepthBias} omission and the two environment-bound render-target checks remain
-important limitations, while later feature work should be evaluated from the current renderer
-plan and its registered tests rather than from that earlier closure slogan alone.
+\texttt{SlopeScaleDepthBias} omission, the non-GLSL instancing matrix-constructor defect, and
+the two environment-bound render-target checks remain important limitations, while later
+feature work should be evaluated from the current renderer plan and its registered tests rather
+than from that earlier closure slogan alone.
 
 \section{MAGNUM: a wrapper with no offline shader generator}
 

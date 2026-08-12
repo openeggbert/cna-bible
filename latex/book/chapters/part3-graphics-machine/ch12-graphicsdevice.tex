@@ -288,8 +288,8 @@ Four overloads, only two of which are real XNA:
 \item[\texttt{Clear(r,g,b,a)}] \texttt{CNAEXT} (though under-tagged in the header itself --- see
   the audit note below) --- bypasses the full shared overload and invokes the renderer's plain
   colour hook directly. It is therefore \emph{not} equivalent to
-  \texttt{Clear(Color(r,g,b,a))}: EasyGL's hook also clears depth, Vulkan/BGFX fold it into a
-  broader pass/view clear, while most other products clear colour alone.
+  \texttt{Clear(Color(r,g,b,a))}: EasyGL's hook also clears depth, while the modern deferred
+  renderers now preserve this overload as an ordered colour-only clear.
 \item[\texttt{Clear(Color,depth)}] \texttt{CNAEXT} --- clears color and depth together without
   needing to spell out the target and depth-buffer option flags at every call site. This is
   the overload the worked example in \S\ref{sec:worked-drawprimitives} below actually uses.
@@ -519,11 +519,11 @@ original scope and covered here for the first time:
   gap named in the audit note above --- FNA's own \texttt{GetRenderTargetsNoAllocEXT} writes
   into a caller-supplied array to avoid a per-call heap allocation; CNA's \texttt{GetRenderTargets}
   always allocates a fresh \texttt{std::vector}. The ``empty means backbuffer'' rule has one
-  important exception: the singular cube overload above also leaves this vector empty, even
-  though \texttt{Present()} still observes the separate Boolean and throws.
+  binding state. Singular 2D and cube convenience overloads both normalize through this same
+  vector-backed route.
 \end{description}
 
-\subsection{Binding identity, implicit discard, and the cube-shaped hole}
+\subsection{Binding identity, implicit discard, and normalized cube descriptors}
 \label{sec:graphicsdevice-target-binding-contract}
 
 Current FNA funnels the singular 2D and cube overloads into one
@@ -541,23 +541,22 @@ resource. Repeating \texttt{SetRenderTarget(nullptr)} likewise resets the two pu
 rectangles. Code that wants to preserve either attachment content or a custom rectangle should
 avoid redundant target calls rather than relying on FNA's no-op behavior.
 
-The 2D implicit clear itself asks for \texttt{Target} plus \texttt{DepthBuffer} only when the
-target reports real depth storage; it never includes \texttt{Stencil}. This differs from FNA's
-discard request, which includes all three flags and then lets the active
-\cnaclass{DepthFormat} mask unavailable planes. ``Discard'' also does not promise that a later
-read sees black: black is CNA's present implementation choice (and FNA's release-build
-performance choice), not the API's preserved-content guarantee. Chapter~\ref{ch:backend-architecture},
-\S\ref{sec:backend-rendertarget-usage-matrix}, shows which deferred renderers clear more than
-the shared request and which immediate ones leave stencil untouched.
+The implicit clear asks for \texttt{Target} and adds \texttt{DepthBuffer} and
+\texttt{Stencil} only when the first normalized descriptor reports those real attachments.
+That matches FNA's three-aspect discard shape without sending a stencil bit to a depth-only
+target. ``Discard'' still does not promise that a later read sees black: black is CNA's present
+implementation choice (and FNA's release-build performance choice), not the API's
+preserved-content guarantee. Chapter~\ref{ch:backend-architecture},
+\S\ref{sec:backend-rendertarget-usage-matrix}, records the native load/store mechanisms.
 
-The cube overload has the inverse problem: it never performs a usage-dependent implicit clear
-at all. The plural overload appears to repair the missing bookkeeping because it copies the
-caller's \cnaclass{RenderTargetBinding} vector into \texttt{currentRenderTargets\_}, but then
-converts each entry with \texttt{dynamic\_cast<RenderTarget2D*>}; a cube becomes a null renderer
-entry. The selected product may consequently bind its backbuffer, bind no color attachment,
-throw, or dereference null while the shared device still claims a target is bound. Use the
-dedicated singular cube overload only, and treat \texttt{GetRenderTargets()} as unreliable
-during that bind, until the shared route is unified.
+The former cube hole is closed by \texttt{RenderTargetBindingDescriptor}. Each public binding
+is normalized into a slot-aligned 2D target or cube face with dimensions and the renderer's
+applied sample count. Null/disposed targets, nonzero 2D array slices, mismatched dimensions or
+sample counts, and duplicate subresources are rejected before native binding. The singular
+cube overload now delegates to this route, so \texttt{GetRenderTargets()} retains its cube and
+\texttt{Clear()} can inspect the cube's own depth/stencil format. A renderer may still reject a
+particular multi-attachment shape --- WebGPU rejects MRT, for example --- but it receives an
+honest descriptor instead of a null pointer masquerading as a 2D target.
 
 \subsection{Worked example: a render-target round trip, and a real bug it found}
 \label{sec:worked-rendertarget}
@@ -1325,16 +1324,13 @@ render-pass-creation sites had \texttt{stencilLoadOp} hardcoded to
 \texttt{VK\_ATTACHMENT\_LOAD\_OP\_DONT\_CARE}, discarding whatever stencil clear value a caller
 requested regardless of what \texttt{Clear()} itself now dispatched.
 
-A methodology finding came out of testing this fix, worth knowing on its own: an initial
-same-frame test (stamp a stencil value, clear it, compare, all within one \texttt{Draw()} call)
-failed on Vulkan and BGFX even with the fix correctly applied, because both renderers defer an
-entire frame's draws into one command buffer/view whose own clear always applies once, before
-that frame's draws, regardless of the order \texttt{Clear()} / \texttt{DrawXxx()} were actually
-called in game code --- an artifact of this project's per-frame-batched rendering architecture,
-not a discriminating test. Splitting the stamp and the clear-plus-compare across real frames
-proves the requested value eventually reaches all three hardware renderers, but it does
-\emph{not} prove same-frame call ordering or per-flag selectivity. The inherited fourteen-product matrix
-in \S\ref{sec:backend-clear-matrix} records that stricter boundary.
+The first regression for this fix split stamping and clear-plus-compare across frames because
+Vulkan and BGFX then still folded clear state into one pass/view start. That historical fixture
+proved the value but not issue order. Later ordered-clear work supplies the missing evidence:
+Vulkan records \texttt{vkCmdClearAttachments} at the public position when needed, while BGFX
+gives every clear an ordered aspect-selective view. Shared clear-options and ordered-clear
+suites now distinguish same-cycle order and individual attachment masks. The inherited
+fourteen-product matrix in \S\ref{sec:backend-clear-matrix} records current boundaries.
 
 \subsection{FNA settles the depthless-target policy; CNA's format mask is too coarse}
 
@@ -1362,15 +1358,12 @@ formats. D3D11 and D3D12 happen to allocate a physical D24-UNORM-S8 resource for
 detail does not change the XNA-visible rule that stencil was not requested by the target's
 format. A \texttt{Depth16} DSV has no such hidden stencil plane at all.
 
-Cube binding exposes the other routing defect. The singular cube setter clears the device's
-current-render-target list instead of retaining the active cube, so \texttt{Clear()} falls
-back to the renderer-wide backbuffer answer and cannot inspect the cube's own
-\texttt{DepthFormat}. The plural path likewise recognizes only \cnaclass{RenderTarget2D}.
-Depth/stencil bits can therefore be kept or removed according to unrelated backbuffer/renderer
-state rather than the active cube face. D3D9 compounds this by gating its native depth and
-stencil clear flags with the presentation depth/stencil-format ordinal even while a custom
-target is bound. These are concrete
-compatibility bugs; the silent empty no-op itself is not.
+Cube binding no longer exposes that routing defect. The normalized plural path retains the
+active cube face, and \texttt{Clear()} independently asks its real depth and stencil storage
+before masking either bit. D3D9 retains the narrower renderer-local issue: it additionally
+gates native depth/stencil clear flags with the presentation-format ordinal even while a custom
+target is bound. That backend-specific mismatch remains a compatibility bug; the shared cube
+route is no longer its cause.
 
 This same finding connects directly to the \texttt{SupportsCapability} discussion above, and
 sharpens it: \texttt{CNA::GraphicsCapability::DepthStencilBuffer} exists in the enum, its own doc

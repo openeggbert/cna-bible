@@ -211,11 +211,11 @@ does not rely on changing it independently afterward, which sidesteps the still-
 flagged above (no real \texttt{SetReferenceStencil} override exists on EasyGL specifically,
 BGFX's own fix now notwithstanding; a technique needing a per-draw-call reference value without
 rebuilding the whole state object would hit that remaining gap directly on EasyGL). Task~871
-made the requested stencil \emph{value} real on all three hardware renderers, but did not make a
-stencil-only clear selective everywhere. EasyGL issues only the stencil bit; Vulkan/BGFX clear
-all pass/view attachments at pass start and can therefore disturb colour/depth too
-(\S\ref{sec:backend-clear-matrix}). Portable code should keep relying on what this technique's
-own first pass already does --- its unconditional
+made the requested stencil \emph{value} real on all three hardware renderers; later
+ordered-clear work also made stencil-only clears selective on Vulkan and BGFX. Vulkan records
+the exact attachment command at the issue position, and BGFX assigns an ordered view carrying
+only \texttt{BGFX\_CLEAR\_STENCIL} (\S\ref{sec:backend-clear-matrix}). Portable code can still
+rely on what this technique's own first pass already does --- its unconditional
 \texttt{CompareFunction::Always} / \texttt{StencilOperation::Replace} configuration overwrites
 the stencil value outright every frame, never depending on it having been zeroed first, which
 is exactly why this specific technique remains correct without assuming selective clear

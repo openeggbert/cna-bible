@@ -365,22 +365,20 @@ cheap. In current FNA, both non-discard values are passed to the native layer as
 request, while the exact enum still controls whether the managed layer issues its discard
 clear.
 
-CNA splits those decisions inconsistently. \cnaclass{RenderTarget2D}'s constructor forwards
-one Boolean to its renderer factory, but makes it true only for Preserve. Platform is therefore
-delivered to a renderer as ``do not preserve.'' The later shared bind does the opposite
-comparison and issues
-its black implicit clear only for exact \texttt{DiscardContents}. On immediate renderers that
-ignore the Boolean, Platform content commonly survives because nothing overwrites the
-persistent resource. Vulkan and WebGPU consume the false Boolean as a discard load operation,
-so the same enum loses content there. BGFX can instead inherit a persistent view-clear
-configuration. This is an observable three-way renderer split, not merely an unused hint.
+CNA now centralizes those decisions in
+\texttt{RenderTargetUsagePreservesContentsEXT()}: only Discard maps to false, while Preserve
+and Platform both map to true, matching FNA. \cnaclass{RenderTarget2D} and
+\cnaclass{RenderTargetCube} pass that Boolean through their renderer factories, and the shared
+normalized bind route emits the deterministic black/max-depth/zero-stencil clear only for
+Discard. An explicit \texttt{Clear()} remains a distinct ordered operation and wins over the
+usage policy aspect by aspect.
 
-\cnaclass{RenderTargetCube} is less connected still. Its constructor stores and returns the
-requested usage, but \texttt{CreateRenderTargetCube} has no preserve parameter and the
-singular cube bind performs no implicit discard clear. Vulkan and WebGPU compensate in their
-own pass construction by always discarding; SDL GPU loads unless an explicit clear was queued;
-the immediate persistent-resource renderers generally retain color. The property therefore
-round-trips correctly while having no portable cube-content meaning.
+Cube targets now use the same binding path rather than storing only an enum beside an
+untracked face. A \texttt{RenderTargetBindingDescriptor} preserves the selected face,
+dimensions, applied sample count, and renderer pointer; usage reaches the cube factory, and
+the shared discard clear can inspect the cube's real depth/stencil attachments. The remaining
+differences are native mechanisms and renderer capability --- for example WebGPU rejects MRT
+--- not a missing cube usage parameter.
 
 The backbuffer's corresponding
 \texttt{PresentationParameters.RenderTargetUsage} is currently stored, cloned, and exposed
@@ -390,12 +388,12 @@ target's usage controls CNA's MRT implicit clear, which matches FNA's first-targ
 shape, but deferred Vulkan MRT passes discard regardless and the public plural cube form
 cannot reach a cube renderer at all.
 
-Existing tests justify a deliberately narrow claim. SDL Renderer and EasyGL have
-discriminating non-MSAA 2D color pixels for discard versus preserve; Vulkan has a two-frame
-partial-draw test proving the same color distinction; BGFX's named usage test proves only
-bind/unbind without a crash. No test covers \texttt{PlatformContents}, backbuffer usage,
-cube usage, preserved depth/stencil, preserve plus MSAA, redundant binding, or a cube inside
-\cnaclass{RenderTargetBinding}. The complete source/evidence matrix is
+Current evidence is substantially broader than the early non-MSAA 2D tests. Shared cube-usage,
+per-face MSAA preservation, depth/stencil usage, pass-boundary, and plural-cube fixtures are
+registered across capable renderers; Platform is asserted as preservation rather than left
+implicit. Backbuffer usage and redundant-binding elision remain separate gaps: returning to
+the backbuffer still ignores its presentation usage, and CNA still performs native/state work
+for an identical repeated binding instead of FNA's early return. The complete source/evidence matrix is
 \S\ref{sec:backend-rendertarget-usage-matrix}; the binding-identity consequences are
 \S\ref{sec:graphicsdevice-target-binding-contract}.
 

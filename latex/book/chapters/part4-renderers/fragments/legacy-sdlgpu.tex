@@ -169,28 +169,22 @@ per draw through \texttt{SDL\_SetGPUStencilReference()}, the missing call that a
 pixel test once exposed. A left-half stencil write followed by an Equal-reference reveal now
 proves that this dynamic value reaches the GPU rather than merely being stored in CNA.
 
-There are two explicit boundaries to that otherwise draw-time rule. Scissor is applied once for
-each render pass from the live state at \texttt{Present()}-time, not independently re-snapshotted
-for every queued command; changing the scissor rectangle repeatedly between draws targeting one
-pass is therefore a documented simplification. The same helper runs for backbuffer, 2D-target,
-and cube-face passes, and the half-target render-state test pixel-proves the clip. There is no
-\texttt{SetViewport()} override at all, however: a custom public viewport remains stored-only
-even though the adjacent scissor is real. More importantly, \cnaclass{RasterizerState}'s
-\texttt{DepthBias} and \texttt{SlopeScaleDepthBias} are captured but currently have no effect.
-SDL\_gpu lacks a Vulkan-style dynamic depth-bias call, so honoring them would require carrying
-the float values in the pipeline-cache key and baking them into each pipeline. The renderer does
-not silently pretend otherwise: culling, fill mode, stencil, blend, and scissor have targeted
-pixel proofs, whereas depth bias remains an open state-mapping gap.
+Viewport, scissor, and blend constants follow the same per-command rule. Every queued draw
+reference snapshots the active viewport rectangle/depth range, scissor rectangle and enable bit,
+and blend factor; replay applies them through \texttt{SDL\_SetGPUViewport},
+\texttt{SDL\_SetGPUScissor}, and \texttt{SDL\_SetGPUBlendConstants} immediately before that
+draw. Enabled scissors are clamped to the target; disabled or degenerate ones expand to its full
+extent. The shared deferred-viewport/scissor suites queue several changes without a flush and
+cover backbuffer, 2D-target, and cube-face routes, so a final live state cannot satisfy them by
+accident.
 
-The sampler path has a narrower analogous gap. CNA stores the requested anisotropy in each of
-its sixteen XNA sampler slots, but queued commands retain only
-filter and U/V address modes, and \texttt{GetOrCreateSampler()} caches only that three-part key.
-No created \texttt{SDL\_GPUSampler} therefore receives an anisotropy setting. Point/linear,
-mipmap mode, Wrap/Clamp/Mirror, and the two independent dual-texture slots are
-all pixel-tested; anisotropy is stored but unimplemented, rather than another supported sampler
-dimension. This also makes the public capability answer actively misleading:
-\texttt{SdlGpuRenderer} has no \texttt{SupportsCapability()} override, so
-\texttt{AnisotropicFiltering} inherits \texttt{true}.
+Depth bias is pipeline-static in SDL\_gpu 3.5 rather than dynamic. CNA normalizes both
+\cnaclass{RasterizerState.DepthBias} and \texttt{SlopeScaleDepthBias} by primitive topology,
+includes their bits in every affected pipeline key, and fills SDL's constant and slope factors
+when creating the pipeline. The dedicated test combines structural key checks, differential
+depth pixels, and validation-fatal execution. Samplers likewise carry the full filter ordinal,
+U/V address modes, and clamped \texttt{MaxAnisotropy} through both cache key and native
+descriptor; anisotropy is no longer merely a stored capability bit.
 
 \section{Deferred rendering still preserves the game's draw order}
 
@@ -263,16 +257,22 @@ First, the MSAA implementation for \cnaclass{RenderTargetCube} used a six-layer 
 texture. SDL\_gpu forbids multisampling on an array texture. CNA now uses one single-layer,
 multisampled 2D attachment for whichever cube face is currently rendering and resolves it into
 the actual cube texture; cycling is permitted only for that temporary attachment, never for the
-cube texture that must retain all six faces. Second, generated mipmaps for \cnaclass{Texture3D}
-and \cnaclass{TextureCube} originally requested only \texttt{SAMPLER} usage. SDL\_gpu requires
-\texttt{SAMPLER | COLOR\_TARGET} for its mip-generation operation, so CNA adds
-\texttt{COLOR\_TARGET} when a mip chain is requested and leaves non-mipmapped textures unchanged.
+cube texture that must retain all six faces. Second, the initial automatic-mipmap implementation
+for plain \cnaclass{Texture3D} and \cnaclass{TextureCube} requested only \texttt{SAMPLER} usage,
+although SDL\_gpu's generator requires \texttt{COLOR\_TARGET} too. Widening the usage exposed a
+third, deeper failure: SDL's Vulkan path created invalid 2D views and blits for depth planes that
+no longer exist in smaller 3D mip levels.
 
-The same validation run also produced the still-open depth-dimension errors for generated
-\cnaclass{Texture3D} mipmaps discussed in Section~\ref{sec:sdlgpu-what-remains-open}. That is why
-the chapter treats validation as evidence with scope, not a binary badge: it closed two concrete
-violations while exposing a third one whose current uniform-color test cannot yet decide
-correctness.
+That third finding is no longer open. \texttt{REMED-GFX-099} removed the invented automatic
+generation behavior from plain \cnaclass{Texture3D}: XNA/FNA's contract allocates an authored
+chain and lets each \texttt{SetData(level,...)} call populate the named level. The resource is
+therefore \texttt{SAMPLER}-only again, with no target views or generator blits to violate the
+Vulkan contract. A validation-fatal regression now covers exact level-zero and nonzero-mip
+round trips, partial volumes, distinguishable depth planes, forward/reverse write order, NPOT
+dimensions, and two alternating resources. Plain cube textures retain their separately tested
+per-face behavior. This sequence is why validation must be treated as evidence with scope: it
+first exposed tolerated violations, then forced the design back to the actual public resource
+contract rather than merely suppressing their diagnostics.
 
 \section{Render targets: a real use-after-free, closed before it ever shipped}
 
@@ -352,31 +352,31 @@ two fresh targets and issuing exactly one \cnaclass{SpriteBatch} draw with a \te
 \((102,204,51,255)\) from B. Those distinct readbacks rule out both an extra clear and a copied
 single-output result: one fragment invocation really wrote two simultaneous attachments.
 
-The earlier wrapper-lifetime repair deliberately does not overclaim here. While the primary and
-its sibling states are retained through \texttt{shared\_ptr}s for the deferred render pass, the
-currently bound secondary wrappers are also kept in the separate raw-pointer list
-\texttt{currentExtraMrt\allowbreak{}Targets\_} so that later \texttt{Clear\allowbreak{}*()} calls can queue
-their clear state. Destroying a secondary \cnaclass{Render\allowbreak{}Target2D} while that MRT binding remains active can
-therefore leave that list dangling before such a clear. This is a narrower exception than the
-closed queued-draw use-after-free above, but it is real ownership debt; the conservative current
-rule is to keep every active MRT wrapper alive until a subsequent \texttt{SetRender\allowbreak{}Targets()}
-changes or clears the binding.
+MRT lifetime follows the same ownership repair as ordinary deferred targets. Each immutable
+\texttt{PassSegment} retains its primary and every secondary attachment as
+\texttt{shared\_ptr<SdlGpuRenderTarget2DState>}; explicit clears operate on the segment rather
+than a parallel wrapper-pointer list. Destroying a public secondary wrapper therefore cannot
+invalidate an already-recorded bind cycle, and the render-target-lifetime regression covers the
+create--bind--draw/clear--destroy--present sequence.
 
-\section{Usage is encoded as pending load operations, except for cube targets}
+\section{Usage selects per-resource first-use load/store behavior}
 
-The 2D factory ignores its preserve Boolean, but this does not collapse Discard and Preserve.
-The shared Discard bind queues color plus optional depth clear state into the target; Preserve
-and Platform queue nothing. At submission, independent pending Booleans become SDL GPU
-\texttt{CLEAR} or \texttt{LOAD} operations, so color/depth retention follows the shared
-decision. Stencil is a gap: the shared implicit discard request never includes it, so even a
-D24S8 target loads old stencil. MRT applies the first target's shared clear to each color
-sibling, matching the first-target policy in shape.
+Each 2D target and each cube face begins with independent first-use colour/depth/stencil flags.
+The shared Discard bind records the FNA-style black/max-depth/zero-stencil clear into its new
+bind-cycle segment; Preserve records none. Once a pass has written the resource, later cycles
+load its stored aspects unless an explicit ordered clear says otherwise. MRT applies the
+primary cycle's explicit colour clear to all simultaneous colour attachments while retaining
+each attachment's owning state. The depth/stencil usage fixture renders distinct occlusion and
+stencil-gate outcomes across unbind/rebind cycles, so the result is not inferred from colour.
 
-Cube usage never reaches this renderer and shared cube binding queues no implicit clear.
-Every cube enum therefore behaves preserve-like unless the caller explicitly clears that
-face. That is the opposite of Vulkan/WebGPU's always-discard cube passes and is not covered by
-the otherwise-strong SDL GPU cube suite. No usage discriminator, Platform case, or
-backbuffer-usage test exists; see \S\ref{sec:backend-rendertarget-usage-matrix}.
+Cube usage now reaches construction too. A single-sample face naturally loads its cube layer;
+a multisampled face owns a persistent per-face attachment and uses
+\texttt{RESOLVE\_AND\_STORE} for Preserve so the next cycle can load its samples. Discard may
+use plain \texttt{RESOLVE} when no later segment in the frame needs them. The six-face MSAA/mip
+and depth/stencil usage suites cover these paths. \texttt{PlatformContents} follows the shared
+FNA predicate \texttt{usage != DiscardContents} and therefore preserves like Preserve; cube
+and depth/stencil usage fixtures assert that policy explicitly. See
+\S\ref{sec:backend-rendertarget-usage-matrix}.
 
 \subsection{A worked example: \cnaclass{Texture3D}'s own \texttt{cycle=true} orphaned-write bug}
 
@@ -449,96 +449,80 @@ again. The test
 requires all five stages: nine ordinary frames, the induced throw, successful reclaim, successful
 presentation of the preserved frame, and 30 further frames without exception. This is a bounded,
 controlled proof of recovery after a hard acquisition failure; it does not claim to solve the
-separate, write-only swapchain readback limitation described below.
+separate lazy-proxy backbuffer readback path described below.
 
 \section{What remains open}
 \label{sec:sdlgpu-what-remains-open}
 
-Nine limits are worth stating precisely rather than glossing over. First, occlusion queries are a
+Three limits are worth stating precisely rather than glossing over. First, occlusion queries are a
 \emph{permanent} limitation of the underlying API, not a task gap: the vendored
 \texttt{SDL\_gpu.h} has no query-pool or occlusion-query type anywhere in it (only
 \texttt{SDL\_GPUFence} for CPU/GPU synchronization), so \texttt{CreateOcclusionQuery()}
 correctly returns \texttt{nullptr} on this renderer, the identical posture \texttt{HEADLESS} and
 \texttt{SOFTWARE} already take for their own, unrelated reasons --- worth re-opening only if a
-future SDL3 release adds real query support, not before. Second, swapchain readback is a
-documented permanent restriction: SDL\_gpu documents its acquired swapchain texture as write-only, so it
-cannot be the source of \texttt{SDL\_DownloadFromGPUTexture}, a GPU copy, or a blit. The old
-segfault was this API contract being violated, not a driver bug that another acquisition retry
-could repair. CNA's only viable design for \texttt{GetBackBufferData} is to render every frame
-into a self-owned, swapchain-sized proxy texture, blit that proxy to the real swapchain only for
-presentation, and read the proxy back. That is deliberately not implemented: it imposes one
-extra texture and blit on every frame even for games that never request readback. Consequently
-this renderer has no \texttt{ReadBackbuffer()} override at all:
-\texttt{GraphicsDevice::GetBackBuffer\allowbreak Data()} reaches
-\cnaclass{IGraphicsRenderer}'s default \texttt{runtime\_error}; working
-\cnaclass{RenderTarget2D::GetData()} tests are a separate resource-readback path and do not
-make the public backbuffer method available. The complete inherited fourteen-product distinction is
-tabulated in \S\ref{sec:backend-readback-matrix}. Third, a real
-\emph{possible} gap that is explicitly, honestly unresolved rather than
-either claimed fixed or claimed broken: \texttt{plan\_sdlgpu.md} records real Vulkan validation
-errors (\texttt{vkCmdBlitImage} / \texttt{vkCreateImageView} range violations along the depth
-dimension) surfacing from \cnaclass{Texture3D}'s own generated-mipmap path once debug validation
-was genuinely enabled for the first time --- the likely cause named directly in that plan
-document is that \texttt{SDL\_gpu}'s blit-based mip generator assumes the ordinary 3D-texture
-convention of halving depth at every mip level, which does not hold for this project's own
-FNA/XNA-matching convention of keeping depth constant across all levels. Critically, the
-existing regression check for this exact path (the mipmap Check~C above) uses a
-\emph{uniform} test color across the whole volume, which --- per the same discriminating-test
-principle the sub-volume bug above already demonstrates --- cannot actually distinguish
-correctly-downsampled content from corrupted content that happens to land on more of the same
-uniform color. This means the generated-mipmap case's own existing ``passing'' status may be
-resting on a test that structurally cannot catch this specific failure mode; a genuine fix
-needs a non-uniform per-level test (a distinct solid color per mip level, mirroring the
-sub-volume worked example's own per-Z-slice colors) before this can honestly be called
-resolved either way. Fourth, the generic \texttt{.cnj} custom-effect fixture remains a
+future SDL3 release adds real query support, not before. Second, the generic \texttt{.cnj} custom-effect fixture remains a
 cross-renderer portability gap: its loose GLSL ES 3.00 declarations are not accepted by this
 renderer's explicit-location, uniform-block binding contract, even though the dedicated
 \texttt{\#version 450} effect regression is pixel-verified. That choice is deliberately left
 open pending either a shared content-dialect migration or a real shader-translation layer.
-Fifth, \cnaclass{RasterizerState}'s depth-bias values remain captured-but-unapplied because
-SDL\_gpu has no dynamic depth-bias command and CNA does not yet bake the float values into its
-pipeline cache. Sixth, \cnaclass{SamplerState}'s \texttt{MaxAnisotropy} is retained in a slot
-but not included in command or sampler-cache creation, so no SDL\_gpu sampler uses it. Seventh,
-an active MRT secondary target is still represented by a raw pointer for deferred
-\texttt{Clear\allowbreak{}*()} propagation; destroying that wrapper before the MRT binding changes can leave
-the pointer dangling, despite the separately fixed queued-draw state lifetime. Eighth, an
-ordinary mipmapped \cnaclass{Texture2D} reports the full public \texttt{LevelCount}, but this
-renderer allocates its native \texttt{SDL\_GPUTexture} with exactly one level and inherits
-\texttt{ITextureRenderer::UpdatePixelsLevel()}'s empty body. A higher-level
-\texttt{SetData()} therefore updates only the shared CPU shadow; a following
-\texttt{GetData()} appears to succeed even though no sampled GPU mip exists
-(Chapter~\ref{ch:backend-architecture}, \S\ref{sec:texture2d-update-matrix}).
-Ninth, hardware instancing is absent at a different layer: this otherwise 3D-capable renderer
+Third, hardware instancing is absent at a different layer: this otherwise 3D-capable renderer
 does not override \texttt{DrawInstancedPrimitivesEx()}, so every valid public
 \texttt{DrawInstancedPrimitives()} call reaches the common
 \texttt{std::runtime\_error} default. SDL\_gpu itself exposes per-instance vertex input; the
-gap is CNA-side pipeline/binding work, not a permanent underlying-API limitation. No
-\cnaclass{GraphicsCapability} entry lets a caller ask about it
+gap is CNA-side pipeline/binding work, not a permanent underlying-API limitation. The public
+\cnaclass{GraphicsCapability::Instancing} entry now exists, but this renderer does not override
+the permissive base policy and therefore incorrectly reports it as supported. This is a
+capability overclaim: callers cannot safely use the bit as a guard until SDL\_GPU either
+implements the draw route or returns false explicitly
 (Section~\ref{sec:drawex-instancing-matrix}).
-Beyond these nine, Windows (D3D12 driver) and macOS/iOS (Metal driver)
+
+Five former entries no longer belong in this list. Depth bias and slope-scale bias are
+normalized per polygon topology, hashed into every relevant pipeline key, and applied through
+SDL's pipeline-static rasterizer fields; a dedicated pixel/validation test covers them.
+\texttt{MaxAnisotropy} is part of the complete sampler key and native descriptor. Secondary MRT
+attachments are retained as \texttt{shared\_ptr}s in the immutable pass segment, closing the raw
+pointer lifetime hazard. Finally, ordinary \cnaclass{Texture2D} allocates its declared native
+mip count and overrides \texttt{UpdatePixelsLevel}; the native-allocation/upload regression
+proves that a nonzero level reaches the GPU resource. None of these closures adds automatic
+downsampling to plain \cnaclass{Texture2D}: its upper levels remain explicitly authored, as in
+the XNA/FNA contract.
+
+Backbuffer readback is also closed without charging games that never use it. SDL's swapchain
+texture remains permanently write-only, but the first \texttt{GetBackBufferData()} lazily enables
+a self-owned, swapchain-sized proxy. The pending frame renders into that proxy, one 1:1 blit
+presents it, and \texttt{ReadBackbuffer()} downloads the requested logical rectangle through a
+transfer buffer and fence, converting BGRA to public RGBA when needed. Before the first read the
+proxy and blit do not exist. First-read, whole-logical-dimension, and fully-written-range tests
+cover the observable contract.
+
+Beyond these three remaining limits, Windows (D3D12 driver) and macOS/iOS (Metal driver)
 remain code paths only, not validation claims, until run on real (or Wine/DXVK-class) hardware
 --- the same phased-claim discipline this book already applies to \texttt{D3D11} /
 \texttt{D3D12} (Chapter~\ref{ch:direct3d-backends}) and \texttt{WebGPU}
 (Chapter~\ref{ch:webgpu-backend}).
 
-\section{Clear state is per target, but still per pass}
+\section{Clear state is per segment and issue-ordered}
 
-Unlike Vulkan/BGFX, this renderer carries independent pending colour, depth, and stencil flags
-for the swapchain, each 2D target/MRT attachment, and each cube face. The matching
-\texttt{SDL\_GPU\_LOADOP\_CLEAR} is selected only when that flag is set, so the renderer side is
-option-selective. It also queues the same clear into every active MRT colour sibling.
+This renderer carries independent colour, depth, and stencil requests on each backbuffer,
+2D-target/MRT, or cube-face segment. Consecutive clears before any draw coalesce safely into the
+segment's load action, aspect by aspect. Once a draw has made ordering observable, the next
+clear opens another segment over the same destination; the following native pass loads
+unselected aspects, clears selected ones, and then replays later draws. MSAA segments use
+\texttt{RESOLVE\_AND\_STORE} whenever a later segment must load their samples.
 
-The timing remains deferred: one pass sees final pending values before all queued draws, not a
-chronological sequence of clear commands interleaved with those draws. Shared code also cannot
-inspect a singular cube's own depth format when applying the FNA-style mask. Current smoke and
-render-state tests exercise the full combined form but do not discriminate isolated options or
-same-pass ordering; \S\ref{sec:backend-clear-matrix} records that evidence boundary.
+The renderer-neutral clear-options and ordered-clear fixtures distinguish isolated aspects,
+draw--clear versus clear--draw, multiple clears, and backbuffer/2D/cube/MRT destinations without
+an intermediate flush. Pass-boundary and backbuffer-order suites separately prove that target
+rebinding and target--backbuffer interleaving remain in public order. Deferred submission is
+therefore an implementation strategy, not a remaining clear-order exception; the comparative
+matrix is \S\ref{sec:backend-clear-matrix}.
 
 \section{Verification methodology}
 
-Every claim above is backed by a real CTest binary, not a code read alone. Counting the actual
-CMake test registration directly (\texttt{modules/renderers/sdl-gpu/examples/CMakeLists.txt}) rather than trusting a
-plan-doc's own snapshot shows \textbf{21} real CTest binaries today, spanning the 2D and 3D
+The executable claims above have dedicated tests rather than resting on code reads alone.
+Counting the actual module-local registrations directly
+(\texttt{modules/renderers/sdl-gpu/examples/CMakeLists.txt}) rather than trusting an old plan
+snapshot shows \textbf{83} \texttt{SdlGpu\_*} CTest registrations today, spanning the 2D and 3D
 smoke tests, every stock effect (including \cnaclass{EnvironmentMapEffect},
 \cnaclass{SkinnedEffect}, and the \texttt{CNAEXT} \cnaclass{PbrEffect} this book's WebGPU chapter
 already introduced), custom \cnaclass{ShaderEffect}, every render-target variant (2D, cube,
