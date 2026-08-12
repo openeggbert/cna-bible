@@ -11,8 +11,8 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
 |---|---|
 | cna-bible branch | `next`; local commits are ahead of `origin/next` (push requires explicit external-publication approval) |
 | CNA pinned SHA | `7a64362efef4119bf880459ef1704fb2c52199e2` (`develop` == `origin/develop`, 2026-08-11) |
-| Book builds | **yes** — 709 pages, all automated checks green; all completed Phase D/E writing and eighteen Phase F corrective batches are visually verified |
-| Phase | **A–E complete; F in progress:** Chapters 19–79 and Appendices A–H are complete. Phase F has filled omitted Chapters 8–11 and 18, corrected early graphics/lifecycle drift, and continues the whole-book consistency sweep. |
+| Book builds | **yes** — 709 pages, all automated and release-artifact checks green; every physical page has passed the final visual review |
+| Phase | **A–G complete.** The source audit, restructuring, writing, appendices, whole-book consistency sweep and final artifact verification are closed against the pinned source. |
 
 ## What is done
 
@@ -319,14 +319,21 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     was removed, and the verifier rejects recurrence. A compact `\footnotesize` index retains the
     709-page book size while accepting 2,387 entries with zero rejection/warning. Only physical
     pages 703–709 changed visibly against checkpoint 19; all seven were rendered and read clean.
+40. **Phase F corrective batch 21 is complete and verified.** A Poppler coordinate audit found
+    44 long technical words crossing the physical A4 edge even though the build succeeded. A
+    bounded 2.5em emergency stretch and targeted semantic breakpoints eliminated every crossing
+    without increasing the 709-page extent. The running-head allocation was corrected without
+    moving the body block. All 709 pages were then rendered and read a second time, clean.
+41. **Phase G is complete and verified.** The final artifact is a readable, unencrypted A4 PDF
+    with all 27 fonts embedded, subsetted and Unicode-mapped; its outline contains 12 Parts, 79
+    chapters and 8 appendices; its 302,443-word searchable text layer stays inside every page.
+    The complete verifier and a MuPDF parse/rewrite round trip are green.
 
 ## Do this next
 
-**Continue Phase F with the whole-book consistency sweep.** Search all remaining compiled chapters and
-appendices for factual drift, duplicate or contradictory explanations, inconsistent evidence
-language, stale counts and pins, weak transitions, glossary/index gaps, and cross-reference
-problems. Resolve findings against pinned source rather than archived prose. Rebuild after each
-bounded correction batch; finish with an edition-wide visual and automated pass before Phase G.
+**Preserve the verified edition for owner review and publication.** No writing or verification
+batch is pending. Do not silently advance the pinned CNA or sibling baselines; if any source pin
+moves, open a new bounded re-audit and treat the present A–G completion as the prior checkpoint.
 
 ## Do not do these
 
@@ -344,10 +351,10 @@ bounded correction batch; finish with an edition-wide visual and automated pass 
 
 ## Verification status
 
-Everything through Phase E and Phase F corrective batch 20 is verified:
+Everything through Phase G is verified:
 
 - `make -C latex book` succeeds; **709 pages**.
-- makeindex: 2,183 entries accepted, 0 rejected, 0 warnings.
+- makeindex: 2,387 entries accepted, 0 rejected, 0 warnings.
 - No undefined references, no undefined control sequences, no duplicate labels, no doubled-
   backslash `\ref`, no hard-coded chapter/Part/appendix/section numbers, and no literal tabs or
   carriage returns in compiled TeX.
@@ -468,9 +475,13 @@ Everything through Phase E and Phase F corrective batch 20 is verified:
   the seven index pages 703–709 changed; all seven were rendered at review resolution and read,
   with first, middle and final pages inspected full-size. The enlarged 684-key index has no
   overfull box, clipped entry or sparse tail page.
+- Phase F corrective batch 21 rendered and read all 709 pages, then repeated that whole-book
+  review after the final typography fixes. The final artifact has zero extracted words outside
+  any physical page, no running-head height warning and no unintended blank page.
+- Phase G independently checked the PDF container, A4 geometry, encryption state, all 27 font
+  rows, the complete 12/79/8 outline, text extraction and a MuPDF parse/rewrite round trip.
 
-**No completed writing batch is pending PDF verification.** Continue with the Phase F whole-book
-consistency sweep, then perform Phase G final verification.
+**No writing, correction or PDF-verification batch is pending.**
 
 ## Environment notes
 
@@ -485,8 +496,8 @@ consistency sweep, then perform Phase G final verification.
 Ten source-audit reports and the 42-family draw-path matrix are complete against pinned CNA
 `7a64362e`. Phase B settled a 12-Part, 79-chapter, 8-appendix edition; Phase C put it on disk,
 migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–7
-rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: twenty verified
-batches filled omitted Chapters 8–11 and 18, removed stale totals/terminology, reconciled the
+rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F's twenty-one verified batches
+filled omitted Chapters 8–11 and 18, removed stale totals/terminology, reconciled the
 early graphics, lifecycle and math narrative, and separated the four current shader strategies
 from the still-missing arbitrary-effect path. State, stream, instancing and programmable-GL
 contracts now also match the pinned renderer interface and post-audit remediation state. Shared
@@ -501,5 +512,6 @@ capability and callback boundaries. GamerServices, Storage, networking and Avata
 their live persistence, path, session and rendering contracts. The sharp-runtime chapters now
 also match the current modular graph, task/stream behavior, parity boundaries, test surfaces and
 tracked CI. All live structural citations are stable references, and the index now covers both
-API symbols and the book's major platform, verification and porting concepts. Continue the final
-whole-book visual consistency sweep.
+API symbols and the book's major platform, verification and porting concepts. Phase G confirmed
+the final 709-page PDF's physical bounds, fonts, outline, text layer and container integrity;
+Phases A–G are closed.

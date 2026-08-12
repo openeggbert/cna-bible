@@ -1200,7 +1200,7 @@ without ambiguity. The shared layer then validates every per-vertex range and ev
 range. For instance stream $s$, an \texttt{instanceCount} of $n$ consumes exactly
 $1+\lfloor(n-1)/f_s\rfloor$ records starting at that stream's own offset, where $f_s$ is its
 positive frequency. More than one stream of either input rate additionally requires
-\texttt{MultiStreamVertexInput}; an unsupported renderer rejects the binding set before native
+\texttt{MultiStream\allowbreak{}VertexInput}; an unsupported renderer rejects the binding set before native
 submission instead of truncating it. The classic one-mesh-plus-one-instance shape requires no
 multi-stream capability and remains the broad portable subset.
 
@@ -2009,7 +2009,7 @@ whether a renderer supports it, \cnaclass{GraphicsCapability} is a small enum --
 \texttt{ThreeD}, \texttt{DepthStencilBuffer}, \texttt{MultiSampleAntiAliasing},
 \texttt{MultipleRenderTargets}, \texttt{AnisotropicFiltering}, \texttt{WireFrame},
 \texttt{OcclusionQuery}, \texttt{CustomEffects}, \texttt{Texture3D},
-\texttt{MultiStreamVertexInput}, \texttt{Instancing}, \texttt{StencilBuffer}, and
+\texttt{MultiStream\allowbreak{}VertexInput}, \texttt{Instancing}, \texttt{StencilBuffer}, and
 \texttt{AdditiveBlending} --- queryable via
 \texttt{GraphicsDevice::\allowbreak{}SupportsCapability\allowbreak{}(GraphicsCapability)}. The default implementation
 returns \texttt{true} for everything except multi-stream input, while stencil delegates to the
@@ -2244,8 +2244,10 @@ still guaranteeing that exactly one public factory reaches the final CNA build.
 \section{One factory function per renderer}
 
 Whichever renderer is selected at configure time compiles exactly one implementation of
-\texttt{std::unique\_ptr\allowbreak{}<IGraphicsRenderer>\allowbreak{} CreateGraphicsRenderer(const
-GraphicsRendererCreateArgs\&)}, gated behind a \texttt{\#ifdef CNA\_RENDERER\_*} matching the
+the factory function
+\texttt{CreateGraphicsRenderer(\allowbreak{}const GraphicsRendererCreateArgs\&)}, which returns
+\texttt{std::unique\_ptr<IGraphicsRenderer>}. It is gated behind a
+\texttt{\#ifdef CNA\_RENDERER\_*} matching the
 compile definition \texttt{RendererSelection.cmake} set. \cnaclass{GraphicsRendererCreateArgs}
 itself carries the window handle, virtual resolution, presentation mode, context-recovery
 flag, multisample count, swap interval, and --- as \texttt{CNAEXT} additions introduced

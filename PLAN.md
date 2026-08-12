@@ -73,8 +73,8 @@ current, not stale.
 | **C — structural migration** | **Complete.** The 12-Part / 79-chapter / 8-appendix migration, context-sensitive terminology pass, current selector/identifier migration, and module-owned source-path sweep are complete and PDF-verified clean at 645 pages. |
 | **D — chapter writing** | **Complete.** Seven verified batches rewrote Chapters 19–79 against the pinned source and sibling evidence. |
 | **E — appendices** | **Complete.** Appendices A–H were rebuilt against pinned source and the completed chapter text, then verified as one bounded batch. |
-| **F — whole-book consistency** | **In progress.** Twenty verified corrective batches removed stale totals/terminology, filled five structurally present but unwritten chapters (8–11 and 18), reconciled every subject area with pinned evidence, made structural references durable, and expanded the index from an API-symbol list into a whole-book navigation surface. Continue the edition-wide final visual sweep. |
-| **G — final verification** | Not started. |
+| **F — whole-book consistency** | **Complete.** Twenty-one verified corrective batches removed stale totals/terminology, filled five structurally present but unwritten chapters (8–11 and 18), reconciled every subject area with pinned evidence, made structural references durable, expanded the index into a whole-book navigation surface, and completed two edition-wide visual passes. |
+| **G — final verification** | **Complete.** The 709-page release artifact is readable, unencrypted A4; all 27 fonts are embedded, subsetted and Unicode-mapped; its outline contains 12 Parts, 79 chapters and 8 appendices; its full text layer stays inside every physical page; and the complete automated and visual suites are green. |
 
 ### 3.1 Phase A research areas — all delivered
 
@@ -363,6 +363,8 @@ log grep replaces.
 | 2026-08-12 | Phase F corrective batch 18 | **709 pages**, build clean; makeindex 2,183 / 0 / 0; Appendices A–H mechanically re-audited, edition pins separated from later branch movement, CNAEXT token/header inventory made exact, MIDI decoder/public-route and Android install/frame evidence boundaries corrected; physical pages 665–702 rendered and read as seven contact sheets plus full-size risk pages; one malformed monospace paragraph on printed page 649 corrected and re-rendered clean |
 | 2026-08-12 | Phase F corrective batch 19 | **709 pages**, build clean; makeindex 2,183 / 0 / 0; four stale numeric listing references corrected, twelve Parts labelled, and all live Part/appendix/section citations migrated to stable references; verifier expanded to all source refs, singular/plural structural-number forms and literal tab/CR defects; a whole-PDF pixel comparison against batch 18 identified 53 visibly changed physical pages, all rendered and read clean |
 | 2026-08-12 | Phase F corrective batch 20 | **709 pages**, build clean; makeindex 2,387 / 0 / 0; 43 glossary terms, all 46 renderer selectors and the platform/testing/porting chapter topics gained canonical index destinations; malformed pointer/reference keys removed and verifier hardened against recurrence; 684 unique keys versus 517 before the batch; only index pages 703–709 changed visibly, all rendered and read clean at full size |
+| 2026-08-12 | Phase F corrective batch 21 | **709 pages**, build clean; makeindex 2,387 / 0 / 0; a whole-artifact coordinate audit found 44 words crossing the physical right edge despite successful builds, bounded emergency stretch plus targeted semantic breakpoints reduced 544 internal overfull boxes to 153 and eliminated every physical-edge crossing; header allocation corrected without changing the text block; all 709 pages re-rendered and read clean |
+| 2026-08-12 | Phase G final verification | **709 pages**, complete verifier green; readable unencrypted PDF 1.7 on A4, 27/27 fonts embedded/subsetted/Unicode-mapped, 12/79/8 Part/chapter/appendix outline, 302,443-word searchable text layer wholly inside the MediaBoxes, clean round-trip parse, no forms or JavaScript, and no pending visual page review |
 
 ---
 
@@ -1026,3 +1028,36 @@ mid-session at the owner's direction, so the build and visual passes are availab
   The complete verifier reports 709 pages and makeindex 2,387 accepted / 0 rejected / 0 warnings.
   A checkpoint-PDF pixel comparison isolated only physical pages 703–709; all seven were rendered
   and read at full size, with first, middle and final pages inspected separately and clean.
+
+### 2026-08-12 — Phase F corrective batch 21: physical-edge typography
+
+- Rendered and read all 709 physical pages as 30 contact sheets for the edition-wide final visual
+  sweep. The twelve blank pages were checked with their neighbours and are intentional versos
+  between Part title pages and the following chapters.
+- Supplemented visual review with Poppler word-coordinate extraction. This exposed 44 long
+  monospace words beyond the physical A4 right edge, a release defect not reliably visible at
+  contact-sheet scale and not distinguished by LaTeX's general overfull-box warning.
+- Tested bounded emergency-stretch values against both page count and physical coordinates. A
+  2.5em last-resort stretch preserved all 709 pages; targeted semantic breakpoints in twelve
+  chapters and Appendix B removed the remaining crossings. Internal overfull diagnostics fell
+  from 544 to 153, while the release criterion is now exactly zero extracted words outside a
+  page MediaBox.
+- Reallocated the existing 40pt running-head space as 26pt head height plus 14pt separation. This
+  removed all five `fancyhdr` height warnings without moving the body text or shortening the
+  table of contents. Rebuilt, re-extracted and re-rendered the final 709-page artifact; a second
+  full review of all 30 contact sheets found no clipping, collision, malformed table, damaged
+  index or unintended blank page.
+
+### 2026-08-12 — Phase G: final artifact verification
+
+- Extended `tools/verify-book.sh` from source/build checks into release-artifact checks: it now
+  rejects undersized running heads, unreadable/encrypted/non-A4 output, physical text-edge
+  crossings, incomplete font embedding/Unicode maps, and a damaged PDF outline.
+- Confirmed a readable unencrypted PDF 1.7 artifact on A4, with 27 of 27 fonts embedded and
+  subsetted with ToUnicode maps. The PDF outline exposes all 12 Parts, 79 chapters and 8
+  appendices; `pdftotext -layout` recovered a 302,443-word searchable text layer, and a MuPDF
+  clean/rewrite round trip parsed successfully. No forms or JavaScript are present.
+- Re-ran the complete verifier after the final typography changes: 709 pages, makeindex 2,387
+  accepted / 0 rejected / 0 warnings, all source, structure, index, whitespace, container, font,
+  outline and physical-boundary invariants green. A mechanical editorial-placeholder and tiny-
+  chapter audit found no unfinished manuscript content. Phases A–G are complete.

@@ -18,8 +18,10 @@ in Figure~\ref{fig:ch09-drawprimitives}.
 is non-copyable and non-movable, and offers exactly two constructors:
 
 \begin{description}
-\item[\texttt{GraphicsDevice(GraphicsAdapter\& adapter, GraphicsProfile graphicsProfile, const PresentationParameters\& presentationParameters)}]
-  the real XNA constructor. \texttt{adapter} names which physical/logical display adapter to
+\item[Three-argument \texttt{GraphicsDevice} constructor]
+  \texttt{GraphicsDevice(GraphicsAdapter\& adapter,\allowbreak{} GraphicsProfile graphicsProfile,\allowbreak{}
+  const PresentationParameters\& presentationParameters)} is the real XNA constructor.
+  \texttt{adapter} names which physical/logical display adapter to
   bind to (Chapter~\ref{ch:graphicsdevice}'s own \S\ref{sec:adapter-displaymode} covers
   \cnaclass{GraphicsAdapter} in full); \texttt{graphicsProfile} is \texttt{Reach} or
   \texttt{HiDef}; \texttt{presentationParameters} carries back-buffer width/height/format,
@@ -1267,11 +1269,13 @@ GraphicsDevice dev(*adapters[chosenIndex], GraphicsProfile::HiDef, presentationP
 \subsection{IsProfileSupported and the format-query methods: honest about what is actually checked}
 \label{sec:adapter-format-queries}
 
-\texttt{IsProfileSupported(GraphicsProfile)}, \texttt{QueryRenderTargetFormat(\ldots)}, and
-\texttt{QueryBackBufferFormat(\ldots)} all exist to answer, in principle, ``will the real
+Three methods exist to answer, in principle, ``will the real
 hardware behind this adapter actually accept what I'm about to request, or will it need to
 substitute something else?'' --- but reading their bodies directly (rather than trusting the
-method names) shows this question is only genuinely answered on one renderer. Each method's
+method names) shows this question is only genuinely answered on one renderer. The methods are
+\texttt{IsProfileSupported(GraphicsProfile)},
+\texttt{QueryRenderTargetFormat(\ldots)}, and
+\texttt{QueryBackBufferFormat(\ldots)}. Their
 source is split by an \texttt{\#ifdef CNA\_RENDERER\_DIRECTX9}, and the source comments on the
 non-D3D9 side name the reason explicitly rather than leaving it to guesswork:
 
@@ -1285,7 +1289,8 @@ non-D3D9 side name the reason explicitly rather than leaving it to guesswork:
   pretending to be a capability query'' --- and that the project's own \texttt{plan\_dx9.md}
   explicitly refuses to do that --- so it simply returns \texttt{true} for every profile,
   unconditionally, on the other nine renderers.
-\item[\texttt{QueryRenderTargetFormat} / \texttt{QueryBackBufferFormat}] on D3D9, both check a
+\item[Format queries] On D3D9, \texttt{QueryRenderTargetFormat} and
+  \texttt{QueryBackBufferFormat} both check a
   requested \cnaclass{SurfaceFormat} against a real profile whitelist \emph{and} a real
   \texttt{IDirect3D9::CheckDeviceFormat} / \texttt{CheckDeviceType} hardware query, falling back
   to \texttt{SurfaceFormat::Color} if either check fails --- and separately clamp the requested

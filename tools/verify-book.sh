@@ -70,6 +70,17 @@ else
     pass "no undefined citations"
 fi
 
+if grep -q "Package fancyhdr Warning: \\headheight is too small" "$log"; then
+    fail "running head exceeds the reserved header height"
+    grep -n -A3 "Package fancyhdr Warning: \\headheight is too small" "$log" \
+        | head -20 | sed 's/^/        /'
+else
+    pass "running heads fit the reserved header height"
+fi
+
+overfull=$(grep -Fc 'Overfull \hbox' "$log" 2>/dev/null || true)
+info "$overfull internal overfull hbox warning(s); physical PDF bounds are checked below"
+
 # ---------------------------------------------------------------- index
 echo "-- index"
 ilg="$book_dir/main.ilg"
@@ -221,11 +232,98 @@ else
     git -C "$repo_root" diff --check | head -20
 fi
 
-# ---------------------------------------------------------------- size
+# ---------------------------------------------------------------- PDF output
 echo "-- output"
 pages=$(pdfinfo "$pdf" 2>/dev/null | awk '/^Pages:/ {print $2}')
 info "main.pdf is ${pages:-?} pages"
 info "chapter LaTeX: $(find "$chapters" -name '*.tex' | xargs cat 2>/dev/null | wc -l) lines across $(find "$chapters" -name '*.tex' | wc -l) files"
+
+pdf_info=$(pdfinfo "$pdf" 2>/dev/null)
+if [ -z "$pdf_info" ]; then
+    fail "pdfinfo could not parse main.pdf"
+else
+    pass "PDF container is readable"
+fi
+
+page_size=$(printf '%s\n' "$pdf_info" | awk -F: '/^Page size:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
+encrypted=$(printf '%s\n' "$pdf_info" | awk -F: '/^Encrypted:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
+if printf '%s\n' "$page_size" | grep -q '^595\.276 x 841\.89 pts (A4)$' \
+   && [ "$encrypted" = "no" ]; then
+    pass "PDF is unencrypted A4"
+else
+    fail "unexpected PDF page format or encryption (size='$page_size', encrypted='${encrypted:-?}')"
+fi
+
+# LaTeX's Overfull diagnostics include harmless internal boxes as well as real clipping. Parse
+# Poppler's word coordinates against each page's own MediaBox to catch the release-blocking case:
+# visible text that actually crosses a physical PDF edge. This invariant was added after Phase G
+# found 44 clipped words despite a successful build and clean contact-sheet overview.
+bbox_file=$(mktemp /tmp/cna-bible-bbox.XXXXXX.html)
+if pdftotext -bbox-layout "$pdf" "$bbox_file" 2>/dev/null; then
+    outside=$(
+        perl -0777 -ne '
+            $n = 0;
+            while (/<page width="([0-9.]+)" height="([0-9.]+)">(.*?)<\/page>/sg) {
+                ($w, $h, $body) = ($1, $2, $3);
+                while ($body =~ /<word xMin="([0-9.]+)" yMin="([0-9.]+)" xMax="([0-9.]+)" yMax="([0-9.]+)">/sg) {
+                    $n++ if $1 < 0 || $2 < 0 || $3 > $w || $4 > $h;
+                }
+            }
+            END { print $n; }
+        ' "$bbox_file"
+    )
+    if [ "$outside" -eq 0 ]; then
+        pass "no extracted text crosses a physical page edge"
+    else
+        fail "$outside extracted word(s) cross a physical page edge"
+    fi
+else
+    fail "pdftotext could not inspect PDF text bounds"
+fi
+rm -f "$bbox_file"
+
+# A standalone technical book must not depend on workstation fonts, and its searchable text
+# needs ToUnicode maps. Read columns from the right because the font type can contain a space
+# (for example, "Type 1").
+font_summary=$(
+    pdffonts "$pdf" 2>/dev/null | awk '
+        NR > 2 && NF >= 8 {
+            total++;
+            if ($(NF-4) != "yes" || $(NF-3) != "yes" || $(NF-2) != "yes") bad++;
+        }
+        END { print total + 0, bad + 0; }
+    '
+)
+read -r font_total font_bad <<EOF
+$font_summary
+EOF
+if [ "$font_total" -gt 0 ] && [ "$font_bad" -eq 0 ]; then
+    pass "all $font_total fonts are embedded, subsetted, and Unicode-mapped"
+else
+    fail "font portability check failed ($font_bad of $font_total font rows incomplete)"
+fi
+
+# Verify the navigation structure in the produced artifact, not only the source input list.
+# Hyperref names ordinary chapters chapter.N and appendices appendix.A, while Parts use part.N.
+if command -v mutool >/dev/null 2>&1; then
+    outline_file=$(mktemp /tmp/cna-bible-outline.XXXXXX.txt)
+    if mutool show "$pdf" outline > "$outline_file" 2>/dev/null; then
+        outline_parts=$(grep -c '#nameddest=part\.' "$outline_file" || true)
+        outline_chapters=$(grep -c '#nameddest=chapter\.[0-9]' "$outline_file" || true)
+        outline_appendices=$(grep -c '#nameddest=appendix\.[A-H]' "$outline_file" || true)
+        if [ "$outline_parts" -eq 12 ] && [ "$outline_chapters" -eq 79 ] \
+           && [ "$outline_appendices" -eq 8 ]; then
+            pass "PDF outline contains 12 Parts, 79 chapters, and 8 appendices"
+        else
+            fail "unexpected PDF outline ($outline_parts Parts, $outline_chapters chapters, $outline_appendices appendices)"
+        fi
+    else
+        fail "mutool could not read the PDF outline"
+    fi
+    rm -f "$outline_file"
+else
+    info "mutool unavailable; PDF outline counts not checked"
+fi
 
 echo
 if [ "$failures" -eq 0 ]; then
