@@ -336,7 +336,9 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     rectangles, the printed-page landing of all 1,065 numbered TOC entries, and complete
     Ghostscript interpretation. It fails early rather than silently reducing coverage when a
     required PDF tool is unavailable. Two clean builds under the same `SOURCE_DATE_EPOCH` are
-    byte-identical (SHA-256 `c61e4121d5afd7524cc0c1a8143489279409abc2600b45b01ca409c5388aab32`).
+    byte-identical (pre-interactive-index SHA-256
+    `c61e4121d5afd7524cc0c1a8143489279409abc2600b45b01ca409c5388aab32`; current release hash is
+    item 53).
     All 89 chapter, appendix and renderer-fragment sources are compiled exactly once; the PDF has
     only the three reviewed primary-reference HTTPS links and no active or remote-launch actions.
 43. **Post-pin repository movement is recorded, not absorbed.** CNA's branch later advanced one
@@ -413,6 +415,13 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     chapter. The verifier derives their expected physical positions from the twelve Part entries
     in `main.toc` rather than preserving a hand-written page list, so structural movement remains
     safe. This verifier-only hardening leaves the already-reviewed PDF unchanged.
+53. **The interactive-index release is independently reproducible.** Two clean archives of
+    commit `4b217a1`, built concurrently in different paths with the same `SOURCE_DATE_EPOCH`,
+    produced byte-identical PDFs with SHA-256
+    `b62f0644740a28fc05c8a5cb76320c563c49a55461e6503c5b48054ed13fd010`. One clean output then
+    passed the complete current verifier, including all 709 page boxes, 1,066 outline/TOC targets,
+    1,848 index links, 3,651 link rectangles and twelve derived blank versos. This supersedes the
+    earlier pre-hyperindex release hash while preserving it as a historical checkpoint.
 
 ## Do this next
 
@@ -604,6 +613,9 @@ Everything through Phase G is verified:
   must find exactly the twelve blank versos derived from the Part-page entries in `main.toc`; the
   current physical pages are 32, 50, 130, 216, 366, 420, 454, 532, 568, 582, 610 and 636. This
   verifier-only change did not alter the PDF.
+- Two clean builds of the interactive-index checkpoint in different paths are byte-identical at
+  SHA-256 `b62f0644740a28fc05c8a5cb76320c563c49a55461e6503c5b48054ed13fd010`; one clean artifact
+  passed the complete current verifier. This is the current release hash.
 
 **No known writing, correction or PDF-verification defect is pending.**
 
