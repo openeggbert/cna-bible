@@ -744,6 +744,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      while a shared-to-exclusive upgrade fails explicitly instead of racing. Fresh descriptors are
      closed immediately when non-blocking acquisition fails, so future composed tools cannot leak
      FDs even when they recover from contention rather than exiting.
+107. **A sealed run cannot use uncommitted verification logic.** The early Git preflight now
+     requires `tools/` to match `HEAD`, including staged, unstaged and non-ignored untracked files,
+     in addition to the exact reviewed `latex/` tree. Documentation-only commits remain valid,
+     while an experimental verifier/helper/release-script edit must be committed and reviewable
+     before it can define the meaning of a sealed result.
 
 ## Do this next
 

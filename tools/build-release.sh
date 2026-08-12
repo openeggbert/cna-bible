@@ -60,11 +60,17 @@ if ! git -C "$repo_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 fi
 actual_latex_tree=$(git -C "$repo_root" rev-parse HEAD:latex 2>/dev/null || true)
 latex_status=$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all -- latex)
-if [ "$actual_latex_tree" != "$expected_latex_tree" ] || [ -n "$latex_status" ]; then
-    printf 'ERROR: tracked release inputs do not match the reviewed clean latex tree\n' >&2
+tools_status=$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all -- tools)
+if [ "$actual_latex_tree" != "$expected_latex_tree" ] || [ -n "$latex_status" ] \
+   || [ -n "$tools_status" ]; then
+    printf 'ERROR: sealed source/tool preflight failed\n' >&2
     printf 'expected tree: %s\nactual tree:   %s\n' \
         "$expected_latex_tree" "${actual_latex_tree:-missing}" >&2
     [ -n "$latex_status" ] && printf '%s\n' "$latex_status" >&2
+    if [ -n "$tools_status" ]; then
+        printf 'ERROR: sealed build/verification tools differ from HEAD\n' >&2
+        printf '%s\n' "$tools_status" >&2
+    fi
     exit 1
 fi
 
