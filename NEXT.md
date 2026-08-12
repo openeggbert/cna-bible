@@ -820,6 +820,10 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      grep status 0 reports the finding, 1 proves absence, and any other status is its own verifier
      failure. The repeated-word pipeline is status-bound too; a citation stub returning 2 yields
      one explicit FAIL instead of a false clean pass.
+123. **Release dependency failure is proven non-mutating.** With a deliberately restricted `PATH`
+     missing only `paste`, the sealed entry point exited 1 with the exact dependency diagnostic
+     before locking or transaction setup. The reviewed PDF hash and release-log size/mtime were
+     unchanged, and the prior-PDF snapshot population remained zero before and after the run.
 
 ## Do this next
 

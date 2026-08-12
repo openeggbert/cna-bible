@@ -1462,3 +1462,5 @@ build and visual passes are available again.
 - Converted direct LaTeX-log, structural/stale-fact, semantic-index and whitespace bans to a shared
   tri-state scan guard, and status-bound the repeated-word pipeline, so scanner errors cannot
   masquerade as proof that a forbidden pattern is absent.
+- Proved the sealed dependency preflight non-mutating with an isolated PATH lacking only `paste`:
+  status 1, exact diagnostic, unchanged PDF hash and release-log size/mtime, and zero snapshots.
