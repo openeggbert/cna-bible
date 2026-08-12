@@ -365,6 +365,14 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     and keywords as release invariants. Publication still needs an owner-selected license, and the
     current PDF is searchable but untagged rather than claiming PDF/UA; both are explicit owner
     decisions in `PLAN.md` §7.
+47. **Software and publication licensing are now unambiguous.** Chapter 1's generic
+    “Licensing” heading now says “CNA's software license,” so CNA's pinned Ms-PL terms cannot be
+    mistaken for the still-owner-selected book license. The same source check corrected “vendored
+    Stock Effects HLSL bytecode” to “sources”: the pinned D3D9 tree contains six `.fx` files and
+    four `.fxh` includes and compiles them with its retained tools. The complete verifier is green
+    and now additionally proves that all 1,066 PDF outline entries have non-empty titles and unique
+    destinations. Only physical pages 5 and 37 changed; both were rendered and read full-size,
+    clean.
 
 ## Do this next
 
@@ -531,6 +539,10 @@ Everything through Phase G is verified:
   pages 704–709 were individually inspected at full size.
 - The title page and embedded metadata now identify the same author. Only physical page 1 changed
   visually and it was inspected clean; license and tagged-PDF policy remain owner release choices.
+- CNA's Ms-PL section now identifies itself explicitly as the software license rather than the
+  book's publication license, and its D3D9 derivation wording correctly names the vendored HLSL
+  sources. Physical pages 5 and 37 were rendered and read clean. The verifier also checks all
+  1,066 outline entries for non-empty titles and unique destinations.
 
 **No known writing, correction or PDF-verification defect is pending.**
 

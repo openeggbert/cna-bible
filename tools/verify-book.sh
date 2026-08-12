@@ -432,6 +432,11 @@ if command -v mutool >/dev/null 2>&1; then
 
     outline_file=$(mktemp /tmp/cna-bible-outline.XXXXXX.txt)
     if mutool show "$pdf" outline > "$outline_file" 2>/dev/null; then
+        outline_entries=$(grep -c '#nameddest=' "$outline_file" || true)
+        outline_destinations=$(grep -o '#nameddest=[^[:space:]]*' "$outline_file" \
+            | sort -u | wc -l)
+        outline_empty_titles=$(awk -F'"' '$0 ~ /#nameddest=/ && (NF < 3 || $2 == "") { count++ } END { print count + 0 }' \
+            "$outline_file")
         outline_parts=$(grep -c '#nameddest=part\.' "$outline_file" || true)
         outline_chapters=$(grep -c '#nameddest=chapter\.[0-9]' "$outline_file" || true)
         outline_appendices=$(grep -c '#nameddest=appendix\.[A-H]' "$outline_file" || true)
@@ -440,6 +445,13 @@ if command -v mutool >/dev/null 2>&1; then
             pass "PDF outline contains 12 Parts, 79 chapters, and 8 appendices"
         else
             fail "unexpected PDF outline ($outline_parts Parts, $outline_chapters chapters, $outline_appendices appendices)"
+        fi
+        if [ "$outline_entries" -eq 1066 ] \
+           && [ "$outline_destinations" -eq "$outline_entries" ] \
+           && [ "$outline_empty_titles" -eq 0 ]; then
+            pass "all $outline_entries PDF outline entries have non-empty titles and unique destinations"
+        else
+            fail "damaged PDF outline ($outline_entries entries, $outline_destinations unique destinations, $outline_empty_titles empty titles)"
         fi
     else
         fail "mutool could not read the PDF outline"

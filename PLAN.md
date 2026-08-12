@@ -377,6 +377,7 @@ log grep replaces.
 | 2026-08-12 | Phase F corrective batch 21 | **709 pages**, build clean; makeindex 2,387 / 0 / 0; a whole-artifact coordinate audit found 44 words crossing the physical right edge despite successful builds, bounded emergency stretch plus targeted semantic breakpoints reduced 544 internal overfull boxes to 153 and eliminated every physical-edge crossing; header allocation corrected without changing the text block; all 709 pages re-rendered and read clean |
 | 2026-08-12 | Phase G final verification | **709 pages**, complete verifier green; readable unencrypted PDF 1.7 on A4, 27/27 fonts embedded/subsetted/Unicode-mapped, 12/79/8 Part/chapter/appendix outline, 302,443-word searchable text layer wholly inside the MediaBoxes, clean round-trip parse, no forms or JavaScript, and no pending visual page review |
 | 2026-08-12 | Post-G release hardening | **709 pages**, independent clean-tree build and complete verifier green; two duplicated function words and two awkward constructions corrected, with all four affected pages rendered and read clean; all 89 compiled content sources, 709 page boxes/rotations, page-label transition, 1,076 unique internal targets, 1,802 link rectangles, three reviewed HTTPS links and 1,065 numbered TOC landings validated; all pages independently interpreted by Ghostscript; fixed-date clean builds byte-identical; negative tests proved repeated-word, displaced-TOC and unreviewed-URI failure paths |
+| 2026-08-12 | Post-G licensing/outline clarification | **709 pages**, CNA's Ms-PL software-license section distinguished from the book's undecided publication license; D3D9 vendored Stock Effects corrected from bytecode to the six `.fx` sources plus four `.fxh` includes present at the pin; all 1,066 outline entries checked for non-empty titles and unique destinations; complete verifier green; physical pages 5 and 37 rendered and read clean |
 
 ---
 
@@ -1126,3 +1127,8 @@ build and visual passes are available again.
   was inspected full-size and is balanced and collision-free. The verifier now fixes title,
   author, subject and keywords as release invariants. Recorded the missing license declaration and
   untagged-PDF state as owner decisions in §7 instead of inventing publication policy.
+- Disambiguated CNA's pinned Ms-PL software license from the repository's still-unselected book
+  license, and corrected the D3D9 derivation example to describe the six vendored `.fx` sources
+  plus four `.fxh` includes rather than nonexistent vendored bytecode. Extended the artifact
+  verifier to require 1,066 non-empty outline entries with unique destinations. The complete
+  verifier is green; physical pages 5 and 37 were rendered and read full-size without defect.
