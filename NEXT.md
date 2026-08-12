@@ -815,6 +815,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      normalized catalog/OpenAction and page-object-map checks now bind both expected output and
      every underlying `mutool show` return code. A query cannot report a green semantic invariant
      after emitting a plausible partial value while also signalling a parse failure.
+122. **Negative source scans distinguish absence from scanner failure.** A shared tri-state guard
+     now handles LaTeX-log warnings plus structural/stale-fact, semantic-index and whitespace bans:
+     grep status 0 reports the finding, 1 proves absence, and any other status is its own verifier
+     failure. The repeated-word pipeline is status-bound too; a citation stub returning 2 yields
+     one explicit FAIL instead of a false clean pass.
 
 ## Do this next
 

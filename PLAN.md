@@ -1459,3 +1459,6 @@ build and visual passes are available again.
   previously passed now produces a verifier failure.
 - Bound MuPDF Info, page-label, language, normalized catalog/OpenAction and page-object-map values
   to successful query status as well as exact text, rejecting plausible output from a failed parse.
+- Converted direct LaTeX-log, structural/stale-fact, semantic-index and whitespace bans to a shared
+  tri-state scan guard, and status-bound the repeated-word pipeline, so scanner errors cannot
+  masquerade as proof that a forbidden pattern is absent.

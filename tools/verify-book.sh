@@ -100,6 +100,26 @@ failures=0
 pass() { printf '  \033[32mPASS\033[0m  %s\n' "$1"; }
 fail() { printf '  \033[31mFAIL\033[0m  %s\n' "$1"; failures=$((failures + 1)); }
 info() { printf '  ----  %s\n' "$1"; }
+forbid_matches() {
+    local result_file=$1
+    local finding_message=$2
+    local clean_message=$3
+    shift 3
+    grep "$@" > "$result_file" 2>/dev/null
+    local scan_status=$?
+    case "$scan_status" in
+        0)
+            fail "$finding_message"
+            head -10 "$result_file" | sed 's/^/        /'
+            ;;
+        1)
+            pass "$clean_message"
+            ;;
+        *)
+            fail "source/log scan failed while checking: $clean_message (grep status $scan_status)"
+            ;;
+    esac
+}
 
 echo "== The CNA Bible: verification pass =="
 
@@ -130,33 +150,19 @@ echo "-- LaTeX integrity"
 
 # Tight patterns only. A plain substring search for "undefined" false-positives on
 # ordinary prose containing the word (e.g. "...an address, undefined behavior...").
-if grep -qE "LaTeX Warning: Reference .* undefined|undefined reference|Undefined control sequence" "$log"; then
-    fail "undefined references or control sequences"
-    grep -nE "LaTeX Warning: Reference .* undefined|Undefined control sequence" "$log" | head -20
-else
-    pass "no undefined references or control sequences"
-fi
-
-if grep -qiE "multiply.defined|Label .* multiply defined" "$log"; then
-    fail "multiply-defined labels"
-    grep -niE "multiply.defined" "$log" | head -20
-else
-    pass "no multiply-defined labels"
-fi
-
-if grep -qE "LaTeX Warning: Citation" "$log"; then
-    fail "undefined citations"
-else
-    pass "no undefined citations"
-fi
-
-if grep -q "Package fancyhdr Warning: \\headheight is too small" "$log"; then
-    fail "running head exceeds the reserved header height"
-    grep -n -A3 "Package fancyhdr Warning: \\headheight is too small" "$log" \
-        | head -20 | sed 's/^/        /'
-else
-    pass "running heads fit the reserved header height"
-fi
+forbid_matches "$diagnostic_dir/undefined-log.txt" \
+    "undefined references or control sequences" \
+    "no undefined references or control sequences" \
+    -nE "LaTeX Warning: Reference .* undefined|undefined reference|Undefined control sequence" "$log"
+forbid_matches "$diagnostic_dir/multiply-defined-log.txt" \
+    "multiply-defined labels" "no multiply-defined labels" \
+    -niE "multiply.defined|Label .* multiply defined" "$log"
+forbid_matches "$diagnostic_dir/citation-log.txt" \
+    "undefined citations" "no undefined citations" -nE "LaTeX Warning: Citation" "$log"
+forbid_matches "$diagnostic_dir/headheight-log.txt" \
+    "running head exceeds the reserved header height" \
+    "running heads fit the reserved header height" \
+    -n -A3 "Package fancyhdr Warning: \\headheight is too small" "$log"
 
 overfull=$(grep -Fc 'Overfull \hbox' "$log" 2>/dev/null || true)
 info "$overfull internal overfull hbox warning(s); physical PDF bounds are checked below"
@@ -365,104 +371,78 @@ echo "-- stale-fact sweep"
 # spaces, including inside listings. All break silently on a restructure and none produces a
 # LaTeX warning.
 structure_re='Chapters?(~|[[:space:]])+[0-9]+|Ch\.(~|[[:space:]])*[0-9]+|Parts?(~|[[:space:]])+(I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)\>|Appendix(es)?(~|[[:space:]])+[A-H]\>|Sections?(~|[[:space:]])+[0-9]+([.][0-9]+)*'
-hard=$(grep -rnoE "$structure_re" "$chapters" "$front" 2>/dev/null | wc -l)
-if [ "$hard" -gt 0 ]; then
-    fail "hard-coded structural references: $hard (use a stable \\ref unless genuinely historical)"
-    grep -rnE "$structure_re" "$chapters" "$front" 2>/dev/null | head -10 | sed 's/^/        /'
-else
-    pass "no hard-coded chapter/part/appendix/section references"
-fi
+forbid_matches "$diagnostic_dir/hard-coded-structure.txt" \
+    "hard-coded structural references (use a stable \\ref unless genuinely historical)" \
+    "no hard-coded chapter/part/appendix/section references" \
+    -rnoE "$structure_re" "$chapters" "$front"
 
 # A \ref written with a doubled backslash silently degrades to a line break plus
 # literal text. It produces no warning and no undefined reference -- it is only
 # visible by rendering the page. Caught for real on 2026-08-11 in Appendix E.
-if grep -rq '\\\\ref{' "$chapters" "$front" 2>/dev/null; then
-    fail "doubled-backslash \\\\ref{...} -- renders as a line break plus literal text"
-    grep -rn '\\\\ref{' "$chapters" "$front" | head -10 | sed 's/^/        /'
-else
-    pass "no doubled-backslash \\ref"
-fi
+forbid_matches "$diagnostic_dir/doubled-ref.txt" \
+    "doubled-backslash \\\\ref{...} -- renders as a line break plus literal text" \
+    "no doubled-backslash \\ref" -rn '\\\\ref{' "$chapters" "$front"
 
 # \cnaclass and \cnans feed their entire argument to makeindex. Pointer/reference declarators
 # therefore create misleading keys such as "Album*" or "Game& game" instead of indexing the
 # underlying symbol. Keep declarators outside the semantic macro (e.g. \cnaclass{Album}\texttt{*}).
-if grep -rEn '\\(cnaclass|cnans)\{[^}]*(\*|\\&)[^}]*\}' "$chapters" "$front" \
-    > "$diagnostic_dir/index-declarators.txt" 2>/dev/null; then
-    fail "pointer/reference declarators inside semantic index macros"
-    head -10 "$diagnostic_dir/index-declarators.txt" | sed 's/^/        /'
-else
-    pass "no pointer/reference declarators inside semantic index macros"
-fi
+forbid_matches "$diagnostic_dir/index-declarators.txt" \
+    "pointer/reference declarators inside semantic index macros" \
+    "no pointer/reference declarators inside semantic index macros" \
+    -rEn '\\(cnaclass|cnans)\{[^}]*(\*|\\&)[^}]*\}' "$chapters" "$front"
 
 # These spellings previously split one API symbol across multiple top-level index keys. Preserve
 # intentional conceptual pairs such as XNB/.xnb and free-direct/FREEDIRECT, but reject the known
 # C++ symbol aliases caused by optional call parentheses, omitted owners, or C# namespace dots.
 index_alias_re='\\cnaclass\{ContentManager::Load<(Song|T)>\(\)\}|\\cnaclass\{Load<Song>\(\)\}|\\cnaclass\{System\.(GC|Type)\}|\\cnaclass\{SystemException\}'
-if grep -rEn "$index_alias_re" "$chapters" "$front" > "$diagnostic_dir/index-aliases.txt" 2>/dev/null; then
-    fail "noncanonical aliases split API symbols across index keys"
-    head -10 "$diagnostic_dir/index-aliases.txt" | sed 's/^/        /'
-else
-    pass "no known noncanonical API aliases in semantic index macros"
-fi
+forbid_matches "$diagnostic_dir/index-aliases.txt" \
+    "noncanonical aliases split API symbols across index keys" \
+    "no known noncanonical API aliases in semantic index macros" \
+    -rEn "$index_alias_re" "$chapters" "$front"
 
 # These source identifiers and build options were removed by CNA's renderer/CNAEXT
 # naming migration. Unlike ordinary prose uses of "backend", none is contextually valid in
 # the current manuscript. Historical discussion should spell out the old name without using
 # it as a live identifier, or live in the audit/plan evidence outside the compiled book.
 obsolete_re='IGraphicsBackend|ITextureBackend|ITexture3DBackend|ISpriteBatchBackend|IEffectBackend|ITextureCubeBackend|IRenderTargetBackend|IRenderTargetCubeBackend|IIndexBufferBackend|IVertexBufferBackend|IOcclusionQueryBackend|GraphicsBackendType|GetGraphicsBackendType|GetGraphicsBackendName|GraphicsBackendCreateArgs|CreateGraphicsBackend|D3D11RenderTargetBackend|CNA_GRAPHICS_BACKEND|CNA\\_GRAPHICS\\_BACKEND|CNA_BACKEND_|CNA\\_BACKEND\\_|CNA_RENDERER_(D3D9|D3D11|D3D12|DX3|EASYGL|ASCII)|CNA\\_RENDERER\\_(D3D9|D3D11|D3D12|DX3|EASYGL|ASCII)|NOXNA|BackendSelection\.cmake|BackendLibraries\.cmake|customEffectBackend|GraphicsRendererType::Ascii|dx3\\_(texture\\_rendertarget|no3d)\\_test\.cpp'
-if grep -rEn "$obsolete_re" "$chapters" "$front" > "$diagnostic_dir/obsolete-identifiers.txt" 2>/dev/null; then
-    n=$(wc -l < "$diagnostic_dir/obsolete-identifiers.txt")
-    fail "obsolete CNA identifiers/options in compiled manuscript: $n"
-    head -10 "$diagnostic_dir/obsolete-identifiers.txt" | sed 's/^/        /'
-else
-    pass "no obsolete CNA identifiers/options in compiled manuscript"
-fi
+forbid_matches "$diagnostic_dir/obsolete-identifiers.txt" \
+    "obsolete CNA identifiers/options in compiled manuscript" \
+    "no obsolete CNA identifiers/options in compiled manuscript" \
+    -rEn "$obsolete_re" "$chapters" "$front"
 
-if grep -rEn '106 headers under' "$chapters" "$front" \
-    > "$diagnostic_dir/stale-graphics-header-count.txt" 2>/dev/null; then
-    fail "stale 106-header Graphics subtree count in compiled manuscript"
-else
-    pass "Graphics include count distinguishes 107 direct and 18 PackedVector headers"
-fi
+forbid_matches "$diagnostic_dir/stale-graphics-header-count.txt" \
+    "stale 106-header Graphics subtree count in compiled manuscript" \
+    "Graphics include count distinguishes 107 direct and 18 PackedVector headers" \
+    -rEn '106 headers under' "$chapters" "$front"
 
-if grep -rEn 'production translation units' "$chapters" "$front" \
-    > "$diagnostic_dir/stale-production-unit-label.txt" 2>/dev/null; then
-    fail "production-file inventory mislabeled as translation units"
-else
-    pass "physical-module inventory is labeled as production files"
-fi
+forbid_matches "$diagnostic_dir/stale-production-unit-label.txt" \
+    "production-file inventory mislabeled as translation units" \
+    "physical-module inventory is labeled as production files" \
+    -rEn 'production translation units' "$chapters" "$front"
 
-if grep -rEn 'Only 56 of 1\\{,\\}195|contain 159 directives|There are 109[[:space:]]*$' \
-    "$chapters" "$front" > "$diagnostic_dir/stale-platform-counts.txt" 2>/dev/null; then
-    fail "stale platform-directive inventory in compiled manuscript"
-else
-    pass "platform inventory defines its 1195-file and 152-directive populations"
-fi
+forbid_matches "$diagnostic_dir/stale-platform-counts.txt" \
+    "stale platform-directive inventory in compiled manuscript" \
+    "platform inventory defines its 1195-file and 152-directive populations" \
+    -rEn 'Only 56 of 1\\{,\\}195|contain 159 directives|There are 109[[:space:]]*$' \
+    "$chapters" "$front"
 
-if grep -rEn '19 production files include.*meta-gl|sixteen implementation files' \
-    "$chapters" "$front" > "$diagnostic_dir/stale-metagl-consumer-count.txt" 2>/dev/null; then
-    fail "stale easy-gl direct meta-gl consumer count"
-else
-    pass "easy-gl names 3 header and 15 implementation meta-gl consumers"
-fi
+forbid_matches "$diagnostic_dir/stale-metagl-consumer-count.txt" \
+    "stale easy-gl direct meta-gl consumer count" \
+    "easy-gl names 3 header and 15 implementation meta-gl consumers" \
+    -rEn '19 production files include.*meta-gl|sixteen implementation files' "$chapters" "$front"
 
-if grep -rEn 'CNA(_|\\_)GRAPHICS(_|\\_)RENDERER=(EASYGL|DX3|D3D9|D3D11|D3D12|ASCII)' "$chapters" "$front" > "$diagnostic_dir/obsolete-selectors.txt" 2>/dev/null; then
-    n=$(wc -l < "$diagnostic_dir/obsolete-selectors.txt")
-    fail "removed renderer selector in a live CMake assignment: $n"
-    head -10 "$diagnostic_dir/obsolete-selectors.txt" | sed 's/^/        /'
-else
-    pass "no removed renderer selectors in live CMake assignments"
-fi
+forbid_matches "$diagnostic_dir/obsolete-selectors.txt" \
+    "removed renderer selector in a live CMake assignment" \
+    "no removed renderer selectors in live CMake assignments" \
+    -rEn 'CNA(_|\\_)GRAPHICS(_|\\_)RENDERER=(EASYGL|DX3|D3D9|D3D11|D3D12|ASCII)' \
+    "$chapters" "$front"
 
 # Phase 70 contains 65 technical tasks (666--730); Task 731 is its closing documentation task.
 # The old wording paired the inclusive 666--731 range with a 65-task total, an off-by-one claim.
-if grep -rEn 'Tasks(~|[[:space:]])+666--731,? 65 tasks' "$chapters" "$front" \
-    > "$diagnostic_dir/phase70-count.txt" 2>/dev/null; then
-    fail "Phase 70 task range is paired with the obsolete off-by-one total"
-    head -10 "$diagnostic_dir/phase70-count.txt" | sed 's/^/        /'
-else
-    pass "Phase 70 separates 65 technical tasks from its closing documentation task"
-fi
+forbid_matches "$diagnostic_dir/phase70-count.txt" \
+    "Phase 70 task range is paired with the obsolete off-by-one total" \
+    "Phase 70 separates 65 technical tasks from its closing documentation task" \
+    -rEn 'Tasks(~|[[:space:]])+666--731,? 65 tasks' "$chapters" "$front"
 
 for term in NOXNA "both volumes" "this volume" "Volume I" "Volume II"; do
     if [ "$term" = "NOXNA" ]; then
@@ -481,6 +461,7 @@ done
 # defects during the final proofread; identifiers such as "SoundBank soundBank" are deliberately
 # outside this narrow prose-only vocabulary.
 repeated_words_file=$(mktemp /tmp/cna-bible-repeated-words.XXXXXX.txt)
+repeated_scan_status=0
 find "$chapters" "$front" -name '*.tex' -type f -print0 \
     | while IFS= read -r -d '' source_file; do
         perl -0777 -ne '
@@ -492,8 +473,10 @@ find "$chapters" "$front" -name '*.tex' -type f -print0 \
                 print "$ARGV:$line:$match\n";
             }
         ' "$source_file"
-    done > "$repeated_words_file"
-if [ -s "$repeated_words_file" ]; then
+    done > "$repeated_words_file" || repeated_scan_status=$?
+if [ "$repeated_scan_status" -ne 0 ]; then
+    fail "repeated-word source scan failed (pipeline status $repeated_scan_status)"
+elif [ -s "$repeated_words_file" ]; then
     fail "repeated common word(s) in compiled prose"
     head -10 "$repeated_words_file" | sed 's/^/        /'
 else
@@ -507,19 +490,12 @@ echo "-- working tree"
 # A literal tab can silently replace the backslash of a mistyped \texttt command and still yield
 # a green LaTeX build (caught visually in Appendix D on 2026-08-12). The manuscript uses spaces,
 # so tabs and CRLF carriage returns are always defects in compiled TeX sources.
-if grep -rIn $'\t' "$chapters" "$front" "$book_dir/main.tex" > "$diagnostic_dir/tabs.txt" 2>/dev/null; then
-    fail "literal tab characters in compiled TeX sources"
-    head -10 "$diagnostic_dir/tabs.txt" | sed 's/^/        /'
-else
-    pass "no literal tabs in compiled TeX sources"
-fi
-
-if grep -rIl $'\r' "$chapters" "$front" "$book_dir/main.tex" > "$diagnostic_dir/crlf.txt" 2>/dev/null; then
-    fail "carriage returns in compiled TeX sources"
-    head -10 "$diagnostic_dir/crlf.txt" | sed 's/^/        /'
-else
-    pass "no carriage returns in compiled TeX sources"
-fi
+forbid_matches "$diagnostic_dir/tabs.txt" "literal tab characters in compiled TeX sources" \
+    "no literal tabs in compiled TeX sources" -rIn $'\t' \
+    "$chapters" "$front" "$book_dir/main.tex"
+forbid_matches "$diagnostic_dir/crlf.txt" "carriage returns in compiled TeX sources" \
+    "no carriage returns in compiled TeX sources" -rIl $'\r' \
+    "$chapters" "$front" "$book_dir/main.tex"
 
 if git -C "$repo_root" diff --check > /dev/null 2>&1; then
     pass "git diff --check clean"
