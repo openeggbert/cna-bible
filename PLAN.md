@@ -397,6 +397,7 @@ log grep replaces.
 | 2026-08-12 | Post-G platform-count reproducibility | Defined the 1,195-file production population exactly as 720 `.hpp` + 474 `.cpp` + one `.mm`, excluding tests/examples; direct line audit gives 55 files / 152 OS-macro directive lines, split 97 renderer / 55 framework; compiler-only generated branches excluded; `CNA_RENDERER_*` directives corrected 109 → 110; SDL-family count qualified as roughly 6,000 lexical tokens; stale-count guard added; complete build green and physical pages 584–585 read full-size, clean |
 | 2026-08-12 | Post-G easy-gl/meta-gl consumer recount | Exact include-directive scan at easy-gl pin `0b46d35` finds 18 direct meta-gl consumers, not 19: three public headers plus fifteen implementation files; Chapter 59 corrected and stale-count guard added; complete build green and physical page 569 read full-size, clean |
 | 2026-08-12 | Post-G free-direct status-census definition | Reproduced all 95 explicit `Status:` annotation lines exactly: ddraw 24/12/7, dplay 12/7/7, dsound 20/4/2; clarified that dsound's opening twelve bare status words are an untagged summary and must not be counted a second time; no numeric table change; complete build green and physical page 577 read full-size, clean |
+| 2026-08-12 | Post-G broad numeric-claim closure | Direct recounts confirmed CNA test/source/example/registration, Color, renderer, oracle and CNAEXT inventories; xna4-spec 544/19, cna-samples 63+23+67=153, cna-examples 13/79/249, easy-gl/meta-gl line/API counts, free-direct/free-api registrations, and sharp-runtime 41 modules / 44 components / 92 edges plus exact SQLite populations; no further correction or PDF delta |
 
 ---
 
@@ -1255,3 +1256,11 @@ build and visual passes are available again.
   opening twelve-item untagged recap that a broad word grep double-counts. Clarified the census
   rule in Chapter 60 without changing the already-correct table. The complete build is green;
   physical page 577 was rendered and read full-size, clean.
+- Closed the broad numeric-claim sweep with direct pin-level recounts. Confirmed CNA's 433 / 6,818
+  CnaTests source/definition populations, 1,233 / 1,169 example-source populations, derived 1,785
+  renderer registrations, 141 / 139 Color counts, 46 / 42 renderer identities/families, 39/39
+  oracle corpus and 1,876 CNAEXT tokens across 302 module headers. Confirmed sibling catalogues
+  (xna4-spec 544 types / 19 namespaces; cna-samples 63+23+67=153; cna-examples 13/79/249),
+  easy-gl/meta-gl code/API counts, free-direct/free-api registration counts, and sharp-runtime's
+  41-module / 44-component / 92-edge graph plus exact 16,201-task / 2,183-ticket SQLite totals.
+  No additional manuscript correction was warranted and this checkpoint has no PDF delta.

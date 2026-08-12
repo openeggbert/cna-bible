@@ -520,6 +520,15 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     12/7/7, dsound 20/4/2, total 56/23/16. Chapter 60 now records this rule so the marker census
     cannot be mistaken for either a bare-word census or a public-method count. The complete build
     is green; physical page 577 was rendered and read full-size, clean.
+67. **The remaining high-risk numeric claims were directly reproduced at their recorded pins.**
+    The sweep confirmed CNA's 6,818 GoogleTest definitions across 433 globbed sources, 1,233 module
+    example `.cpp` files / 1,169 `*_test.cpp`, 1,785 renderer-test registrations, 141 Color
+    constants / 139 packed values, 46 renderer identities / 42 families, 39 oracle scenes/PNGs,
+    and 1,876 CNAEXT tokens in 302 module headers. Sibling recounts confirmed xna4-spec's 544 type
+    XMLs in 19 namespace directories, cna-samples' 63/23/67 = 153 catalog, cna-examples' 13/79/249
+    catalog, easy-gl/meta-gl's line and API inventories, free-direct/free-api's test registrations,
+    and sharp-runtime's 41 modules / 44 components / 92 edges plus its exact SQLite task/ticket
+    totals. No further manuscript correction was warranted; this checkpoint has no PDF delta.
 
 ## Do this next
 
