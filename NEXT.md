@@ -718,6 +718,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      exact path rather than deleting it during generic cleanup. Normal success and successful
      rollback still remove the temporary copy; the exceptional branch therefore favors manual
      recovery over a falsely tidy `/tmp`.
+102. **The release lock cannot be redirected through world-writable `/tmp`.** The predictable
+     repository-keyed filename now lives below `/tmp/cna-bible-release-locks-$EUID`; the script
+     creates that parent as `0700` and refuses it unless it is a real directory owned by the
+     effective user with exactly that mode. This preserves cross-invocation locking without a
+     symlink/open redirection surface at the public temporary-directory level.
 
 ## Do this next
 

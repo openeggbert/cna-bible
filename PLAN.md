@@ -432,6 +432,7 @@ log grep replaces.
 | 2026-08-12 | Post-G transactional release artifact | Snapshot an existing reviewed `main.pdf` before TeX and restore it on build/fingerprint/verifier failure or HUP/INT/TERM; when no prior artifact exists, remove partial output; only a fully green sealed pipeline commits the rebuilt PDF while preserving logs/auxiliaries for diagnosis |
 | 2026-08-12 | Post-G serialized release transaction | Acquire a non-blocking kernel `flock` keyed by the absolute repository path before Git/source preflight and PDF snapshot; a concurrent sealed invocation now fails immediately rather than racing on shared auxiliaries, release log, output PDF or restore state |
 | 2026-08-12 | Post-G rollback snapshot retention | Hardened the exceptional rollback path: if restoring the prior PDF itself fails, retain the only snapshot and print its exact recovery path instead of deleting it during cleanup; normal success and successful rollback still remove their temporary snapshot |
+| 2026-08-12 | Post-G private release-lock path | Moved the predictable repository-keyed lock below a per-effective-user `/tmp` directory that must be a real owner-matching mode-0700 directory; cross-invocation serialization remains stable without allowing a public-`/tmp` symlink to redirect the lock-file open |
 
 ---
 
@@ -1402,3 +1403,5 @@ build and visual passes are available again.
   concurrent invocations cannot interleave build output or cross each other's restore boundary.
 - Preserved the only prior-PDF snapshot when rollback copying itself fails and report its path,
   preferring recoverability over cleanup in that exceptional storage/permission failure.
+- Moved the stable release lock beneath a validated owner-only (`0700`) per-user directory,
+  removing the predictable public-`/tmp` symlink/open redirection surface.

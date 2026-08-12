@@ -37,7 +37,7 @@ expected_pdf_date=D:20260812100654Z
 # verification handoff.
 missing_commands=""
 for required_command in git latexmk mutool sha256sum stat make perl pdfinfo pdftotext pdffonts \
-    pdfimages pngtopnm cmp gs mktemp cp rm flock; do
+    pdfimages pngtopnm cmp gs mktemp cp rm flock mkdir; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         missing_commands="$missing_commands $required_command"
     fi
@@ -50,8 +50,26 @@ fi
 # A sealed build mutates one shared aux/log/PDF set and its failure path can restore the prior
 # artifact. Serialize that transaction per repository so concurrent invocations cannot overwrite
 # one another or make one run restore across another run's successful output.
+# Put the predictable per-repository filename below a private per-user directory, never directly
+# in world-writable /tmp where a pre-created symlink could redirect the shell open. Accept an
+# existing directory only when it is a real directory owned by this effective user with mode 0700.
+release_lock_dir="/tmp/cna-bible-release-locks-$EUID"
+if ! mkdir -m 700 "$release_lock_dir" 2>/dev/null && [ ! -d "$release_lock_dir" ]; then
+    printf 'ERROR: could not create private release-lock directory\n' >&2
+    exit 1
+fi
+read -r lock_dir_owner lock_dir_mode <<EOF
+$(stat -c '%u %a' "$release_lock_dir" 2>/dev/null || true)
+EOF
+if [ -L "$release_lock_dir" ] || [ ! -d "$release_lock_dir" ] \
+   || [ "$lock_dir_owner" != "$EUID" ] \
+   || [ "$lock_dir_mode" != "700" ]; then
+    printf 'ERROR: unsafe release-lock directory (owner=%s mode=%s)\n' \
+        "${lock_dir_owner:-missing}" "${lock_dir_mode:-missing}" >&2
+    exit 1
+fi
 release_lock_id=$(printf '%s' "$repo_root" | sha256sum | awk '{print $1}')
-release_lock="/tmp/cna-bible-release-${release_lock_id}.lock"
+release_lock="$release_lock_dir/${release_lock_id}.lock"
 exec 9>"$release_lock"
 if ! flock -n 9; then
     printf 'ERROR: another sealed release build is already running for this repository\n' >&2
