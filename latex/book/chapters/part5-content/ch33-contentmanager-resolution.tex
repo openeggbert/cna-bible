@@ -11,7 +11,7 @@ formats, tried in a specific order, each with its own reasoning.
 
 Real XNA never ships raw asset files inside a game. An offline content-pipeline build step
 compiles every texture, model, font, and effect into a proprietary binary format ---
-\texttt{.xnb} --- which \cnaclass{ContentManager::Load<T>()} loads at runtime. FNA
+\texttt{.xnb} --- which \texttt{ContentManager::Load<T>()}\index{ContentManager::Load<T>} loads at runtime. FNA
 reimplements a real \texttt{.xnb} reader, precisely so unmodified, historical XNA content
 keeps working unchanged.
 
@@ -882,14 +882,14 @@ boundary rather than an XNB decoding result.
 Unlike scalar readers, \cnaclass{SongReader} cannot use a standalone \cnaclass{ContentReader}.
 It requires a non-null owning \cnaclass{ContentManager} to form the base path and throws
 \cnaclass{ContentLoadException} before consuming either body field when none is present.  Normal
-\cnaclass{ContentManager::Load<Song>()} always supplies one, but the direct reader surface does not.
+\texttt{ContentManager::Load<Song>()}\index{ContentManager::Load<Song>} always supplies one, but the direct reader surface does not.
 The reader does not opt into deserializing an existing object, so normal root dispatch passes no
 existing song.  A direct C\texttt{++}
 \cnaclass{ReadUntyped()} call can still box a copyable \cnaclass{Song} in \cnans{std::any}; the
 generic adapter unboxes it, but \cnaclass{SongReader::Read()} intentionally ignores it and returns a
 fresh value, just as FNA's typed reader ignores its \texttt{existingInstance} parameter.  CNA's
 ordinary manager cache is a separate value-cache story: \cnaclass{Song} is copyable, so a later
-matching \cnaclass{Load<Song>()} returns a copy of the cached value, not an in-place deserialization
+matching \texttt{Load<Song>()}\index{ContentManager::Load<Song>} returns a copy of the cached value, not an in-place deserialization
 of an earlier caller's object.
 
 \paragraph{What the real companion fixture proves --- and what it does not.}

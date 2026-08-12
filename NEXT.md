@@ -351,6 +351,13 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     opaque and non-empty. The byte-identical SDL Renderer/EasyGL pair is intentional: Git history
     and the retained Xvfb reproduction recipe show two separately executed renderers producing
     the same three-colour oracle scene.
+45. **The generated index has passed a semantic-deduplication audit.** Six accidental aliases of
+    the same C++ symbols were merged: the owner-qualified `ContentManager::Load<Song>` and
+    `Load<T>` keys no longer split on optional call parentheses or an omitted owner; `System::GC`,
+    `System::Type` and `System::SystemException` no longer split between C#, C++ and abbreviated
+    spellings. Intentional concept pairs such as XNB/`.xnb` and free-direct/`FREEDIRECT` remain.
+    A verifier rule prevents the known aliases from returning. Only physical index pages 704–709
+    changed; all six were rendered and read at full size, clean.
 
 ## Do this next
 
@@ -512,6 +519,9 @@ Everything through Phase G is verified:
   builds with a fixed source date produced byte-identical PDFs.
 - A metadata-only comparison proved the searchable text and every one of 709 rendered pages
   unchanged after adding the PDF language/subject/keywords. The verifier now requires `en-US`.
+- The index audit found no empty key or out-of-range page reference; all generated references stay
+  within printed pages 1–670. Six duplicate API aliases were consolidated, and final physical
+  pages 704–709 were individually inspected at full size.
 
 **No known writing, correction or PDF-verification defect is pending.**
 

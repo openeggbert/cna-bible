@@ -1108,3 +1108,10 @@ mid-session at the owner's direction, so the build and visual passes are availab
   non-empty and cited. The SDL Renderer and EasyGL oracle screenshots are byte-identical by
   design; commit history and `tools/cna-screenshot-infra/README.md` preserve their independent
   build/run provenance and reproduction commands.
+- Audited the generated index semantically rather than relying on makeindex's zero-warning status.
+  Every parsed numeric reference/range remains within printed pages 1–670 and no empty key exists.
+  Consolidated six aliases of `ContentManager::Load<Song>`, `ContentManager::Load<T>`,
+  `System::GC`, `System::Type` and `System::SystemException`; kept intentional conceptual pairs
+  such as XNB/`.xnb` and free-direct/`FREEDIRECT`. Added a verifier guard for the known aliases.
+  A whole-PDF pixel comparison isolated physical index pages 704–709; all six final pages were
+  rendered and read individually at full size with no clipping, collision or sparse-tail defect.

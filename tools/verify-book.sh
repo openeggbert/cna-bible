@@ -223,6 +223,17 @@ else
     pass "no pointer/reference declarators inside semantic index macros"
 fi
 
+# These spellings previously split one API symbol across multiple top-level index keys. Preserve
+# intentional conceptual pairs such as XNB/.xnb and free-direct/FREEDIRECT, but reject the known
+# C++ symbol aliases caused by optional call parentheses, omitted owners, or C# namespace dots.
+index_alias_re='\\cnaclass\{ContentManager::Load<(Song|T)>\(\)\}|\\cnaclass\{Load<Song>\(\)\}|\\cnaclass\{System\.(GC|Type)\}|\\cnaclass\{SystemException\}'
+if grep -rEn "$index_alias_re" "$chapters" "$front" > /tmp/cna-bible-index-aliases.txt 2>/dev/null; then
+    fail "noncanonical aliases split API symbols across index keys"
+    head -10 /tmp/cna-bible-index-aliases.txt | sed 's/^/        /'
+else
+    pass "no known noncanonical API aliases in semantic index macros"
+fi
+
 # These source identifiers and build options were removed by CNA's renderer/CNAEXT
 # naming migration. Unlike ordinary prose uses of "backend", none is contextually valid in
 # the current manuscript. Historical discussion should spell out the old name without using
