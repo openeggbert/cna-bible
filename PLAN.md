@@ -1457,3 +1457,5 @@ build and visual passes are available again.
 - Enabled pipeline-wide status propagation while retaining deliberate failure accumulation, and
   made critical Poppler assignments consume parser status. A correct-output/exit-29 font stub that
   previously passed now produces a verifier failure.
+- Bound MuPDF Info, page-label, language, normalized catalog/OpenAction and page-object-map values
+  to successful query status as well as exact text, rejecting plausible output from a failed parse.

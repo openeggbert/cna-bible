@@ -562,8 +562,12 @@ author=$(printf '%s\n' "$pdf_info" | awk -F: '/^Author:/ {sub(/^[[:space:]]+/, "
 subject=$(printf '%s\n' "$pdf_info" | awk -F: '/^Subject:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
 keywords=$(printf '%s\n' "$pdf_info" | awk -F: '/^Keywords:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
 creator=$(printf '%s\n' "$pdf_info" | awk -F: '/^Creator:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
-trapped=$(mutool show -g "$pdf" trailer/Info 2>/dev/null \
-    | sed -n 's/.*\/Trapped\/\([^/>]*\).*/\1/p')
+info_object_ok=1
+if ! trapped=$(mutool show -g "$pdf" trailer/Info 2>/dev/null \
+    | sed -n 's/.*\/Trapped\/\([^/>]*\).*/\1/p'); then
+    trapped=""
+    info_object_ok=0
+fi
 page_boxes_ok=1
 if ! page_boxes=$(pdfinfo -f 1 -l "$pages" -box "$pdf" 2>/dev/null); then
     page_boxes=""
@@ -595,7 +599,8 @@ fi
 if [ "$title" = "The CNA Bible" ] && [ "$author" = "Robert Vokac" ] \
    && [ "$subject" = "A source-grounded guide to CNA and the Microsoft XNA 4.0 programming model" ] \
    && [ "$keywords" = "CNA, Microsoft XNA, C++23, graphics renderers, game development" ] \
-   && [ "$creator" = "LaTeX with hyperref" ] && [ "$trapped" = "False" ]; then
+   && [ "$creator" = "LaTeX with hyperref" ] && [ "$info_object_ok" -eq 1 ] \
+   && [ "$trapped" = "False" ]; then
     pass "PDF title, author, subject, keywords, creator, and trapped state match release metadata"
 else
     fail "unexpected or incomplete PDF release metadata (creator='${creator:-?}', trapped='${trapped:-?}')"
@@ -724,17 +729,26 @@ rmdir "$image_audit_dir"
 # Verify the navigation structure in the produced artifact, not only the source input list.
 # Hyperref names ordinary chapters chapter.N and appendices appendix.A, while Parts use part.N.
 if command -v mutool >/dev/null 2>&1; then
-    page_labels=$(mutool show -g "$pdf" trailer/Root/PageLabels 2>/dev/null || true)
+    page_labels_ok=1
+    if ! page_labels=$(mutool show -g "$pdf" trailer/Root/PageLabels 2>/dev/null); then
+        page_labels=""
+        page_labels_ok=0
+    fi
     # Match the complete number tree, not a substring: any unnoticed later entry would relabel
     # the rest of the document while preserving the expected transition at physical page 31.
-    if [ "$page_labels" = '<</Nums[0<</S/r>>30<</S/D>>]>>' ] && [ "$pages" -eq 709 ]; then
+    if [ "$page_labels_ok" -eq 1 ] \
+       && [ "$page_labels" = '<</Nums[0<</S/r>>30<</S/D>>]>>' ] && [ "$pages" -eq 709 ]; then
         pass "all 709 page labels run i--xxx, then 1--679"
     else
         fail "unexpected PDF page-label number tree ('${page_labels:-?}')"
     fi
 
-    document_language=$(mutool show -g "$pdf" trailer/Root/Lang 2>/dev/null || true)
-    if [ "$document_language" = "(en-US)" ]; then
+    document_language_ok=1
+    if ! document_language=$(mutool show -g "$pdf" trailer/Root/Lang 2>/dev/null); then
+        document_language=""
+        document_language_ok=0
+    fi
+    if [ "$document_language_ok" -eq 1 ] && [ "$document_language" = "(en-US)" ]; then
         pass "PDF catalog declares English (United States) as its document language"
     else
         fail "unexpected or missing PDF document language ('${document_language:-?}')"
@@ -742,19 +756,32 @@ if command -v mutool >/dev/null 2>&1; then
 
     # Positively bind the catalog surface. Object numbers are intentionally normalized because
     # harmless content edits can renumber them; keys and action semantics must remain exact.
-    catalog=$(mutool show -g "$pdf" trailer/Root 2>/dev/null || true)
+    catalog_reads_ok=1
+    if ! catalog=$(mutool show -g "$pdf" trailer/Root 2>/dev/null); then
+        catalog=""
+        catalog_reads_ok=0
+    fi
     catalog_normalized=$(printf '%s\n' "$catalog" \
         | sed -E 's/^[0-9]+ 0 obj /OBJ obj /; s/[0-9]+ 0 R/OBJ/g')
-    names_root=$(mutool show -g "$pdf" trailer/Root/Names 2>/dev/null || true)
+    if ! names_root=$(mutool show -g "$pdf" trailer/Root/Names 2>/dev/null); then
+        names_root=""
+        catalog_reads_ok=0
+    fi
     names_root_normalized=$(printf '%s\n' "$names_root" \
         | sed -E 's/^[0-9]+ 0 obj /OBJ obj /; s/[0-9]+ 0 R/OBJ/g')
-    open_action=$(mutool show -g "$pdf" trailer/Root/OpenAction 2>/dev/null || true)
+    if ! open_action=$(mutool show -g "$pdf" trailer/Root/OpenAction 2>/dev/null); then
+        open_action=""
+        catalog_reads_ok=0
+    fi
     open_action_page=$(printf '%s\n' "$open_action" \
         | sed -n 's/.*\/S\/GoTo\/D\[\([0-9]*\) 0 R\/Fit\].*/\1/p')
-    first_page_object=$(mutool show -g "$pdf" pages/1 2>/dev/null \
-        | sed -n 's/^\([0-9]*\) 0 obj .*/\1/p')
+    if ! first_page_object=$(mutool show -g "$pdf" pages/1 2>/dev/null \
+        | sed -n 's/^\([0-9]*\) 0 obj .*/\1/p'); then
+        first_page_object=""
+        catalog_reads_ok=0
+    fi
     expected_catalog='OBJ obj <</Type/Catalog/Pages OBJ/Outlines OBJ/Names OBJ/PageMode/UseOutlines/Lang(en-US)/PageLabels<</Nums[0<</S/r>>30<</S/D>>]>>/OpenAction OBJ>>'
-    if [ "$catalog_normalized" = "$expected_catalog" ] \
+    if [ "$catalog_reads_ok" -eq 1 ] && [ "$catalog_normalized" = "$expected_catalog" ] \
        && [ "$names_root_normalized" = 'OBJ obj <</Dests OBJ>>' ] \
        && [ -n "$first_page_object" ] && [ "$open_action_page" = "$first_page_object" ]; then
         pass "PDF catalog exposes only outline, destinations, labels, language, and first-page GoTo"
@@ -1068,14 +1095,18 @@ EOF
 
         page_objects_file=$(mktemp /tmp/cna-bible-page-objects.XXXXXX.txt)
         toc_target_result_file=$(mktemp /tmp/cna-bible-toc-targets.XXXXXX.txt)
-        mutool show "$pdf" pages > "$page_objects_file" 2>/dev/null || true
+        page_objects_ok=1
+        if ! mutool show "$pdf" pages > "$page_objects_file" 2>/dev/null; then
+            page_objects_ok=0
+        fi
 
         # A rectangle can be valid yet float over blank paper, producing an invisible hotspot.
         # Independently extract text geometry for every physical page and require positive-area
         # overlap between each Link rectangle and at least one visible text line.
         all_link_text_file=$(mktemp /tmp/cna-bible-all-link-text.XXXXXX.json)
         all_link_text_result_file=$(mktemp /tmp/cna-bible-all-link-text-result.XXXXXX.txt)
-        if mutool draw -q -F stext.json -o "$all_link_text_file" "$pdf" 1-709 \
+        if [ "$page_objects_ok" -eq 1 ] \
+           && mutool draw -q -F stext.json -o "$all_link_text_file" "$pdf" 1-709 \
             >/dev/null 2>&1; then
             perl -MJSON::PP -e '
                 my ($objects, $pages, $text_file) = @ARGV;

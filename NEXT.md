@@ -811,6 +811,10 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      deliberate failure accumulation instead of `errexit`, but now enables Bash `pipefail` and
      explicitly consumes the status of critical `pdfinfo`/`pdffonts` assignments. A stub that
      emitted the expected 27 font rows and then exited 29 passed before this guard and now fails.
+121. **Exact MuPDF metadata requires a successful parser status.** Info, page-label, language,
+     normalized catalog/OpenAction and page-object-map checks now bind both expected output and
+     every underlying `mutool show` return code. A query cannot report a green semantic invariant
+     after emitting a plausible partial value while also signalling a parse failure.
 
 ## Do this next
 
