@@ -402,6 +402,7 @@ log grep replaces.
 | 2026-08-12 | Post-G complete page-label tree | Replaced the transition-only predicate with exact equality on the complete PDF label number tree plus the fixed 709-page extent, proving labels `i`--`xxx` followed by `1`--`679`; a simulated 710-page artifact retaining the same transition passed the old label predicate and fails the combined invariant; current corrected text layer recounted at 302,448 `pdftotext -layout` words versus the historical Phase-G 302,443 |
 | 2026-08-12 | Post-G release-cardinality guards | Bound makeindex to exactly 2,389 accepted / 0 rejected / 0 warning entries and the PDF to exactly 3,653 targeted in-A4 link rectangles; added full Poppler layout-mode text extraction requiring 302,448 words and zero NUL or U+FFFD corruption; reduced-population predicates fail and the fixed-date release PDF passes the complete expanded verifier |
 | 2026-08-12 | Post-G annotation/action allowlist | Complete object census proves all 3,653 annotations are Link actions: 3,650 internal GoTo plus exactly three reviewed HTTPS URI actions, with no direct-destination or unclassified annotation; verifier now requires this positive distribution as well as the existing unsafe-action blacklist and exact URI allowlist, preventing unknown media/widget/attachment action types from passing by omission; no PDF delta |
+| 2026-08-12 | Post-G PDF catalog allowlist | Normalized volatile object numbers and bound the catalog to only Pages, Outlines, destination Names, UseOutlines mode, en-US language, exact PageLabels and OpenAction; Names contains only Dests and OpenAction is internal GoTo/Fit to the actual first page object; synthetic `/AA` root addition fails exact comparison, closing root-level script/name-tree expansion independently of action census; no PDF delta |
 
 ---
 
@@ -1287,3 +1288,7 @@ build and visual passes are available again.
   3,653 annotations must be `/Link`; 3,650 must carry an internal `/GoTo` action and exactly three
   must carry the reviewed `/URI` actions, with no direct-destination or unknown remainder. The
   pre-existing blacklist and exact HTTPS allowlist remain defense in depth; no PDF delta.
+- Positively allowlisted the normalized PDF catalog: Pages, Outlines, destination Names,
+  UseOutlines, en-US, exact PageLabels and OpenAction only. Names may contain only Dests, and the
+  opening action must be an internal GoTo/Fit to the first actual page object. A synthetic `/AA`
+  branch fails exact comparison; this verifier-only hardening has no PDF delta.

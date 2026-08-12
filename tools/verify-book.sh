@@ -500,6 +500,28 @@ if command -v mutool >/dev/null 2>&1; then
         fail "unexpected or missing PDF document language ('${document_language:-?}')"
     fi
 
+    # Positively bind the catalog surface. Object numbers are intentionally normalized because
+    # harmless content edits can renumber them; keys and action semantics must remain exact.
+    catalog=$(mutool show -g "$pdf" trailer/Root 2>/dev/null || true)
+    catalog_normalized=$(printf '%s\n' "$catalog" \
+        | sed -E 's/^[0-9]+ 0 obj /OBJ obj /; s/[0-9]+ 0 R/OBJ/g')
+    names_root=$(mutool show -g "$pdf" trailer/Root/Names 2>/dev/null || true)
+    names_root_normalized=$(printf '%s\n' "$names_root" \
+        | sed -E 's/^[0-9]+ 0 obj /OBJ obj /; s/[0-9]+ 0 R/OBJ/g')
+    open_action=$(mutool show -g "$pdf" trailer/Root/OpenAction 2>/dev/null || true)
+    open_action_page=$(printf '%s\n' "$open_action" \
+        | sed -n 's/.*\/S\/GoTo\/D\[\([0-9]*\) 0 R\/Fit\].*/\1/p')
+    first_page_object=$(mutool show -g "$pdf" pages/1 2>/dev/null \
+        | sed -n 's/^\([0-9]*\) 0 obj .*/\1/p')
+    expected_catalog='OBJ obj <</Type/Catalog/Pages OBJ/Outlines OBJ/Names OBJ/PageMode/UseOutlines/Lang(en-US)/PageLabels<</Nums[0<</S/r>>30<</S/D>>]>>/OpenAction OBJ>>'
+    if [ "$catalog_normalized" = "$expected_catalog" ] \
+       && [ "$names_root_normalized" = 'OBJ obj <</Dests OBJ>>' ] \
+       && [ -n "$first_page_object" ] && [ "$open_action_page" = "$first_page_object" ]; then
+        pass "PDF catalog exposes only outline, destinations, labels, language, and first-page GoTo"
+    else
+        fail "unexpected PDF catalog, Names root, or OpenAction"
+    fi
+
     outline_file=$(mktemp /tmp/cna-bible-outline.XXXXXX.txt)
     if mutool show "$pdf" outline > "$outline_file" 2>/dev/null; then
         outline_dests_file=$(mktemp /tmp/cna-bible-outline-dests.XXXXXX.txt)

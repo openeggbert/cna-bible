@@ -558,6 +558,12 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     The verifier now requires that exact distribution in addition to its existing blacklist and
     URI allowlist, so an unfamiliar media, attachment, widget or action subtype cannot pass merely
     because its spelling was absent from the blacklist. The release PDF remains unchanged.
+72. **The PDF catalog is positively allowlisted.** After normalizing volatile object numbers, the
+    catalog contains only the page tree, outline, destination names, `UseOutlines` mode, `en-US`,
+    the exact page-label tree and an opening action. The Names root contains only `Dests`; the
+    opening action is an internal `GoTo /Fit` to the actual first page object. A synthetic extra
+    `/AA` catalog branch fails exact comparison. This closes script/name-tree additions at the
+    document root independently of the annotation-action census, with no PDF delta.
 
 ## Do this next
 
