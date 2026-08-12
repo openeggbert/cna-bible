@@ -920,6 +920,9 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      below its already-private run directory; the final verdict consumes that marker. A stub that
      allowed the initial directory but rejected every later allocation produced 20 failures and
      status 1, while the EXIT trap removed the complete scratch tree and left zero residue.
+143. **Rendered-page inventories fail closed and cleanly.** A `find` fixture emitted the correct
+     page-709 PNG inventory and then exited 89. The renderer rejected the run at its count guard,
+     returned status 1 and removed every entry from its private run directory.
 
 ## Do this next
 

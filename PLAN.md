@@ -1521,3 +1521,5 @@ build and visual passes are available again.
   `mktemp` calls now set a final failure marker and return only a contained fallback below the
   private run directory. A fixture rejected every late allocation: 20 checks failed, exit was 1,
   and recursive EXIT cleanup left no verifier scratch directory.
+- Proved the renderer's newly status-bound inventory with a correct-output/exit-89 `find` stub:
+  the page-709 run failed at the count guard and recursively removed its private output child.
