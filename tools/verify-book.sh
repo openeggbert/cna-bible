@@ -1262,6 +1262,24 @@ else
     fail "mutool unavailable; PDF navigation checks cannot run"
 fi
 
+# A parser can sometimes read a damaged cross-reference or stream leniently without proving that
+# it can serialize the complete object graph again. Rewrite to a disposable PDF with MuPDF, then
+# require Poppler's layout text to remain byte-identical and Ghostscript to interpret every page.
+roundtrip_pdf=$(mktemp /tmp/cna-bible-roundtrip.XXXXXX.pdf)
+roundtrip_text=$(mktemp /tmp/cna-bible-roundtrip-text.XXXXXX.txt)
+source_roundtrip_text=$(mktemp /tmp/cna-bible-source-text.XXXXXX.txt)
+if mutool clean "$pdf" "$roundtrip_pdf" >/dev/null 2>&1 \
+   && [ "$(pdfinfo "$roundtrip_pdf" 2>/dev/null | awk '/^Pages:/ {print $2}')" = "709" ] \
+   && pdftotext -layout "$pdf" "$source_roundtrip_text" 2>/dev/null \
+   && pdftotext -layout "$roundtrip_pdf" "$roundtrip_text" 2>/dev/null \
+   && cmp -s "$source_roundtrip_text" "$roundtrip_text" \
+   && gs -q -dNOPAUSE -dBATCH -sDEVICE=nullpage -o /dev/null "$roundtrip_pdf"; then
+    pass "MuPDF rewrite preserves all 709 pages and byte-identical layout text; Ghostscript parses it"
+else
+    fail "PDF parse/rewrite round trip changed text/pages or failed independent interpretation"
+fi
+rm -f "$roundtrip_pdf" "$roundtrip_text" "$source_roundtrip_text"
+
 # Use an independent interpreter as a final syntax/renderability check when available. This does
 # not replace the visual pass; it catches corrupt objects and page programs that Poppler or MuPDF
 # may tolerate differently.

@@ -576,6 +576,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     order, to exactly five source PNGs. All five pairs are pixel-identical; the intentionally
     identical SDL Renderer/EasyGL sources remain separate occurrences. README records the added
     `pdfimages`/`pngtopnm` requirements. No artifact change was needed.
+75. **The PDF parse/rewrite round trip is automated again.** The verifier rewrites the release to
+    a disposable PDF with MuPDF, requires Poppler to report all 709 pages and extract layout text
+    byte-identical to the source artifact, then has Ghostscript interpret the rewritten document.
+    The current round trip passes all three stages. This turns the historical Phase-G manual
+    result into a repeatable invariant and leaves the sealed release bytes untouched.
 
 ## Do this next
 

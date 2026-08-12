@@ -405,6 +405,7 @@ log grep replaces.
 | 2026-08-12 | Post-G PDF catalog allowlist | Normalized volatile object numbers and bound the catalog to only Pages, Outlines, destination Names, UseOutlines mode, en-US language, exact PageLabels and OpenAction; Names contains only Dests and OpenAction is internal GoTo/Fit to the actual first page object; synthetic `/AA` root addition fails exact comparison, closing root-level script/name-tree expansion independently of action census; no PDF delta |
 | 2026-08-12 | Post-G sealed release command | Added `tools/build-release.sh`: forces full latexmk rebuild under `SOURCE_DATE_EPOCH=1786529214`, requires 3,314,744 bytes and SHA-256 `7c877ef20bdb20042bdd32483b2e79cb07e81dec7a8d86dc24f6d29d4a04b2af`, then runs the complete verifier; README documents the command and makes fingerprint changes contingent on a new independent reproducibility and visual-review checkpoint |
 | 2026-08-12 | Post-G font/image population closure | Bound font portability to exactly 27 complete rows; extracted PDF images as five RGB + five soft-mask planes and compared decoded Netpbm pixels to the five source RGBA PNGs in compilation order, all RGB/alpha pairs byte-identical after decoding; verifier now enforces exact source/embedded populations and README records `pdfimages`/`pngtopnm` dependencies; no PDF delta |
+| 2026-08-12 | Post-G automated parse/rewrite round trip | Restored the Phase-G round trip as an automated release check: MuPDF rewrites to a disposable PDF, Poppler requires all 709 pages and byte-identical layout-mode text versus the release, and Ghostscript independently interprets the rewritten artifact; current release passes all stages, with no modification to sealed bytes |
 
 ---
 
@@ -1302,3 +1303,7 @@ build and visual passes are available again.
   `pdfimages` plus Netpbm decode the five embedded RGB/soft-mask pairs and their five RGBA sources;
   all corresponding RGB and alpha planes compare byte-identically. The verifier enforces exact
   populations and README records the added tools; no PDF delta.
+- Automated the previously historical parse/rewrite check. MuPDF rewrites the release into a
+  disposable PDF, Poppler requires the same 709 pages and byte-identical layout text, and
+  Ghostscript independently interprets the rewritten object graph. The release passes all three
+  stages and its sealed bytes remain untouched.
