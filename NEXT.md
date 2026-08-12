@@ -910,6 +910,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      output and validates exactly 64 lowercase hexadecimal digits. In a fresh clone, a stub emitted
      the correct digest then exited 73 after TeX: the transaction stopped before verification,
      restored a marker prior PDF byte-for-byte and left no prior-release snapshot.
+141. **Navigation summaries require successful semantic parsers.** Named-destination, rectangle,
+     link/text, TOC coverage/order/identity/landing and index-landing verdicts now bind each Perl
+     producer and summary read before accepting exact counts. A targeted parser emitted the correct
+     `5054 names / 5054 objects / 0 bad` destination summary and then exited 79; exactly that audit
+     failed while every other current verifier check stayed green.
 
 ## Do this next
 

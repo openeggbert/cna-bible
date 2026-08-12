@@ -1513,3 +1513,7 @@ build and visual passes are available again.
   release now requires successful `sha256sum` plus exactly 64 lowercase hexadecimal digits. A
   fresh-clone stub emitted the correct digest and exited 73 after typesetting; the transaction
   stopped before verification, restored its marker prior PDF byte-for-byte and left no snapshot.
+- Status-bound every complex navigation-summary producer: named destinations, link rectangles and
+  visible text, TOC coverage/order/identity/landings and index landings must now complete before
+  exact counts can pass. A targeted Perl stub printed the correct 5,054/5,054/0 destination summary
+  and exited 79; exactly the named-destination verdict failed and all other checks stayed green.

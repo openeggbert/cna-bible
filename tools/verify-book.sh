@@ -1159,7 +1159,8 @@ EOF
         named_destination_result_file=$(mktemp /tmp/cna-bible-named-destinations.XXXXXX.txt)
         complete_pages_file=$(mktemp /tmp/cna-bible-complete-pages.XXXXXX.txt)
         if mutool show "$pdf" pages > "$complete_pages_file" 2>/dev/null; then
-            perl -e '
+            named_destination_parser_ok=1
+            if ! perl -e '
                 my ($objects, $pages) = @ARGV;
                 open P, "<", $pages or die $!;
                 while (<P>) { $page_object{$1} = 1 if /page \d+ = (\d+) 0 R/; }
@@ -1212,11 +1213,19 @@ EOF
                 $bad += $duplicate_names + $duplicate_objects;
                 print "SUMMARY " . scalar(keys %name) . " " . scalar(keys %destination)
                     . " " . ($bad + 0) . "\n";
-            ' "$objects_file" "$complete_pages_file" > "$named_destination_result_file"
+            ' "$objects_file" "$complete_pages_file" > "$named_destination_result_file"; then
+                named_destination_parser_ok=0
+            fi
+            named_destination_summary=$(tail -1 "$named_destination_result_file") \
+                || named_destination_parser_ok=0
+            named_destination_count=0
+            destination_object_count=0
+            bad_named_destination_count=0
             read -r _ named_destination_count destination_object_count bad_named_destination_count <<EOF
-$(tail -1 "$named_destination_result_file")
+$named_destination_summary
 EOF
-            if [ "$named_destination_count" -eq 5054 ] \
+            if [ "$named_destination_parser_ok" -eq 1 ] \
+               && [ "$named_destination_count" -eq 5054 ] \
                && [ "$destination_object_count" -eq "$named_destination_count" ] \
                && [ "$bad_named_destination_count" -eq 0 ]; then
                 pass "all 5054 named destinations map one-to-one to valid in-page XYZ targets"
@@ -1231,7 +1240,8 @@ EOF
 
         # Every clickable annotation also needs a non-inverted rectangle inside A4 and either an
         # action or a direct destination. Broken geometry can make a valid target unclickable.
-        link_geometry=$(
+        link_geometry_ok=1
+        if ! link_geometry=$(
             perl -ne '
                 next unless m{/Subtype/Link};
                 $links++;
@@ -1244,11 +1254,15 @@ EOF
                 }
                 END { print join(" ", $links + 0, $targeted + 0, $rects + 0, $bad + 0); }
             ' "$objects_file"
-        )
+        ); then
+            link_geometry="0 0 0 0"
+            link_geometry_ok=0
+        fi
         read -r link_count targeted_link_count rect_link_count bad_link_count <<EOF
 $link_geometry
 EOF
-        if [ "$link_count" -eq 3653 ] && [ "$targeted_link_count" -eq "$link_count" ] \
+        if [ "$link_geometry_ok" -eq 1 ] && [ "$link_count" -eq 3653 ] \
+           && [ "$targeted_link_count" -eq "$link_count" ] \
            && [ "$rect_link_count" -eq "$link_count" ] && [ "$bad_link_count" -eq 0 ]; then
             pass "all 3653 PDF link annotations have valid A4 geometry and targets"
         else
@@ -1270,7 +1284,8 @@ EOF
         if [ "$page_objects_ok" -eq 1 ] \
            && mutool draw -q -F stext.json -o "$all_link_text_file" "$pdf" 1-709 \
             >/dev/null 2>&1; then
-            perl -MJSON::PP -e '
+            all_link_text_parser_ok=1
+            if ! perl -MJSON::PP -e '
                 my ($objects, $pages, $text_file) = @ARGV;
                 open P, "<", $pages or die $!;
                 while (<P>) { $page_object{$1} = $2 if /page (\d+) = (\d+) 0 R/; }
@@ -1348,11 +1363,20 @@ EOF
                 print "SUMMARY " . ($checked + 0) . " " . ($bad + 0) . " "
                     . ($uri_checked + 0) . " " . ($uri_bad + 0) . "\n";
             ' "$objects_file" "$page_objects_file" "$all_link_text_file" \
-                > "$all_link_text_result_file"
+                > "$all_link_text_result_file"; then
+                all_link_text_parser_ok=0
+            fi
+            all_link_text_summary=$(tail -1 "$all_link_text_result_file") \
+                || all_link_text_parser_ok=0
+            visible_link_count=0
+            empty_link_count=0
+            visible_uri_count=0
+            wrong_uri_text_count=0
             read -r _ visible_link_count empty_link_count visible_uri_count wrong_uri_text_count <<EOF
-$(tail -1 "$all_link_text_result_file")
+$all_link_text_summary
 EOF
-            if [ "$visible_link_count" -eq "$link_count" ] && [ "$empty_link_count" -eq 0 ] \
+            if [ "$all_link_text_parser_ok" -eq 1 ] \
+               && [ "$visible_link_count" -eq "$link_count" ] && [ "$empty_link_count" -eq 0 ] \
                && [ "$visible_uri_count" -eq 3 ] && [ "$wrong_uri_text_count" -eq 0 ]; then
                 pass "all $visible_link_count links overlap text; all 3 URI targets equal their printed URLs"
             else
@@ -1376,7 +1400,8 @@ EOF
             toc_link_result_file=$(mktemp /tmp/cna-bible-toc-links.XXXXXX.txt)
             toc_pdf_order_file=$(mktemp /tmp/cna-bible-toc-pdf-order.XXXXXX.txt)
             toc_source_order_file=$(mktemp /tmp/cna-bible-toc-source-order.XXXXXX.txt)
-            perl -e '
+            toc_link_parser_ok=1
+            if ! perl -e '
                 my ($objects, $pages, $toc) = @ARGV;
                 open P, "<", $pages or die $!;
                 while (<P>) { $page_object{$1} = $2 if /page (\d+) = (\d+) 0 R/; }
@@ -1417,15 +1442,25 @@ EOF
                 print Q "$_\n" for grep { exists $expected{$_} } @order;
                 close Q;
             ' "$objects_file" "$page_objects_file" "$book_dir/main.toc" "$toc_pdf_order_file" \
-                > "$toc_link_result_file"
-            perl -ne '
+                > "$toc_link_result_file"; then
+                toc_link_parser_ok=0
+            fi
+            if ! perl -ne '
                 print "$1\n"
                     if /\\contentsline \{(?:part|chapter|section|subsection)\}.*\{([^{}]+)\}%$/;
-            ' "$book_dir/main.toc" > "$toc_source_order_file"
+            ' "$book_dir/main.toc" > "$toc_source_order_file"; then
+                toc_link_parser_ok=0
+            fi
+            toc_link_summary=$(tail -1 "$toc_link_result_file") || toc_link_parser_ok=0
+            toc_link_count=0
+            toc_link_target_count=0
+            toc_expected_target_count=0
+            bad_toc_link_count=0
             read -r _ toc_link_count toc_link_target_count toc_expected_target_count bad_toc_link_count <<EOF
-$(tail -1 "$toc_link_result_file")
+$toc_link_summary
 EOF
-            if [ "$toc_link_count" -eq 1129 ] && [ "$toc_link_target_count" -eq 1066 ] \
+            if [ "$toc_link_parser_ok" -eq 1 ] && [ "$toc_link_count" -eq 1129 ] \
+               && [ "$toc_link_target_count" -eq 1066 ] \
                && [ "$toc_expected_target_count" -eq 1066 ] \
                && [ "$bad_toc_link_count" -eq 0 ]; then
                 pass "all 1066 visible TOC entries are covered by 1129 link rectangles"
@@ -1433,8 +1468,9 @@ EOF
                 fail "TOC clickable-coverage audit failed ($toc_link_count links, $toc_link_target_count actual targets, $toc_expected_target_count expected targets, $bad_toc_link_count differing)"
                 grep -v '^SUMMARY ' "$toc_link_result_file" | head -10 | sed 's/^/        /'
             fi
-            toc_pdf_order_count=$(line_count "$toc_pdf_order_file") || toc_pdf_order_count=0
-            if [ "$toc_pdf_order_count" -eq 1066 ] \
+            toc_pdf_order_count=$(line_count "$toc_pdf_order_file") \
+                || { toc_pdf_order_count=0; toc_link_parser_ok=0; }
+            if [ "$toc_link_parser_ok" -eq 1 ] && [ "$toc_pdf_order_count" -eq 1066 ] \
                && cmp -s "$toc_pdf_order_file" "$toc_source_order_file"; then
                 pass "all 1066 visible TOC destinations preserve source order"
             else
@@ -1452,7 +1488,8 @@ EOF
             toc_identity_result_file=$(mktemp /tmp/cna-bible-toc-identities.XXXXXX.txt)
             if mutool draw -q -F stext.json -o "$toc_text_file" "$pdf" 5-29 \
                 >/dev/null 2>&1; then
-                perl -MJSON::PP -e '
+                toc_identity_parser_ok=1
+                if ! perl -MJSON::PP -e '
                     my ($objects, $pages, $text_file, $toc) = @ARGV;
                     open P, "<", $pages or die $!;
                     while (<P>) { $page_object{$1} = $2 if /page (\d+) = (\d+) 0 R/; }
@@ -1544,11 +1581,18 @@ EOF
                     }
                     print "SUMMARY " . ($checked + 0) . " " . ($bad + 0) . "\n";
                 ' "$objects_file" "$page_objects_file" "$toc_text_file" "$book_dir/main.toc" \
-                    > "$toc_identity_result_file"
+                    > "$toc_identity_result_file"; then
+                    toc_identity_parser_ok=0
+                fi
+                toc_identity_summary=$(tail -1 "$toc_identity_result_file") \
+                    || toc_identity_parser_ok=0
+                toc_identity_count=0
+                bad_toc_identity_count=0
                 read -r _ toc_identity_count bad_toc_identity_count <<EOF
-$(tail -1 "$toc_identity_result_file")
+$toc_identity_summary
 EOF
-                if [ "$toc_identity_count" -eq 1066 ] && [ "$bad_toc_identity_count" -eq 0 ]; then
+                if [ "$toc_identity_parser_ok" -eq 1 ] && [ "$toc_identity_count" -eq 1066 ] \
+                   && [ "$bad_toc_identity_count" -eq 0 ]; then
                     pass "all 1066 TOC links cover their own printed structural identities"
                 else
                     fail "TOC link/text identity audit failed ($bad_toc_identity_count wrong of $toc_identity_count targets)"
@@ -1559,7 +1603,8 @@ EOF
             fi
             rm -f "$toc_text_file" "$toc_identity_result_file"
 
-            perl -e '
+            toc_target_parser_ok=1
+            if ! perl -e '
                 my ($objects, $pages, $toc) = @ARGV;
                 open P, "<", $pages or die $!;
                 while (<P>) { $page{$2} = $1 if /page (\d+) = (\d+) 0 R/; }
@@ -1589,11 +1634,17 @@ EOF
                 }
                 print "SUMMARY " . ($checked + 0) . " " . ($bad + 0) . "\n";
             ' "$objects_file" "$page_objects_file" "$book_dir/main.toc" \
-                > "$toc_target_result_file"
+                > "$toc_target_result_file"; then
+                toc_target_parser_ok=0
+            fi
+            toc_target_summary=$(tail -1 "$toc_target_result_file") || toc_target_parser_ok=0
+            toc_target_count=0
+            bad_toc_target_count=0
             read -r _ toc_target_count bad_toc_target_count <<EOF
-$(tail -1 "$toc_target_result_file")
+$toc_target_summary
 EOF
-            if [ "$toc_target_count" -eq 1065 ] && [ "$bad_toc_target_count" -eq 0 ]; then
+            if [ "$toc_target_parser_ok" -eq 1 ] && [ "$toc_target_count" -eq 1065 ] \
+               && [ "$bad_toc_target_count" -eq 0 ]; then
                 pass "all 1065 numbered TOC entries land on their printed pages"
             else
                 fail "TOC destination audit failed ($bad_toc_target_count wrong of $toc_target_count numbered entries)"
@@ -1608,7 +1659,8 @@ EOF
             index_target_result_file=$(mktemp /tmp/cna-bible-index-targets.XXXXXX.txt)
             if mutool draw -q -F stext.json -o "$index_text_file" "$pdf" 703-709 \
                 >/dev/null 2>&1; then
-                perl -MJSON::PP -e '
+                index_target_parser_ok=1
+                if ! perl -MJSON::PP -e '
                     my ($objects, $pages, $text_file) = @ARGV;
                     open P, "<", $pages or die $!;
                     while (<P>) {
@@ -1687,11 +1739,18 @@ EOF
                     }
                     print "SUMMARY " . ($checked + 0) . " " . ($bad + 0) . "\n";
                 ' "$objects_file" "$page_objects_file" "$index_text_file" \
-                    > "$index_target_result_file"
+                    > "$index_target_result_file"; then
+                    index_target_parser_ok=0
+                fi
+                index_target_summary=$(tail -1 "$index_target_result_file") \
+                    || index_target_parser_ok=0
+                index_target_count=0
+                bad_index_target_count=0
                 read -r _ index_target_count bad_index_target_count <<EOF
-$(tail -1 "$index_target_result_file")
+$index_target_summary
 EOF
-                if [ "$index_target_count" -eq 1850 ] && [ "$bad_index_target_count" -eq 0 ]; then
+                if [ "$index_target_parser_ok" -eq 1 ] && [ "$index_target_count" -eq 1850 ] \
+                   && [ "$bad_index_target_count" -eq 0 ]; then
                     pass "all $index_target_count clickable index numbers match their printed and physical pages"
                 else
                     fail "index destination audit failed ($bad_index_target_count wrong of $index_target_count links)"
