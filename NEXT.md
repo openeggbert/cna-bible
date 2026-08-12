@@ -665,6 +665,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     Every record must have a non-empty key, use `hyperpage` and cite printed page 1–670; the 681
     case-folded logical keys must produce exactly 676 top-level items and five subitems, with no
     lost or unexpected level. The current source/output pair satisfies the complete census.
+91. **All verifier scratch data has one lifecycle.** The earlier concurrency repair covered the
+    eleven named source diagnostics, but more than forty unique text/JSON/PDF/image intermediates
+    still relied on reaching their individual `rm` lines. `mktemp` calls now resolve inside the
+    run's private directory; one recursive EXIT cleanup covers normal, failed and interrupted
+    runs, while HUP/INT/TERM retain meaningful exit status. No artifact or check changed.
 
 ## Do this next
 

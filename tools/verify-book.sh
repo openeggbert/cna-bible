@@ -37,14 +37,27 @@ case "$#:${1:-}" in
         ;;
 esac
 
-# Fixed /tmp filenames make concurrent verifier runs overwrite each other's diagnostics. Keep all
-# named scratch outputs in one private session directory and remove it on normal exit or signals.
+# Keep every scratch output in one private session directory. Besides preventing concurrent runs
+# from colliding, this lets one EXIT trap remove text, JSON, PDF and decoded-image intermediates
+# after normal completion, a failed check, or an interrupt.
 diagnostic_dir=$(mktemp -d /tmp/cna-bible-verify.XXXXXX)
+system_mktemp=$(command -v mktemp)
+mktemp() {
+    if [ "${1:-}" = "-d" ]; then
+        shift
+        "$system_mktemp" -d "$diagnostic_dir/${1##*/}"
+    else
+        "$system_mktemp" "$diagnostic_dir/${1##*/}"
+    fi
+}
 cleanup_diagnostics() {
-    find "$diagnostic_dir" -mindepth 1 -maxdepth 1 -type f -delete 2>/dev/null || true
+    find "$diagnostic_dir" -mindepth 1 -delete 2>/dev/null || true
     rmdir "$diagnostic_dir" 2>/dev/null || true
 }
-trap cleanup_diagnostics EXIT HUP INT TERM
+trap cleanup_diagnostics EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 failures=0
 pass() { printf '  \033[32mPASS\033[0m  %s\n' "$1"; }
@@ -145,7 +158,7 @@ if [ -f "$idx" ] && [ -f "$ind" ]; then
     # page in the book's exact arabic range. The key may itself contain TeX braces.
     idx_valid_count=$(grep -Ec '^\\indexentry\{.+\|hyperpage\}\{([1-9][0-9]?|[1-5][0-9]{2}|6[0-6][0-9]|670)\}$' "$idx" || true)
     idx_unique_key_count=$(sed -n 's/^\\indexentry{\(.*\)|hyperpage}{[0-9][0-9]*}$/\1/p' "$idx" \
-        | sort -fu | wc -l)
+        | LC_ALL=C sort -fu | wc -l)
     ind_item_count=$(grep -c '^  \\item ' "$ind" || true)
     ind_subitem_count=$(grep -c '^    \\subitem ' "$ind" || true)
     ind_subsubitem_count=$(grep -c '^      \\subsubitem ' "$ind" || true)
