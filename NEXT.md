@@ -422,6 +422,15 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     passed the complete current verifier, including all 709 page boxes, 1,066 outline/TOC targets,
     1,848 index links, 3,651 link rectangles and twelve derived blank versos. This supersedes the
     earlier pre-hyperindex release hash while preserving it as a historical checkpoint.
+54. **All compiled Git citations resolve to the claimed pinned evidence.** A hex-token sweep
+    separated numeric constants from sixteen commit-like spellings representing fourteen distinct
+    Git objects across CNA and the eleven sibling repositories. Every abbreviated prefix resolves
+    uniquely in its owning repository and every object is a commit. Role checks also confirm that
+    `b6686bfba` is CNA's twelve-example Emscripten-lifetime repair, `f827a6c5` contains the exact
+    tracked sharp-runtime database blob, the easy-gl/meta-gl seven- and eight-character spellings
+    name the same two rewritten public heads, and the cna-template pin/drift pair names the intended
+    ancestor and later descendant. No manuscript correction was required; this read-only audit did
+    not alter the PDF.
 
 ## Do this next
 
@@ -616,6 +625,10 @@ Everything through Phase G is verified:
 - Two clean builds of the interactive-index checkpoint in different paths are byte-identical at
   SHA-256 `b62f0644740a28fc05c8a5cb76320c563c49a55461e6503c5b48054ed13fd010`; one clean artifact
   passed the complete current verifier. This is the current release hash.
+- All sixteen commit-like spellings in the compiled manuscript resolve uniquely to fourteen
+  intended commit objects in CNA or the eleven sibling repositories, and sampled role/content
+  claims match those objects. Hex-like numeric constants were excluded explicitly. No correction
+  or PDF change was required.
 
 **No known writing, correction or PDF-verification defect is pending.**
 

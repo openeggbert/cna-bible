@@ -384,6 +384,7 @@ log grep replaces.
 | 2026-08-12 | Post-G outline/TOC bijection | **709 pages unchanged**, all 1,066 visible Part-through-subsection TOC destinations proven identical to the PDF outline set; 27 deeper internal paragraph/subsubsection records correctly excluded by standard `tocdepth=2`; one-destination negative fixture triggered the new set comparison and existing landing audit; verifier-only change, no visual delta |
 | 2026-08-12 | Post-G print-geometry/blank-page audit | **709 pages unchanged**, all Media/Crop/Bleed/Trim/Art boxes resolve to identical A4 rectangles on every page; Ghostscript ink coverage identifies exactly twelve even open-right versos, with expected positions derived from the twelve Part entries in `main.toc`; verifier-only change, no visual delta |
 | 2026-08-12 | Post-G interactive-index reproducibility | Two clean builds of commit `4b217a1` in different paths under the same fixed source date are byte-identical, SHA-256 `b62f0644740a28fc05c8a5cb76320c563c49a55461e6503c5b48054ed13fd010`; one clean output passed the complete current verifier, superseding the retained pre-hyperindex artifact hash |
+| 2026-08-12 | Post-G Git-citation provenance audit | Sixteen compiled commit-like spellings representing fourteen distinct objects checked across CNA and all eleven sibling repositories; every prefix is unique in its owner and resolves to a commit; Emscripten repair, sharp-runtime database, rewritten easy-gl/meta-gl heads and cna-template pin/drift roles confirmed; numeric hex-like literals excluded; no correction or PDF delta |
 
 ---
 
@@ -1165,3 +1166,8 @@ build and visual passes are available again.
   different paths under the same `SOURCE_DATE_EPOCH` produced byte-identical PDFs with SHA-256
   `b62f0644740a28fc05c8a5cb76320c563c49a55461e6503c5b48054ed13fd010`. One clean artifact passed
   the complete expanded verifier; this supersedes the earlier pre-hyperindex release hash.
+- Extracted every hex-like token from compiled prose and separated constants from Git citations.
+  All sixteen commit-like spellings (fourteen distinct objects) resolve uniquely in their owning
+  CNA/sibling repository, and targeted content checks confirm the Emscripten repair, tracked
+  sharp-runtime database, rewritten easy-gl/meta-gl heads and cna-template drift account. No text
+  or PDF correction was needed.
