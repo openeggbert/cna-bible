@@ -1517,3 +1517,7 @@ build and visual passes are available again.
   visible text, TOC coverage/order/identity/landings and index landings must now complete before
   exact counts can pass. A targeted Perl stub printed the correct 5,054/5,054/0 destination summary
   and exited 79; exactly the named-destination verdict failed and all other checks stayed green.
+- Closed the late scratch-allocation path in the accumulating verifier. Failed post-bootstrap
+  `mktemp` calls now set a final failure marker and return only a contained fallback below the
+  private run directory. A fixture rejected every late allocation: 20 checks failed, exit was 1,
+  and recursive EXIT cleanup left no verifier scratch directory.

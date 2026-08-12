@@ -915,6 +915,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      producer and summary read before accepting exact counts. A targeted parser emitted the correct
      `5054 names / 5054 objects / 0 bad` destination summary and then exited 79; exactly that audit
      failed while every other current verifier check stayed green.
+142. **Late scratch-allocation failure cannot escape or pass.** The verifier's local `mktemp`
+     wrapper now records any post-bootstrap allocation error and returns only a safe fallback path
+     below its already-private run directory; the final verdict consumes that marker. A stub that
+     allowed the initial directory but rejected every later allocation produced 20 failures and
+     status 1, while the EXIT trap removed the complete scratch tree and left zero residue.
 
 ## Do this next
 

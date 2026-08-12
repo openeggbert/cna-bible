@@ -82,12 +82,27 @@ diagnostic_dir=$("$system_mktemp" -d /tmp/cna-bible-verify.XXXXXX) || {
     exit 1
 }
 mktemp() {
+    local allocated fallback
     if [ "${1:-}" = "-d" ]; then
         shift
-        "$system_mktemp" -d "$diagnostic_dir/${1##*/}"
+        if allocated=$("$system_mktemp" -d "$diagnostic_dir/${1##*/}"); then
+            printf '%s\n' "$allocated"
+            return 0
+        fi
+        fallback="$diagnostic_dir/unallocated-directory"
+        mkdir -p "$fallback" 2>/dev/null || true
     else
-        "$system_mktemp" "$diagnostic_dir/${1##*/}"
+        if allocated=$("$system_mktemp" "$diagnostic_dir/${1##*/}"); then
+            printf '%s\n' "$allocated"
+            return 0
+        fi
+        fallback="$diagnostic_dir/unallocated-file"
+        : > "$fallback" 2>/dev/null || true
     fi
+    printf 'ERROR: could not allocate verifier scratch path for %s\n' "${1:-unknown}" >&2
+    : > "$diagnostic_dir/.scratch-allocation-failed" 2>/dev/null || true
+    printf '%s\n' "$fallback"
+    return 0
 }
 cleanup_diagnostics() {
     find "$diagnostic_dir" -mindepth 1 -delete 2>/dev/null || true
@@ -1819,6 +1834,9 @@ else
 fi
 
 echo
+if [ -e "$diagnostic_dir/.scratch-allocation-failed" ]; then
+    fail "one or more private verifier scratch allocations failed"
+fi
 if [ "$failures" -eq 0 ]; then
     echo "RESULT: all checks passed."
     echo "NOTE: this does NOT replace the visual pass. Render every touched page range"
