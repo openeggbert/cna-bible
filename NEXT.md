@@ -581,6 +581,12 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     byte-identical to the source artifact, then has Ghostscript interpret the rewritten document.
     The current round trip passes all three stages. This turns the historical Phase-G manual
     result into a repeatable invariant and leaves the sealed release bytes untouched.
+76. **The declared PDF profile matches the owner-decision boundary.** The artifact gate now
+    requires PDF 1.7, exactly 709 pages, `Tagged: no`, `Suspects: no`, `UserProperties: no` and no
+    encryption, alongside the existing per-page A4/rotation/box checks. Requiring the consciously
+    untagged state prevents a partial or accidental tag tree from being presented as an accessible
+    edition; a future tagged/PDF-UA release remains an explicit owner-selected, separately audited
+    change. Producer and linearization details remain outside the semantic gate.
 
 ## Do this next
 

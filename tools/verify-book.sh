@@ -374,6 +374,10 @@ fi
 encrypted=$(printf '%s\n' "$pdf_info" | awk -F: '/^Encrypted:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
 form=$(printf '%s\n' "$pdf_info" | awk -F: '/^Form:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
 javascript=$(printf '%s\n' "$pdf_info" | awk -F: '/^JavaScript:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
+pdf_version=$(printf '%s\n' "$pdf_info" | awk -F: '/^PDF version:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
+tagged=$(printf '%s\n' "$pdf_info" | awk -F: '/^Tagged:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
+suspects=$(printf '%s\n' "$pdf_info" | awk -F: '/^Suspects:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
+user_properties=$(printf '%s\n' "$pdf_info" | awk -F: '/^UserProperties:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
 title=$(printf '%s\n' "$pdf_info" | awk -F: '/^Title:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
 author=$(printf '%s\n' "$pdf_info" | awk -F: '/^Author:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
 subject=$(printf '%s\n' "$pdf_info" | awk -F: '/^Subject:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
@@ -389,11 +393,13 @@ for box_name in MediaBox CropBox BleedBox TrimBox ArtBox; do
         | grep -cE "^Page +[0-9]+ ${box_name}: +0\.00 +0\.00 +595\.28 +841\.89$" || true)
     [ "$box_count" -eq "$pages" ] || complete_page_boxes=0
 done
-if [ "$encrypted" = "no" ] && [ "$a4_pages" -eq "$pages" ] \
+if [ "$pages" -eq 709 ] && [ "$pdf_version" = "1.7" ] && [ "$encrypted" = "no" ] \
+   && [ "$tagged" = "no" ] && [ "$suspects" = "no" ] && [ "$user_properties" = "no" ] \
+   && [ "$a4_pages" -eq "$pages" ] \
    && [ "$unrotated_pages" -eq "$pages" ] && [ "$complete_page_boxes" -eq 1 ]; then
-    pass "all $pages PDF pages are unencrypted, unrotated A4 with matching page boxes"
+    pass "PDF 1.7 has 709 untagged, unencrypted, unsuspect A4 pages with matching boxes"
 else
-    fail "unexpected PDF page geometry or encryption ($a4_pages/$pages A4, $unrotated_pages/$pages unrotated, complete boxes=$complete_page_boxes, encrypted='${encrypted:-?}')"
+    fail "unexpected PDF profile/geometry ($pages pages, version=$pdf_version, tagged=$tagged, suspects=$suspects, user-properties=$user_properties, encrypted=$encrypted, $a4_pages A4, $unrotated_pages unrotated, boxes=$complete_page_boxes)"
 fi
 if [ "$form" = "none" ] && [ "$javascript" = "no" ]; then
     pass "PDF contains no forms or JavaScript"

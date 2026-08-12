@@ -406,6 +406,7 @@ log grep replaces.
 | 2026-08-12 | Post-G sealed release command | Added `tools/build-release.sh`: forces full latexmk rebuild under `SOURCE_DATE_EPOCH=1786529214`, requires 3,314,744 bytes and SHA-256 `7c877ef20bdb20042bdd32483b2e79cb07e81dec7a8d86dc24f6d29d4a04b2af`, then runs the complete verifier; README documents the command and makes fingerprint changes contingent on a new independent reproducibility and visual-review checkpoint |
 | 2026-08-12 | Post-G font/image population closure | Bound font portability to exactly 27 complete rows; extracted PDF images as five RGB + five soft-mask planes and compared decoded Netpbm pixels to the five source RGBA PNGs in compilation order, all RGB/alpha pairs byte-identical after decoding; verifier now enforces exact source/embedded populations and README records `pdfimages`/`pngtopnm` dependencies; no PDF delta |
 | 2026-08-12 | Post-G automated parse/rewrite round trip | Restored the Phase-G round trip as an automated release check: MuPDF rewrites to a disposable PDF, Poppler requires all 709 pages and byte-identical layout-mode text versus the release, and Ghostscript independently interprets the rewritten artifact; current release passes all stages, with no modification to sealed bytes |
+| 2026-08-12 | Post-G explicit PDF profile | Bound the semantic artifact profile to PDF 1.7, exactly 709 pages, unencrypted, untagged, unsuspect and without user properties, in addition to all per-page A4/rotation/box checks; requiring the consciously untagged state prevents an accidental partial tag tree from being presented as a PDF/UA edition, while tagged accessibility remains an owner-selected future release decision |
 
 ---
 
@@ -1307,3 +1308,7 @@ build and visual passes are available again.
   disposable PDF, Poppler requires the same 709 pages and byte-identical layout text, and
   Ghostscript independently interprets the rewritten object graph. The release passes all three
   stages and its sealed bytes remain untouched.
+- Made the PDF profile explicit: version 1.7, 709 pages, unencrypted, `Tagged: no`, `Suspects: no`
+  and no user properties, alongside the existing geometry checks. This prevents a partial tag tree
+  from masquerading as an accessible edition; any genuinely tagged/PDF-UA release remains an
+  explicit owner decision and separate audit.
