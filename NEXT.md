@@ -789,6 +789,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      opened at original resolution. The final two-column index page is sharp and complete, with no
      clipping, overlap or malformed tail; it ends naturally at `XnbReadLimits`. The isolated run
      child was then removed.
+116. **Unbounded numeric page operands cannot overflow into Poppler.** Because this release has
+     709 physical pages, every potentially valid operand is at most three digits. The visual driver
+     now rejects wider canonical-decimal strings before its first shell arithmetic comparison;
+     710–999 still reach the real PDF bound diagnostic, while arbitrarily long input exits 2
+     immediately without creating a run directory or rendering any page.
 
 ## Do this next
 

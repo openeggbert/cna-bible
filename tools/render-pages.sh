@@ -53,6 +53,13 @@ case "$first:$last" in
         exit 2
         ;;
 esac
+# This release has 709 pages, so every potentially valid operand has at most three digits. Reject
+# wider decimal strings before any shell arithmetic; test/[ otherwise overflows on unbounded input
+# and can let a huge request reach Poppler.
+if [ "${#first}" -gt 3 ] || [ "${#last}" -gt 3 ]; then
+    printf 'ERROR: FIRST and LAST exceed the supported three-digit physical-page range\n' >&2
+    exit 2
+fi
 if [ "$first" -gt "$last" ]; then
     printf 'ERROR: FIRST (%s) must not exceed LAST (%s)\n' "$first" "$last" >&2
     exit 2

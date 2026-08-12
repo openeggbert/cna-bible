@@ -446,6 +446,7 @@ log grep replaces.
 | 2026-08-12 | Post-G exact rendered-page filenames | Supplemented PNG count with exact sorted basename equality against shell-generated `page-%03d.png` names for every requested physical page FIRST–LAST; same-cardinality duplicate/substituted or unexpectedly named outputs can no longer masquerade as complete visual coverage |
 | 2026-08-12 | Post-G rendered-PNG integrity | Require every exact page output to have the fixed 120-DPI A4 profile (993×1404, 8-bit RGB, non-interlaced) and fully decode through Netpbm `pngtopnm`; truncated/header-only/wrong-size/wrong-mode outputs fail and their run child is cleaned before paths are reported |
 | 2026-08-12 | Post-G hardened visual-path smoke | Rendered physical page 709 through the private-default/shared-lock/exact-name/profile/full-decode path and opened it at original resolution; the final two-column index page is sharp, complete and free of clipping/overlap/malformed tail through `XnbReadLimits`; isolated run child removed |
+| 2026-08-12 | Post-G bounded visual page operands | Reject canonical decimal FIRST/LAST strings wider than three digits before the first shell arithmetic comparison (the release has 709 pages); arbitrarily large operands can no longer overflow `test` and reach Poppler, while 710–999 still receive the real PDF-bound diagnostic |
 
 ---
 
@@ -1445,3 +1446,5 @@ build and visual passes are available again.
   decode, rejecting truncated or structurally wrong images before reporting their paths.
 - Exercised that hardened visual path on physical page 709 and read the original-resolution image
   clean through the final index entry, then removed the isolated run output.
+- Bounded visual-page operands to the release's three-digit domain before shell arithmetic, so an
+  arbitrarily long decimal cannot overflow comparisons and trigger an unintended Poppler render.
