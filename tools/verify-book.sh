@@ -247,6 +247,13 @@ else
     pass "no obsolete CNA identifiers/options in compiled manuscript"
 fi
 
+if grep -rEn '106 headers under' "$chapters" "$front" \
+    > /tmp/cna-bible-stale-graphics-header-count.txt 2>/dev/null; then
+    fail "stale 106-header Graphics subtree count in compiled manuscript"
+else
+    pass "Graphics include count distinguishes 107 direct and 18 PackedVector headers"
+fi
+
 if grep -rEn 'CNA(_|\\_)GRAPHICS(_|\\_)RENDERER=(EASYGL|DX3|D3D9|D3D11|D3D12|ASCII)' "$chapters" "$front" > /tmp/cna-bible-obsolete-selectors.txt 2>/dev/null; then
     n=$(wc -l < /tmp/cna-bible-obsolete-selectors.txt)
     fail "removed renderer selector in a live CMake assignment: $n"
@@ -1101,7 +1108,7 @@ EOF
                 read -r _ index_target_count bad_index_target_count <<EOF
 $(tail -1 "$index_target_result_file")
 EOF
-                if [ "$index_target_count" -eq 1848 ] && [ "$bad_index_target_count" -eq 0 ]; then
+                if [ "$index_target_count" -eq 1850 ] && [ "$bad_index_target_count" -eq 0 ]; then
                     pass "all $index_target_count clickable index numbers match their printed and physical pages"
                 else
                     fail "index destination audit failed ($bad_index_target_count wrong of $index_target_count links)"

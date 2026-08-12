@@ -483,6 +483,15 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     page check stayed green, while the new guard alone reported the out-of-page target on page
     object 5587. The release artifact has no invalid, duplicate or orphan destination record.
     This verifier-only hardening does not change the PDF.
+62. **The Graphics include inventory matches the pin and its namespace boundary.** The prior
+    prose called the subtree “106 headers” and flattened its namespace. The pinned tree actually
+    contains 125 `.hpp` files: 107 directly under
+    `Microsoft/Xna/Framework/Graphics/` and 18 under its `PackedVector/` child. Chapter 3 now
+    reports both counts and preserves that nested namespace. The two new semantic namespace index
+    entries intentionally bring makeindex to 2,389 accepted entries, the back-of-book index to
+    1,850 valid links, and the artifact to 3,653 link annotations / 1,542 unique internal targets.
+    A verifier guard rejects the stale wording. A whole-artifact pixel comparison isolated only
+    physical page 47 and index pages 706--709; all five were rendered and read full-size, clean.
 
 ## Do this next
 
@@ -509,7 +518,7 @@ moves, open a new bounded re-audit and treat the present A–G completion as the
 Everything through Phase G is verified:
 
 - `make -C latex book` succeeds; **709 pages**.
-- makeindex: 2,387 entries accepted, 0 rejected, 0 warnings.
+- makeindex: 2,389 entries accepted, 0 rejected, 0 warnings.
 - No undefined references, no undefined control sequences, no duplicate labels, no doubled-
   backslash `\ref`, no hard-coded chapter/Part/appendix/section numbers, and no literal tabs or
   carriage returns in compiled TeX.
@@ -656,7 +665,7 @@ Everything through Phase G is verified:
 - The preface's Part map now keeps 3D models in Part VI and describes Part III's actual geometry/
   vertex-stream remit. Its evidence note binds the complete audit to the 2026-08-11 repository
   pins via Appendix D. The later interactive-index repair and current supplemental-evidence link
-  bring the current artifact to 3,652 valid link annotations and 1,541 unique targets. Physical
+  bring that checkpoint to 3,652 valid link annotations and 1,541 unique targets. Physical
   pages 3–4 were read full-size and are clean.
 - All 92 compiled lines containing “Task” were checked against the relevant pinned CNA/easy-gl
   evidence. Chapter 30's sole count mismatch now separates the 65 technical Tasks 666–730 from

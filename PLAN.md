@@ -392,6 +392,7 @@ log grep replaces.
 | 2026-08-12 | Post-G TOC link/text identity | MuPDF text geometry matched every TOC link to its own printed Part/chapter/section/subsection/appendix identity or `Preface`/`Index`; a PDF fixture swapping only `chapter.1` and `chapter.2` destinations preserved target coverage, landings and prior checks, while the new guard alone reported both crossed identities; verifier-only change, no release-PDF delta |
 | 2026-08-12 | Post-G all-link visible-text overlap | One MuPDF structured-text pass over all 709 pages proved positive-area visible-text overlap for all 3,652 Link rectangles; a PDF fixture moved only preface object 4302 to in-bounds blank rectangle `[10 10 20 20]`, leaving target/geometry checks green while the new guard alone found one empty hotspot on physical page 3; verifier-only change, no PDF delta |
 | 2026-08-12 | Post-G complete named-destination geometry | All 5,054 names map one-to-one to 5,054 destination objects on the 709 actual page objects, with in-A4 numeric XYZ positions and inherited zoom; a PDF fixture changed only `part.1` Y from 558.81 to 900, leaving link/landing/outline checks green while the new guard alone found the invalid target on page object 5587; verifier-only change, no PDF delta |
+| 2026-08-12 | Post-G Graphics-header inventory correction | Stale “106 headers” corrected to the pinned tree's 125 `.hpp` files: 107 directly in the Graphics namespace directory plus 18 in its PackedVector child; nested namespace preserved; two intentional semantic index entries bring makeindex to 2,389, index links to 1,850 and artifact links/targets to 3,653/1,542; stale-count guard added; whole-PDF diff isolated physical pages 47 and 706–709, all read clean |
 
 ---
 
@@ -1221,3 +1222,11 @@ build and visual passes are available again.
   `part.1`'s Y coordinate from 558.81 to 900; all link, landing, outline and page checks remained
   green, while the new guard alone identified the invalid target on page object 5587. This
   verifier-only hardening has no PDF or visual delta.
+- Recounted the pinned Graphics public include subtree after a broad numeric-claim sweep and found
+  a real stale statement: it contains 125 `.hpp` files, not 106. Of these, 107 are directly under
+  `Microsoft/Xna/Framework/Graphics/` and 18 belong to its `PackedVector/` child, so the old prose
+  also flattened a real nested namespace. Chapter 3 now states both counts. Its two semantic
+  namespace index entries intentionally update makeindex to 2,389, index links to 1,850 and total
+  link annotations / unique targets to 3,653 / 1,542; the verifier rejects the stale wording. A
+  whole-PDF pixel comparison isolated only physical page 47 and index pages 706--709; all five
+  were rendered and read full-size, clean.
