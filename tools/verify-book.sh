@@ -122,6 +122,13 @@ forbid_matches() {
             ;;
     esac
 }
+append_inventory_matches() {
+    local result_file=$1
+    shift
+    grep "$@" >> "$result_file" 2>/dev/null
+    local scan_status=$?
+    [ "$scan_status" -eq 0 ] || [ "$scan_status" -eq 1 ]
+}
 
 echo "== The CNA Bible: verification pass =="
 
@@ -218,10 +225,25 @@ echo "-- label/reference hygiene"
 chapters="$book_dir/chapters"
 front="$book_dir/front"
 
-dupes=$(grep -ho '\\label{[^}]*}' "$book_dir/main.tex" 2>/dev/null;
-        grep -rho '\\label{[^}]*}' "$chapters" "$front" 2>/dev/null)
-dupes=$(printf '%s\n' "$dupes" | sort | uniq -d)
-if [ -n "$dupes" ]; then
+label_inventory_file=$(mktemp /tmp/cna-bible-label-inventory.XXXXXX.txt)
+label_names_file=$(mktemp /tmp/cna-bible-label-names.XXXXXX.txt)
+label_scan_ok=1
+: > "$label_inventory_file"
+if ! append_inventory_matches "$label_inventory_file" \
+    -ho '\\label{[^}]*}' "$book_dir/main.tex"; then
+    label_scan_ok=0
+fi
+if ! append_inventory_matches "$label_inventory_file" \
+    -rho '\\label{[^}]*}' "$chapters" "$front"; then
+    label_scan_ok=0
+fi
+if ! dupes=$(sort "$label_inventory_file" | uniq -d); then
+    dupes=""
+    label_scan_ok=0
+fi
+if [ "$label_scan_ok" -ne 1 ]; then
+    fail "source label inventory scan failed"
+elif [ -n "$dupes" ]; then
     fail "duplicate \\label definitions in source:"
     echo "$dupes" | sed 's/^/        /'
 else
@@ -232,23 +254,43 @@ fi
 # aliases. LaTeX also diagnoses this after enough passes; the source check makes the invariant
 # explicit and catches it without interpreting log wording.
 missing=""
-refs=$(
-    {
-        grep -ho '\\ref{[^}]*}' "$book_dir/main.tex" 2>/dev/null
-        grep -rho '\\ref{[^}]*}' "$chapters" "$front" 2>/dev/null
-    } | sed 's/\\ref{//;s/}//' | sort -u
-)
-for r in $refs; do
-    if ! grep -q "\\\\label{$r}" "$book_dir/main.tex" 2>/dev/null \
-       && ! grep -rq "\\\\label{$r}" "$chapters" "$front" 2>/dev/null; then
-        missing="$missing $r"
-    fi
-done
-if [ -n "$missing" ]; then
-    fail "\\ref to nonexistent labels:$missing"
+ref_inventory_file=$(mktemp /tmp/cna-bible-ref-inventory.XXXXXX.txt)
+raw_ref_inventory_file=$(mktemp /tmp/cna-bible-raw-ref-inventory.XXXXXX.txt)
+missing_refs_file=$(mktemp /tmp/cna-bible-missing-refs.XXXXXX.txt)
+ref_scan_ok=1
+: > "$raw_ref_inventory_file"
+if ! append_inventory_matches "$raw_ref_inventory_file" \
+    -ho '\\ref{[^}]*}' "$book_dir/main.tex"; then
+    ref_scan_ok=0
+fi
+if ! append_inventory_matches "$raw_ref_inventory_file" \
+    -rho '\\ref{[^}]*}' "$chapters" "$front"; then
+    ref_scan_ok=0
+fi
+if ! sed 's/^\\ref{//;s/}$//' "$raw_ref_inventory_file" \
+    | sort -u > "$ref_inventory_file"; then
+    ref_scan_ok=0
+fi
+if ! sed 's/^\\label{//;s/}$//' "$label_inventory_file" \
+    | sort -u > "$label_names_file"; then
+    label_scan_ok=0
+fi
+if ! comm -23 "$ref_inventory_file" "$label_names_file" > "$missing_refs_file"; then
+    ref_scan_ok=0
+fi
+if ! missing=$(paste -sd, "$missing_refs_file"); then
+    missing=""
+    ref_scan_ok=0
+fi
+if [ "$label_scan_ok" -ne 1 ] || [ "$ref_scan_ok" -ne 1 ]; then
+    fail "source reference inventory scan failed"
+elif [ -n "$missing" ]; then
+    fail "\\ref to nonexistent labels: $missing"
 else
     pass "every source \\ref resolves to a \\label"
 fi
+rm -f "$label_inventory_file" "$label_names_file" "$ref_inventory_file" \
+    "$raw_ref_inventory_file" "$missing_refs_file"
 
 # A syntactically valid chapter file can be forgotten during a restructure and never reach TeX;
 # conversely, a case-mismatched input may work on one filesystem and fail on another. Require

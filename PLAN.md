@@ -1475,3 +1475,6 @@ build and visual passes are available again.
 - Changed whitespace verification from index-relative `git diff --check` to `git diff HEAD --check`,
   covering the final tracked worktree across staged and unstaged layers. A staged-defect fixture
   produced old/new statuses 0/2 and the expected trailing-whitespace diagnostic.
+- Bound duplicate-label and missing-reference inventories to successful source extraction/filter
+  status before an empty population can be interpreted as clean. Current unique populations are
+  269 labels / 177 refs; a targeted status-2 stub yields exactly two dependent failures.

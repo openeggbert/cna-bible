@@ -846,6 +846,12 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      unstaged layers. This replaces the index-relative default whose green result ignored already
      staged trailing whitespace. In a mini-repository fixture, the staged defect gave status 0 to
      the old command and status 2 plus the exact offending line to the new command.
+129. **Label/reference inventories require successful source scans.** Duplicate-label and missing-
+     target checks now materialize their full inventories in private scratch files and bind every
+     extraction/filter status before interpreting an empty result as clean. A source read or text-
+     processing failure therefore cannot masquerade as “no duplicates” or “all refs resolve.” The
+     release has 269 unique labels and 177 unique ref expressions; a targeted grep-status-2 stub
+     produces exactly the two dependent inventory failures.
 
 ## Do this next
 
