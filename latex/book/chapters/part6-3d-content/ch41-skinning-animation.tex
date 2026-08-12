@@ -33,9 +33,19 @@ to \cnaclass{AnimationPlayer}.
 
 Both players nevertheless enforce the same essential inputs. Bone arrays must agree in size,
 and every non-root parent index must precede its child; a parent index greater than or equal to
-the current index throws. Looping uses floor-modulo on raw ticks, so negative or over-duration
-times wrap consistently. Translations and scales interpolate linearly, rotations spherically.
-Track search is linear in the number of keyframes per bone.
+the current index throws. Any negative parent value is treated as ``root'', not only $-1$, and an
+animation track with an empty key list or an out-of-range bone index is silently ignored. Looping
+uses floor-modulo on raw ticks, so negative or over-duration times wrap consistently. Runtime
+translations and scales interpolate linearly, rotations spherically. Track search is linear in
+the number of keyframes per bone.
+
+The size agreement is not a complete hand-construction validator. Content readers reject a
+negative or implausibly large bone count, but \cnaclass{AnimationPlayer}'s public constructor first
+casts \texttt{BoneCount} to \texttt{size\_t} for its working-vector allocations and only then runs
+the array-size check in \texttt{RecomputeTransforms}. A manually supplied negative count can
+therefore request an enormous allocation (typically failing with a standard allocation/length
+exception) rather than producing the later \cnaclass{ArgumentException}. Validate custom
+\cnaclass{SkinningData} as non-negative before construction.
 
 \section{Scene indices are not palette indices}
 
@@ -102,7 +112,12 @@ For skeletal clips, CNA forms the union of translation, rotation, and scale key 
 animated bone, deduplicated at a tight tolerance. Missing channels at a time fall back to the
 decomposed bind pose. Linear and step samplers are evaluated directly; cubic splines use the
 glTF Hermite basis with the required $\Delta t$ tangent scaling, and cubic quaternion results
-are normalized.
+are normalized \emph{while the importer samples that union}. The resulting ordinary
+\cnaclass{KeyframeEXT} records do not retain bone-channel interpolation modes or tangents;
+\cnaclass{AnimationPlayer} later uses linear/Slerp interpolation between them. A cubic channel is
+therefore exact at every union time but generally only a piecewise linear/Slerp approximation
+between those stored times. Morph tracks below are different: they retain cubic tangents for lazy
+Hermite evaluation.
 
 Only channels whose target resolves through the skin's joint map enter a skeletal clip. In
 addition, both the runtime and offline front ends call skeletal clip extraction only for a

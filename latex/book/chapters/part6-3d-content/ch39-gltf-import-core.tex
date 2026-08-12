@@ -18,11 +18,20 @@ That is a build invariant, not incidental preprocessor decoration.
 \section{The parser boundary}
 
 Both JSON \texttt{.gltf} and binary \texttt{.glb} enter through the same
-\texttt{cgltf\_parse\_file} path and must declare \texttt{asset.version} exactly
-\texttt{"2.0"}. Buffers are then loaded relative to the source path. Embedded buffer views,
-base64 data URIs, and external percent-decoded file URIs are all supported. Images use the same
-three storage forms and are exposed as memory blocks; the runtime front end decodes those blocks
-without staging temporary files.
+\texttt{cgltf\_parse\_file} path. If \texttt{asset.version} is present, both front ends require
+it to equal \texttt{"2.0"}; their explicit check is conditional, however, so a document with the
+field absent can pass this boundary if cgltf accepts the rest. \texttt{asset.minVersion} is not
+inspected. Buffers are then loaded relative to the source path. Embedded buffer views, base64 data
+URIs, and external percent-decoded file URIs are all supported. Images use the same three storage
+forms and are exposed as memory blocks; the runtime front end decodes those blocks without staging
+temporary files.
+
+External URI support is not a containment guarantee. The default cgltf buffer loader combines the
+document directory with the decoded URI and opens that path; CNA's external-image branch likewise
+joins \texttt{gltfDir} and the decoded image URI. Neither canonicalizes the result and proves it
+remains below the document directory. An absolute URI or enough \texttt{..} components can
+therefore reach a readable file outside the asset tree. Do not load an untrusted glTF/GLB as
+though this path were sandboxed; stage and validate its complete dependency set first.
 
 This is not equivalent to full glTF validation. CNA never calls \texttt{cgltf\_validate}, and
 does not inspect \texttt{extensionsRequired} or \texttt{extensionsUsed}. A syntactically

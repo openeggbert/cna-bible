@@ -11,7 +11,7 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
 |---|---|
 | cna-bible branch | `next`; local commits are ahead of `origin/next` (push requires explicit external-publication approval) |
 | CNA pinned SHA | `7a64362efef4119bf880459ef1704fb2c52199e2` (`develop` == `origin/develop`, 2026-08-11) |
-| Book builds | **yes** — 707 pages, all automated checks green; all completed Phase D/E writing and nine Phase F corrective batches are visually verified |
+| Book builds | **yes** — 707 pages, all automated checks green; all completed Phase D/E writing and ten Phase F corrective batches are visually verified |
 | Phase | **A–E complete; F in progress:** Chapters 19–79 and Appendices A–H are complete. Phase F has filled omitted Chapters 8–11 and 18, corrected early graphics/lifecycle drift, and continues the whole-book consistency sweep. |
 
 ## What is done
@@ -216,6 +216,18 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     gaps. SpriteFont's default-character invariant and regression evidence are also current. The
     book remains 707 pages; all physical pages 337–388 spanning Chapters 33–37 were rendered and
     read, with the dense limits and reader pages inspected full-size and visually clean.
+29. **Phase F corrective batch 10 is complete and verified.** Chapters 38–42 now distinguish the
+    direct-glTF synthetic scene-node hierarchy, complete CNJ-v2 hierarchy and legacy CNJ-v1
+    fallback; document checked collection indices and the real hand-built-model lifetime/draw
+    boundaries; and describe the parser's optional version check and unconstrained external-URI
+    resolution. The stride ABI now separates its eight-layout diagnostic oracle from the seven
+    glTF-emitted layouts, records the unchecked positive-stride and typed-index-pointer gaps, and
+    no longer claims unknown strides are rejected. Skinning now states the negative-parent and
+    negative-count boundaries, the piecewise cubic-skeletal approximation, and the skin-gated D6
+    limitation. CNJ-v2 hierarchy and sidecar validation gaps are explicit. Chapter 43's current
+    oracle counts and open D6/D7 evidence were re-audited without correction. The book remains
+    707 pages; all physical pages 421–448 across Chapters 38–42 were rendered and read, with dense
+    ABI, animation and toolchain pages inspected full-size and visually clean.
 
 ## Do this next
 
@@ -241,10 +253,10 @@ bounded correction batch; finish with an edition-wide visual and automated pass 
 
 ## Verification status
 
-Everything through Phase E and Phase F corrective batch 9 is verified:
+Everything through Phase E and Phase F corrective batch 10 is verified:
 
 - `make -C latex book` succeeds; **707 pages**.
-- makeindex: 2,176 entries accepted, 0 rejected, 0 warnings.
+- makeindex: 2,182 entries accepted, 0 rejected, 0 warnings.
 - No undefined references, no undefined control sequences, no duplicate labels, no doubled-
   backslash `\ref`, no hard-coded chapter numbers.
 - `git diff --check` clean.
@@ -312,6 +324,11 @@ Everything through Phase E and Phase F corrective batch 9 is verified:
   pages 373–381 were regenerated in sRGB and read separately. The path-policy prose, limits tables,
   texture-reader sections and robustness summary showed no clipping, overlap, malformed table,
   broken heading or other visual defect.
+- Phase F corrective batch 10 rendered and reviewed every physical page 421–448 across Chapters
+  38–42. Seven contact sheets covered the complete affected span; pages 437–444 were additionally
+  read from the original full-resolution renders after their grayscale contact sheets displayed
+  at low contrast. The stride table, pointer-boundary prose, animation equations and CNJ-v2 schema
+  discussion showed no clipping, overlap, malformed table, broken heading or other visual defect.
 
 **No completed writing batch is pending PDF verification.** Continue with the Phase F whole-book
 consistency sweep, then perform Phase G final verification.
@@ -329,7 +346,7 @@ consistency sweep, then perform Phase G final verification.
 Ten source-audit reports and the 42-family draw-path matrix are complete against pinned CNA
 `7a64362e`. Phase B settled a 12-Part, 79-chapter, 8-appendix edition; Phase C put it on disk,
 migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–7
-rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: nine verified
+rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: ten verified
 batches filled omitted Chapters 8–11 and 18, removed stale totals/terminology, reconciled the
 early graphics, lifecycle and math narrative, and separated the four current shader strategies
 from the still-missing arbitrary-effect path. State, stream, instancing and programmable-GL
@@ -338,4 +355,6 @@ render-target binding, usage, ordered-clear and dynamic viewport/scissor semanti
 four deferred modern renderers as well. Modern Direct3D, Windows/vector/DOM 2D families and the
 diagnostic renderers now also agree with the complete-or-refuse cube/resource boundary. The book
 is 707 pages. Content/XNB path containment, limits, texture hardening and SpriteFont invariants now
-also match the integrated remediation state; continue the remaining whole-book consistency sweep.
+also match the integrated remediation state. The Model/glTF/CNJ chapters now distinguish the live
+hierarchies, stride and animation contracts from their remaining validation and conformance gaps;
+continue the remaining whole-book consistency sweep.

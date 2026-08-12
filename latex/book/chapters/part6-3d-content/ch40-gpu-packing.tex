@@ -56,14 +56,21 @@ The current bridge is explicit:
   \item strides 16, 20, 24, and 32 are reconstructed field-by-field as real typed vertex
         objects before typed \texttt{SetData};
   \item strides 48, 52, 56, and 68 use \texttt{SetDataRaw}, preserving the packed bytes; and
-  \item unknown strides are rejected rather than guessed.
+  \item the glTF extractor emits only those seven layouts, but a hand-written Model CNJ can name
+        another positive stride: the current upload helper then returns a buffer without uploading
+        the bytes instead of rejecting the descriptor. This is a CNJ validation gap, not another
+        supported layout.
 \end{itemize}
 
 This fixes the object-layout error, but it leaves the protocol stated in more than one place:
 the packer, the upload switch, renderer declarations, morph-target offset logic, and the L5
-golden oracle. A future refactor should generate these views from one declarative layout table.
-Until then, tests that compare independently stated tables are more valuable than comments
-claiming they agree.
+golden oracle. CNA now also states all eight layouts once in
+\path{VertexDeclarationFidelity.hpp}; stride-inferring renderers use that table to refuse a
+declared layout they cannot reproduce faithfully instead of fetching the wrong bytes. That table
+is a safety oracle, not a generator: the glTF packer, content upload switch, renderer-native
+layouts, morph offsets, and independent L5 golden tables remain separate statements. A future
+refactor could generate the production views from one declarative source. Until then, tests that
+compare independently stated tables are more valuable than comments claiming they agree.
 
 \section{Indices: source width is not destination width}
 
@@ -88,6 +95,14 @@ The source component type is deliberately irrelevant. A glTF accessor stored as 
 for a 100-vertex mesh becomes a 16-bit GPU index buffer; the preceding range check makes that
 narrowing safe. This is a useful example of proving a conversion rather than preserving a
 source representation merely because it existed.
+
+The decoder's component reads are alignment-safe, but the final front-end handoff is not yet as
+careful: both direct glTF and Model CNJ cast a \texttt{vector<uint8\_t>::data()} address to a
+\texttt{uint16\_t*} or \texttt{uint32\_t*} before calling \texttt{IndexBuffer::SetData}. The
+callee immediately forwards the region as bytes, but the converted pointer is not guaranteed to
+meet that type's alignment; any typed access through it would have undefined behaviour. Copying
+into aligned typed storage or adding a byte-oriented upload would remove that avoidable contract
+hazard without changing the GPU bytes.
 
 \section{Topology is narrower than the file format}
 

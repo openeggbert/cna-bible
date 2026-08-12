@@ -73,7 +73,7 @@ current, not stale.
 | **C — structural migration** | **Complete.** The 12-Part / 79-chapter / 8-appendix migration, context-sensitive terminology pass, current selector/identifier migration, and module-owned source-path sweep are complete and PDF-verified clean at 645 pages. |
 | **D — chapter writing** | **Complete.** Seven verified batches rewrote Chapters 19–79 against the pinned source and sibling evidence. |
 | **E — appendices** | **Complete.** Appendices A–H were rebuilt against pinned source and the completed chapter text, then verified as one bounded batch. |
-| **F — whole-book consistency** | **In progress.** Nine verified corrective batches removed stale totals/terminology, filled five structurally present but unwritten chapters (8–11 and 18), and reconciled lifecycle, math, graphics, renderer and Content/XNB claims with pinned evidence. Continue the edition-wide factual, cross-reference, duplication, index and visual sweep. |
+| **F — whole-book consistency** | **In progress.** Ten verified corrective batches removed stale totals/terminology, filled five structurally present but unwritten chapters (8–11 and 18), and reconciled lifecycle, math, graphics, renderer, Content/XNB and Model/glTF/CNJ claims with pinned evidence. Continue the edition-wide factual, cross-reference, duplication, index and visual sweep. |
 | **G — final verification** | Not started. |
 
 ### 3.1 Phase A research areas — all delivered
@@ -352,6 +352,7 @@ log grep replaces.
 | 2026-08-12 | Phase F corrective batch 7 | **707 pages**, build clean; makeindex 2,161 / 0 / 0; normalized 2D/cube target binding, shared usage, aspect-selective ordered clears and per-command viewport/scissor semantics reconciled across the shared device and Vulkan/BGFX/WebGPU/SDL_GPU; current renderer-specific closures and bounded gaps recorded; Chapters 26–27 audited without correction; 31 touched physical pages rendered and read, dense matrices and representative renderer pages inspected full-size, all visually clean |
 | 2026-08-12 | Phase F corrective batch 8 | **707 pages**, build clean; makeindex 2,168 / 0 / 0; D3D11/12 public cube transitions, D3D12 viewport/clear semantics, GDI composition/stencil/MSAA, SDL_RENDERER capability/refusal boundaries, SVG_DOM additive evidence and Software/Headless scope reconciled; shared cube/volume readback and RT-cube upload matrices converted from obsolete silent-no-op behavior to the current complete-or-refuse contract; 49 touched physical pages rendered and read, dense matrices inspected full-size, all visually clean |
 | 2026-08-12 | Phase F corrective batch 9 | **707 pages**, build clean; makeindex 2,176 / 0 / 0; Chapters 33–35/37 reconciled to integrated content-path containment, live XNB name/object limits, checked texture arithmetic, exact Texture2D/raw-cube bytes, Texture2D mip/device admission, Texture3D capability refusal and SpriteFont default-character validation while retaining genuine 3D/cube mip/compressed-byte gaps; physical pages 337–388 rendered and read, dense reader/limits pages inspected full-size, all visually clean |
+| 2026-08-12 | Phase F corrective batch 10 | **707 pages**, build clean; makeindex 2,182 / 0 / 0; Chapters 38–42 reconciled to the three live model-hierarchy routes, checked collection indices, external glTF URI boundary, eight-layout stride oracle, typed-index-pointer and CNJ validation gaps, exact skeletal/morph cubic behavior and skin-gated animation scope; Chapter 43 re-audited without correction; physical pages 421–448 rendered and read, dense ABI/animation/toolchain pages inspected full-size, all visually clean |
 
 ---
 
@@ -757,3 +758,30 @@ mid-session at the owner's direction, so the build and visual passes are availab
   automated checks green. Rendered and read physical pages 337–388 across Chapters 33–37. Six
   contact sheets plus a regenerated sRGB sheet for pages 373–381 showed no clipping, overlap,
   malformed table, broken heading or other visual defect.
+
+### 2026-08-12 — Phase F corrective batch 10: Model, glTF and CNJ contract truth
+
+- Replaced the obsolete single-root description with the three actual hierarchy routes: direct
+  glTF's synthetic identity root and parent-before-child selected-scene nodes, CNJ v2's complete
+  serialized bone array, and the root-plus-mesh-child legacy fallback. Corrected the worked draw
+  loop to use `ModelMesh*`, and recorded checked mesh-part/effect indices, shared graph ownership,
+  hand-built lifetime obligations and the unsynchronised process-wide draw scratch vector.
+- Tightened the import boundary to the actual parser behavior. A present `asset.version` must be
+  `2.0`, but absence and `asset.minVersion` are not rejected by the front end; required extensions
+  are not enforced; and percent-decoded external buffers/images are joined without canonical
+  asset-tree containment. The importer therefore remains a loader, not an untrusted-file sandbox.
+- Reconciled the byte and animation contracts. The glTF extractor emits seven layouts while the
+  diagnostic declaration oracle covers all eight upload strides; a hand-written CNJ can still
+  select an unknown positive stride without uploading bytes. Both live index handoffs form typed
+  pointers from byte storage. Skeletal cubic channels are sampled with Hermite at union times but
+  stored without tangents/modes and subsequently linearly/spherically approximated, whereas morph
+  cubic tangents remain live. Negative-parent, negative-count and skin-gated D6 boundaries are
+  explicit.
+- Documented CNJ v2's remaining producer-versus-reader distinction: the root record is not fully
+  honoured, later parents need not precede children, malformed transforms become identity, sidecar
+  lengths truncate to element counts, and an incomplete optional skeleton-prefix block is ignored.
+  Re-audited Chapter 43's corpus/task/defect counts and D6/D7 scope without finding stale prose.
+- Ran `tools/verify-book.sh`: 707 pages, makeindex 2,182 accepted / 0 rejected / 0 warnings, all
+  automated checks green. Rendered and read physical pages 421–448 across Chapters 38–42 as seven
+  contact sheets; pages 437–444 were also read from the original full-resolution renders. No
+  clipping, overlap, malformed table/listing, broken heading or other visual defect was found.

@@ -44,6 +44,15 @@ Version~2 adds a top-level \texttt{bones} array. Each record carries a name, par
 Each mesh also receives a \texttt{parentBone} index. These fields preserve the glTF scene
 hierarchy and rigid instancing placement that a flat list of pre-transformed meshes could not.
 
+Those last two shape rules are producer invariants, not fully validated schema rules. The reader
+always constructs entry~0 as its root and does not apply that entry's serialized transform or
+parent. For later entries it bounds-checks the parent against the complete array, but does not
+require \texttt{parent < child}; a forward parent therefore builds a pointer tree whose
+\texttt{CopyAbsoluteBoneTransformsTo} order is wrong. A \texttt{transform} array with any count
+other than 16 silently becomes identity. Generated files satisfy all three rules, but a hand-edited
+version-2 descriptor can load into an internally inconsistent graph rather than fail at the schema
+boundary.
+
 Version-1 Model files remain loadable. When no general hierarchy exists, the reader constructs
 the older per-mesh fallback bone. This makes version~2 an additive fidelity improvement rather
 than a flag day.
@@ -51,15 +60,23 @@ than a flag day.
 \section{Binary sidecars and bounded reads}
 
 Vertex and index bytes use the packed ABI from Chapter~\ref{ch:gpu-packing}. The descriptor
-supplies counts, strides, formats, primitive counts, and paths; the reader verifies limits and
-spans before allocating or uploading. Morph sidecars retain base bytes and target deltas used
-by \texttt{MorphTargetDataEXT}.
+supplies strides and paths, from which the reader derives counts and primitive counts. Its
+validation is incomplete: a non-positive stride silently drops the mesh, an unknown positive
+stride can produce a vertex buffer without uploaded contents, and vertex/index byte lengths not
+divisible by their derived element size are truncated by integer division rather than rejected.
+Morph sidecars
+retain base bytes and target deltas used by \texttt{MorphTargetDataEXT}; their mandatory reads are
+bounds-checked, but the descriptor/sidecar pair is still trusted to agree semantically.
 
 The skeleton sidecar historically contained two matrix blocks: bind poses and inverse binds.
 Version~2 can append a third block containing \texttt{SkeletonRootPrefix}. The reader checks
 whether at least \texttt{boneCount * 64} bytes remain before reading it; if not, it supplies
-identity prefixes. Appending an optional fixed-size block rather than changing the meaning of
-the old two is what keeps earlier sidecars valid.
+identity prefixes. This compatibility test does not distinguish a genuinely old file from a
+partially written new third block: any trailing prefix fragment shorter than the complete block is
+ignored rather than rejected, and extra bytes after a complete block are not required to be
+exhausted. The mandatory hierarchy/bind/inverse-bind reads remain bounds-checked. Appending an
+optional fixed-size block rather than changing the meaning of the old two is what keeps earlier
+sidecars valid, but producers should still publish each generated sidecar atomically.
 
 The descriptor may reference separate clip CNJs. Those pass through the manager's normal
 cached loading path, so repeated names can share a clip object. Mesh buffers, built-in effects,

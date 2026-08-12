@@ -47,19 +47,19 @@ grounded directly in the real \texttt{CopyAbsoluteBoneTransformsTo} and
 std::vector<Matrix> boneTransforms(model.getBonesProperty().getCountProperty());
 model.CopyAbsoluteBoneTransformsTo(boneTransforms);
 
-for (ModelMesh& mesh : model.getMeshesProperty()) {
-    Matrix meshWorld = boneTransforms[mesh.getParentBoneProperty()->getIndexProperty()]
+for (ModelMesh* mesh : model.getMeshesProperty()) {
+    Matrix meshWorld = boneTransforms[mesh->getParentBoneProperty()->getIndexProperty()]
                       * worldMatrix;
 
-    for (Effect* effect : mesh.getEffectsProperty()) {
+    for (Effect* effect : mesh->getEffectsProperty()) {
         if (auto* matrices = dynamic_cast<IEffectMatrices*>(effect)) {
             matrices->setWorldProperty(meshWorld);
             matrices->setViewProperty(camera.View());
             matrices->setProjectionProperty(camera.Projection());
         }
     }
-    mesh.Draw(); // issues the actual GPU draw calls per ModelMeshPart -- Chapter 9 covers
-                 // the underlying GraphicsDevice::DrawIndexedPrimitives path this reaches.
+    mesh->Draw(); // issues the actual GPU draw calls per ModelMeshPart -- Chapter 9 covers
+                  // the underlying GraphicsDevice::DrawIndexedPrimitives path this reaches.
 }
 \end{lstlisting}
 
@@ -194,13 +194,14 @@ graphs are the important distinction here.
   \item[The self-contained \texttt{.cnj} \texttt{ModelTypeReader} route]
         validates a \texttt{Model} CNJ envelope and rejects \texttt{sourceFile}; the former
         \texttt{.model.json} name survives only in historical comments and test-target names,
-        not in this reader's extension list. It creates one root whose name can come from the
-        first JSON \texttt{bones} record, then one synthetic child bone per mesh, not the
-        descriptor's general bone hierarchy. Each mesh receives that child as
-        \texttt{ParentBone}, so independently poseable rigid parts work, but the original
-        source hierarchy is not reconstructed. An optional \texttt{skeleton}/\texttt{animations}
-        sidecar pair builds \cnaclass{SkinningData} on \cnaclass{Model.Tag}, and morph data lives
-        on the corresponding part's \texttt{Tag}.
+        not in this reader's extension list. A version-2 descriptor reconstructs its complete
+        parent-before-child \texttt{bones} array and attaches every mesh to the indexed
+        \texttt{parentBone}; this is how the converter preserves the selected glTF scene
+        hierarchy and rigid placement. A version-1 descriptor (or one without a general
+        hierarchy) retains the older compatibility shape: one root plus a synthetic named child
+        bone per mesh. An optional \texttt{skeleton}/\texttt{animations} sidecar pair builds
+        \cnaclass{SkinningData} on \cnaclass{Model.Tag}, and morph data lives on the corresponding
+        part's \texttt{Tag}.
 
         This route still leaves \texttt{BoundingSphere} degenerate and
         \texttt{ModelMesh.Tag} null. It allocates a fresh vertex/index buffer and built-in stock
@@ -216,12 +217,14 @@ graphs are the important distinction here.
         scene-scoped mesh group, with a fixed unit scale of~1.0. Convert a multi-character or
         differently-scaled file offline when the other groups or a scale factor matter.
 
-        Like the CNJ route, direct glTF creates a synthetic root plus one child bone per imported
-        primitive rather than exposing the scene or skin hierarchy as \cnaclass{ModelBone}s.
-        A real skin is retained as \cnaclass{SkinningData} on \cnaclass{Model.Tag}; morph
-        targets and their tracks are retained on each \cnaclass{ModelMeshPart.Tag}. Extracted
-        images are decoded in memory and cached by glTF image pointer during that one import, but
-        mesh buffers and effects remain per primitive.
+        Direct glTF creates an identity synthetic root followed by one \cnaclass{ModelBone} per
+        reachable node of the selected scene, in parent-before-child order. A rigid mesh is
+        attached to its instancing node; a skinned mesh is attached to the synthetic root so the
+        skin palette does not double-apply the mesh-node transform. The separate reordered skin
+        hierarchy is retained as \cnaclass{SkinningData} on \cnaclass{Model.Tag}; morph targets
+        and their tracks are retained on each \cnaclass{ModelMeshPart.Tag}. Extracted images are
+        decoded in memory and cached by glTF image pointer during that one import, but mesh
+        buffers and effects remain per primitive.
   \item[The legacy \texttt{.skinnedmodel.json} route]
         dispatches to \texttt{SkinnedModelTypeReader} and produces
         \cnaclass{SkinnedModelEXT}, the Avatar-oriented runtime described later in
@@ -520,13 +523,15 @@ discriminating-power methodology this book applies throughout (a test suite's ow
 that it currently passes).
 
 This fix closes the hand-build runtime-API gap only. Neither loose route calls the five-argument
-constructor: CNJ and direct glTF/GLB both place their synthetic root at index~0, then append
-synthetic mesh/primitive child bones. CNJ does not turn its general \texttt{"bones"} array into
-that \cnaclass{ModelBone} hierarchy, and direct glTF stores its actual skeleton separately in
-\cnaclass{SkinningData}. Consequently neither route currently has a serialized arbitrary root
-bone for \texttt{rootBoneIndex} to represent. The gap is closed for a hand-built model, but
-remains deliberately inapplicable to the two loose content routes; the reader-specific
-distinctions are tracked in \S\ref{sec:model-loading}, not hidden by the runtime fix.
+constructor, and both reserve index~0 as their root. Direct glTF/GLB appends one
+\cnaclass{ModelBone} per reachable selected-scene node beneath a synthetic identity root; a
+generated version-2 CNJ serializes and reconstructs that same parent-before-child array. The
+version-1 CNJ fallback instead appends one synthetic child per mesh. A glTF skin's independently
+reordered palette hierarchy still lives in \cnaclass{SkinningData}, not in the model-bone index
+space. Consequently neither route has a serialized arbitrary \texttt{rootBoneIndex} for this
+constructor parameter to represent. The gap is closed for a hand-built model, but remains
+deliberately inapplicable to the two loose content routes; the reader-specific distinctions are
+tracked in \S\ref{sec:model-loading}, not hidden by the runtime fix.
 
 \section{Collections are read views, but not uniform ones}
 \label{sec:model-collections-contract}
@@ -547,23 +552,23 @@ searching, while CNA's \texttt{std::string} API has no null spelling and accepts
 string. It can consequently return a deliberately empty-named mesh or simply return false.
 Do not use an empty name as a portable not-supplied sentinel.
 
-\cnaclass{ModelMeshPartCollection} has only checked-by-convention integer access,
-\texttt{Count}, and iterators --- there is no part name, \texttt{Contains}, or
-\texttt{TryGetValue}. Its current integer operator uses raw \texttt{vector[]}, not
-\texttt{at}; a negative or too-large index is undefined behaviour in CNA where FNA's
-\texttt{ReadOnlyCollection} would throw. Count-check a hand-derived part index first.
+\cnaclass{ModelMeshPartCollection} has checked integer access, \texttt{Count}, and iterators ---
+there is no part name, \texttt{Contains}, or \texttt{TryGetValue}. Its operator explicitly rejects
+a negative index and one greater than or equal to \texttt{Count} with
+\cnaclass{ArgumentOutOfRangeException}, matching the bone/mesh collections rather than exposing
+raw \texttt{vector[]} behaviour.
 
 \cnaclass{ModelEffectCollection} likewise has integer access, \texttt{Count},
 \texttt{Contains}, and iterators, but no name lookup or \texttt{TryGetValue}. Its
-integer operator also uses raw \texttt{vector[]} and has the same caller-side bounds
-requirement. Its mutable operations are the \texttt{CNAEXT} escape hatches described in
-\S\ref{sec:model-draw-contract}, not a fourth normal collection-builder API.
+integer operator has the same explicit negative/upper-bound checks. Its mutable operations are the
+\texttt{CNAEXT} escape hatches described in \S\ref{sec:model-draw-contract}, not a fourth normal
+collection-builder API.
 
-All name searches are linear and return the first matching pointer; neither loader nor
-collection constructor rejects duplicate names. The focused \texttt{ModelBoneCollectionTests.cpp}
-and \texttt{ModelMeshCollectionTests.cpp} cover normal name/index/iterator behaviour and missing
-names, but no located collection test covers the empty-name FNA difference or the unchecked
-part/effect indices. The safe cross-collection rule is therefore simple: keep the model's
-ownership and topology coherent at construction time, use name lookup only where that collection
-actually exposes it, and bounds-check calculated integer indices before asking a collection for
-an element.
+All name searches are linear and return the first matching pointer; neither loader nor collection
+constructor rejects duplicate names. The focused bone/mesh suites cover normal
+name/index/iterator behaviour and missing names, while \texttt{ModelCollectionIndexTests.cpp}
+checks negative, \texttt{Count}, and above-count indices for all four collection families plus
+first/last identity. No located collection test covers the empty-name FNA difference. The safe
+cross-collection rule is therefore simple: keep the model's ownership and topology coherent at
+construction time and use name lookup only where that collection actually exposes it; invalid
+integer indices fail loudly but are still caller errors.
