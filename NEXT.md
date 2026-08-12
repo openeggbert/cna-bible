@@ -764,6 +764,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      Both passed all source, PDF, navigation, rewrite and Ghostscript checks, both exited 0, and
      their isolated scratch directories were independently removed. Reader concurrency therefore
      remains real rather than merely permitted by a unit-level flock matrix.
+111. **A real reader excludes a real writer before mutation.** While a full no-build verifier held
+     the shared lock, a default build verifier failed immediately at exclusive acquisition. The
+     PDF hash and `latex/build.log` timestamp/size stayed unchanged; the original reader then
+     completed every check and exited 0. Writer exclusion therefore protects actual artifacts and
+     does not disrupt or downgrade an in-flight audit.
 
 ## Do this next
 
