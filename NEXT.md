@@ -708,6 +708,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     HUP/INT/TERM failure restores that file byte-for-byte (or removes a partial output if none
     existed); only complete success commits the rebuilt artifact. Logs and auxiliary files stay
     available for diagnosis, but a failed attempt cannot masquerade as the latest release PDF.
+100. **Sealed release transactions are serialized per repository.** A non-blocking `flock`, keyed
+     by the absolute repository path, is acquired before Git preflight and the PDF snapshot. A
+     second invocation fails immediately with a specific message instead of racing on shared
+     auxiliaries, release log and transactional restore state; the kernel releases the lock on
+     every normal, failed, signalled or crashed process exit.
 
 ## Do this next
 

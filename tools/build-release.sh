@@ -37,13 +37,24 @@ expected_pdf_date=D:20260812100654Z
 # verification handoff.
 missing_commands=""
 for required_command in git latexmk mutool sha256sum stat make perl pdfinfo pdftotext pdffonts \
-    pdfimages pngtopnm cmp gs mktemp cp rm; do
+    pdfimages pngtopnm cmp gs mktemp cp rm flock; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         missing_commands="$missing_commands $required_command"
     fi
 done
 if [ -n "$missing_commands" ]; then
     printf 'ERROR: missing required sealed-pipeline command(s):%s\n' "$missing_commands" >&2
+    exit 1
+fi
+
+# A sealed build mutates one shared aux/log/PDF set and its failure path can restore the prior
+# artifact. Serialize that transaction per repository so concurrent invocations cannot overwrite
+# one another or make one run restore across another run's successful output.
+release_lock_id=$(printf '%s' "$repo_root" | sha256sum | awk '{print $1}')
+release_lock="/tmp/cna-bible-release-${release_lock_id}.lock"
+exec 9>"$release_lock"
+if ! flock -n 9; then
+    printf 'ERROR: another sealed release build is already running for this repository\n' >&2
     exit 1
 fi
 
