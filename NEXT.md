@@ -698,6 +698,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     dedicated error when its private output directory cannot be created. A damaged PDF or invalid
     output parent therefore cannot leak shell arithmetic or partial-render confusion into the
     mandatory visual review.
+98. **The sealed workflow preflights its complete downstream toolchain.** Before invoking TeX,
+    `tools/build-release.sh` now checks the union of its build/fingerprint commands and all
+    verifier parsers: Git/latexmk/core utilities, Perl, Poppler, Netpbm, MuPDF and Ghostscript.
+    Missing commands are reported together; an absent late-stage parser can no longer waste a
+    full fixed-date rebuild before failing.
 
 ## Do this next
 

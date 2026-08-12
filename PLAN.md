@@ -428,6 +428,7 @@ log grep replaces.
 | 2026-08-12 | Post-G scratch bootstrap preflight | Resolve `mktemp` before the verifier's first scratch allocation and diagnose both a missing command and directory-creation failure explicitly; bootstrap failure can no longer precede and undermine the normal dependency report |
 | 2026-08-12 | Post-G source-image graph closure | Parsed every compiled `includegraphics` target and compared it case-sensitively with the five source PNG paths: exactly five includes map one-to-one with no orphan, duplicate or missing/non-PNG target, complementing the recorder set and embedded RGB/alpha pixel audit |
 | 2026-08-12 | Post-G visual-render fail-fast | Require successful `pdfinfo` parsing and a numeric page total before visual-range arithmetic, and diagnose private render-directory allocation failure separately; damaged artifacts and invalid output parents now stop before `pdftoppm` with one primary error |
+| 2026-08-12 | Post-G sealed-pipeline dependency closure | Preflight the union of release-build/fingerprint commands and every complete-verifier dependency before invoking TeX, reporting all missing tools together; an absent late-stage Poppler/Netpbm/MuPDF/Ghostscript command no longer wastes a full sealed rebuild |
 
 ---
 
@@ -1390,3 +1391,5 @@ build and visual passes are available again.
   PNG paths must be included exactly once, with no duplicate, orphan or missing/non-PNG target.
 - Made visual rendering fail fast on Poppler parse/page-count and private-directory allocation
   errors, before bound arithmetic or `pdftoppm` can produce secondary/partial output.
+- Closed sealed-pipeline dependency preflight over the build and full verifier, reporting every
+  missing tool before TeX rather than discovering a late parser absence after a costly rebuild.

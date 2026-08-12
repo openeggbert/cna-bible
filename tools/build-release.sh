@@ -32,12 +32,20 @@ expected_sha256=7c877ef20bdb20042bdd32483b2e79cb07e81dec7a8d86dc24f6d29d4a04b2af
 expected_latex_tree=406104d29871dab11757fdd72ded5d9fbc7fc9f1
 expected_pdf_date=D:20260812100654Z
 
-for required_command in git latexmk mutool sha256sum stat; do
+# Preflight the union of release-build and complete-verifier dependencies before invoking TeX.
+# Otherwise an absent PDF parser can waste a full fixed-date rebuild and fail only at the final
+# verification handoff.
+missing_commands=""
+for required_command in git latexmk mutool sha256sum stat make perl pdfinfo pdftotext pdffonts \
+    pdfimages pngtopnm cmp gs mktemp; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
-        printf 'ERROR: missing required release command: %s\n' "$required_command" >&2
-        exit 1
+        missing_commands="$missing_commands $required_command"
     fi
 done
+if [ -n "$missing_commands" ]; then
+    printf 'ERROR: missing required sealed-pipeline command(s):%s\n' "$missing_commands" >&2
+    exit 1
+fi
 
 if ! git -C "$repo_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     printf 'ERROR: sealed release build requires a Git worktree\n' >&2
