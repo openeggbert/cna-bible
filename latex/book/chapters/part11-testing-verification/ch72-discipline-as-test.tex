@@ -90,10 +90,12 @@ HTML-DOM runner layers from that set.  CTest wiring still matters, but it exists
 corresponding renderer configure is built and run.
 
 The eight workflows tell a similarly uneven story.  Six trigger automatically and two are
-manual-only.  Windows D3D CI deliberately avoids \texttt{CnaTests} because some test sources use
-POSIX-only process APIs; it builds renderer-specific executables instead.  Metal has a macOS
-workflow, HTML-DOM has a browser workflow, and Devices has a UBSan path, while many manual
-scripts have no automated caller.
+manual-only.  The Windows D3D workflow's unrestricted default build includes \texttt{CnaTests},
+despite a stale header comment saying otherwise.  Its renderer-label selectors do not run the
+general discovered corpus, although the Direct2D leg does run the filtered
+\texttt{Direct2D\_Unit} entry through that binary.  The GDI workflow instead names 17 standalone
+targets and never builds \texttt{CnaTests}.  Metal has a macOS workflow, HTML-DOM has a browser
+workflow, and Devices has a UBSan path, while many manual scripts have no automated caller.
 
 Automation records should therefore distinguish four states: script exists, script is a CTest,
 workflow references it, and workflow triggers for the change in question.  Collapsing them into

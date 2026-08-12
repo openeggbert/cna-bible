@@ -11,7 +11,7 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
 |---|---|
 | cna-bible branch | `next`; local commits are ahead of `origin/next` (push requires explicit external-publication approval) |
 | CNA pinned SHA | `7a64362efef4119bf880459ef1704fb2c52199e2` (`develop` == `origin/develop`, 2026-08-11) |
-| Book builds | **yes** — 709 pages, all automated checks green; all completed Phase D/E writing and fifteen Phase F corrective batches are visually verified |
+| Book builds | **yes** — 709 pages, all automated checks green; all completed Phase D/E writing and sixteen Phase F corrective batches are visually verified |
 | Phase | **A–E complete; F in progress:** Chapters 19–79 and Appendices A–H are complete. Phase F has filled omitted Chapters 8–11 and 18, corrected early graphics/lifecycle drift, and continues the whole-book consistency sweep. |
 
 ## What is done
@@ -278,6 +278,13 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     SDL-renderer UI, but no durable artifact or current adapted run exists. Metal's 207 portable
     cases, two native registrations, stale workflow filters and iOS/tvOS non-claim are explicit.
     The book is 709 pages; physical pages 583–610 were rendered and read without visual defect.
+35. **Phase F corrective batch 16 is complete and verified.** Chapters 71–73 now distinguish the
+    pinned Direct2D Proton lane from moving D3D12 Proton Experimental evidence, and executable
+    Windows workflow commands from stale comments. The D3D default build includes `CnaTests`;
+    Direct2D runs its filtered unit entry, while GDI's explicit targets exclude the binary. The
+    Input label's 541 cases execute five times (2,705 case executions), despite an adjacent stale
+    “x3” workflow comment. The book remains 709 pages; physical pages 611–636 across Chapters
+    68–73 were rendered and read without visual defect.
 
 ## Do this next
 
@@ -303,7 +310,7 @@ bounded correction batch; finish with an edition-wide visual and automated pass 
 
 ## Verification status
 
-Everything through Phase E and Phase F corrective batch 15 is verified:
+Everything through Phase E and Phase F corrective batch 16 is verified:
 
 - `make -C latex book` succeeds; **709 pages**.
 - makeindex: 2,184 entries accepted, 0 rejected, 0 warnings.
@@ -403,6 +410,10 @@ Everything through Phase E and Phase F corrective batch 15 is verified:
   Chapter 61 context and Chapters 64–67. Five contact sheets plus full-size web-networking,
   Android and Metal pages covered the complete affected span through the Part XI boundary. No
   clipping, overlap, malformed table, broken heading or other visual defect was found.
+- Phase F corrective batch 16 rendered and reviewed physical pages 611–636 across Chapters
+  68–73. Five contact sheets plus full-size hostile-host, discipline and CI pages covered the
+  complete Testing and Verification Part through the Part XII boundary. No clipping, overlap,
+  malformed table, broken heading or other visual defect was found.
 
 **No completed writing batch is pending PDF verification.** Continue with the Phase F whole-book
 consistency sweep, then perform Phase G final verification.
@@ -420,7 +431,7 @@ consistency sweep, then perform Phase G final verification.
 Ten source-audit reports and the 42-family draw-path matrix are complete against pinned CNA
 `7a64362e`. Phase B settled a 12-Part, 79-chapter, 8-appendix edition; Phase C put it on disk,
 migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–7
-rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: fifteen verified
+rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: sixteen verified
 batches filled omitted Chapters 8–11 and 18, removed stale totals/terminology, reconciled the
 early graphics, lifecycle and math narrative, and separated the four current shader strategies
 from the still-missing arbitrary-effect path. State, stream, instancing and programmable-GL

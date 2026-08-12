@@ -17,9 +17,12 @@ runs for the current branch nor that its most expensive leg runs routinely.
 The general Linux job configures Debug with tests and examples, builds the default target, then
 runs unfiltered CTest with a known-failure classifier.  The Input matrix builds only
 \texttt{CnaTests} across five renderer/sanitizer combinations and invokes the single
-\texttt{input}-label entry, which repeats 541 selected cases five times in shuffled order.  The
-Devices workflow instead runs filtered GoogleTests directly, following the preset's warning that
-per-case CTest discovery can race shared temporary paths.
+\texttt{input}-label entry, which repeats 541 selected cases five times in shuffled order: 2,705
+case executions when all iterations complete.  The workflow's nearby comment still says
+``x3,'' but the registered CTest command and current Input documentation both say five; executable
+configuration wins that disagreement.  The Devices workflow instead runs filtered GoogleTests
+directly, following the preset's warning that per-case CTest discovery can race shared temporary
+paths.
 
 HTML-DOM is the most complete Web route: pinned emsdk, Playwright Chromium, six HTTP-served pages,
 browser verdicts, and compositor samples.  Metal selects the native renderer on macOS~14, enables
@@ -50,11 +53,16 @@ examples and networking, then runs renderer-labelled CTests.  Direct2D adds debu
 verification and a WARP lifetime pass; DirectX~11 invokes the native HLSL verifier.  GDI builds 17
 named executables and runs its label.
 
-Neither workflow builds \texttt{CnaTests}.  Its comment blames POSIX \texttt{setenv} calls in test
-sources, but those calls were already migrated out of the CnaTests glob.  Thus the exclusion's
-stated blocker is stale even though renderer-specific Windows tests remain useful.  The native
-HLSL verifier also points to a pre-modularization source path and fails before it can import the
-shader manifest.
+The GDI workflow's explicit target list excludes \texttt{CnaTests}.  The D3D workflow is subtler:
+its unrestricted \texttt{cmake --build} builds the default \texttt{all} target and therefore
+includes \texttt{CnaTests}, contradicting the workflow header's claim that it does not.  The
+DirectX~11 and DirectX~12 label runs still omit the unlabelled discovered GoogleTests.  Direct2D,
+however, labels and runs \texttt{Direct2D\_Unit}, whose command invokes
+\texttt{CnaTests --gtest\_filter=Direct2D*}.  The same header's POSIX \texttt{setenv} rationale is
+stale because platform-incompatible process sources are filtered on Windows.  Renderer-specific
+Windows tests remain useful, but the actual build and selector commands---not that comment---define
+their corpus.  The native HLSL verifier also points to a pre-modularization source path and fails
+before it can import the shader manifest.
 
 Manual dispatch has a further consequence: five of the seven scripts referenced anywhere in CI
 live only in this D3D workflow.  On a routine push, the script layer exercised directly by

@@ -73,7 +73,7 @@ current, not stale.
 | **C — structural migration** | **Complete.** The 12-Part / 79-chapter / 8-appendix migration, context-sensitive terminology pass, current selector/identifier migration, and module-owned source-path sweep are complete and PDF-verified clean at 645 pages. |
 | **D — chapter writing** | **Complete.** Seven verified batches rewrote Chapters 19–79 against the pinned source and sibling evidence. |
 | **E — appendices** | **Complete.** Appendices A–H were rebuilt against pinned source and the completed chapter text, then verified as one bounded batch. |
-| **F — whole-book consistency** | **In progress.** Fifteen verified corrective batches removed stale totals/terminology, filled five structurally present but unwritten chapters (8–11 and 18), and reconciled lifecycle, math, graphics, renderer, Content/XNB, Model/glTF/CNJ, input/media/services, sharp-runtime, sibling-library, Windows, Web and mobile/Apple claims with pinned evidence. Continue the edition-wide factual, cross-reference, duplication, index and visual sweep. |
+| **F — whole-book consistency** | **In progress.** Sixteen verified corrective batches removed stale totals/terminology, filled five structurally present but unwritten chapters (8–11 and 18), and reconciled lifecycle, math, graphics, renderer, Content/XNB, Model/glTF/CNJ, input/media/services, sharp-runtime, sibling-library, platform and testing/CI claims with pinned evidence. Continue the edition-wide factual, cross-reference, duplication, index and visual sweep. |
 | **G — final verification** | Not started. |
 
 ### 3.1 Phase A research areas — all delivered
@@ -358,6 +358,7 @@ log grep replaces.
 | 2026-08-12 | Phase F corrective batch 13 | **707 pages**, build clean; makeindex 2,185 / 0 / 0; Chapters 53–58 reconciled to sharp-runtime's current public-header/component graph, tracked CI, task/stream/UTF-8 behavior, GC/delegate/crypto/platform boundaries and audit metadata; physical pages 533–568 rendered and read as five contact sheets; two prose overflows on printed pages 522–523 corrected, full verification repeated and physical pages 552–554 re-rendered clean |
 | 2026-08-12 | Phase F corrective batch 14 | **707 pages**, build clean; makeindex 2,184 / 0 / 0; Chapters 59–63 reconciled to current easy-gl/meta-gl layering and context-loss adoption, free-direct/free-api annotation/test/audio boundaries, platform taxonomy, MinGW fallback and Wine engagement evidence; physical pages 569–594 rendered and read as five contact sheets plus full-size risk pages; one target-name overflow on printed page 545 corrected, full verification repeated and physical page 575 re-rendered clean |
 | 2026-08-12 | Phase F corrective batch 15 | **709 pages**, build clean; makeindex 2,184 / 0 / 0; Chapters 61 and 64–67 reconciled to source-site versus worker concurrency, five focused versus 24 admitted Web identities, Emscripten network topology, primary Android emulator/APK evidence, portable-versus-native Metal tests, workflow trigger drift and iOS/tvOS configuration non-claims; physical pages 583–610 rendered and read as five contact sheets plus full-size risk pages, all visually clean |
+| 2026-08-12 | Phase F corrective batch 16 | **709 pages**, build clean; makeindex 2,184 / 0 / 0; Chapters 71–73 reconciled to pinned-versus-moving Proton evidence, actual Windows default/explicit build targets, filtered Direct2D CnaTests execution and the Input label's 541-by-five command despite a stale x3 comment; physical pages 611–636 rendered and read as five contact sheets plus full-size risk pages, all visually clean |
 
 ---
 
@@ -916,3 +917,22 @@ mid-session at the owner's direction, so the build and visual passes are availab
   automated checks green. Rendered and read physical pages 583–610 across the updated Chapter 61
   context and Chapters 64–67 as five contact sheets plus full-size web/Android/Metal pages. No
   clipping, overlap, malformed table, broken heading or other visual defect was found.
+
+### 2026-08-12 — Phase F corrective batch 16: Testing and CI execution truth
+
+- Distinguished the two Proton evidence lanes. Direct2D selects a checked-in pinned runtime and
+  emits its identity; D3D12 defaults to moving Proton Experimental, overlays vkd3d-proton DLLs and
+  forwards the child exit status without the Wine wrappers' engagement-token gate.
+- Reconciled Windows CI prose to executable workflow commands rather than stale headers. The D3D
+  workflow's unrestricted default build includes `CnaTests`; DirectX 11/12 label selectors omit
+  its general discovered corpus, while Direct2D runs the filtered `Direct2D_Unit` entry through
+  it. GDI's explicit 17-target list does not build the binary, and the POSIX-setenv rationale in
+  the D3D header no longer matches platform source filtering.
+- Made the Input execution count auditable: one 541-case CTest entry repeats five times, yielding
+  2,705 case executions when complete. The nearby workflow comment still says x3, but the CMake
+  command and current Input documentation both require five.
+- Re-audited Chapters 68–70 without factual correction. Ran `tools/verify-book.sh`: 709 pages,
+  makeindex 2,184 accepted / 0 rejected / 0 warnings, all automated checks green. Rendered and
+  read physical pages 611–636 across Chapters 68–73 as five contact sheets plus full-size
+  hostile-host, discipline and CI pages. No clipping, overlap, malformed table, broken heading or
+  other visual defect was found.
