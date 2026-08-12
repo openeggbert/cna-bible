@@ -759,6 +759,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      and the helper reports a direct prerequisite error when `/proc/self/fd` is unavailable. An
      unusual container can no longer turn a missing procfs mount into a misleading inherited-
      descriptor or contention diagnosis.
+110. **Parallel read-only verification remains fully supported.** Two complete
+     `tools/verify-book.sh --no-build` processes ran concurrently under shared repository locks.
+     Both passed all source, PDF, navigation, rewrite and Ghostscript checks, both exited 0, and
+     their isolated scratch directories were independently removed. Reader concurrency therefore
+     remains real rather than merely permitted by a unit-level flock matrix.
 
 ## Do this next
 

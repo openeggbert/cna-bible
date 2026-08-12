@@ -440,6 +440,7 @@ log grep replaces.
 | 2026-08-12 | Post-G sealed-tool cleanliness | Extended the early Git preflight from the exact clean `latex/` tree to require all staged, unstaged and non-ignored untracked state under `tools/` empty as well; sealed results can no longer be defined by uncommitted build/verifier/helper logic, while documentation-only commits remain compatible |
 | 2026-08-12 | Post-G hardened-HEAD clean archive | Exported commit `ac30c65` with `git archive`, created only an unsigned local Git baseline for cleanliness checks, and ran the sealed workflow with no PDF/aux/workspace-only helper; it reproduced 3,314,744-byte SHA-256 `7c877ef...` and passed the complete verifier including shared locking, transaction, source/image closure and rewrite/independent parsing |
 | 2026-08-12 | Post-G explicit lock platform contract | Documented Linux procfs `/proc/self/fd`, GNU `stat` and util-linux `flock` as the descriptor-lock platform boundary, and made missing procfs fail with its own prerequisite diagnostic instead of a misleading descriptor mismatch |
+| 2026-08-12 | Post-G parallel shared-lock verification | Ran two complete `verify-book.sh --no-build` processes concurrently under shared repository locks; both passed every source/PDF/navigation/rewrite/Ghostscript check, exited 0 and removed their independently isolated scratch directories, proving real reader concurrency after lock unification |
 
 ---
 
@@ -1427,3 +1428,5 @@ build and visual passes are available again.
   unsigned baseline, it recreated the exact sealed PDF and passed every current verifier check.
 - Made the Linux procfs/GNU-stat/util-linux-flock lock boundary explicit in README and fail-fast in
   the helper, avoiding misleading descriptor diagnostics in unusual containers.
+- Proved the unified lock retains real read concurrency: two simultaneous full no-build verifiers
+  both passed and cleaned all private scratch state under shared locks.
