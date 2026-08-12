@@ -387,6 +387,7 @@ log grep replaces.
 | 2026-08-12 | Post-G Git-citation provenance audit | Sixteen compiled commit-like spellings representing fourteen distinct objects checked across CNA and all eleven sibling repositories; every prefix is unique in its owner and resolves to a commit; Emscripten repair, sharp-runtime database, rewritten easy-gl/meta-gl heads and cna-template pin/drift roles confirmed; numeric hex-like literals excluded; no correction or PDF delta |
 | 2026-08-12 | Post-G filename-citation provenance audit | 295 filename-like occurrences / 194 distinct spellings classified against pinned trees and explicit external, negative, wildcard or historical cases; two stale pre-normalization `dx3_*` test basenames corrected to their registered `freedirect_*` files; untracked supplemental `free-eggbert/cna.md` distinguished from immutable Git pins by size and SHA-256; verifier guard added; complete build green with 3,652 links; whole-PDF comparison isolated physical pages 318, 319 and 645, all visually clean |
 | 2026-08-12 | Post-G outline-title integrity | All 1,066 UTF-16 source bookmark records decoded from `main.out` and matched exactly by `(destination, title)` to MuPDF's PDF outline; a title-only `Preface` → `PrefacX` fixture failed with two differing pairs while destination checks remained green; verifier-only change, no PDF delta |
+| 2026-08-12 | Post-G outline-hierarchy integrity | MuPDF indentation converted to all 1,066 `(destination, parent)` pairs and matched to each explicit `main.out` parent; a `chapter.1` parent-only mutation from `part.1` to `part.2` left destination/title checks green and triggered exactly two hierarchy differences; verifier-only change, no PDF delta |
 
 ---
 
@@ -1186,4 +1187,10 @@ build and visual passes are available again.
   A title-only negative fixture changed `Preface` to `PrefacX` without moving `chapter*.1`; the
   prior destination checks stayed green and the new guard alone reported the expected two set
   differences. The current artifact has zero mismatch; this verifier-only hardening has no PDF
+  or visual delta.
+- Closed the independent outline-structure gap by deriving all 1,066 `(destination, parent)` pairs
+  from MuPDF indentation and comparing them with each bookmark's explicit `main.out` parent. A
+  fixture moved `chapter.1` from `part.1` to `part.2` without changing its title or destination;
+  the prior guards remained green and the new hierarchy check alone reported the expected two
+  set differences. The current artifact has zero mismatch; this verifier-only change has no PDF
   or visual delta.

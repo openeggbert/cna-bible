@@ -454,6 +454,9 @@ if command -v mutool >/dev/null 2>&1; then
         outline_titles_file=$(mktemp /tmp/cna-bible-outline-titles.XXXXXX.txt)
         source_bookmarks_file=$(mktemp /tmp/cna-bible-source-bookmarks.XXXXXX.txt)
         outline_title_diff_file=$(mktemp /tmp/cna-bible-outline-title-diff.XXXXXX.txt)
+        outline_parents_file=$(mktemp /tmp/cna-bible-outline-parents.XXXXXX.txt)
+        source_parents_file=$(mktemp /tmp/cna-bible-source-parents.XXXXXX.txt)
+        outline_parent_diff_file=$(mktemp /tmp/cna-bible-outline-parent-diff.XXXXXX.txt)
         grep -o '#nameddest=[^[:space:]]*' "$outline_file" | sed 's/#nameddest=//' \
             | sort > "$outline_dests_file"
         perl -ne '
@@ -475,6 +478,24 @@ if command -v mutool >/dev/null 2>&1; then
             }
         ' "$book_dir/main.out" | LC_ALL=C sort > "$source_bookmarks_file"
         comm -3 "$outline_titles_file" "$source_bookmarks_file" > "$outline_title_diff_file"
+        perl -ne '
+            if (/^[+|]\t(\t*)".*"\t#nameddest=([^\s]+)$/) {
+                $depth = 1 + length($1);
+                $destination = $2;
+                $parent = $depth > 1 ? ($at_depth{$depth - 1} // "") : "";
+                print "$destination\t$parent\n";
+                $at_depth{$depth} = $destination;
+                for $candidate (keys %at_depth) {
+                    delete $at_depth{$candidate} if $candidate > $depth;
+                }
+            }
+        ' "$outline_file" | LC_ALL=C sort > "$outline_parents_file"
+        perl -ne '
+            if (/^\\BOOKMARK \[[^]]*\]\[[^]]*\]\{([^}]*)\}\{.*\}\{([^}]*)\}%/) {
+                print "$1\t$2\n";
+            }
+        ' "$book_dir/main.out" | LC_ALL=C sort > "$source_parents_file"
+        comm -3 "$outline_parents_file" "$source_parents_file" > "$outline_parent_diff_file"
         outline_entries=$(grep -c '#nameddest=' "$outline_file" || true)
         outline_destinations=$(grep -o '#nameddest=[^[:space:]]*' "$outline_file" \
             | sort -u | wc -l)
@@ -514,8 +535,20 @@ if command -v mutool >/dev/null 2>&1; then
             fail "PDF outline title mismatch ($outline_title_count PDF, $source_bookmark_count source, $outline_title_diff_count differing pairs)"
             head -10 "$outline_title_diff_file" | sed 's/^/        /'
         fi
+        outline_parent_count=$(wc -l < "$outline_parents_file")
+        source_parent_count=$(wc -l < "$source_parents_file")
+        outline_parent_diff_count=$(wc -l < "$outline_parent_diff_file")
+        if [ "$outline_parent_count" -eq 1066 ] \
+           && [ "$source_parent_count" -eq "$outline_parent_count" ] \
+           && [ "$outline_parent_diff_count" -eq 0 ]; then
+            pass "all 1066 PDF outline entries match their source parent hierarchy"
+        else
+            fail "PDF outline hierarchy mismatch ($outline_parent_count PDF, $source_parent_count source, $outline_parent_diff_count differing pairs)"
+            head -10 "$outline_parent_diff_file" | sed 's/^/        /'
+        fi
         rm -f "$outline_dests_file" "$toc_outline_dests_file" "$outline_toc_diff_file" \
-            "$outline_titles_file" "$source_bookmarks_file" "$outline_title_diff_file"
+            "$outline_titles_file" "$source_bookmarks_file" "$outline_title_diff_file" \
+            "$outline_parents_file" "$source_parents_file" "$outline_parent_diff_file"
     else
         fail "mutool could not read the PDF outline"
     fi

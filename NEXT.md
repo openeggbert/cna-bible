@@ -449,6 +449,12 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     while retaining `chapter*.1` and the untouched PDF failed with exactly two differing pairs.
     The current artifact has zero title mismatch. This is verifier-only hardening and does not
     change any PDF page.
+57. **PDF bookmark hierarchy now has source-level integrity.** MuPDF's outline indentation is
+    converted into all 1,066 `(destination, parent)` pairs and compared with the explicit parent
+    recorded for every `main.out` bookmark. A fixture retaining `chapter.1` and its title but
+    moving its parent from `part.1` to `part.2` left the destination/title checks green and made
+    only the new hierarchy guard fail with two differing pairs. The current artifact has zero
+    parent mismatch. This verifier-only hardening does not change any PDF page.
 
 ## Do this next
 
