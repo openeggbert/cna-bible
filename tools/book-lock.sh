@@ -18,6 +18,11 @@ acquire_book_lock() {
             ;;
     esac
 
+    if [ ! -d /proc/self/fd ]; then
+        printf 'ERROR: artifact locking requires Linux procfs at /proc/self/fd\n' >&2
+        return 1
+    fi
+
     lock_dir="/tmp/cna-bible-locks-$EUID"
     if ! mkdir -m 700 "$lock_dir" 2>/dev/null && [ ! -d "$lock_dir" ]; then
         printf 'ERROR: could not create private book-lock directory\n' >&2

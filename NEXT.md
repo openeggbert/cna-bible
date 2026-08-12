@@ -754,6 +754,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      it contained no PDF, auxiliaries or workspace-only helper. `tools/build-release.sh` created
      the exact 3,314,744-byte `7c877ef...` artifact and passed the entire verifier, including the
      exported shared lock, transaction, source/image closures and rewrite/independent-parse checks.
+109. **The lock platform contract is explicit and fail-fast.** Descriptor identity relies on the
+     Linux procfs file-descriptor view plus GNU `stat` and util-linux `flock`; README now says so,
+     and the helper reports a direct prerequisite error when `/proc/self/fd` is unavailable. An
+     unusual container can no longer turn a missing procfs mount into a misleading inherited-
+     descriptor or contention diagnosis.
 
 ## Do this next
 
