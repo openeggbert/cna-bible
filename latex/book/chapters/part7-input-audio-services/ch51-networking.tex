@@ -26,18 +26,17 @@ here, they are genuinely functional network-testing tools.
 
 A subtle but load-bearing detail belongs right alongside those two: real XNA's own
 \texttt{GamerJoined} is documented to replay itself immediately upon subscription for every
-gamer already in the session at that point --- the initial local gamer(s) a
-\texttt{Create()} / \texttt{Join()} / \texttt{JoinInvited()} call establishes are queued
-internally before the caller could possibly have subscribed to anything, since the session
-pointer does not exist until the static factory method actually returns. This port's own
-event-handler type has no ``replay on subscribe'' hook to reproduce that automatically, so the
-documented, permanent pattern --- not a temporary workaround --- is to call \texttt{Update()}
-once, immediately after subscribing, specifically to receive those initial join events.
+gamer already in the session at that point.  CNA now reproduces that contract through
+\texttt{EventHandler<T>::SetReplayHook}: adding a handler synchronously invokes it once for
+every gamer already in \texttt{AllGamers}, including the initial local gamer(s) established by
+\texttt{Create()} / \texttt{Join()} / \texttt{JoinInvited()}.  Mid-session joins still enter
+the ordinary network-event queue and therefore require the normal per-frame \texttt{Update()}
+pump; an extra \texttt{Update()} immediately after subscribing is neither required nor a way
+to obtain a second copy of the initial events.
 
 \begin{lstlisting}
 // Worked example: hosting a session and correctly receiving the local
-// gamer's own initial GamerJoined event, which is queued at Create()
-// time, before any subscription could possibly exist yet.
+// gamer's initial GamerJoined event through replay-on-subscribe.
 NetworkSession* session = NetworkSession::Create(
     NetworkSessionType::SystemLink, /* maxLocalGamers */ 1, /* maxGamers */ 8);
     // the 8 above is NOT actually honored -- see the worked example below
@@ -45,9 +44,9 @@ NetworkSession* session = NetworkSession::Create(
 session->GamerJoined.Add(
     [](System::Object* sender, const GamerJoinedEventArgs& args)
     {
-        // Handle a gamer (local or remote) joining the session.
+        // This runs synchronously during Add() for gamers already present;
+        // later remote joins arrive from the ordinary Update() pump.
     });
-session->Update();  // required once, right here -- see the note above
 
 // ... in the game loop, every frame:
 session->Update();
@@ -92,10 +91,11 @@ a fresh \texttt{Join()} performs. This is a deliberate, explicitly confirmed sco
 stating precisely: it is a full reconnect, not a live migration of existing sockets, so a
 reconnecting peer's remote-gamer roster is genuinely rebuilt from scratch (fresh
 \cnaclass{NetworkGamer} identities, real \texttt{GamerLeave} followed by real \texttt{GamerJoin}
-events) rather than preserved across the promotion --- and if no matching session is found on
-that first attempt, migration is abandoned for that frame rather than retried in a loop inside
-library code, falling through to the same immediate-end path \texttt{AllowHostMigration ==
-false} always takes.
+events) rather than preserved across the promotion.  Discovery is retried for at most three
+150~ms search windows to tolerate the promoted peer registering at nearly the same instant or
+an OS delivering a shared-port discovery datagram to another socket. If none finds the cached
+gamertag, migration falls through to the same immediate-end path
+\texttt{AllowHostMigration == false} always takes.
 
 \section{NetworkGamer: real per-machine identity where FNA hardcodes it}
 
@@ -132,11 +132,26 @@ Session invites are stubbed for the identical reason \texttt{PlayerMatch} / \tex
 are: there is no online service behind them to implement against, not a deliberately
 Xbox-Live-exclusive feature CNA chose not to attempt.
 
-For all four synthetic types, no port is bound, \texttt{ConnectToHost} is a no-op,
-\texttt{Find} returns empty without the 150~ms network wait, and \texttt{SendData} leaves no
-local data available. Their useful behavior is session lifecycle: \texttt{StartGame},
-\texttt{EndGame}, state changes, and events. Only \texttt{SystemLink} passes
-\texttt{RealNetworkingEnabled}.
+For all four synthetic types, no port is bound, \texttt{ConnectToHost} is a no-op, and
+\texttt{SendData} leaves no local data available.  Discovery differs by type:
+\texttt{Find(Local, ...)} rejects \texttt{Local} with \texttt{ArgumentException}, while
+\texttt{LocalWithLeaderboards}, \texttt{PlayerMatch}, and \texttt{Ranked} return an empty
+collection without the 150~ms network wait. Their useful behavior is session lifecycle:
+\texttt{StartGame}, \texttt{EndGame}, state changes, and events. Only \texttt{SystemLink}
+passes \texttt{RealNetworkingEnabled}.
+
+\subsection{What remains a parity stub even in a real \texttt{SystemLink} session}
+
+The functional ENet path should not be read as blanket completion of every XNA networking
+member.  Voice transport is absent: \texttt{LocalNetworkGamer::EnableSendVoice()} and
+\texttt{SendPartyInvites()} are no-ops, while \texttt{HasVoice}, \texttt{IsTalking},
+\texttt{IsMutedByLocalUser}, \texttt{IsGuest}, and \texttt{IsPrivateSlot} remain their default
+false values.  \texttt{NetworkMachine::RemoveFromSession()} always throws
+\texttt{NotImplementedException}.  The three arbitrated/unarbitrated/TrueSkill leaderboard
+events and the static \texttt{InviteAccepted} event are declared but never raised.  Invitations
+have no transport or service behind them; \texttt{JoinInvited()} merely constructs the same
+synthetic \texttt{PlayerMatch} lifecycle object described above.  These limits are independent
+of the real discovery, handshake, application-data, state-broadcast, and host-migration paths.
 
 \section{Real LAN discovery, concretely}
 
@@ -408,27 +423,39 @@ explicit write --- a documented, accepted structural deviation; a \texttt{const}
 gives genuinely bounds-checked reads instead.
 
 \begin{lstlisting}
-// Worked example: sending a Color over the wire, and the asymmetry above
-// caught in the act -- Write(Color) is 4 bytes, but the matching read
-// must be ReadColor() (4 floats), not a naive byte-for-byte mirror.
+// Worked example: interoperating with Write(Color)'s actual four-byte
+// representation. ReadColor() is NOT its inverse: it expects 16 bytes.
 PacketWriter writer;
 writer.Write(playerTintColor);      // 4 bytes on the wire
 localGamer->SendData(writer, SendDataOptions::Reliable);
 
 // On the receiving end, in the game loop:
-PacketReader reader;
+std::vector<SharpRuntime::bytecs> rgba(4);
 NetworkGamer* sender = nullptr;
-while (localGamer->ReceiveData(reader, sender) > 0)
+while (localGamer->getIsDataAvailableProperty())
 {
-    Color tint = reader.ReadColor();  // 4 floats -- NOT the inverse of Write(Color) above
+    const int count = localGamer->ReceiveData(rgba, sender);
+    if (count == 4)
+    {
+        Color tint(rgba[0], rgba[1], rgba[2], rgba[3]);
+    }
 }
 \end{lstlisting}
 
-\section{\cnaclass{SendDataOptions}: four values, three real delivery guarantees}
+This example deliberately uses the byte-vector receive overload too.  The
+\texttt{ReceiveData(PacketReader\&, NetworkGamer*\&)} overload does fill and rewind its
+reader when a packet is available, but --- preserving an FNA bug --- its local length variable
+is never updated and it returns zero even after consuming a packet.  Consequently a loop whose
+condition is \texttt{ReceiveData(reader, sender) > 0} never executes its body.  If a port must
+use that overload, gate each call with \texttt{IsDataAvailable} and treat the reader contents,
+not the return value, as the successful-delivery signal; for new code, the vector overload above
+has an honest byte count.
+
+\section{\cnaclass{SendDataOptions}: five values, three real delivery guarantees}
 
 The Color-asymmetry worked example above uses \texttt{SendDataOptions::Reliable} without
-explaining what that value actually buys over the other three --- worth doing directly, since
-\cnans{Microsoft::Xna::Framework::Net}'s own \cnaclass{SendDataOptions} enum has four values but
+explaining what that value actually buys over the remaining four --- worth doing directly, since
+\cnans{Microsoft::Xna::Framework::Net}'s own \cnaclass{SendDataOptions} enum has five values but
 \texttt{ENetBackend} genuinely only has three distinct delivery behaviors underneath them, for a
 real, documented reason rooted in what ENet itself can express. Reading
 \texttt{NetPacketCodec::SendDataOptionsToEnetFlags()} directly, and the doc comment right above

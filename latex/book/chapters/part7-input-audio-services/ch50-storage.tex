@@ -108,15 +108,34 @@ if (container->FileExists("savegame.dat"))
     std::unique_ptr<System::IO::Stream> readStream =
         container->OpenFile("savegame.dat", System::IO::FileMode::Open);
     std::vector<SharpRuntime::bytecs> loaded(readStream->getLengthProperty());
-    readStream->Read(loaded.data(), 0, static_cast<int>(loaded.size()));
+    int offset = 0;
+    while (offset < static_cast<int>(loaded.size()))
+    {
+        const int read = readStream->Read(
+            loaded.data(), offset, static_cast<int>(loaded.size()) - offset);
+        if (read == 0) break; // unexpected early EOF: reject the save below
+        offset += read;
+    }
+    if (offset != static_cast<int>(loaded.size())) { /* reject truncated save */ }
 }
 
 container->Dispose();
 \end{lstlisting}
 
-\subsection{A real, currently unguarded gap: relative-path resolution does not sandbox \texttt{..}}
+\subsection{Two real, currently unguarded path inputs}
 
-Every method in the worked example above --- \texttt{CreateFile}, \texttt{FileExists},
+The first unchecked path arrives before a \cnaclass{StorageContainer} even exists.
+\texttt{BeginOpenContainer(displayName,...)} stores \texttt{displayName} unchanged, and
+\texttt{EndOpenContainer} passes it to a constructor that forms
+\texttt{rootPath/displayName/playerFolder} and immediately creates the resulting directories.
+Only the empty string is rejected. An absolute display name discards the root under normal
+\texttt{std::filesystem::path::operator/} rules, while \texttt{..} components can climb above
+it. This differs from \texttt{StorageDevice::DeleteContainer}, which now uses the shared
+\texttt{ResolveContainedPath} helper and rejects absolute or escaping names. Opening and deleting
+the same nominal container therefore do not currently share the same safety boundary.
+
+The second unchecked input is inside the resulting container. Every method in the worked example
+above --- \texttt{CreateFile}, \texttt{FileExists},
 \texttt{DeleteFile}, \texttt{CreateDirectory}, and the rest --- routes its \texttt{relative}
 parameter through one shared private helper, \texttt{ResolvePath(relative)}, whose entire real
 implementation is a single line: \texttt{(fs::path(storagePath\_) / relative).string()}. Reading
@@ -127,7 +146,6 @@ not a traversal attempt. \texttt{container->CreateFile("../../outside.txt")} res
 creates a file two directories above the container's own storage root exactly as
 \texttt{std::filesystem} would normally compose that path, with no exception, no truncation, and
 no sandboxing of any kind.
-
 This matters in exactly the situation this namespace's own \texttt{OpenFile} family exists for:
 a game trusting a filename that ultimately came from outside its own hardcoded save-slot
 naming (a player-chosen save name, a value read from network or downloadable content, or any
@@ -151,7 +169,7 @@ contains the entire five-case Storage suite. Those cases prove that
 \texttt{..} escape, and \texttt{.}, while preserving a happy-path deletion. In other words,
 the traversal question was reviewed, guarded, and tested --- but only on the device operation.
 
-No test mentions \cnaclass{StorageContainer}, \texttt{GetFileNames},
+No test mentions \cnaclass{StorageContainer}, \texttt{BeginOpenContainer}, \texttt{GetFileNames},
 \texttt{GetDirectoryNames}, or \texttt{GlobMatch}. The container path used by game file writes
 therefore remains unguarded even though its neighboring device path is protected. The same
 absence covers \texttt{StorageContainer}'s own small
@@ -165,7 +183,7 @@ manual code reading rather than a single asserted test case.
 
 \texttt{GetStorageRootEXT()}'s own real implementation, \texttt{EnsureStorageRoot()}, is worth
 reading directly rather than trusting the one-line summary given above --- it is a real,
-three-tier platform-resolution chain, not a single fixed path, and it is lazily evaluated and
+four-tier platform-resolution chain, not a single fixed path, and it is lazily evaluated and
 cached (\texttt{storageRootInitialized\_}) exactly once per application-name change:
 
 \begin{lstlisting}
@@ -179,9 +197,9 @@ cached (\texttt{storageRootInitialized\_}) exactly once per application-name cha
 //    HOME is unset.
 \end{lstlisting}
 
-\texttt{SDL\_GetPrefPath} is the tier that actually resolves on every desktop platform this
-project targets --- on Linux it typically returns something under
-\texttt{\$XDG\_DATA\_HOME/<org>/<app>/} or \texttt{\textasciitilde/.local/share/<org>/<app>/} itself,
+\texttt{SDL\_GetPrefPath} is the tier that normally resolves on desktop platforms --- on Linux
+it typically returns an app-specific directory under \texttt{\$XDG\_DATA\_HOME} or
+\texttt{\textasciitilde/.local/share} itself,
 so tiers 2 and 3 exist specifically for the case where SDL's own call genuinely fails (a
 sandboxed or unusual environment with no writable preference directory at all), not as the
 common path. Tier 4, the current working directory, is a real fallback with a real practical
@@ -212,6 +230,17 @@ almost always true --- even a completely fresh per-app directory sits under a re
 \texttt{true} is not itself proof the per-app storage directory has actually been created; only
 a real \texttt{BeginOpenContainer} / \texttt{EndOpenContainer} call (which does create it, via
 \cnaclass{StorageContainer}'s own constructor) confirms that.
+
+\subsection{Dispose is a flag and event, not an operation guard}
+
+\cnaclass{StorageContainer::Dispose()} is idempotent, sets \texttt{IsDisposed}, and raises
+\texttt{Disposing}; it does not close a retained native handle because the container owns none.
+None of the file, directory, enumeration, property, or open operations checks that flag, however,
+so they continue to work after disposal. The container also retains a non-owning
+\texttt{const StorageDevice*}; destroying the device first leaves
+\texttt{getStorageDeviceProperty()} dangling even though path operations themselves use the
+already-copied storage path. Keep the device alive through its containers and treat a disposed
+container as unusable even though the current implementation does not enforce either rule.
 
 \section{A real, previously-undocumented gap: \texttt{OpenFile}'s \texttt{fileShare} parameter has nowhere to go}
 
@@ -249,9 +278,8 @@ new file-locking logic added to \texttt{FileStream} itself first.
 
 Practically, this means every value of \texttt{FileShare} --- \texttt{None} (request exclusive
 access), \texttt{Read} (allow other readers only), \texttt{ReadWrite} (allow full concurrent
-access) --- currently produces byte-identical behavior: whatever the host OS's own default
-file-sharing semantics happen to be for a plain \texttt{std::fstream} open (unrestricted
-concurrent access on every platform this project currently builds for). A game relying on
+access) --- currently produces byte-identical CNA behavior and leaves sharing to whatever the
+host C\texttt{++} runtime and OS do for a plain \texttt{std::fstream} open. A game relying on
 \texttt{FileShare::None} to prevent a second process from touching the same save file
 concurrently --- a real, if uncommon, XNA-era pattern for guarding against a save-corruption
 race --- gets no such protection here. As with the \texttt{..}-traversal gap earlier in this
@@ -262,10 +290,11 @@ written down at all.
 \section{StorageDeviceNotConnectedException}
 
 \cnaclass{StorageDeviceNotConnectedException} is the one exception type this namespace adds,
-thrown when an operation requires a connected storage device that is not currently available
---- present for API completeness with real XNA's own exception surface, even though CNA's own
-always-available local-filesystem backing means this condition is rare in practice compared
-to a real Xbox 360, where a memory unit could genuinely be physically removed mid-session.
+present for API completeness with real XNA's own exception surface. At the pin it is thrown only
+when \texttt{FreeSpace} or \texttt{TotalSpace} catches a filesystem exception; container opens
+and file operations do not first consult \texttt{IsConnected} or translate their own filesystem
+failures into this type. The local-filesystem backing makes physical removal less common than on
+a real Xbox~360, but this is not a universal error wrapper for the namespace.
 
 \section{Why this namespace is worth remembering}
 

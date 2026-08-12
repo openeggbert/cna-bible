@@ -354,6 +354,7 @@ log grep replaces.
 | 2026-08-12 | Phase F corrective batch 9 | **707 pages**, build clean; makeindex 2,176 / 0 / 0; Chapters 33–35/37 reconciled to integrated content-path containment, live XNB name/object limits, checked texture arithmetic, exact Texture2D/raw-cube bytes, Texture2D mip/device admission, Texture3D capability refusal and SpriteFont default-character validation while retaining genuine 3D/cube mip/compressed-byte gaps; physical pages 337–388 rendered and read, dense reader/limits pages inspected full-size, all visually clean |
 | 2026-08-12 | Phase F corrective batch 10 | **707 pages**, build clean; makeindex 2,182 / 0 / 0; Chapters 38–42 reconciled to the three live model-hierarchy routes, checked collection indices, external glTF URI boundary, eight-layout stride oracle, typed-index-pointer and CNJ validation gaps, exact skeletal/morph cubic behavior and skin-gated animation scope; Chapter 43 re-audited without correction; physical pages 421–448 rendered and read, dense ABI/animation/toolchain pages inspected full-size, all visually clean |
 | 2026-08-12 | Phase F corrective batch 11 | **707 pages**, build clean; makeindex 2,184 / 0 / 0; Chapters 44–48 reconciled to live input state/drain semantics, dynamic-audio and microphone gaps, Media ownership/codec truth, sensor dispatch/lifecycle distinctions and optional host-device callback boundaries; physical pages 455–498 rendered and read as six contact sheets, RAII and concurrency pages inspected full-size, all visually clean |
+| 2026-08-12 | Phase F corrective batch 12 | **707 pages**, build clean; makeindex 2,188 / 0 / 0; Chapters 49–52 reconciled to GamerServices persistence/replay, Storage path/disposal, networking migration/receive/stub and Avatar content/rig/rendering contracts; physical pages 499–530 rendered and read as eight contact sheets, dense examples and repaired closing pages inspected full-size, all visually clean |
 
 ---
 
@@ -811,3 +812,32 @@ mid-session at the owner's direction, so the build and visual passes are availab
   contact sheets; the RAII media example (482) and dense sensor lifecycle page (491) were also
   inspected full-size. No clipping, overlap, malformed listing, broken heading or other visual
   defect was found.
+
+### 2026-08-12 — Phase F corrective batch 12: local services and Avatar contract truth
+
+- Reconciled GamerServices persistence and event behavior. Every JSON number is a `double`, so
+  achievement ticks, leaderboard ratings and 64-bit date/time columns all lose low bits beyond
+  binary64's exact-integer range. A leaderboard reader mutates only its in-memory entry; the exact
+  inert Guide calls, UTF-16 password masking and dispatcher/component lifecycle are now stated
+  without overclaim.
+- Separated Storage's unchecked `BeginOpenContainer` display-name traversal from the equally
+  unchecked container file/directory resolution seam. The chapter now records direct-write
+  fallback, post-dispose operations, runtime-dependent `FileShare` behavior, non-owning device
+  lifetime and the narrow filesystem-exception translation. Its read example handles partial and
+  early-EOF reads.
+- Corrected networking's promoted-host and three-retry migration behavior, all five
+  `SendDataOptions`, synchronous replay of current gamers when a joined-gamer handler is added,
+  and the packet example: the vector overload returns the received byte count,
+  while `ReceiveData(PacketReader&)` always reports zero and `Write(Color)` emits four bytes that
+  `ReadColor()` misreads as four floats. Synthetic discovery/join, voice, invite, event and
+  `NetworkMachine` stubs remain explicitly bounded.
+- Rebased Avatar examples on the actual CNAEXT surface: both bundled procedural rigs have 19
+  bones; content loads `SkinnedModelEXT` through `ContentManager`; `Stand0` is a real clip; explicit
+  lighting supersedes the historical default-light ordering; tint routing uses exact Hair/Shirt/
+  Pants/Shoes substrings. The fixed 71-bone inert compatibility API is distinguished from the
+  content-defined renderer limit, and EasyGL/Vulkan evidence from BGFX's missing registered test.
+- Ran `tools/verify-book.sh`: 707 pages, makeindex 2,188 accepted / 0 rejected / 0 warnings, all
+  automated checks green. Rendered and read physical pages 499–530 across Chapters 49–52 in eight
+  contact sheets; pages 509, 514, 523 and 528–530 were inspected full-size. Full-size review found
+  one overflowing Task 13.2 condition and one over-wide closing table; both were rewritten,
+  rebuilt and re-rendered cleanly. No visual defect remains.

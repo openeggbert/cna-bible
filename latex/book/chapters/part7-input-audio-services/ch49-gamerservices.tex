@@ -2,8 +2,9 @@
 \label{ch:gamerservices}
 
 Real XNA's \cnans{GamerServices} namespace is Xbox-Live-only, and FNA --- targeting PC XNA
---- does not implement it at all. CNA goes further than FNA here on purpose: rather than
-stub the whole namespace out, it built a real, locally-backed implementation held to the
+--- provides compatibility API shapes but no functional online service. CNA goes further than
+FNA here on purpose: rather than leave the service-backed surface as stubs, it built a real,
+locally-backed implementation held to the
 actual Xbox~360 XNA~4.0 reference behavior as its fidelity bar, not to ``does nothing on a
 PC.'' This chapter is organized around the resulting three-way split this namespace's own
 documentation uses throughout: \textbf{Implemented} (real in-memory behavior matching the
@@ -36,7 +37,7 @@ functioning classes), but because nothing anywhere in the codebase actually popu
 this is the one honestly-acknowledged, still-open gap in this namespace's population story,
 not a design limitation like the Xbox-Live-only methods above.
 
-Initialization creates exactly four profiles named \texttt{"Stub Gamer"} and
+Initialization creates exactly four local gamers named \texttt{"Stub Gamer"} and
 \texttt{"Stub Gamer (1)"} through \texttt{(3)}. Player One is not a guest; the other three
 are guests. All four report \texttt{IsSignedInToLive=true} despite there being no live service.
 These are fixed local identities, not user accounts or randomized test data.
@@ -70,16 +71,18 @@ one JSON file per sanitized gamertag with records shaped
 \texttt{(key)\_(gameMode)}. Characters outside \texttt{[A-Za-z0-9.\_-]} become underscores and
 an empty name becomes \texttt{\_}.
 
-Writes go to a temporary file and rename into place, with a direct-write fallback when rename
-cannot cross a filesystem boundary. Missing or corrupt files start empty rather than throwing.
+Writes go to an adjacent temporary file and rename into place, with a direct-write fallback when
+the rename fails. Missing or corrupt files start empty rather than throwing.
 Calling \texttt{StorageDevice::SetAppNameEXT} changes this root and silently relocates both
 achievements and leaderboards; Chapter~\ref{ch:storage} covers the shared boundary.
 
-One precision caveat contradicts the store header's ``exact round-trip'' wording.
-\texttt{earnedTicks} enters the JSON model as \texttt{double}; a 2026 \cnaclass{DateTime} value
-is far beyond $2^{53}$ and is quantized in steps of roughly 128 ticks, about 12.8 microseconds.
-The already-quantized integer is stable after serialization, but the original tick count is not
-bit-exact.
+One precision caveat contradicts the store header's ``exact round-trip'' wording. Every JSON
+number is represented as \texttt{double}: achievement \texttt{earnedTicks}, leaderboard
+\texttt{int64} ratings, and \texttt{int64}/\cnaclass{DateTime}/\cnaclass{TimeSpan} property
+columns are all cast through that type. A 2026 \cnaclass{DateTime} value is far beyond $2^{53}$
+and is quantized in steps of roughly 128 ticks, about 12.8 microseconds; sufficiently large
+ratings and durations similarly lose low bits. The already-quantized integer is stable after
+serialization, but the original 64-bit value is not bit-exact.
 
 \section{Leaderboards: real persistence, CNA-original policy}
 \label{sec:leaderboards}
@@ -99,8 +102,9 @@ Chapter~\ref{ch:networking}. One genuinely subtle, load-bearing detail: real XNA
 \cnaclass{LeaderboardWriter} has no explicit submit or commit method at all, so CNA treats
 assigning \texttt{Rating} as the closest honest equivalent of ``I'm finished, persist this''
 --- but only for an entry actually obtained through a \cnaclass{LeaderboardWriter}, since only
-those have a persistence hook installed; setting \texttt{Rating} on an entry obtained from a
-\cnaclass{LeaderboardReader} is deliberately a no-op.
+those have a persistence hook installed. Setting \texttt{Rating} on an entry obtained from a
+\cnaclass{LeaderboardReader} still changes that in-memory value, but no persistence hook runs,
+so the change is not written back to disk.
 
 \begin{lstlisting}
 // Worked example: submitting a new best score. Assigning Rating is the
@@ -133,8 +137,8 @@ default --- a distinction this namespace's own tracking documentation states pla
 which is easy to assume away if you only read the method names. \texttt{Key},
 \texttt{IsEarned} (always \texttt{true} for anything \texttt{GetAchievements} returns at all,
 since the local store only ever records achievements that were actually earned), and
-\texttt{EarnedDateTime} are all real, locally persisted data, round-tripped correctly across
-process runs. \texttt{Name}, \texttt{Description}, \texttt{GamerScore}, and
+\texttt{EarnedDateTime} are all real, locally persisted data, subject to the JSON-number tick
+quantization described above. \texttt{Name}, \texttt{Description}, \texttt{GamerScore}, and
 \texttt{DisplayBeforeEarned}, by contrast, stay at fixed construction-time defaults (empty
 string, \texttt{0}, and \texttt{true} respectively) on every single \cnaclass{Achievement}
 \texttt{GetAchievements} returns:
@@ -165,8 +169,9 @@ expecting \cnaclass{Achievement} itself to already know its own display name.
 \section{Guide: mostly a stub, with two real, CNA-built exceptions}
 
 \cnaclass{Guide} is where this namespace's ``real versus stub'' distinction is sharpest. Its
-fourteen empty \texttt{Show*} methods plus \texttt{DelayNotifications} are \texttt{DelayNotifications}, \texttt{ShowComposeMessage},
-\texttt{ShowFriendRequest}, \texttt{ShowFriends}, both \texttt{ShowGameInvite} overloads,
+empty UI family comprises \texttt{DelayNotifications} plus fourteen \texttt{Show*} call shapes:
+\texttt{ShowComposeMessage}, \texttt{ShowFriendRequest}, \texttt{ShowFriends}, both
+\texttt{ShowGameInvite} overloads,
 \texttt{ShowGamerCard}, \texttt{ShowMarketplace}, \texttt{ShowMessages}, \texttt{ShowParty},
 \texttt{ShowPartySessions}, \texttt{ShowPlayerReview}, \texttt{ShowPlayers},
 \texttt{ShowSignIn}, and the CNAEXT \texttt{ShowAchievementsEXT}. This family is a
@@ -231,7 +236,7 @@ System::IAsyncResult* pending = Guide::BeginShowKeyboardInput(
     /* defaultText */ "", nullptr, std::any{}, /* usePasswordMode */ true);
 
 // In Game::Draw(), called once per frame: renders the title/description
-// and the typed-so-far text, masked as '*' per character on screen --
+// and the typed-so-far text, masked as '*' per UTF-16 code unit on screen --
 // the masking is display-only, never applied to the value EndShowKeyboardInput
 // actually returns.
 Guide::RenderPendingKeyboardInputEXT(*graphicsDevice, spriteBatch, uiFont, whitePixel);
@@ -276,9 +281,9 @@ remote-presence authority.
 (this book's game-loop chapter) before any \cnaclass{Gamer} / \cnaclass{Guide} API is
 used, matching real XNA~4.0's own PC requirement exactly. \cnaclass{GamerServicesDispatcher}
 is the actual entry point creating and freeing the local, stub-style
-\cnaclass{SignedInGamer} set each time it initializes, and pumping the async machinery every
-other class in this namespace relies on for its synchronously-completing
-\texttt{Begin} / \texttt{End} pairs.
+\cnaclass{SignedInGamer} set each time it initializes. The component calls the dispatcher's
+compatibility \texttt{Update()} once per game update, but that method is empty; the locally
+synchronous \texttt{Begin} / \texttt{End} implementations mark their own actions complete.
 
 \subsection{A worked example: a real cross-namespace hang, and how it was actually fixed}
 \label{sec:gamerservices-hang}
@@ -303,10 +308,9 @@ bool GamerServicesDispatcher::UpdateAsync()
 \end{lstlisting}
 
 \texttt{isInitialized\_} is set \texttt{true} once, permanently, by \texttt{Initialize()} ---
-which every real XNA sample's own \cnaclass{GamerServicesComponent} constructor calls
-immediately. So in any game that actually adds this component (which the requirement above says
-every game using this namespace must), \texttt{UpdateAsync()} unconditionally returns
-\texttt{true} forever, starting from the very first frame. FNA's own
+which \cnaclass{GamerServicesComponent::Initialize()} calls during the owning game's component
+initialization (the component constructor itself only stores the game reference). So after that
+initialization, \texttt{UpdateAsync()} unconditionally returns \texttt{true} forever. FNA's own
 \cnaclass{NetworkSession} relies on \texttt{UpdateAsync()} eventually returning \texttt{false}
 to know a pending \texttt{NetworkSessionAction} is safe to complete --- a real, independently
 confirmed bug in \emph{FNA itself}, not something this port introduced: calling
