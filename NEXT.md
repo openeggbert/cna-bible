@@ -358,6 +358,13 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     spellings. Intentional concept pairs such as XNB/`.xnb` and free-direct/`FREEDIRECT` remain.
     A verifier rule prevents the known aliases from returning. Only physical index pages 704–709
     changed; all six were rendered and read at full size, clean.
+46. **Visible and embedded authorship now agree.** The custom title page displays Robert Vokac,
+    matching the long-standing `pdfauthor`, and the otherwise-unused `main.tex` author field is no
+    longer contradictory. A whole-PDF pixel comparison found only physical page 1 changed; it was
+    rendered and inspected at full size, clean. The verifier now fixes the title, author, subject
+    and keywords as release invariants. Publication still needs an owner-selected license, and the
+    current PDF is searchable but untagged rather than claiming PDF/UA; both are explicit owner
+    decisions in `PLAN.md` §7.
 
 ## Do this next
 
@@ -522,6 +529,8 @@ Everything through Phase G is verified:
 - The index audit found no empty key or out-of-range page reference; all generated references stay
   within printed pages 1–670. Six duplicate API aliases were consolidated, and final physical
   pages 704–709 were individually inspected at full size.
+- The title page and embedded metadata now identify the same author. Only physical page 1 changed
+  visually and it was inspected clean; license and tagged-PDF policy remain owner release choices.
 
 **No known writing, correction or PDF-verification defect is pending.**
 

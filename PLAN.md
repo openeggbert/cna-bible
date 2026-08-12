@@ -382,8 +382,13 @@ log grep replaces.
 
 ## 7. Unresolved questions for the project owner
 
-None blocking. One environment note: TeX Live was absent at session start and was installed
-mid-session at the owner's direction, so the build and visual passes are available again.
+None blocking. Before public distribution, the owner still needs to choose and record the book's
+license/copyright terms; the repository currently contains no `LICENSE`, `COPYING`, or equivalent
+declaration, so this session did not invent one. The PDF is also not tagged and makes no PDF/UA
+claim (`pdfinfo` reports `Tagged: no`); decide whether an accessible tagged edition is a release
+requirement rather than inferring one from the searchable text layer. One environment note: TeX
+Live was absent at session start and was installed mid-session at the owner's direction, so the
+build and visual passes are available again.
 
 ---
 
@@ -1115,3 +1120,9 @@ mid-session at the owner's direction, so the build and visual passes are availab
   such as XNB/`.xnb` and free-direct/`FREEDIRECT`. Added a verifier guard for the known aliases.
   A whole-PDF pixel comparison isolated physical index pages 704–709; all six final pages were
   rendered and read individually at full size with no clipping, collision or sparse-tail defect.
+- Reconciled visible and embedded authorship: the custom title page and formerly unused
+  `main.tex` author field now name Robert Vokac, matching the PDF metadata set since the original
+  scaffold. A 709-page raster comparison found only physical page 1 changed; the final title page
+  was inspected full-size and is balanced and collision-free. The verifier now fixes title,
+  author, subject and keywords as release invariants. Recorded the missing license declaration and
+  untagged-PDF state as owner decisions in §7 instead of inventing publication policy.

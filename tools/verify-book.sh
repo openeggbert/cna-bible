@@ -335,6 +335,10 @@ fi
 encrypted=$(printf '%s\n' "$pdf_info" | awk -F: '/^Encrypted:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
 form=$(printf '%s\n' "$pdf_info" | awk -F: '/^Form:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
 javascript=$(printf '%s\n' "$pdf_info" | awk -F: '/^JavaScript:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
+title=$(printf '%s\n' "$pdf_info" | awk -F: '/^Title:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
+author=$(printf '%s\n' "$pdf_info" | awk -F: '/^Author:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
+subject=$(printf '%s\n' "$pdf_info" | awk -F: '/^Subject:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
+keywords=$(printf '%s\n' "$pdf_info" | awk -F: '/^Keywords:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
 page_boxes=$(pdfinfo -f 1 -l "$pages" -box "$pdf" 2>/dev/null)
 a4_pages=$(printf '%s\n' "$page_boxes" \
     | grep -cE '^Page +[0-9]+ size:  +595\.276 x 841\.89 pts \(A4\)$' || true)
@@ -350,6 +354,13 @@ if [ "$form" = "none" ] && [ "$javascript" = "no" ]; then
     pass "PDF contains no forms or JavaScript"
 else
     fail "unexpected active PDF content (form='${form:-?}', JavaScript='${javascript:-?}')"
+fi
+if [ "$title" = "The CNA Bible" ] && [ "$author" = "Robert Vokac" ] \
+   && [ "$subject" = "A source-grounded guide to CNA and the Microsoft XNA 4.0 programming model" ] \
+   && [ "$keywords" = "CNA, Microsoft XNA, C++23, graphics renderers, game development" ]; then
+    pass "PDF title, author, subject, and keywords match the release metadata"
+else
+    fail "unexpected or incomplete PDF release metadata"
 fi
 
 # LaTeX's Overfull diagnostics include harmless internal boxes as well as real clipping. Parse
