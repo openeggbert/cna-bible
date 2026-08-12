@@ -48,6 +48,9 @@ before the current expansion phase started; useful for background, not for "what
   writing batch; its PDF checks still do not replace reading rendered images of touched pages.
 - `tools/build-release.sh` — the sealed fixed-date release reproduction. It requires the reviewed
   byte fingerprint and is not the command for an in-progress manuscript change.
+- `tools/book-lock.sh` — sourced lock protocol shared by the release, verifier and page renderer.
+  New commands that read the built artifact must take its shared lock; commands that write TeX
+  auxiliaries, logs or the PDF must take its exclusive lock.
 
 ## Build
 

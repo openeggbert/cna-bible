@@ -735,6 +735,10 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      inherited exclusive descriptor into the nested verifier without weakening the transaction.
      The child accepts that descriptor only when its device/inode identity matches the correct
      repository lock, so an arbitrary environment-supplied open file cannot bypass serialization.
+105. **The shared lock is part of the durable contributor contract.** README lists the helper
+     beside the public tools, and `CLAUDE.md` requires every future artifact reader to take a
+     shared lock and every aux/log/PDF writer an exclusive lock. This prevents a later entry point
+     from silently reintroducing mid-build reads after the current three tools were reconciled.
 
 ## Do this next
 

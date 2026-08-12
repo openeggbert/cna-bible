@@ -67,6 +67,8 @@ physical PDF page changed by a content batch.
 - `tools/cna-screenshot-infra/` — reproducible real-screenshot support for
   graphics chapters.
 - `tools/build-release.sh` — fixed-date sealed release build, fingerprint check and full verifier.
+- `tools/book-lock.sh` — shared/exclusive artifact-lock helper sourced by all build, verify, and
+  visual-render entry points; do not bypass it when adding another PDF consumer or writer.
 
 ## Contribution rules
 
