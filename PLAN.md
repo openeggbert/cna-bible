@@ -438,6 +438,7 @@ log grep replaces.
 | 2026-08-12 | Post-G artifact-lock contributor contract | Listed `tools/book-lock.sh` in README and made CLAUDE require shared locks for future artifact readers and exclusive locks for aux/log/PDF writers, so new entry points do not bypass the reconciled concurrency boundary; documentation only |
 | 2026-08-12 | Post-G idempotent lock acquisition | Made repeated compatible helper calls reuse the validated repository descriptor, reject shared-to-exclusive upgrade explicitly, and close every newly opened descriptor when non-blocking acquisition fails; future composed tools cannot leak FDs or race on implicit conversion |
 | 2026-08-12 | Post-G sealed-tool cleanliness | Extended the early Git preflight from the exact clean `latex/` tree to require all staged, unstaged and non-ignored untracked state under `tools/` empty as well; sealed results can no longer be defined by uncommitted build/verifier/helper logic, while documentation-only commits remain compatible |
+| 2026-08-12 | Post-G hardened-HEAD clean archive | Exported commit `ac30c65` with `git archive`, created only an unsigned local Git baseline for cleanliness checks, and ran the sealed workflow with no PDF/aux/workspace-only helper; it reproduced 3,314,744-byte SHA-256 `7c877ef...` and passed the complete verifier including shared locking, transaction, source/image closure and rewrite/independent parsing |
 
 ---
 
@@ -1421,3 +1422,5 @@ build and visual passes are available again.
   exclusive upgrades, and closed fresh descriptors immediately on contention failure.
 - Required sealed runs to use a clean `HEAD`-matching `tools/` tree as well as the exact reviewed
   `latex/` tree, preventing uncommitted verification logic from defining a release result.
+- Re-ran the entire hardened workflow from a clean tracked archive of `ac30c65`; with only a local
+  unsigned baseline, it recreated the exact sealed PDF and passed every current verifier check.

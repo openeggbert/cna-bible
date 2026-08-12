@@ -749,6 +749,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      in addition to the exact reviewed `latex/` tree. Documentation-only commits remain valid,
      while an experimental verifier/helper/release-script edit must be committed and reviewable
      before it can define the meaning of a sealed result.
+108. **The current hardened HEAD passes from a clean tracked archive.** A fresh `git archive` of
+     commit `ac30c65` was initialized only with a local unsigned baseline for cleanliness checks;
+     it contained no PDF, auxiliaries or workspace-only helper. `tools/build-release.sh` created
+     the exact 3,314,744-byte `7c877ef...` artifact and passed the entire verifier, including the
+     exported shared lock, transaction, source/image closures and rewrite/independent-parse checks.
 
 ## Do this next
 
