@@ -836,6 +836,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      extraction now requires successful parser status, not merely matching emitted dates. After
      the nested full verifier, the transaction re-reads `HEAD`, committed `latex/`/`tools/` trees
      and both clean statuses; any drift restores the prior reviewed PDF instead of reporting success.
+127. **The final provenance guard is rollback-tested.** An isolated committed fixture used a
+     no-op builder that installed the exact sealed PDF and a verifier that returned 0 only after
+     creating an untracked `latex/` drift. Despite unchanged HEAD and committed tree IDs, release
+     exited 1, named the provenance change, restored the marker prior PDF byte-for-byte and left
+     zero transaction snapshots; the drift remained available for diagnosis.
 
 ## Do this next
 

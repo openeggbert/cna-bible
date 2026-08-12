@@ -1470,3 +1470,5 @@ build and visual passes are available again.
   and owner, restrict it through procfs to `0600`, then recheck before flock; legacy mode migrates.
 - Require successful MuPDF metadata status and recheck HEAD, committed source/tool trees and clean
   statuses after the nested verifier, rolling back if repository provenance changed during release.
+- Proved that final guard in an isolated committed fixture: untracked `latex/` drift created by a
+  successful verifier caused status 1, byte-identical prior-PDF restore and zero snapshot residue.
