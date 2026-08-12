@@ -34,16 +34,18 @@ whose history best illustrates a recurring theme in this Part: a class of bug wh
 interface method accepts every parameter it is supposed to, but the implementation behind it
 quietly discards most of them.
 
-\section{Current test baseline}
+\section{Recorded Vulkan campaign baseline}
 
-At the time of writing, the full unit suite passes 4{,}371 of 4{,}373 tests (with two
-hardware-dependent skips), and the Vulkan-specific \texttt{ctest} suite passes 126 of 127.
+The recorded Vulkan validation campaign reported 4{,}371 passes in a 4{,}373-case configured
+population, with two hardware-dependent skips; its renderer-specific \texttt{ctest} population
+passed 126 of 127.  These are campaign populations, not a universal current test count; the
+counting model is in Chapter~\ref{ch:counting-discipline}.
 The single remaining failure, \texttt{Vulkan\_DepthBias}, is a narrow one: only the most
 extreme tested magnitude of depth bias produces no observable effect
 (\S\ref{sec:vulkan-depthbias}), a symptom shared with an equivalent finding on
 \texttt{D3D9}. Historically this renderer also carried five failing \cnaclass{BlendState}
 tests and three segfaulting skinned-model content tests --- both fully resolved, with no
-test exclusions needed to reach the current clean baseline.
+test exclusions needed to reach the otherwise clean campaign baseline.
 
 \section{BlendState: from ``almost entirely fake'' to fully real}
 
@@ -123,7 +125,7 @@ and \texttt{End()}.
 \section{Remaining limitation}
 \label{sec:vulkan-depthbias}
 
-Exactly one genuine, unresolved gap remains on this renderer at the time of writing: an
+Exactly one genuine, unresolved gap remains on this renderer at the pinned revision: an
 isolated \cnaclass{RasterizerState.DepthBias} extreme-magnitude sub-case, where real hardware
 bias produced no observable effect at any tested magnitude in this project's own sandboxed
 environment --- suspected to be an environment or driver limitation shared with an equivalent
@@ -530,7 +532,7 @@ unchanged to Vulkan.
 
 \section{A documented, not a hidden, coverage gap}
 
-One honest gap in \emph{testing}, not rendering: at the time of writing there is no dedicated
+One honest gap in \emph{testing}, not rendering: at the pinned revision there is no dedicated
 pixel test for \cnaclass{SpriteBatch}'s sort-mode/rotation/scale/crop/flip behavior, for
 \cnaclass{SpriteFont} glyph placement, or for a multi-mesh \cnaclass{Model} hierarchy on this
 renderer specifically --- confirmed by directly searching the test suite for matching test

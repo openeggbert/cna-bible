@@ -105,6 +105,22 @@ which reads as the sprite ``orbiting'' \texttt{spritePosition} in a circle rathe
 in place; the visual symptom is easy to misdiagnose as a rotation-math bug when the actual
 cause is simply the wrong \texttt{origin}.
 
+\section{Vector positions are quantized before they reach a renderer}
+
+The \cnaclass{Vector2}-position overloads do not preserve sub-pixel destinations. Their shared
+queue record stores an integer \cnaclass{Rectangle}; CNA validates the position and scaled size,
+then converts each floating component with truncation toward zero. Thus \texttt{(10.9f, 4.9f)}
+and \texttt{(10.1f, 4.1f)} both enter every renderer as \texttt{(10,4)}. This is a shared
+\cnaclass{SpriteBatch} fidelity difference from XNA, not a renderer-specific rasterization rule.
+
+Text follows a subtly different policy. \texttt{DrawString()} computes each transformed glyph
+destination in floating point and rounds it to the nearest integer before storing the same
+rectangle shape. A sprite and a glyph submitted at the same fractional coordinate can therefore
+land on adjacent pixels. Both conversion helpers reject non-finite values and results outside
+the signed 32-bit range; the safety check prevents undefined conversion, but does not restore the
+lost fractional position. Code that depends on smooth sub-pixel camera motion must account for
+this quantization above the renderer layer.
+
 \section{The D3D9 half-pixel offset: real, renderer-local, and a genuine mutation-testing trap}
 
 Real XNA~4.0 ran exclusively on Direct3D~9, whose rasterizer places texel centers at integer

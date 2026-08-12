@@ -460,9 +460,12 @@ memory-safety issues through a systematic ``what happens if operation X runs con
 with operation Y'' review: a mixer generation-counter pair with a real use-after-free,
 a heap-buffer-overflow in XACT name parsing, and a genuine data race in \cnaclass{WaveBank}'s
 own cache --- \texttt{Dispose()} could race a concurrently in-flight
-\texttt{GetSoundEffect()} decode --- fixed with a mutex. Two intermittent, undiagnosed
-crashes in the full test suite remain open at the time of writing, both resistant to
-diagnosis under both \texttt{gdb} and Valgrind so far.
+\texttt{GetSoundEffect()} decode --- fixed with a mutex. Two crash findings remain open at the
+pinned revision, but they are not the same shape.  \texttt{AUD-15-021} is an intermittent
+late failure after a long audio-filter run; \texttt{AUD-15-022} is deterministic only for a
+narrow cross-suite Cue/DynamicSoundEffectInstance ordering at process teardown.  ASan and TSan
+perturb both reproductions, while \texttt{gdb} and Valgrind were unavailable for the recorded
+campaign.  Neither finding is evidence that every ordinary full-suite run crashes.
 
 \section{Testing what reaches the mixer}
 

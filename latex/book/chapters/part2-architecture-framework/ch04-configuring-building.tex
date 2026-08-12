@@ -21,7 +21,7 @@ Before the first build, CNA's vendored SDL3/SDL3\_image/SDL3\_mixer submodules m
 populated:
 
 \begin{lstlisting}[style=cnashell]
-git submodule update --init --recursive
+git submodule update --init
 \end{lstlisting}
 
 A GitHub ``Download ZIP'' archive does \emph{not} include submodule contents. Building from
@@ -35,7 +35,7 @@ vendored submodules.
 \section{The default build: Linux, the OpenGL ES 3 renderer}
 
 \begin{lstlisting}[style=cnashell]
-git submodule update --init --recursive
+git submodule update --init
 cmake -S . -B build -DCNA_GRAPHICS_RENDERER=OPENGLES3
 cmake --build build --target CNA CnaTests
 ctest --test-dir build --output-on-failure
@@ -123,20 +123,18 @@ Every one of these is independent of \texttt{-DCNA\_GRAPHICS\_RENDERER}
 (Table~\ref{tab:backend-option-list}).
 
 \begin{sourcenote}
-\textbf{Two same-shaped names, two unrelated things.} \texttt{CNA\_CNAEXT} (a CMake
+\textbf{Two similar spellings at different gates.} \texttt{CNA\_CNAEXT} (a CMake
 \texttt{option()}, off by default) and \texttt{CNAEXT} (the marker macro from
-\S\ref{sec:cnaext}) share a name fragment purely by coincidence of naming convention, not by
-design --- confusing the two is an easy real mistake to make when skimming the source. The
+\S\ref{sec:cnaext}) are independent --- confusing them is an easy real mistake to make when
+skimming the source. The
 marker macro tags an individual declaration as ``not part of stock XNA 4.0'' and is present in
 every build regardless of any flag. \texttt{CNA\_CNAEXT} the CMake option instead gates an
-entirely separate, genuinely optional feature: a settings-bag-only ``extended render
-pipeline'' (\cnaclass{RenderPipelineSettings}, under \cnans{CNA::Graphics}, guarded behind
-\texttt{\#ifdef CNA\_CNAEXT} in its own header) covering HDR exposure/gamma, tonemapping mode,
-shadow quality, and PBR material settings. Its own header comment is explicit about scope:
-it ``does not perform any rendering itself'' --- it is configuration a renderer can read and
-act on, with renderer support for each individual feature not yet implemented across the board
-as of the snapshot this book draws from. Building with plain \texttt{cmake -S . -B build}
-(the option's own \texttt{OFF} default) never compiles this pipeline in at all.
+entire \cnans{CNA::Graphics} engine layer in \texttt{modules/graphics-ext}: PBR material data,
+CRT/depth/ASCII post-process effects, and \cnaclass{RenderPipelineSettings}.  The last of these is
+only a settings bag, not a description of the whole extension module.  Building with the option's
+\texttt{OFF} default leaves the guarded declarations and implementations out.  Separately,
+\texttt{CNA::CnaExt} is a link umbrella over graphics-ext and devices-ext; Appendix~\ref{ch:cnaext-catalog}
+maps all three mechanisms.
 \end{sourcenote}
 
 \section{Windows, natively and cross-compiled}
@@ -146,7 +144,7 @@ specified, and SDL is built from the vendored submodule with no pre-built binari
 \texttt{CMAKE\_PREFIX\_PATH} configuration needed:
 
 \begin{lstlisting}[style=cnashell]
-git submodule update --init --recursive
+git submodule update --init
 cmake -S . -B build-win -DCNA_GRAPHICS_RENDERER=SDL_RENDERER
 cmake --build build-win --target CNA CnaTests
 \end{lstlisting}
@@ -160,7 +158,7 @@ verified through:
 \begin{lstlisting}[style=cnashell]
 sudo apt install mingw-w64
 
-git submodule update --init --recursive
+git submodule update --init
 cmake -S . -B build-windows \
       -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/mingw-w64.cmake \
       -DCNA_GRAPHICS_RENDERER=SDL_RENDERER
@@ -287,13 +285,10 @@ is the minimal environment/rendering-path smoke test mentioned throughout the re
 in Part~IV.
 
 \begin{sourcenote}
-\textbf{On CI coverage.} As documented in CNA's own README, project CI is Linux-only and
-partial: at the time this book's source material was gathered, CI ran only the
-\texttt{Input} and \texttt{Devices} / \texttt{Sensors} GoogleTest suites --- not the full
-roughly 4\,370-test unit suite, and not the roughly 490-test GPU pixel-test suite across the
-four established graphics renderers. Everything this book states about Graphics-layer
-correctness is verified by running the suites locally and by hand, not by an automated
-Graphics CI gate, and there is no Windows, macOS, or Android CI at all --- those platforms
-are verified manually. Treat a green CI badge, if you see one, as covering a narrower slice
-than ``the whole project passes.''
+\textbf{On CI coverage.} At the pin, six workflows trigger automatically and two Windows
+renderer workflows are manual.  The intended general unfiltered job and two Input legs carry
+a retired renderer value and stop during configuration; other automatic jobs exercise narrower
+Input, Devices, Web, Metal, or arithmetic populations.  Chapter~\ref{ch:ci-reality} traces each
+route from trigger through verdict.  Treat a green badge as evidence for those engaged routes,
+not as a universal project-wide test count or proof that every renderer ran.
 \end{sourcenote}

@@ -63,7 +63,7 @@ renderer.
   tooling (\S\ref{sec:worked-drawprimitives}) needs no display server at all. Otherwise, three
   paths are tried in order: a runtime \texttt{PresentationParameters::HeadlessEXT} opt-in
   (honest about its own limits --- only a renderer that can genuinely run without a swap chain,
-  D3D12 at the time of writing, supports this; a renderer that can't, like EasyGL, whose GL
+  D3D12 at the pinned revision, supports this; a renderer that can't, like EasyGL, whose GL
   context is bound to a window, throws from its own constructor instead of silently
   papering over the request); an explicit externally-supplied window handle via
   \texttt{PresentationParameters::DeviceWindowHandle} (borrowed, never validated or destroyed
@@ -180,6 +180,15 @@ mutable-reference-returning getter onto a \cnaclass{TextureCollection} or
 (\texttt{device.getTexturesProperty()[0] = \&myTexture;}), and neither has a corresponding
 \texttt{set} property, since the collection itself is what's mutated, not replaced wholesale.
 
+The names overstate the current rendering path. \cnaclass{TextureCollection} enforces slot
+range, disposed-resource, and render-target binding invariants, and disposal clears matching
+slots. But \cnaclass{GraphicsDevice}'s draw preparation reads only the sampler collections:
+\texttt{applySamplerStatesToRenderer()} forwards filter/address/mip state and never reads either
+texture collection. Textures reach a real draw through an effect's \cnaclass{GpuDrawParams} or
+\cnaclass{ShaderEffect::SetTexture()}, not merely by assigning
+\texttt{GraphicsDevice.Textures[slot]}. The public slots are therefore validated bookkeeping,
+not proof of a GPU binding.
+
 \subsection{Pipeline state objects}
 
 \texttt{BlendState}, \texttt{DepthStencilState}, and \texttt{RasterizerState} each follow the
@@ -187,6 +196,9 @@ same three-overload shape: a mutable-reference getter, a \texttt{const}-referenc
 \texttt{void set...(const T\&)} setter that copies the given state object into the device's own
 live state (Chapter~\ref{ch:state-objects} covers all three types' own field-by-field meaning
 in full --- this chapter only covers how \cnaclass{GraphicsDevice} exposes them).
+That copy has a caller-visible consequence: unlike XNA's reference semantics, mutating the
+original state object after assignment does not alter the device. CNA also neither freezes a
+bound state object nor throws when it is edited; assign the changed value again to apply it.
 \texttt{ScissorRectangle} (a \cnaclass{Rectangle}) and \texttt{Viewport} (a \cnaclass{Viewport})
 follow the simpler get/set-by-value shape. \texttt{BlendFactor} (a \cnaclass{Color}),
 \texttt{MultiSampleMask} (an \texttt{int} bitmask), and \texttt{ReferenceStencil} (an
@@ -330,7 +342,7 @@ same-size reset behavior, a scissor reset, adapter replacement, or that the nati
 request was accepted. In particular, CNA's same-size reset preserves custom viewport/scissor
 state; see \S\ref{sec:graphicsdevice-viewport-scissor} for that separate, caller-visible gap.
 
-\subsection{The manager is a separate lifecycle service, not a device-event forwarder}
+\subsection{The manager is a lifecycle service and a device-event forwarder}
 
 The familiar XNA declaration \texttt{GraphicsDeviceManager graphics(this)} does not give this
 manager C++ ownership of the native device in CNA. The \cnaclass{Game} base has already
@@ -344,17 +356,16 @@ reconfigures the existing game-owned device through \texttt{Reset()}; it raises 
 \texttt{DeviceCreated} afterward. It does \emph{not} raise the manager's
 \texttt{DeviceResetting} or \texttt{DeviceReset} for this initial configuration.
 
-Later, a preference-changing \texttt{ApplyChanges()} has two distinct event layers. It first
-constructs and offers the mutable settings object, performs the game-window's begin/end screen
-change, raises the \emph{manager}'s \texttt{DeviceResetting}, and calls the device's
-\texttt{Reset()}. The latter raises the \emph{device}'s own resetting/reset pair; only after it
-returns does the manager raise its \texttt{DeviceReset} and clear its preference-dirty flag.
-Thus a program subscribed to both objects sees the four callbacks in this order:
-\texttt{manager Resetting}, \texttt{device Resetting}, \texttt{device Reset},
-\texttt{manager Reset}. They are not duplicate deliveries through one subscription: CNA never
-subscribes the manager to the device events. A direct public \texttt{GraphicsDevice::Reset()}
-therefore reaches device listeners only, not listeners obtained through
-\texttt{IGraphicsDeviceService}.
+Later, a preference-changing \texttt{ApplyChanges()} constructs and offers the mutable settings
+object, performs the game-window's begin/end screen change, and calls the device's
+\texttt{Reset()}. It does \emph{not} raise a second manager-owned pair around that call.
+\texttt{CreateDevice()} has already subscribed the manager to the device's
+\texttt{DeviceResetting} and \texttt{DeviceReset} events; its handlers re-raise the manager
+events with the manager as sender. That same bridge means a renderer-detected loss/reset ---
+currently wired by D3D9 --- reaches \texttt{IGraphicsDeviceService} listeners. The subscription
+is installed only after startup's settle-in reset, so initial creation raises
+\texttt{DeviceCreated} without a reset pair, and a guard prevents repeated \texttt{CreateDevice()}
+calls from accumulating duplicate handlers.
 
 \texttt{PreparingDeviceSettings} is the supported opportunity to alter the candidate settings
 record for that one operation. It is raised after all manager preference fields have been copied
@@ -366,22 +377,19 @@ that replaces the otherwise non-null adapter pointer with \texttt{nullptr} reach
 dereference in \texttt{applyToExistingRenderer()}. Use this event to refine valid settings, not
 to manufacture an absent adapter.
 
-All these event invocations propagate listener exceptions. A throw before the final manager
-reset notification leaves \texttt{prefsChanged\_} true, so a later \texttt{ApplyChanges()} tries
-again after whatever window/device work already occurred. A throw from the final manager-reset
-listener occurs after the device reset but before that flag is cleared, and therefore causes the
-next call to repeat the completed reset. Similarly, setting a manager preference from any of
-these callbacks is not durable: the outer call clears the flag afterward. There is no re-entrancy
-guard, so a handler must not call \texttt{ApplyChanges()} recursively.
+All these event invocations propagate listener exceptions. Because manager callbacks are nested
+inside the device events, a throw from a manager resetting listener can interrupt the device's
+staged reset, while a throw from a manager reset listener occurs after the shared reset work but
+before \texttt{ApplyChanges()} clears \texttt{prefsChanged\_}. A later call can therefore retry
+partly or fully completed work. Similarly, setting a manager preference from a callback is not
+durable: the outer call clears the flag afterward. There is no re-entrancy guard, so a handler
+must not call \texttt{ApplyChanges()} recursively.
 
-The registered EasyGL program proves only the manager-level pair and its order after an explicit
-width preference change. Its comment still says the constructor performed an implicit apply; the
-test actually subscribes in \texttt{Initialize()}, after \texttt{DoInitialize()} has already
-performed the one startup configuration. The SDL Renderer program proves the separate device
-pair for direct \texttt{Reset()}, not the service bridge. The unit file for
-\cnaclass{GraphicsDeviceManager} has no live test, and no located test covers startup routing,
-both subscriptions together, \texttt{PreparingDeviceSettings} persistence, listener exceptions,
-or re-entrancy.
+The current unit file exercises both halves of the bridge: an explicit preference change must
+raise the manager pair exactly once, and directly raising the device pair (the same seam used by
+a renderer-detected loss) must reach manager listeners with the manager as sender. The SDL
+Renderer integration program separately proves the device pair around a direct reset. No located
+test covers listener exceptions, re-entrancy, or \texttt{PreparingDeviceSettings} persistence.
 
 \subsection{The resize subscription outlives service registration}
 
@@ -419,26 +427,18 @@ delegate. CNA's raw capturing lambda supplies no such lifetime retention, so the
 similar port can become native use-after-free instead. No located unit or integration test
 disposes/replaces a manager and then resizes its still-live game window.
 
-\subsection{Disposal does not currently deliver the advertised device teardown path}
+\subsection{Disposal delivers the content hook without transferring device ownership}
 
-\texttt{DeviceDisposing} is present in the manager and in
-\texttt{IGraphicsDeviceService}, but it has no reachable ordinary CNA delivery path. Both of the
-manager's calls to \texttt{OnDeviceDisposing()} require \texttt{ownsGraphicsDevice\_}; that flag
-starts false and the current implementation only assigns it false. A game-attached manager
-therefore does not dispose the game-owned device and does not raise \texttt{DeviceDisposing} when
-the manager is disposed. After normal initialization, an explicit \texttt{Game::Dispose()} does
-call \texttt{Dispose()} on its cached graphics service, but this remains only service
-unregistration plus the manager's \texttt{Disposed} event.
-
-The consequence reaches the familiar game virtual too: the current \cnaclass{Game} has no call
-site for its own \texttt{UnloadContent()}. It also never subscribes that virtual to the service's
-\texttt{DeviceDisposing} event. A \cnaclass{DrawableGameComponent} differs here --- its own
-\texttt{Dispose(bool)} calls its component \texttt{UnloadContent()} --- but a game's override is
-not an automatic shutdown or device-recreation hook in the current code. FNA wires a newly
-created device's disposing/reset events into its manager and has \cnaclass{Game} subscribe to
-the service before loading content; those wires are absent from the current CNA source even
-though an older repository-history change described them. Treat explicitly owned resources and
-application shutdown as requiring their own deterministic cleanup.
+\texttt{DeviceDisposing} now has an ordinary CNA delivery path. A game-attached manager still
+does not own or delete the \cnaclass{Game}'s value-member device, but
+\texttt{GraphicsDeviceManager::Dispose(bool)} raises \texttt{DeviceDisposing} whenever a managed
+device exists, independently of \texttt{ownsGraphicsDevice\_}; only the actual delete remains
+ownership-gated. During \cnaclass{Game::Initialize()}, the game subscribes its
+\texttt{UnloadContent()} virtual to that event. The normal
+\texttt{Game::Dispose()} $\rightarrow$ service disposal path consequently invokes
+\texttt{UnloadContent()} once, and focused tests cover both that delivery and repeated-dispose
+suppression. This is a lifecycle notification, not evidence that the manager freed the game-owned
+device or every caller-owned resource.
 
 Finally, \texttt{GraphicsDeviceManager::Dispose(bool)} sets its private \texttt{disposed\_} flag
 \emph{after} raising \texttt{Disposed}. A handler which calls \texttt{Dispose()} again observes

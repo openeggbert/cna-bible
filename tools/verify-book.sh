@@ -158,7 +158,14 @@ else
 fi
 
 for term in NOXNA "both volumes" "this volume" "Volume I" "Volume II"; do
-    n=$(grep -rio "$term" "$chapters" "$front" 2>/dev/null | wc -l)
+    if [ "$term" = "NOXNA" ]; then
+        # Three compatibility labels intentionally retain the old spelling so incoming links
+        # from the previous edition keep resolving; they are not compiled terminology.
+        n=$(grep -riw "$term" "$chapters" "$front" 2>/dev/null \
+            | grep -ivE '\\label\{[^}]*noxna' | wc -l)
+    else
+        n=$(grep -riw "$term" "$chapters" "$front" 2>/dev/null | wc -l)
+    fi
     [ "$n" -gt 0 ] && info "term '$term': $n occurrence(s) -- inspect each, some may be legitimately historical"
 done
 

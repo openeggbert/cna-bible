@@ -223,12 +223,13 @@ Fixed by giving \texttt{MoveNext()} the identical \texttt{nullptr} check
 existing tests had never actually exercised, since every prior test disposed an enumerator and
 then called \texttt{getCurrent()}, never \texttt{MoveNext()}, on the disposed instance.
 
-One bug remains explicitly open at the time of writing rather than silently dropped: a real,
-confirmed leak flagged against \texttt{NetworkSession::BeginCreate}, not yet resolved --- worth
-a fuller worked account than the one-line flag it originally got, including a genuinely
-surprising real architectural fact uncovered while tracing it.
+An earlier cross-module audit flagged a real leak against
+\texttt{NetworkSession::BeginCreate}.  It is closed at the pin: every matching \texttt{End*}
+deletes the action before clearing the shared slot, and a live-instance regression test covers a
+complete create cycle.  The investigation still exposes a genuinely surprising architectural
+constraint worth preserving here.
 
-\subsection{A real design surprise found while tracing the flagged leak: one \texttt{Begin*} / \texttt{End*} slot, process-wide}
+\subsection{One \texttt{Begin*} / \texttt{End*} slot, process-wide}
 
 \texttt{activeAction\_}, the internal object every \texttt{BeginCreate} / \texttt{BeginFind} /
 \texttt{BeginJoin} overload allocates to carry state across to its matching \texttt{End*} call,
@@ -262,22 +263,13 @@ session discovery while an earlier \texttt{BeginCreate} on a \emph{different}
 hit this same guard and throw, a real cross-instance interaction a reader might not expect from
 an API that otherwise treats each \cnaclass{NetworkSession} as independent.
 
-The specific leak this section opened with is flagged in this project's own cross-module audit
-trail (\texttt{NEXTaudio.md}, dated 2026-07-06) as ``a confirmed real leak in
-\texttt{NetworkSession::BeginCreate}, out of this branch's scope,'' surfaced by
-\texttt{NetworkSessionTest.UpdateAfterDisposeThrows} failing to clean up under
-LeakSanitizer. Read plainly rather than assumed further than it actually says: the flag names
-the failing test and the suspected function, but the audit that found it was scoped to an
-unrelated Audio-module pass and explicitly did not re-diagnose the Net-module internals further
---- and a separate, earlier note in \texttt{plan\_net.md} independently observes that
-\emph{most} of this project's own \texttt{NetworkSession}-related LeakSanitizer noise traces to
-an ordinary test-code convention (a test calling \texttt{Dispose()} on a session but never
-\texttt{delete}-ing the pointer \texttt{Create()} returned), not a library-internal leak. Both
-of these real, source-grounded accounts are reproduced here rather than silently reconciled into
-one, because this book's own account of them should not claim more certainty about which one
-explains \emph{this specific} flagged test than the project's own audit trail currently
-establishes --- an honest ``flagged, not yet independently re-diagnosed'' is the accurate
-status, not a confident root-cause claim this pass did not actually verify.
+The dated \texttt{NEXTaudio.md} note predates the Net fix.  Current source comments identify the
+original defect precisely: each \texttt{End*} used to assign \texttt{nullptr} without first
+deleting the heap-allocated \texttt{NetworkSessionAction}.  The pinned test
+\texttt{CreateDoesNotLeakNetworkSessionAction} compares the live-instance count before and after
+a full \texttt{Create()} cycle.  Separate LeakSanitizer reports caused by tests that call
+\texttt{Dispose()} but never \texttt{delete} the caller-owned session pointer remain test-code
+cleanup findings; they must not be used to reopen the corrected library leak.
 
 \subsection{A worked example: the double-\texttt{Dispose()} use-after-free, traced in full}
 

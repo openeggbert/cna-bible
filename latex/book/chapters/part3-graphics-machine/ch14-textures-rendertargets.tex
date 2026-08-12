@@ -11,24 +11,24 @@ namespace, before a wave of later fixes closed most of it, covered in full below
 carry two genuinely open gaps of their own. All three are covered here together, with the
 specific per-renderer facts intact rather than smoothed into ``mostly works.''
 
-\section{Texture: the base, and one format that actually works}
+\section{Texture: a shared Color gate with one renderer-specific branch}
 
 \cnaclass{Texture} (inheriting \cnaclass{GraphicsResource}) exposes \texttt{Format}
 (\cnaclass{SurfaceFormat}) and \texttt{LevelCount}, plus a set of static helpers ported from
 FNA's own internal size-calculation methods --- made \texttt{public static} in CNA rather
 than FNA's \texttt{internal}, because three of the four real call sites in CNA are not even
-\cnaclass{Texture} subclasses. The single most consequential method here is
-\texttt{ValidateFormat(format)}: it throws for anything other than
-\cnaclass{SurfaceFormat::Color}. This is enforced at construction time, across
-\cnaclass{Texture2D}, \cnaclass{Texture3D}, and \cnaclass{TextureCube} alike --- meaning the
-other 26 \cnaclass{SurfaceFormat} values (the original 20 XNA values plus 7 FNA-only
-extensions like \texttt{ColorBgraEXT}, \texttt{ColorSrgbEXT}, and the block-compressed
-\texttt{Bc7EXT} family) cannot be used to construct a texture at all today, regardless of
-renderer. \texttt{Dxt1} / \texttt{Dxt3} / \texttt{Dxt5} are the one partial exception, but only
-through the \texttt{.dds} loading path in \texttt{Texture2D::FromStream}
-(\S\ref{sec:texture-streams}), which CPU-decompresses to RGBA8 rather than uploading a real
-compressed texture --- an eight-times VRAM overhead, and no native GPU compressed path exists
-anywhere in the project.
+\cnaclass{Texture} subclasses. The base \texttt{ValidateFormat(format)} method accepts only
+\cnaclass{SurfaceFormat::Color}; every non-Skia build routes ordinary \cnaclass{Texture2D} and
+\cnaclass{RenderTarget2D} construction through that gate, and \cnaclass{Texture3D} plus
+\cnaclass{TextureCube} use it on every renderer.
+
+The compile-time Skia product is the deliberate exception. Its \cnaclass{Texture2D} validator
+admits 26 of the 27 enum values and retains each promoted native layout, including compressed
+DXT/BC7 blocks; \texttt{Dxt5SrgbEXT} is the one refusal. Its render-target validator admits the
+14 formats that FNA reports renderable. The
+exception is therefore specific to two 2D resource classes, not permission to infer broad format
+support from the enum alone. Separately, the portable \texttt{Texture2D::FromStream} DDS route
+recognizes DXT1/3/5 and CPU-decompresses them to RGBA8 before ordinary upload.
 
 \section{A structural deviation that closed since this chapter's own first pass}
 \label{sec:texture3d-inheritance}
@@ -102,15 +102,14 @@ Color topLeft;
 checker.GetData(&topLeft, 0, 1);
 \end{lstlisting}
 
-Two constraints from this chapter's own opening section apply directly to this example, not
-just in the abstract: the two-argument \texttt{Texture2D(device, width, height)} constructor
-defaults to \cnaclass{SurfaceFormat::Color}, the one format \texttt{ValidateFormat} actually
-accepts --- passing any of the other 26 \cnaclass{SurfaceFormat} values to the explicit-format
-constructor overload throws immediately, before a single pixel is ever uploaded. And because
-\texttt{SetData} / \texttt{GetData} are \cnaclass{Color}-only (no generic-template overload for
-an arbitrary pixel struct, unlike real XNA's \texttt{T[]} generic form), a game working with
-any other in-memory pixel representation must convert to \cnaclass{Color} before calling
-\texttt{SetData} --- there is no faster typed path around it.
+Two constraints from this chapter's opening section apply directly to this example. The
+two-argument \texttt{Texture2D(device, width, height)} constructor defaults to
+\cnaclass{SurfaceFormat::Color}, so \cnaclass{Color} is the portable path across renderer
+families. On a non-Skia build, passing any of the other 26 \cnaclass{SurfaceFormat} values to
+the explicit-format constructor throws before upload. The public class does now provide typed
+\texttt{SetData}/\texttt{GetData} overloads for packed vectors, floats, vectors, half formats,
+bytes, and unsigned shorts; those routes become materially useful with Skia's promoted native
+layouts. They are concrete overloads rather than XNA's arbitrary \texttt{T[]} template.
 
 \subsection{Two SetData paths, and why GetData can hide a failed upload}
 \label{sec:texture2d-update-contract}
@@ -457,12 +456,18 @@ cross-renderer level --- throwing if a caller passes more than four bindings, re
 what any individual renderer's own internal buffer happens to be sized for --- closing what
 this section once described as no renderer matching that real XNA limit at all.
 
-\section{SurfaceFormat, in one sentence}
+\section{SurfaceFormat, without flattening the Skia exception}
 
-\texttt{docs/surface-format-support.md} boils the entire 27-value \cnaclass{SurfaceFormat}
-enum down to a single, load-bearing fact: only \cnaclass{SurfaceFormat::Color} is genuinely
-supported by any renderer today, everything else is silently treated as RGBA8 wherever it is
-not rejected outright by \texttt{ValidateFormat} at construction time. One real, historical
+The 27-value \cnaclass{SurfaceFormat} enum describes a wider contract than most configured
+products implement. For 41 renderer families, ordinary texture construction still accepts only
+\cnaclass{SurfaceFormat::Color}; compressed content loading commonly becomes RGBA8 before the GPU.
+Skia is the bounded exception: 26 formats have native \cnaclass{Texture2D} storage and typed
+transfer routes (all except \texttt{Dxt5SrgbEXT}), while only 14 are admitted for
+\cnaclass{RenderTarget2D}. Volume and cube
+textures remain Color-only even there. A format enumerator, a transferable CPU representation,
+and render-target capability are therefore three separate claims.
+
+One real, historical
 bug is worth naming because of what it reveals about how subtle a graphics-correctness bug
 can be: Vulkan's texture path once created images as \texttt{VK\_FORMAT\_R8G8B8A8\_SRGB}
 (wrong --- \cnaclass{SurfaceFormat::Color} is linear, not sRGB) while the swapchain

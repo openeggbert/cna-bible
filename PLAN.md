@@ -73,7 +73,7 @@ current, not stale.
 | **C — structural migration** | **Complete.** The 12-Part / 79-chapter / 8-appendix migration, context-sensitive terminology pass, current selector/identifier migration, and module-owned source-path sweep are complete and PDF-verified clean at 645 pages. |
 | **D — chapter writing** | **Complete.** Seven verified batches rewrote Chapters 19–79 against the pinned source and sibling evidence. |
 | **E — appendices** | **Complete.** Appendices A–H were rebuilt against pinned source and the completed chapter text, then verified as one bounded batch. |
-| **F — whole-book consistency** | **In progress.** The first corrective batch removed stale universal test totals and renderer terminology, then filled five structurally present but unwritten chapters (8–11 and 18) against pinned evidence. Continue the edition-wide factual, cross-reference, duplication, index and visual sweep. |
+| **F — whole-book consistency** | **In progress.** Two verified corrective batches removed stale universal totals/terminology, filled five structurally present but unwritten chapters (8–11 and 18), and reconciled early identity/build/graphics/lifecycle claims with pinned evidence. Continue the edition-wide factual, cross-reference, duplication, index and visual sweep. |
 | **G — final verification** | Not started. |
 
 ### 3.1 Phase A research areas — all delivered
@@ -345,6 +345,7 @@ log grep replaces.
 | 2026-08-12 | Phase D batch 7, Chapters 73–79 | **685 pages**, build clean; makeindex 2,289 / 0 / 0; current CI execution boundary, migration procedure, Blupi case study, critical xna4-spec use, samples/examples catalogs, durable project practice and source-grounded roadmap completed; physical pages 607–640 rendered and reviewed as 4 contact sheets through the Appendix A boundary, with the performance table, long headings, lists and query literals inspected full-size; all automated and visual checks green |
 | 2026-08-12 | Phase E, Appendices A–H | **685 pages**, build clean; makeindex 2,096 / 0 / 0; stale exhaustive catalogs replaced by source-oriented API, renderer, repository, CNAEXT, ecosystem, verification and glTF evidence references; physical pages 641–678 rendered and reviewed as 5 contact sheets, high-risk tables inspected full-size, five identifier/factor collisions corrected and re-rendered clean; final index page 685 also inspected |
 | 2026-08-12 | Phase F corrective batch 1 | **699 pages**, build clean; makeindex 2,179 / 0 / 0; stale context-free 6,171-test claims removed, residual graphics uses of “backend” corrected, and previously title-only Chapters 8–11 and 18 written from pinned source evidence; physical pages 107–126 and 203–210 plus 13 isolated terminology/count pages rendered and read, with the Chapter 8 layout table and Chapter 18 interface names inspected full-size; all detected overflows corrected and re-rendered clean |
+| 2026-08-12 | Phase F corrective batch 2 | **703 pages**, build clean; makeindex 2,176 / 0 / 0; early identity/build/graphics/effects and service-lifecycle drift reconciled, recorded test campaigns separated from universal totals, verifier manual terms made whole-word exact; 31 touched physical pages rendered and read as six contact sheets, all visually clean |
 
 ---
 
@@ -568,3 +569,26 @@ mid-session at the owner's direction, so the build and visual passes are availab
   309, 349, 432, 444, 473, 514, 562, 591–592, 617–618 and 628. Full-size inspection exposed
   overflowing table cells and long identifiers in Chapters 8 and 18; after correction, the
   rebuild, log-range check and affected-page render were clean.
+
+### 2026-08-12 — Phase F corrective batch 2: early-edition factual drift
+
+- Reframed Chapter 1 around CNA as a source-translation target, current SDL3-default FNA, the
+  46/42 registry, implemented content/media breadth, and evidence vectors instead of stale type
+  percentages or test leaderboards. The D3D9 oracle is now described as a 39-scene registered
+  zero-tolerance gate whose pass count still requires an identified run.
+- Corrected Chapter 4's four submodule commands, the six-automatic/two-manual CI boundary, and
+  the distinction among the `CNAEXT` marker, `CNA_CNAEXT` graphics-ext gate, and `CNA::CnaExt`
+  umbrella. Removed stale unit-suite totals from Chapters 2, 23 and 24.
+- Reconciled Chapters 12–15 with pinned source: GraphicsDevice texture slots are bookkeeping;
+  state objects copy; manager reset events are forwarded exactly once; disposal reaches
+  `UnloadContent`; SpriteBatch positions truncate while glyphs round; Skia admits 26 of 27
+  Texture2D formats and 14 render-target formats; previously open AlphaTest/DualTexture vertex-
+  color and formula defects are closed campaign evidence rather than current gaps.
+- Corrected Audio's two distinct unresolved crash signatures and Networking's now-fixed
+  `NetworkSessionAction` leak. Changed the verifier's manual-term grep to whole-word matching so
+  labels such as `sec:noxna` and prose substrings no longer create false notices.
+- Ran `tools/verify-book.sh`: 703 pages, makeindex 2,176 accepted / 0 rejected / 0 warnings, all
+  automated checks green. Rendered and read physical pages 31–35, 38, 49–51, 53, 128, 130,
+  133–134, 157, 167, 169, 175, 177, 181–182, 186–188, 269, 271, 278, 298, 473, 513 and 669 as
+  six contact sheets. Chapter openers, source-note boxes, listings, long identifiers and the
+  glossary were visually clean.
