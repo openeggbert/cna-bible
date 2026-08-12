@@ -268,6 +268,13 @@ else
     pass "platform inventory defines its 1195-file and 152-directive populations"
 fi
 
+if grep -rEn '19 production files include.*meta-gl|sixteen implementation files' \
+    "$chapters" "$front" > /tmp/cna-bible-stale-metagl-consumer-count.txt 2>/dev/null; then
+    fail "stale easy-gl direct meta-gl consumer count"
+else
+    pass "easy-gl names 3 header and 15 implementation meta-gl consumers"
+fi
+
 if grep -rEn 'CNA(_|\\_)GRAPHICS(_|\\_)RENDERER=(EASYGL|DX3|D3D9|D3D11|D3D12|ASCII)' "$chapters" "$front" > /tmp/cna-bible-obsolete-selectors.txt 2>/dev/null; then
     n=$(wc -l < /tmp/cna-bible-obsolete-selectors.txt)
     fail "removed renderer selector in a live CMake assignment: $n"

@@ -508,6 +508,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     states that definition, updates the independent `CNA_RENDERER_*` count from 109 to 110, and
     labels the roughly 6,000 SDL-family tokens as lexical magnitude rather than API call sites.
     The complete build is green; physical pages 584–585 were rendered and read full-size, clean.
+65. **The easy-gl/meta-gl direct-consumer count matches the recorded easy-gl pin.** An exact
+    include-directive scan across `include/**/*.hpp` and `src/*.cpp` finds 18 production files,
+    not 19: three public headers and fifteen implementation files. Chapter 59 no longer overstates
+    the implementation side by one, and the verifier rejects both stale count phrasings. The
+    complete build is green; physical page 569 was rendered and read full-size, clean.
 
 ## Do this next
 
