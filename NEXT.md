@@ -500,6 +500,14 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     Chapter 9 now uses the correct term without changing any count, and the verifier rejects the
     misleading old label. The complete build is green; physical page 117 was rendered and read
     full-size, clean.
+64. **The platform-directive metric now has a reproducible denominator and boundary.** The pin has
+    exactly 1,195 production C++ files under `modules/` when defined as 720 `.hpp`, 474 `.cpp`,
+    and one `.mm`, excluding tests and examples. An independent line-oriented recount finds 55
+    files / 152 directive lines naming OS macros, 97 in renderers and 55 elsewhere; compiler-only
+    generated branches are excluded rather than mixed into “OS platform” counts. Chapter 61 now
+    states that definition, updates the independent `CNA_RENDERER_*` count from 109 to 110, and
+    labels the roughly 6,000 SDL-family tokens as lexical magnitude rather than API call sites.
+    The complete build is green; physical pages 584–585 were rendered and read full-size, clean.
 
 ## Do this next
 

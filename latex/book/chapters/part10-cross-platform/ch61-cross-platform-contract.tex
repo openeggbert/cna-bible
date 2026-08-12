@@ -50,14 +50,18 @@ operations through one universal CNA interface.
 
 \section{CMake exclusion does most of the branching}
 
-Only 56 of 1{,}195 production files under \texttt{modules/} contain an OS platform
-preprocessor directive. Those files contain 159 directives, 104 of them in renderer native-
-handle or SDK glue. Seven whole modules --- storage, media, audio, math, gamer services,
-devices-ext, and graphics-ext --- contain none; graphics has two guarded files among 377.
+Here ``production file'' means a \texttt{.hpp}, \texttt{.cpp}, or \texttt{.mm} below
+\texttt{modules/}, excluding \texttt{tests/} and \texttt{examples/}: 720 headers, 474 C\texttt{++}
+sources, and one Objective-C\texttt{++} source, 1{,}195 files in all. Only 55 of them contain a
+preprocessor directive line that names an OS macro. Those files contain 152 such lines, 97 in
+renderer native-handle or SDK glue and 55 in the framework proper. Compiler-only branches such
+as \texttt{\_MSC\_VER} in a generated shader header are deliberately not counted as OS selection.
+Seven whole modules --- storage, media, audio, math, gamer services, devices-ext, and
+graphics-ext --- contain none; graphics has two guarded files among its 208 production files.
 
 The low count is structural. Renderer selection rejects impossible platform/identity pairs
 before the module is added. A Glide source can include \texttt{windows.h} without an internal
-guard because its target is never compiled off 32-bit Windows. There are 109
+guard because its target is never compiled off 32-bit Windows. There are 110
 \texttt{CNA\_RENDERER\_*} conditionals in production, reflecting the true implementation axis,
 and 104 platform conditions in CMake that decide which sources exist in the build.
 
@@ -75,8 +79,9 @@ token.
 
 \section{SDL is the common platform layer}
 
-Production code contains roughly 5{,}983 SDL/Mixer/Image/TTF symbol occurrences across 125
-files --- about 38 SDL API references for every OS preprocessor directive. SDL supplies windows,
+Production code contains roughly 6{,}000 SDL/Mixer/Image/TTF token occurrences --- about 39 for
+every OS-directive line under the definition above. This is a lexical magnitude, not a count of
+distinct API calls. SDL supplies windows,
 events, timers, paths, power information, URL launching, user folders, GL procedure lookup, and
 the entry-point bridge. Subsystems link SDL privately instead of routing through a central CNA
 platform target.

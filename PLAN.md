@@ -394,6 +394,7 @@ log grep replaces.
 | 2026-08-12 | Post-G complete named-destination geometry | All 5,054 names map one-to-one to 5,054 destination objects on the 709 actual page objects, with in-A4 numeric XYZ positions and inherited zoom; a PDF fixture changed only `part.1` Y from 558.81 to 900, leaving link/landing/outline checks green while the new guard alone found the invalid target on page object 5587; verifier-only change, no PDF delta |
 | 2026-08-12 | Post-G Graphics-header inventory correction | Stale “106 headers” corrected to the pinned tree's 125 `.hpp` files: 107 directly in the Graphics namespace directory plus 18 in its PackedVector child; nested namespace preserved; two intentional semantic index entries bring makeindex to 2,389, index links to 1,850 and artifact links/targets to 3,653/1,542; stale-count guard added; whole-PDF diff isolated physical pages 47 and 706–709, all read clean |
 | 2026-08-12 | Post-G physical-module inventory terminology | Directly recounted 1,776 records across the seven cited pure-rename commits, all `R100`; confirmed the pinned 1,357 → 1,357 reconciliation and its 1,287 byte-identical / 70 directive-only split; corrected “production translation units” to the evidence's “production files,” because the inventory includes headers; regression guard added; complete build green and physical page 117 read full-size, clean |
+| 2026-08-12 | Post-G platform-count reproducibility | Defined the 1,195-file production population exactly as 720 `.hpp` + 474 `.cpp` + one `.mm`, excluding tests/examples; direct line audit gives 55 files / 152 OS-macro directive lines, split 97 renderer / 55 framework; compiler-only generated branches excluded; `CNA_RENDERER_*` directives corrected 109 → 110; SDL-family count qualified as roughly 6,000 lexical tokens; stale-count guard added; complete build green and physical pages 584–585 read full-size, clean |
 
 ---
 
@@ -1236,3 +1237,10 @@ build and visual passes are available again.
   1,287 byte-identical moves and 70 directive-only edits. Corrected Chapter 9's misleading
   “translation units” label because the inventory includes headers; added a verifier guard. The
   complete build is green and physical page 117 was rendered and read full-size, clean.
+- Reproduced Chapter 61's platform population from the pin: exactly 720 `.hpp`, 474 `.cpp` and
+  one `.mm` production file after excluding tests/examples. A line-oriented OS-macro audit gives
+  55 files / 152 directive lines, 97 in renderers and 55 elsewhere; compiler-only generated
+  branches had made the prior boundary ambiguous. Updated the independent `CNA_RENDERER_*`
+  directive count from 109 to 110 and qualified roughly 6,000 SDL-family tokens as lexical
+  magnitude rather than API call sites; added a stale-count guard. The complete build is green;
+  physical pages 584–585 were rendered and read full-size, clean.

@@ -261,6 +261,13 @@ else
     pass "physical-module inventory is labeled as production files"
 fi
 
+if grep -rEn 'Only 56 of 1\\{,\\}195|contain 159 directives|There are 109[[:space:]]*$' \
+    "$chapters" "$front" > /tmp/cna-bible-stale-platform-counts.txt 2>/dev/null; then
+    fail "stale platform-directive inventory in compiled manuscript"
+else
+    pass "platform inventory defines its 1195-file and 152-directive populations"
+fi
+
 if grep -rEn 'CNA(_|\\_)GRAPHICS(_|\\_)RENDERER=(EASYGL|DX3|D3D9|D3D11|D3D12|ASCII)' "$chapters" "$front" > /tmp/cna-bible-obsolete-selectors.txt 2>/dev/null; then
     n=$(wc -l < /tmp/cna-bible-obsolete-selectors.txt)
     fail "removed renderer selector in a live CMake assignment: $n"
