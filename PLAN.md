@@ -1509,3 +1509,7 @@ build and visual passes are available again.
   produced the expected immediate and twelve dependent failures. The lock helper now validates
   its SHA-256 without relying on caller `pipefail`; the renderer rejects a failed `pdfinfo` before
   output allocation. Its real physical-page-709 path still rendered and read visually clean.
+- Made sealed artifact hashing independent of a trailing parser and caller pipeline settings:
+  release now requires successful `sha256sum` plus exactly 64 lowercase hexadecimal digits. A
+  fresh-clone stub emitted the correct digest and exited 73 after typesetting; the transaction
+  stopped before verification, restored its marker prior PDF byte-for-byte and left no snapshot.

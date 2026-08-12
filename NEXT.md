@@ -905,6 +905,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      then exited 61 failed immediately. The lock helper validates its SHA-256 directly, independent
      of caller pipeline settings, and the renderer likewise rejects a correct-output/exit-71
      `pdfinfo` before allocating output. A real page-709 render remained exact and visually clean.
+140. **The sealed fingerprint reader is independently fail-closed.** Release SHA-256 extraction no
+     longer relies on a trailing `awk` or inherited `pipefail`; it consumes successful `sha256sum`
+     output and validates exactly 64 lowercase hexadecimal digits. In a fresh clone, a stub emitted
+     the correct digest then exited 73 after TeX: the transaction stopped before verification,
+     restored a marker prior PDF byte-for-byte and left no prior-release snapshot.
 
 ## Do this next
 
