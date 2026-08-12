@@ -876,6 +876,10 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      remain independent requirements rather than substitutes for successful parsing. A targeted
      URI comm stub emitted the correct empty difference then exited 47: exactly the action audit
      failed with correct displayed counts, while the 1,542-target closure still passed.
+134. **Catalog normalization is part of catalog parse success.** The exact Catalog, Names root and
+     first-page OpenAction comparisons now also consume each intervening `sed` filter status, not
+     only the underlying MuPDF query status. Plausible normalized text emitted before a filter error
+     can no longer satisfy the positive catalog allowlist.
 
 ## Do this next
 

@@ -1490,3 +1490,5 @@ build and visual passes are available again.
 - Added separate producer/filter/set status graphs for the three-URI/3,653-action allowlist and
   1,542-target GoTo/name-tree closure, alongside exact populations/differences. A targeted correct-
   output/exit-47 URI comm stub failed only the action audit; destination closure remained green.
+- Bound Catalog, Names-root and OpenAction normalization-filter status into the existing positive
+  catalog allowlist rather than trusting plausible text emitted before a filter error.

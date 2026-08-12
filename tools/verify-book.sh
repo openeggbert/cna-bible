@@ -826,20 +826,29 @@ if command -v mutool >/dev/null 2>&1; then
         catalog=""
         catalog_reads_ok=0
     fi
-    catalog_normalized=$(printf '%s\n' "$catalog" \
-        | sed -E 's/^[0-9]+ 0 obj /OBJ obj /; s/[0-9]+ 0 R/OBJ/g')
+    if ! catalog_normalized=$(printf '%s\n' "$catalog" \
+        | sed -E 's/^[0-9]+ 0 obj /OBJ obj /; s/[0-9]+ 0 R/OBJ/g'); then
+        catalog_normalized=""
+        catalog_reads_ok=0
+    fi
     if ! names_root=$(mutool show -g "$pdf" trailer/Root/Names 2>/dev/null); then
         names_root=""
         catalog_reads_ok=0
     fi
-    names_root_normalized=$(printf '%s\n' "$names_root" \
-        | sed -E 's/^[0-9]+ 0 obj /OBJ obj /; s/[0-9]+ 0 R/OBJ/g')
+    if ! names_root_normalized=$(printf '%s\n' "$names_root" \
+        | sed -E 's/^[0-9]+ 0 obj /OBJ obj /; s/[0-9]+ 0 R/OBJ/g'); then
+        names_root_normalized=""
+        catalog_reads_ok=0
+    fi
     if ! open_action=$(mutool show -g "$pdf" trailer/Root/OpenAction 2>/dev/null); then
         open_action=""
         catalog_reads_ok=0
     fi
-    open_action_page=$(printf '%s\n' "$open_action" \
-        | sed -n 's/.*\/S\/GoTo\/D\[\([0-9]*\) 0 R\/Fit\].*/\1/p')
+    if ! open_action_page=$(printf '%s\n' "$open_action" \
+        | sed -n 's/.*\/S\/GoTo\/D\[\([0-9]*\) 0 R\/Fit\].*/\1/p'); then
+        open_action_page=""
+        catalog_reads_ok=0
+    fi
     if ! first_page_object=$(mutool show -g "$pdf" pages/1 2>/dev/null \
         | sed -n 's/^\([0-9]*\) 0 obj .*/\1/p'); then
         first_page_object=""
