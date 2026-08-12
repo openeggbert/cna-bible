@@ -423,6 +423,7 @@ log grep replaces.
 | 2026-08-12 | Post-G generated-index structure | Parsed all 2,389 `main.idx` records rather than trusting only makeindex's transcript: every key is non-empty, every encapsulator is `hyperpage`, every printed reference is 1–670, and 681 case-folded logical keys map exactly to 676 `main.ind` items plus five subitems; no PDF delta |
 | 2026-08-12 | Post-G complete verifier scratch lifecycle | Routed every per-run text, JSON, PDF and decoded-image intermediate into the existing private diagnostic directory and made its EXIT cleanup recursive; normal, failed and HUP/INT/TERM exits now share one cleanup path, closing more than forty individually removed scratch files without changing verification semantics |
 | 2026-08-12 | Post-G PDF Info closure | Extended semantic metadata verification to require `Creator: LaTeX with hyperref` and `/Trapped /False` alongside the established title/author/subject/keywords; dates remain an explicit sealed-build check and producer/version drift remains covered by the exact release fingerprint |
+| 2026-08-12 | Post-G visual-render CLI hardening | Made `tools/render-pages.sh` reject missing/extra/non-numeric/zero/reversed/out-of-book ranges, preflight its dependencies, render each request in a fresh child directory and require exactly `LAST-FIRST+1` PNGs; reused parents can no longer leak stale images into the reported review set |
 
 ---
 
@@ -1375,3 +1376,5 @@ build and visual passes are available again.
   failed checks and signal exits; index key folding is also fixed to the C locale.
 - Extended PDF Info semantics with exact creator and non-trapped state checks, producing direct
   diagnostics for fields that were previously protected only indirectly by the sealed hash.
+- Hardened the mandatory visual-pass driver: exact CLI/range validation, dependency preflight,
+  isolated per-run output and exact PNG cardinality prevent typo and stale-file review gaps.

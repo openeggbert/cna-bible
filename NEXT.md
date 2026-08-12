@@ -675,6 +675,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     and keywords. Producer/version and fixed dates remain covered separately by the sealed byte
     fingerprint and release entry point; ordinary verifier diagnostics now identify these two
     previously implicit Info-field drifts directly.
+93. **Visual-range rendering is fail-closed and run-isolated.** `tools/render-pages.sh` now accepts
+    exactly two/three operands or `--help`, requires positive decimal pages in ascending order and
+    preflights its three commands. Each invocation renders into a fresh child directory, verifies
+    exactly `LAST-FIRST+1` PNGs and lists only that run, so stale images in a reused parent cannot
+    masquerade as newly reviewed pages.
 
 ## Do this next
 

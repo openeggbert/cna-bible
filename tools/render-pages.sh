@@ -9,7 +9,7 @@
 #
 # Usage:
 #   tools/render-pages.sh 243 245              # render physical pages 243..245
-#   tools/render-pages.sh 243 245 /tmp/out     # ...into a chosen directory
+#   tools/render-pages.sh 243 245 /tmp/out     # ...under a chosen parent directory
 #
 # Prints the paths of the generated PNGs, newest last, so they can be read directly.
 
@@ -18,9 +18,47 @@ set -eu
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 pdf="$repo_root/latex/book/main.pdf"
 
-first="${1:?usage: render-pages.sh FIRST LAST [OUTDIR]}"
-last="${2:?usage: render-pages.sh FIRST LAST [OUTDIR]}"
+usage() {
+    printf 'Usage: %s FIRST LAST [OUTDIR]\n' "${0##*/}"
+}
+
+case "$#:${1:-}" in
+    1:--help)
+        usage
+        exit 0
+        ;;
+    2:*|3:*) ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+esac
+
+first=$1
+last=$2
 outdir="${3:-${TMPDIR:-/tmp}/cna-bible-pages}"
+
+case "$first:$last" in
+    :*|*:|*[!0-9:]*|0*:*|*:0*)
+        printf 'ERROR: FIRST and LAST must be canonical positive decimal page numbers\n' >&2
+        exit 2
+        ;;
+esac
+if [ "$first" -gt "$last" ]; then
+    printf 'ERROR: FIRST (%s) must not exceed LAST (%s)\n' "$first" "$last" >&2
+    exit 2
+fi
+
+missing_commands=""
+for required_command in pdfinfo pdftoppm mktemp; do
+    if ! command -v "$required_command" >/dev/null 2>&1; then
+        missing_commands="$missing_commands $required_command"
+    fi
+done
+if [ -n "$missing_commands" ]; then
+    printf 'ERROR: missing required rendering command(s):%s\n' "$missing_commands" >&2
+    exit 1
+fi
 
 [ -f "$pdf" ] || { echo "no built PDF at $pdf -- run 'make -C latex book' first" >&2; exit 1; }
 
@@ -31,7 +69,27 @@ if [ "$last" -gt "$total" ]; then
 fi
 
 mkdir -p "$outdir"
-pdftoppm -png -r 120 -f "$first" -l "$last" "$pdf" "$outdir/page"
+run_dir=$(mktemp -d "$outdir/render-${first}-${last}.XXXXXX")
+render_complete=0
+cleanup_failed_render() {
+    if [ "$render_complete" -eq 0 ]; then
+        find "$run_dir" -mindepth 1 -maxdepth 1 -type f -delete 2>/dev/null || true
+        rmdir "$run_dir" 2>/dev/null || true
+    fi
+}
+trap cleanup_failed_render EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+pdftoppm -png -r 120 -f "$first" -l "$last" "$pdf" "$run_dir/page"
+rendered_count=$(find "$run_dir" -maxdepth 1 -type f -name 'page-*.png' | wc -l)
+expected_count=$((last - first + 1))
+if [ "$rendered_count" -ne "$expected_count" ]; then
+    printf 'ERROR: rendered %s PNGs, expected %s\n' "$rendered_count" "$expected_count" >&2
+    exit 1
+fi
+render_complete=1
+trap - HUP INT TERM
 
-echo "rendered physical pages $first..$last of $total into $outdir:"
-ls -1 "$outdir"/page-*.png | sort
+echo "rendered physical pages $first..$last of $total into $run_dir:"
+find "$run_dir" -maxdepth 1 -type f -name 'page-*.png' -print | LC_ALL=C sort
