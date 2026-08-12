@@ -410,6 +410,7 @@ log grep replaces.
 | 2026-08-12 | Post-G Claude workflow reconciliation | Updated `CLAUDE.md` to make `tools/verify-book.sh` the authoritative once-per-batch automated pass, retain rendered touched-page reading as a separate requirement, and distinguish the sealed `tools/build-release.sh` from ordinary manuscript work, without changing batched-writing, source-grounding or push policy |
 | 2026-08-12 | Post-G complete source-input closure | Expanded the exact-once input graph from 89 chapter/appendix/fragment files to all 91 compiled sources: 89 content plus title page and preface; verifier now requires all present, case-correct and input once with zero orphan/duplicate/missing targets, while retaining the 89-content count as a separate invariant; no PDF delta |
 | 2026-08-12 | Post-G TeX recorder provenance | Compared `main.fls` with a filesystem-derived exact set of 98 project inputs: main.tex, shared preamble, 91 front/content TeX sources and five PNGs; explicit path/type filtering excludes TeX-distribution and generated auxiliary inputs; current recorder has zero missing/unexpected project files, independently confirming what TeX actually opened; no PDF delta |
+| 2026-08-12 | Post-G external-link text identity | Extended the all-link MuPDF text/geometry pass to require each of three URI action targets to equal the URL visibly printed under its rectangle after terminal sentence punctuation removal; SDL Init and both Microsoft Present URLs match byte-for-byte; swapping two approved target values preserves the exact URI allowlist/cardinality but produces two identity failures, closing a semantic gap without PDF delta |
 
 ---
 
@@ -1324,3 +1325,6 @@ build and visual passes are available again.
 - Bound TeX's `main.fls` recorder to a filesystem-derived 98-input project set: main source,
   preamble, 91 front/content TeX files and five PNGs. There are zero missing or unexpected inputs;
   distribution and generated files are deliberately outside the path/type boundary.
+- Bound each of the three approved external actions to its own visibly printed URL using the
+  existing MuPDF all-link geometry pass. All three match byte-for-byte. Swapping two approved
+  target values still satisfies the allowlist but now triggers two semantic identity failures.

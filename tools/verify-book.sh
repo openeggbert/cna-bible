@@ -931,7 +931,8 @@ EOF
                             $box = $line->{bbox};
                             push @{$text{$physical}}, [
                                 $box->{x}, $box->{y},
-                                $box->{x} + $box->{w}, $box->{y} + $box->{h}
+                                $box->{x} + $box->{w}, $box->{y} + $box->{h},
+                                ($line->{text} // "")
                             ];
                         }
                     }
@@ -964,18 +965,41 @@ EOF
                             $bad++;
                             print "page=$physical object=$object_number rectangle=$x0,$top0,$x1,$top1\n";
                         }
+                        if ($annotation =~ m{/S/URI/URI\((https://[^()]*)\)}) {
+                            $uri = $1;
+                            @visible = ();
+                            for $line (@{$text{$physical} // []}) {
+                                $center_x = ($line->[0] + $line->[2]) / 2;
+                                $center_y = ($line->[1] + $line->[3]) / 2;
+                                push @visible, $line->[4]
+                                    if $center_x >= $x0 - 1 && $center_x <= $x1 + 1
+                                    && $center_y >= $top0 - 1 && $center_y <= $top1 + 1;
+                            }
+                            $printed = join("", @visible);
+                            $printed =~ s/^\s+|\s+$//g;
+                            # MuPDF exposes the sentence-final full stop as a separate tiny line
+                            # whose centre still touches the SDL_Init annotation by <1 pt.
+                            $printed =~ s/[.,;:]$//;
+                            $uri_checked++;
+                            if ($printed ne $uri) {
+                                $uri_bad++;
+                                print "uri-page=$physical target=$uri printed=$printed\n";
+                            }
+                        }
                     }
                 }
-                print "SUMMARY " . ($checked + 0) . " " . ($bad + 0) . "\n";
+                print "SUMMARY " . ($checked + 0) . " " . ($bad + 0) . " "
+                    . ($uri_checked + 0) . " " . ($uri_bad + 0) . "\n";
             ' "$objects_file" "$page_objects_file" "$all_link_text_file" \
                 > "$all_link_text_result_file"
-            read -r _ visible_link_count empty_link_count <<EOF
+            read -r _ visible_link_count empty_link_count visible_uri_count wrong_uri_text_count <<EOF
 $(tail -1 "$all_link_text_result_file")
 EOF
-            if [ "$visible_link_count" -eq "$link_count" ] && [ "$empty_link_count" -eq 0 ]; then
-                pass "all $visible_link_count PDF link rectangles overlap visible text"
+            if [ "$visible_link_count" -eq "$link_count" ] && [ "$empty_link_count" -eq 0 ] \
+               && [ "$visible_uri_count" -eq 3 ] && [ "$wrong_uri_text_count" -eq 0 ]; then
+                pass "all $visible_link_count links overlap text; all 3 URI targets equal their printed URLs"
             else
-                fail "PDF link/text-overlap audit failed ($empty_link_count empty of $visible_link_count checked, $link_count expected)"
+                fail "PDF link/text audit failed ($empty_link_count empty of $visible_link_count links, $wrong_uri_text_count wrong of $visible_uri_count URIs)"
                 grep -v '^SUMMARY ' "$all_link_text_result_file" | head -10 | sed 's/^/        /'
             fi
         else

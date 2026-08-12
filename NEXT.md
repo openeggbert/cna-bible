@@ -605,6 +605,13 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     are excluded by explicit path/type boundary. The release recorder has zero missing or
     unexpected project inputs, closing the gap between source declarations and files actually
     opened during compilation; no artifact change was needed.
+80. **Every external URI equals the URL printed under its rectangle.** The existing exact
+    allowlist could not detect swapping two already-approved targets. The all-link MuPDF geometry
+    pass now gathers the visible line(s) centered under each of the three URI rectangles and
+    requires the trimmed text, after removing terminal sentence punctuation, to equal that
+    action's target byte-for-byte. SDL Init and both
+    Microsoft Present links match. A two-target swap preserves URI allowlist/cardinality but
+    yields two identity failures; the release PDF needs no change.
 
 ## Do this next
 
