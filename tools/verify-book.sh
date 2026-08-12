@@ -55,7 +55,7 @@ esac
 missing_commands=""
 required_commands="git perl pdfinfo pdftotext pdffonts pdfimages pngtopnm cmp \
     mutool gs mktemp flock mkdir stat sha256sum grep sed awk find sort uniq wc head tail comm diff \
-    paste xargs cat rm rmdir"
+    paste xargs cat rm rmdir chmod"
 if [ "$do_build" -eq 1 ]; then
     required_commands="make latexmk pdflatex makeindex $required_commands"
 fi

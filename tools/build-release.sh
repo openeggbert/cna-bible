@@ -46,7 +46,7 @@ expected_pdf_date=D:20260812100654Z
 missing_commands=""
 for required_command in git latexmk pdflatex makeindex mutool sha256sum stat perl pdfinfo pdftotext pdffonts \
     pdfimages pngtopnm cmp gs mktemp cp rm flock mkdir grep sed awk find sort uniq wc head tail \
-    comm diff paste xargs cat rmdir env; do
+    comm diff paste xargs cat rmdir chmod env; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         missing_commands="$missing_commands $required_command"
     fi

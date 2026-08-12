@@ -1466,3 +1466,5 @@ build and visual passes are available again.
   status 1, exact diagnostic, unchanged PDF hash and release-log size/mtime, and zero snapshots.
 - Closed a live symlink-alias lock split: all public artifact tools now canonicalize the physical
   repository root before hashing the lock key, so aliases to the same PDF share one lock inode.
+- Validate existing lock paths before non-truncating open, bind the descriptor to the current inode
+  and owner, restrict it through procfs to `0600`, then recheck before flock; legacy mode migrates.

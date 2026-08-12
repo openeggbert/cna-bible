@@ -828,6 +828,10 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      held the physical repository's exclusive lock, then acquired an incorrect independent shared
      lock by invoking through a `/tmp` directory symlink. All public artifact tools now derive
      `repo_root` with physical `pwd -P`, so path aliases hash to the same lock and contend correctly.
+125. **The lock inode itself is bound before and after opening.** An existing path must be a
+     non-symlink regular file owned by the effective user. Append-open avoids truncation; the new
+     descriptor must match the current path inode, is restricted through procfs to `0600`, and is
+     then rechecked before `flock`. This also safely migrates the historical owner-only-parent lock.
 
 ## Do this next
 

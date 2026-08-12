@@ -72,7 +72,7 @@ fi
 
 missing_commands=""
 for required_command in pdfinfo pdftoppm mktemp flock mkdir stat sha256sum file pngtopnm awk find \
-    sort wc sed rmdir; do
+    sort wc sed rmdir chmod; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         missing_commands="$missing_commands $required_command"
     fi

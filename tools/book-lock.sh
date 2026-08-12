@@ -8,7 +8,8 @@ acquire_book_lock() {
     local existing_fd=${book_lock_fd:-}
     local existing_mode=${book_lock_mode:-}
     local lock_dir lock_dir_owner lock_dir_mode lock_id lock_file prior_umask
-    local inherited_identity lock_identity existing_identity
+    local inherited_identity lock_identity existing_identity opened_identity
+    local lock_file_owner lock_file_mode lock_file_symlink
 
     case "$requested_mode" in
         exclusive|shared) ;;
@@ -40,6 +41,19 @@ EOF
 
     lock_id=$(printf '%s' "$repo_root" | sha256sum | awk '{print $1}')
     lock_file="$lock_dir/${lock_id}.lock"
+    if [ -e "$lock_file" ] || [ -L "$lock_file" ]; then
+        read -r lock_file_owner lock_file_mode <<EOF
+$(stat -Lc '%u %a' "$lock_file" 2>/dev/null || true)
+EOF
+        if [ -L "$lock_file" ] || [ ! -f "$lock_file" ] \
+           || [ "$lock_file_owner" != "$EUID" ]; then
+            if [ -L "$lock_file" ]; then lock_file_symlink=yes; else lock_file_symlink=no; fi
+            printf 'ERROR: unsafe existing book-lock file (symlink=%s owner=%s mode=%s)\n' \
+                "$lock_file_symlink" "${lock_file_owner:-missing}" \
+                "${lock_file_mode:-missing}" >&2
+            return 1
+        fi
+    fi
     lock_identity=$(stat -Lc '%d:%i' "$lock_file" 2>/dev/null || true)
 
     # Repeated compatible calls in one shell reuse the already-held descriptor. This matters for
@@ -78,8 +92,36 @@ EOF
 
     prior_umask=$(umask)
     umask 077
-    exec {book_lock_fd}>"$lock_file"
+    # Append-open avoids truncating any path if a same-user process races the pre-open check.
+    # Once the descriptor is bound to the current regular inode, migrate legacy permissive modes
+    # through procfs without reopening by name.
+    exec {book_lock_fd}>>"$lock_file"
     umask "$prior_umask"
+    opened_identity=$(stat -Lc '%d:%i' "/proc/self/fd/$book_lock_fd" 2>/dev/null || true)
+    lock_identity=$(stat -Lc '%d:%i' "$lock_file" 2>/dev/null || true)
+    lock_file_owner=$(stat -Lc '%u' "/proc/self/fd/$book_lock_fd" 2>/dev/null || true)
+    if [ -L "$lock_file" ] || [ -z "$opened_identity" ] \
+       || [ "$opened_identity" != "$lock_identity" ] || [ "$lock_file_owner" != "$EUID" ]; then
+        printf 'ERROR: unsafe book-lock file (owner=%s mode=%s)\n' \
+            "${lock_file_owner:-missing}" "untrusted" >&2
+        exec {book_lock_fd}>&-
+        unset book_lock_fd book_lock_mode
+        return 1
+    fi
+    if ! chmod 600 "/proc/self/fd/$book_lock_fd" 2>/dev/null; then
+        printf 'ERROR: could not restrict book-lock file to mode 600\n' >&2
+        exec {book_lock_fd}>&-
+        unset book_lock_fd book_lock_mode
+        return 1
+    fi
+    lock_file_mode=$(stat -Lc '%a' "/proc/self/fd/$book_lock_fd" 2>/dev/null || true)
+    if [ "$lock_file_mode" != "600" ]; then
+        printf 'ERROR: unsafe book-lock file mode after restriction (%s)\n' \
+            "${lock_file_mode:-missing}" >&2
+        exec {book_lock_fd}>&-
+        unset book_lock_fd book_lock_mode
+        return 1
+    fi
     if [ "$requested_mode" = "exclusive" ]; then
         if ! flock -n -x "$book_lock_fd"; then
             printf 'ERROR: another CNA Bible artifact operation is already running\n' >&2
