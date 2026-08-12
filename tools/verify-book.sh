@@ -301,29 +301,34 @@ chapter_sources_file=$(mktemp /tmp/cna-bible-chapter-sources.XXXXXX.txt)
 orphan_sources_file=$(mktemp /tmp/cna-bible-orphan-sources.XXXXXX.txt)
 duplicate_inputs_file=$(mktemp /tmp/cna-bible-duplicate-inputs.XXXXXX.txt)
 missing_inputs_file=$(mktemp /tmp/cna-bible-missing-inputs.XXXXXX.txt)
+input_graph_ok=1
 {
     grep -ho '\\input{[^}]*}' "$book_dir/main.tex" 2>/dev/null
     grep -rho '\\input{[^}]*}' "$chapters" "$front" 2>/dev/null
-} | sed 's/^\\input{//;s/}$//' | grep '^chapters/' | sort > "$input_targets_file"
+} | sed 's/^\\input{//;s/}$//' | grep '^chapters/' | sort > "$input_targets_file" \
+    || input_graph_ok=0
 grep -ho '\\input{[^}]*}' "$book_dir/main.tex" 2>/dev/null \
-    | sed 's/^\\input{//;s/}$//' | grep '^front/' >> "$input_targets_file"
-sort -o "$input_targets_file" "$input_targets_file"
+    | sed 's/^\\input{//;s/}$//' | grep '^front/' >> "$input_targets_file" \
+    || input_graph_ok=0
+sort -o "$input_targets_file" "$input_targets_file" || input_graph_ok=0
 {
     find "$chapters" -type f -name '*.tex' -printf '%P\n' | sed 's|^|chapters/|'
     find "$front" -type f -name '*.tex' -printf '%P\n' | sed 's|^|front/|'
-} | sort > "$chapter_sources_file"
-comm -23 "$chapter_sources_file" "$input_targets_file" > "$orphan_sources_file"
-uniq -d "$input_targets_file" > "$duplicate_inputs_file"
+} | sort > "$chapter_sources_file" || input_graph_ok=0
+comm -23 "$chapter_sources_file" "$input_targets_file" > "$orphan_sources_file" \
+    || input_graph_ok=0
+uniq -d "$input_targets_file" > "$duplicate_inputs_file" || input_graph_ok=0
 while IFS= read -r input_target; do
     [ -f "$book_dir/$input_target" ] || printf '%s\n' "$input_target"
-done < "$input_targets_file" > "$missing_inputs_file"
+done < "$input_targets_file" > "$missing_inputs_file" || input_graph_ok=0
 chapter_source_count=$(wc -l < "$chapter_sources_file")
 compiled_source_count=$(wc -l < "$input_targets_file")
 orphan_source_count=$(wc -l < "$orphan_sources_file")
 duplicate_input_count=$(wc -l < "$duplicate_inputs_file")
 missing_input_count=$(wc -l < "$missing_inputs_file")
 content_source_count=$(find "$chapters" -type f -name '*.tex' | wc -l)
-if [ "$content_source_count" -eq 89 ] && [ "$chapter_source_count" -eq 91 ] \
+if [ "$input_graph_ok" -eq 1 ] && [ "$content_source_count" -eq 89 ] \
+   && [ "$chapter_source_count" -eq 91 ] \
    && [ "$compiled_source_count" -eq 91 ] \
    && [ "$orphan_source_count" -eq 0 ] && [ "$duplicate_input_count" -eq 0 ] \
    && [ "$missing_input_count" -eq 0 ]; then
@@ -343,6 +348,7 @@ rm -f "$input_targets_file" "$chapter_sources_file" "$orphan_sources_file" \
 recorder_expected_file=$(mktemp /tmp/cna-bible-recorder-expected.XXXXXX.txt)
 recorder_actual_file=$(mktemp /tmp/cna-bible-recorder-actual.XXXXXX.txt)
 recorder_diff_file=$(mktemp /tmp/cna-bible-recorder-diff.XXXXXX.txt)
+recorder_graph_ok=1
 {
     printf '%s\n' main.tex ../common/preamble.tex
     find "$front" "$chapters" -type f -name '*.tex' -printf '%P\n' \
@@ -352,19 +358,21 @@ recorder_diff_file=$(mktemp /tmp/cna-bible-recorder-diff.XXXXXX.txt)
             fi
         done
     find "$book_dir/images" -maxdepth 1 -type f -name '*.png' -printf './images/%f\n'
-} | sort -u > "$recorder_expected_file"
+} | sort -u > "$recorder_expected_file" || recorder_graph_ok=0
 if [ -f "$book_dir/main.fls" ]; then
     awk '/^INPUT / {print substr($0, 7)}' "$book_dir/main.fls" \
         | grep -E '^(main\.tex|\.\./common/preamble\.tex|\./(front|chapters)/.*\.tex|\./images/.*\.png)$' \
-        | sort -u > "$recorder_actual_file"
+        | sort -u > "$recorder_actual_file" || recorder_graph_ok=0
 else
     : > "$recorder_actual_file"
 fi
-comm -3 "$recorder_expected_file" "$recorder_actual_file" > "$recorder_diff_file"
+comm -3 "$recorder_expected_file" "$recorder_actual_file" > "$recorder_diff_file" \
+    || recorder_graph_ok=0
 recorder_expected_count=$(wc -l < "$recorder_expected_file")
 recorder_actual_count=$(wc -l < "$recorder_actual_file")
 recorder_diff_count=$(wc -l < "$recorder_diff_file")
-if [ "$recorder_expected_count" -eq 98 ] && [ "$recorder_actual_count" -eq 98 ] \
+if [ "$recorder_graph_ok" -eq 1 ] && [ "$recorder_expected_count" -eq 98 ] \
+   && [ "$recorder_actual_count" -eq 98 ] \
    && [ "$recorder_diff_count" -eq 0 ]; then
     pass "TeX recorder opened exactly the expected 98 project manuscript/image inputs"
 else
@@ -381,21 +389,25 @@ image_sources_file=$(mktemp /tmp/cna-bible-image-sources.XXXXXX.txt)
 image_orphans_file=$(mktemp /tmp/cna-bible-image-orphans.XXXXXX.txt)
 image_duplicates_file=$(mktemp /tmp/cna-bible-image-duplicates.XXXXXX.txt)
 image_missing_file=$(mktemp /tmp/cna-bible-image-missing.XXXXXX.txt)
+image_graph_ok=1
 find "$chapters" "$front" -type f -name '*.tex' -print0 \
     | xargs -0 perl -ne '
         while (/\\includegraphics(?:\[[^]]*\])?\{([^{}]+)\}/g) { print "$1\n"; }
-    ' | LC_ALL=C sort > "$image_targets_file"
+    ' | LC_ALL=C sort > "$image_targets_file" || image_graph_ok=0
 find "$book_dir/images" -maxdepth 1 -type f -name '*.png' -printf 'images/%f\n' \
-    | LC_ALL=C sort > "$image_sources_file"
-comm -23 "$image_sources_file" "$image_targets_file" > "$image_orphans_file"
-uniq -d "$image_targets_file" > "$image_duplicates_file"
-comm -13 "$image_sources_file" "$image_targets_file" > "$image_missing_file"
+    | LC_ALL=C sort > "$image_sources_file" || image_graph_ok=0
+comm -23 "$image_sources_file" "$image_targets_file" > "$image_orphans_file" \
+    || image_graph_ok=0
+uniq -d "$image_targets_file" > "$image_duplicates_file" || image_graph_ok=0
+comm -13 "$image_sources_file" "$image_targets_file" > "$image_missing_file" \
+    || image_graph_ok=0
 image_source_count=$(wc -l < "$image_sources_file")
 image_target_count=$(wc -l < "$image_targets_file")
 image_orphan_count=$(wc -l < "$image_orphans_file")
 image_duplicate_count=$(wc -l < "$image_duplicates_file")
 image_missing_count=$(wc -l < "$image_missing_file")
-if [ "$image_source_count" -eq 5 ] && [ "$image_target_count" -eq 5 ] \
+if [ "$image_graph_ok" -eq 1 ] && [ "$image_source_count" -eq 5 ] \
+   && [ "$image_target_count" -eq 5 ] \
    && [ "$image_orphan_count" -eq 0 ] && [ "$image_duplicate_count" -eq 0 ] \
    && [ "$image_missing_count" -eq 0 ]; then
     pass "all 5 source PNGs are included exactly once with case-correct paths"

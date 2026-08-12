@@ -852,6 +852,12 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      processing failure therefore cannot masquerade as “no duplicates” or “all refs resolve.” The
      release has 269 unique labels and 177 unique ref expressions; a targeted grep-status-2 stub
      produces exactly the two dependent inventory failures.
+130. **Structural graph cardinalities also require successful producers.** The compiled-source,
+     TeX-recorder and source-image closure checks now carry pipeline-status flags through every
+     `find`/`grep`/`awk`/`perl`, sort and set-comparison stage. Exact 91/98/5 populations remain
+     necessary, but can no longer be sufficient after a producer or filter reports an error. A
+     pass-through sort stub that emitted correct data and then exited 37 produced graph failures
+     despite reported 91/98/5 counts and zero set differences.
 
 ## Do this next
 

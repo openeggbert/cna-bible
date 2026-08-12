@@ -1478,3 +1478,6 @@ build and visual passes are available again.
 - Bound duplicate-label and missing-reference inventories to successful source extraction/filter
   status before an empty population can be interpreted as clean. Current unique populations are
   269 labels / 177 refs; a targeted status-2 stub yields exactly two dependent failures.
+- Status-bound every producer/filter/set stage in the 91-source input, 98-input recorder and
+  five-image closure graphs in addition to their existing exact cardinalities. A correct-output/
+  exit-37 sort stub failed all three even while their counts and differences remained exact.
