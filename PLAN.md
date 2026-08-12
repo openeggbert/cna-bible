@@ -424,6 +424,7 @@ log grep replaces.
 | 2026-08-12 | Post-G complete verifier scratch lifecycle | Routed every per-run text, JSON, PDF and decoded-image intermediate into the existing private diagnostic directory and made its EXIT cleanup recursive; normal, failed and HUP/INT/TERM exits now share one cleanup path, closing more than forty individually removed scratch files without changing verification semantics |
 | 2026-08-12 | Post-G PDF Info closure | Extended semantic metadata verification to require `Creator: LaTeX with hyperref` and `/Trapped /False` alongside the established title/author/subject/keywords; dates remain an explicit sealed-build check and producer/version drift remains covered by the exact release fingerprint |
 | 2026-08-12 | Post-G visual-render CLI hardening | Made `tools/render-pages.sh` reject missing/extra/non-numeric/zero/reversed/out-of-book ranges, preflight its dependencies, render each request in a fresh child directory and require exactly `LAST-FIRST+1` PNGs; reused parents can no longer leak stale images into the reported review set |
+| 2026-08-12 | Post-G PDF parse fail-fast | Consolidated the verifier's initial Poppler inspection into one `pdfinfo` result and require a numeric page count before any geometry, metadata, extraction or navigation audit; unreadable containers now stop with one primary diagnostic rather than propagating empty arithmetic into secondary failures |
 
 ---
 
@@ -1378,3 +1379,5 @@ build and visual passes are available again.
   diagnostics for fields that were previously protected only indirectly by the sealed hash.
 - Hardened the mandatory visual-pass driver: exact CLI/range validation, dependency preflight,
   isolated per-run output and exact PNG cardinality prevent typo and stale-file review gaps.
+- Made unreadable PDF containers fail at the first Poppler parse with a required numeric page
+  count, before any dependent geometry or navigation logic can generate secondary diagnostics.

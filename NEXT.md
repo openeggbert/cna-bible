@@ -680,6 +680,10 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     preflights its three commands. Each invocation renders into a fresh child directory, verifies
     exactly `LAST-FIRST+1` PNGs and lists only that run, so stale images in a reused parent cannot
     masquerade as newly reviewed pages.
+94. **Unreadable PDF containers fail before dependent audits.** The verifier now invokes `pdfinfo`
+    once, requires a numeric page count and exits immediately if either condition fails. Geometry,
+    metadata, extraction and navigation checks therefore never consume an empty page variable or
+    emit a cascade of secondary shell/parser errors for one damaged input.
 
 ## Do this next
 

@@ -466,16 +466,22 @@ fi
 
 # ---------------------------------------------------------------- PDF output
 echo "-- output"
-pages=$(pdfinfo "$pdf" 2>/dev/null | awk '/^Pages:/ {print $2}')
-info "main.pdf is ${pages:-?} pages"
-info "chapter LaTeX: $(find "$chapters" -name '*.tex' | xargs cat 2>/dev/null | wc -l) lines across $(find "$chapters" -name '*.tex' | wc -l) files"
-
 pdf_info=$(pdfinfo "$pdf" 2>/dev/null)
+pages=$(printf '%s\n' "$pdf_info" | awk '/^Pages:/ {print $2}')
+case "$pages" in
+    ''|*[!0-9]*)
+        fail "pdfinfo could not parse main.pdf or report a numeric page count"
+        exit 1
+        ;;
+esac
 if [ -z "$pdf_info" ]; then
     fail "pdfinfo could not parse main.pdf"
+    exit 1
 else
     pass "PDF container is readable"
 fi
+info "main.pdf is $pages pages"
+info "chapter LaTeX: $(find "$chapters" -name '*.tex' | xargs cat 2>/dev/null | wc -l) lines across $(find "$chapters" -name '*.tex' | wc -l) files"
 
 encrypted=$(printf '%s\n' "$pdf_info" | awk -F: '/^Encrypted:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
 form=$(printf '%s\n' "$pdf_info" | awk -F: '/^Form:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
