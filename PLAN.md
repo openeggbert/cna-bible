@@ -73,7 +73,7 @@ current, not stale.
 | **C — structural migration** | **Complete.** The 12-Part / 79-chapter / 8-appendix migration, context-sensitive terminology pass, current selector/identifier migration, and module-owned source-path sweep are complete and PDF-verified clean at 645 pages. |
 | **D — chapter writing** | **Complete.** Seven verified batches rewrote Chapters 19–79 against the pinned source and sibling evidence. |
 | **E — appendices** | **Complete.** Appendices A–H were rebuilt against pinned source and the completed chapter text, then verified as one bounded batch. |
-| **F — whole-book consistency** | **In progress.** Fourteen verified corrective batches removed stale totals/terminology, filled five structurally present but unwritten chapters (8–11 and 18), and reconciled lifecycle, math, graphics, renderer, Content/XNB, Model/glTF/CNJ, input/media/services, sharp-runtime, sibling-library and Windows-platform claims with pinned evidence. Continue the edition-wide factual, cross-reference, duplication, index and visual sweep. |
+| **F — whole-book consistency** | **In progress.** Fifteen verified corrective batches removed stale totals/terminology, filled five structurally present but unwritten chapters (8–11 and 18), and reconciled lifecycle, math, graphics, renderer, Content/XNB, Model/glTF/CNJ, input/media/services, sharp-runtime, sibling-library, Windows, Web and mobile/Apple claims with pinned evidence. Continue the edition-wide factual, cross-reference, duplication, index and visual sweep. |
 | **G — final verification** | Not started. |
 
 ### 3.1 Phase A research areas — all delivered
@@ -357,6 +357,7 @@ log grep replaces.
 | 2026-08-12 | Phase F corrective batch 12 | **707 pages**, build clean; makeindex 2,188 / 0 / 0; Chapters 49–52 reconciled to GamerServices persistence/replay, Storage path/disposal, networking migration/receive/stub and Avatar content/rig/rendering contracts; physical pages 499–530 rendered and read as eight contact sheets, dense examples and repaired closing pages inspected full-size, all visually clean |
 | 2026-08-12 | Phase F corrective batch 13 | **707 pages**, build clean; makeindex 2,185 / 0 / 0; Chapters 53–58 reconciled to sharp-runtime's current public-header/component graph, tracked CI, task/stream/UTF-8 behavior, GC/delegate/crypto/platform boundaries and audit metadata; physical pages 533–568 rendered and read as five contact sheets; two prose overflows on printed pages 522–523 corrected, full verification repeated and physical pages 552–554 re-rendered clean |
 | 2026-08-12 | Phase F corrective batch 14 | **707 pages**, build clean; makeindex 2,184 / 0 / 0; Chapters 59–63 reconciled to current easy-gl/meta-gl layering and context-loss adoption, free-direct/free-api annotation/test/audio boundaries, platform taxonomy, MinGW fallback and Wine engagement evidence; physical pages 569–594 rendered and read as five contact sheets plus full-size risk pages; one target-name overflow on printed page 545 corrected, full verification repeated and physical page 575 re-rendered clean |
+| 2026-08-12 | Phase F corrective batch 15 | **709 pages**, build clean; makeindex 2,184 / 0 / 0; Chapters 61 and 64–67 reconciled to source-site versus worker concurrency, five focused versus 24 admitted Web identities, Emscripten network topology, primary Android emulator/APK evidence, portable-versus-native Metal tests, workflow trigger drift and iOS/tvOS configuration non-claims; physical pages 583–610 rendered and read as five contact sheets plus full-size risk pages, all visually clean |
 
 ---
 
@@ -892,3 +893,26 @@ mid-session at the owner's direction, so the build and visual passes are availab
   read physical pages 569–594 across Chapters 59–63 as five contact sheets plus full-size risk
   pages. One long test-target name overflowed printed page 545; the paragraph was made both
   shorter and more accurate, and physical page 575 was rebuilt, re-rendered and read cleanly.
+
+### 2026-08-12 — Phase F corrective batch 15: Web and mobile evidence truth
+
+- Distinguished a single Android `std::thread` construction site from runtime multiplicity:
+  every sensor bridge can own a worker and Motion aggregates six bridges. Separated the five
+  web-focused renderer identities from the 24 identities admitted by the Emscripten gate, while
+  retaining the exact four-rung evidence matrix for HTML_DOM, SVG_DOM, WEBGL1/2 and CANVAS.
+- Added the missing Web network topology contract. Emscripten hosts request fixed port 61191;
+  browser clients rebuild themselves as outbound-only; UDP-broadcast discovery is compiled out;
+  and CnaTests-only Asyncify permits event-loop yields without changing those capability limits.
+- Reconciled Android against primary commit records rather than contradictory later prose. The NDK
+  run passed all 230 network cases plus 1,831 other tests before a no-Activity TitleContainer crash.
+  The July APK built the then-current default SDL_RENDERER and screenshot-confirmed its UI/sensor
+  flash, but no artifact survives, the CNA-owned Compass/Motion bridge was not driven, and the
+  adapted pin was never rebuilt. This is historical AVD presentation, not a current pixel oracle.
+- Corrected Apple boundaries: a Linux HEADLESS `^Metal` run can report 207/207 portable cases;
+  only Metal_Smoke and Metal_Capabilities require METAL. The tracked workflow retains three stale
+  push paths but usable PR/manual triggers. iOS/tvOS have an enum and 24 admitted identities, not
+  a host/signing/runtime port; native METAL remains macOS-only and calls them unvalidated.
+- Ran `tools/verify-book.sh`: 709 pages, makeindex 2,184 accepted / 0 rejected / 0 warnings, all
+  automated checks green. Rendered and read physical pages 583–610 across the updated Chapter 61
+  context and Chapters 64–67 as five contact sheets plus full-size web/Android/Metal pages. No
+  clipping, overlap, malformed table, broken heading or other visual defect was found.

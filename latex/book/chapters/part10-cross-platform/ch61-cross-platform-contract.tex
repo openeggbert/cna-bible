@@ -89,11 +89,12 @@ differences through virtual methods.
 
 \section{Concurrency is mostly supplied by dependencies}
 
-CNA constructs exactly one production \texttt{std::thread}: the Android sensor worker. Audio
-registers callbacks into SDL3\_mixer's thread; content loading is synchronous; networking is
-single-threaded by contract; input delivery is main-thread-only. Internal synchronization uses
-standard \texttt{mutex}, \texttt{atomic}, and \texttt{condition\_variable}, not SDL thread
-primitives.
+CNA has exactly one production \texttt{std::thread} construction site, in the Android sensor
+bridge. That is a source-site count, not a one-worker runtime guarantee: each bridge instance can
+own a worker, and the Motion backend aggregates six bridges. Audio registers callbacks into
+SDL3\_mixer's thread; content loading is synchronous; networking is single-threaded by contract;
+input delivery is main-thread-only. Internal synchronization uses standard \texttt{mutex},
+\texttt{atomic}, and \texttt{condition\_variable}, not SDL thread primitives.
 
 This distinction matters on platforms whose host controls the event loop. A dependency-owned
 callback thread is still concurrent with CNA state even though CNA did not create it. Conversely,
@@ -121,9 +122,10 @@ discipline to the best-developed non-native path.
 
 Linux x86\_64 has native execution and real pixel goldens, though its principal workflows are
 not uniformly healthy. MinGW Windows has cross-build and translated execution evidence, not
-native Windows proof. Web has five renderer identities at four distinct evidence levels.
+native Windows proof. Web's five focused identities sit at four distinct evidence levels, while
+the broader Emscripten configuration gate admits 24 identities.
 Android has emulator history without committed APK, logcat, or screenshots, and graphics was
-never attempted. Metal's portable policy tests can pass on Linux without compiling Objective-C++
+not revalidated after adaptation. Metal's portable policy tests can pass on Linux without compiling Objective-C++
 or touching a Metal device. iOS/tvOS remains a hard, explicit non-claim.
 
 This baseline is not pessimism. It prevents a portable helper test, configure-time allowance,

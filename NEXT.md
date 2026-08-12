@@ -11,7 +11,7 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
 |---|---|
 | cna-bible branch | `next`; local commits are ahead of `origin/next` (push requires explicit external-publication approval) |
 | CNA pinned SHA | `7a64362efef4119bf880459ef1704fb2c52199e2` (`develop` == `origin/develop`, 2026-08-11) |
-| Book builds | **yes** — 707 pages, all automated checks green; all completed Phase D/E writing and fourteen Phase F corrective batches are visually verified |
+| Book builds | **yes** — 709 pages, all automated checks green; all completed Phase D/E writing and fifteen Phase F corrective batches are visually verified |
 | Phase | **A–E complete; F in progress:** Chapters 19–79 and Appendices A–H are complete. Phase F has filled omitted Chapters 8–11 and 18, corrected early graphics/lifecycle drift, and continues the whole-book consistency sweep. |
 
 ## What is done
@@ -270,6 +270,14 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     not audibly applied. The platform taxonomy, MinGW fallback mismatch and Wine gate evidence
     are also reconciled. The book remains 707 pages; physical pages 569–594 were rendered and
     read. One target-name overflow on printed page 545 was rewritten and re-rendered cleanly.
+34. **Phase F corrective batch 15 is complete and verified.** Chapters 61 and 64–67 now separate
+    one Android `std::thread` construction site from potentially several bridge workers, five
+    web-focused identities from 24 Emscripten-admissible identities, and Web ENet transport from
+    its fixed-port/outbound-only/no-discovery topology. Android evidence now follows the primary
+    commits: 230 network cases plus 1,831 others passed, and the pre-adaptation APK presented an
+    SDL-renderer UI, but no durable artifact or current adapted run exists. Metal's 207 portable
+    cases, two native registrations, stale workflow filters and iOS/tvOS non-claim are explicit.
+    The book is 709 pages; physical pages 583–610 were rendered and read without visual defect.
 
 ## Do this next
 
@@ -295,9 +303,9 @@ bounded correction batch; finish with an edition-wide visual and automated pass 
 
 ## Verification status
 
-Everything through Phase E and Phase F corrective batch 14 is verified:
+Everything through Phase E and Phase F corrective batch 15 is verified:
 
-- `make -C latex book` succeeds; **707 pages**.
+- `make -C latex book` succeeds; **709 pages**.
 - makeindex: 2,184 entries accepted, 0 rejected, 0 warnings.
 - No undefined references, no undefined control sequences, no duplicate labels, no doubled-
   backslash `\ref`, no hard-coded chapter numbers.
@@ -391,6 +399,10 @@ Everything through Phase E and Phase F corrective batch 14 is verified:
   runtime-map and long-identifier pages were also read full-size. One target-name overflow on
   printed page 545 was rewritten, the full verification rerun, and physical page 575 re-rendered
   cleanly.
+- Phase F corrective batch 15 rendered and reviewed physical pages 583–610 across the updated
+  Chapter 61 context and Chapters 64–67. Five contact sheets plus full-size web-networking,
+  Android and Metal pages covered the complete affected span through the Part XI boundary. No
+  clipping, overlap, malformed table, broken heading or other visual defect was found.
 
 **No completed writing batch is pending PDF verification.** Continue with the Phase F whole-book
 consistency sweep, then perform Phase G final verification.
@@ -408,7 +420,7 @@ consistency sweep, then perform Phase G final verification.
 Ten source-audit reports and the 42-family draw-path matrix are complete against pinned CNA
 `7a64362e`. Phase B settled a 12-Part, 79-chapter, 8-appendix edition; Phase C put it on disk,
 migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–7
-rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: fourteen verified
+rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: fifteen verified
 batches filled omitted Chapters 8–11 and 18, removed stale totals/terminology, reconciled the
 early graphics, lifecycle and math narrative, and separated the four current shader strategies
 from the still-missing arbitrary-effect path. State, stream, instancing and programmable-GL
@@ -416,7 +428,7 @@ contracts now also match the pinned renderer interface and post-audit remediatio
 render-target binding, usage, ordered-clear and dynamic viewport/scissor semantics now match the
 four deferred modern renderers as well. Modern Direct3D, Windows/vector/DOM 2D families and the
 diagnostic renderers now also agree with the complete-or-refuse cube/resource boundary. The book
-is 707 pages. Content/XNB path containment, limits, texture hardening and SpriteFont invariants now
+is 709 pages. Content/XNB path containment, limits, texture hardening and SpriteFont invariants now
 also match the integrated remediation state. The Model/glTF/CNJ chapters now distinguish the live
 hierarchies, stride and animation contracts from their remaining validation and conformance gaps;
 Input, Audio, Media and both device-service layers now match their live event, ownership,

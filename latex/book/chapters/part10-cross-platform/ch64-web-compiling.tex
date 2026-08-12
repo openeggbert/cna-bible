@@ -2,12 +2,14 @@
 \label{ch:web-compiling}
 \label{ch:web-emscripten}
 
-CNA does not have a separate JavaScript implementation.  Its Web builds send the same
-C\texttt{++}23 framework through Emscripten, link it with SDL's browser port, and package one
-of five renderer identities into a WebAssembly application.  That compact description hides
-three independent questions: can the source be translated, can the program survive the
-browser main-loop hand-off, and has the selected renderer actually been exercised?  This
-chapter answers only the first.  Chapters~\ref{ch:web-main-loop} and
+CNA does not have a separate JavaScript implementation. Its Web builds send the same
+C\texttt{++}23 framework through Emscripten and link it with SDL's browser port. Configuration
+admits 24 renderer identities on Emscripten, but five are the web-focused evidence set examined
+here: \texttt{WEBGL1}, \texttt{WEBGL2}, \texttt{CANVAS}, \texttt{HTML\_DOM}, and
+\texttt{SVG\_DOM}. One configure still packages exactly one selected identity into a WebAssembly
+application. That compact description hides three independent questions: can the source be
+translated, can the program survive the browser main-loop hand-off, and has the selected renderer
+actually been exercised? This chapter answers only the first. Chapters~\ref{ch:web-main-loop} and
 \ref{ch:web-renderer-evidence} answer the other two.
 
 \section{The toolchain changes the execution contract}
@@ -49,6 +51,20 @@ in-memory filesystem, under \texttt{/libsdl}.  CNA does not mount IDBFS, call
 therefore survives within the current page instance but not a reload.  \texttt{StorageDevice}
 and GamerServices persistence on a native platform must be described as volatile on Web until
 a durable browser store is deliberately connected.
+
+\section{Networking is a different topology, not a transparent port}
+
+Emscripten's socket shim does not report a usable ephemeral bound port, so CNA's ENet host path
+requests fixed port 61191 instead of \texttt{ENET\_PORT\_ANY}. That host role is meaningful for a
+Node relay, not an ordinary browser tab: the browser-side client path replaces any listening host
+with an outbound-only ENet client before connecting. The entire UDP-broadcast discovery
+implementation is excluded under \texttt{\_\_EMSCRIPTEN\_\_}. A Web build can therefore preserve
+SystemLink message transport without preserving native hosting and LAN-discovery topology.
+
+The CnaTests-only \texttt{ASYNCIFY=1} setting lets synchronous-looking polling yield to the JS
+event loop during WebSocket/ENet tests. It does not add listening sockets, make discovery
+available, or propagate to ordinary demos. Build evidence for the network module must therefore
+name the role and host, not merely say that ENet linked.
 
 \section{What a successful build establishes}
 

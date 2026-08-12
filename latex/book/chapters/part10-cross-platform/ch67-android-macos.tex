@@ -16,32 +16,40 @@ resources, and native build.  The JNI-side CMake file uses
 the application.  The recorded configuration uses compile SDK~35, NDK~30, minimum SDK~24, and
 only the \texttt{arm64-v8a} ABI.
 
-Android-specific production code is concentrated rather than scattered.  The Devices module
+Android-specific production code is concentrated rather than scattered. The Devices module
 contains about 2,090 lines of NDK sensor implementation using \texttt{ASensorManager}, an
-\texttt{ALooper}, an event queue, rollback, and one dedicated polling thread.  CNA itself uses
-no JNI.  Its only Android-specific link adds \texttt{android} and \texttt{log} to the Devices
-module; the root CMake file contains no Android branch.  Portable sensor mathematics stays
-outside \texttt{\_\_ANDROID\_\_} guards so native tests can exercise it, while the I/O boundary
-is platform-gated.
+\texttt{ALooper}, event queues and rollback. Each \texttt{AndroidSensorBridge} can own a dedicated
+polling thread; the Motion backend aggregates six bridge instances, so the single
+\texttt{std::thread} construction site can produce several concurrent workers. CNA itself uses
+no JNI. Its only Android-specific link adds \texttt{android} and \texttt{log} to the Devices
+module; the root CMake file contains no Android branch. Portable sensor mathematics stays outside
+\texttt{\_\_ANDROID\_\_} guards so native tests can exercise it, while the I/O boundary is
+platform-gated.
 
 \section{What actually ran}
 
-Two emulator campaigns are recorded.  On 4~July~2026 an NDK-built \texttt{CnaTests} executable
-was pushed to a Medium Phone AVD.  It ran 230 Net/Gamer/ENet/Packet cases plus 1,831 other cases;
-surviving build-system repairs corroborate the run.  On 5~July the Devices application produced
-a 7.3\,MB APK, installed and started it, captured the emulator screen, and injected sensor data
-through the emulator console.
+Two emulator campaigns are recorded. On 4~July~2026 an NDK-built \texttt{CnaTests} executable
+was pushed to a Medium Phone AVD. All 230 Net/Gamer/ENet/Packet cases and 1,831 other cases passed
+before an unrelated \texttt{TitleContainer} test reached the no-Activity crash described below;
+surviving build-system repairs corroborate the run. On 5~July the Devices application produced a
+7.3\,MB APK, installed and started it, captured the emulator screen, and injected sensor data
+through the emulator console. The commit record says the real UI and its sensor-event flash were
+visible in that screenshot. That injection exercised SDL's Accelerometer/Gyroscope delivery;
+Compass/Motion's CNA-owned NDK bridge and six-source fusion were not separately driven.
 
 Those are meaningful execution results, but the repository contains no APK, AAB, logcat log,
 Android screenshot, or machine-readable test result from them.  The strongest honest wording is
 therefore ``recorded emulator execution,'' not a continuously reproducible Android gate.  No CNA
 binary has been evidenced on physical Android hardware at the audited revision.
 
-Android graphics is a separate and still open boundary.  The project records that it has never
-attempted graphics execution on Android and does not even establish that the SDL renderer
-compiles cleanly for \texttt{arm64-v8a}.  WebGPU is the only renderer containing an explicit
-Android native-window surface path.  A Devices APK proving sensors must not be promoted into an
-OpenGL, SDL-renderer, or WebGPU graphics claim.
+Android graphics is a separate and still open boundary, but ``never attempted'' is too broad. The
+July Devices APK's nested CNA build used Android's default \texttt{SDL\_RENDERER}, and its commit
+records screenshot-confirmed UI presentation. That is historical renderer execution, not a
+retained pixel oracle: no screenshot survives in the repository, no graphics-specific assertion
+was made, and the later adaptation was not rebuilt at the audited pin. WebGPU is the only renderer
+containing an explicit Android native-window surface path, and it has not run there. The strongest
+claim is thus recorded pre-adaptation SDL-renderer presentation on an AVD, not current Android
+graphics verification and not evidence for OpenGL or WebGPU.
 
 \section{Lifecycle coverage is partial}
 
@@ -79,11 +87,13 @@ pure-C\texttt{++} PIMPL header.  Objective-C\texttt{++}, Metal, QuartzCore, and 
 enabled only when the selected identity is \texttt{METAL}.  This is a sound portability seam,
 but source isolation is not native validation.
 
-Three tests share the word Metal.  \texttt{Metal\_PortableHelpers} is deliberately registered
-on every host, whereas \texttt{Metal\_Smoke} and \texttt{Metal\_Capabilities} require a real
-Metal configure.  Thus a Linux \texttt{ctest -R '\^Metal'} run can be entirely green while
-executing no Objective-C\texttt{++}, Apple framework, shader compiler, or GPU command.  The
-renderer identity of the build must accompany every quoted result.
+The \texttt{Metal} CTest prefix is much broader than three registrations. Portable Metal policy
+gtests are discovered individually and also collected in \texttt{Metal\_PortableHelpers}; a
+recorded Linux HEADLESS run consequently reports 207/207 for \texttt{ctest -R '\^Metal'} while
+executing no Objective-C\texttt{++}, Apple framework, shader compiler, or GPU command. Only the
+separate \texttt{Metal\_Smoke} and \texttt{Metal\_Capabilities} registrations require a
+\texttt{METAL} configuration. The renderer identity of the build must accompany every quoted
+result.
 
 There is genuine historical Apple evidence: a macOS~14/Xcode~15.4 workflow on the original
 feature tree ran 143 tests, passing 136 and failing seven.  The later adaptation changed
@@ -92,11 +102,19 @@ valuable history, not evidence for the adapted tree.  At the audited revision th
 adapted Objective-C\texttt{++} compile, native link, Metal validation, pixel result, Retina or
 frame-pacing result, or Apple-Silicon/Intel comparison.
 
+The tracked workflow is a route to new evidence, but even its automatic trigger is partly stale:
+three push path filters still name dissolved central CMake files. Pull-request and manual triggers
+remain unfiltered, so the workflow is not dead; editing a newly module-owned file can simply fail
+to start it automatically. Workflow presence, trigger coverage, and an observed adapted run are
+three separate claims.
+
 \section{iOS and tvOS are explicit non-claims}
 
-An iOS platform enum exists, but renderer selection rejects iOS and tvOS.  The tree has no
-Xcode project, application metadata, SDK-root configuration, signing path, or device/simulator
-test.  Listing the enum as support would confuse a vocabulary token with a port.
+An iOS platform enum exists, and the generic configuration gate even admits the same 24 renderer
+identities counted for Android. That is configuration truth only: native \texttt{METAL} is scoped
+to macOS and explicitly calls iOS/tvOS unvalidated, while the tree has no Xcode project,
+application metadata, SDK-root configuration, signing path, or device/simulator test. Treating an
+enum or a non-rejection as support would confuse vocabulary and CMake reachability with a port.
 
 The next durable milestone is intentionally narrower than ``mobile support'': archive a fresh
 Android graphics build and emulator frame with logs; run the adapted Metal workflow on macOS
