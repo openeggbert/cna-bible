@@ -73,7 +73,7 @@ current, not stale.
 | **C — structural migration** | **Complete.** The 12-Part / 79-chapter / 8-appendix migration, context-sensitive terminology pass, current selector/identifier migration, and module-owned source-path sweep are complete and PDF-verified clean at 645 pages. |
 | **D — chapter writing** | **Complete.** Seven verified batches rewrote Chapters 19–79 against the pinned source and sibling evidence. |
 | **E — appendices** | **Complete.** Appendices A–H were rebuilt against pinned source and the completed chapter text, then verified as one bounded batch. |
-| **F — whole-book consistency** | **In progress.** Seventeen verified corrective batches removed stale totals/terminology, filled five structurally present but unwritten chapters (8–11 and 18), and reconciled lifecycle, math, graphics, renderer, Content/XNB, Model/glTF/CNJ, input/media/services, sharp-runtime, sibling-library, platform, testing/CI and porting-practice claims with pinned evidence. Continue the edition-wide factual, cross-reference, duplication, index and visual sweep. |
+| **F — whole-book consistency** | **In progress.** Eighteen verified corrective batches removed stale totals/terminology, filled five structurally present but unwritten chapters (8–11 and 18), and reconciled lifecycle, math, graphics, renderer, Content/XNB, Model/glTF/CNJ, input/media/services, sharp-runtime, sibling-library, platform, testing/CI, porting-practice and appendix-reference claims with pinned evidence. Continue the edition-wide factual, cross-reference, duplication, index and visual sweep. |
 | **G — final verification** | Not started. |
 
 ### 3.1 Phase A research areas — all delivered
@@ -360,6 +360,7 @@ log grep replaces.
 | 2026-08-12 | Phase F corrective batch 15 | **709 pages**, build clean; makeindex 2,184 / 0 / 0; Chapters 61 and 64–67 reconciled to source-site versus worker concurrency, five focused versus 24 admitted Web identities, Emscripten network topology, primary Android emulator/APK evidence, portable-versus-native Metal tests, workflow trigger drift and iOS/tvOS configuration non-claims; physical pages 583–610 rendered and read as five contact sheets plus full-size risk pages, all visually clean |
 | 2026-08-12 | Phase F corrective batch 16 | **709 pages**, build clean; makeindex 2,184 / 0 / 0; Chapters 71–73 reconciled to pinned-versus-moving Proton evidence, actual Windows default/explicit build targets, filtered Direct2D CnaTests execution and the Input label's 541-by-five command despite a stale x3 comment; physical pages 611–636 rendered and read as five contact sheets plus full-size risk pages, all visually clean |
 | 2026-08-12 | Phase F corrective batch 17 | **709 pages**, build clean; makeindex 2,183 / 0 / 0; Chapters 74–79 and cross-chapter ecosystem/sharp-runtime claims reconciled to free-direct's remediated blit path and follow-up benchmark, actual inaudible pan boundary, retained Timidity decoder, exact tracked SQLite blob and bounded Android evidence; physical pages 39–42, 563–568 and 637–668 rendered and read as eight contact sheets plus full-size risk pages, all visually clean |
+| 2026-08-12 | Phase F corrective batch 18 | **709 pages**, build clean; makeindex 2,183 / 0 / 0; Appendices A–H mechanically re-audited, edition pins separated from later branch movement, CNAEXT token/header inventory made exact, MIDI decoder/public-route and Android install/frame evidence boundaries corrected; physical pages 665–702 rendered and read as seven contact sheets plus full-size risk pages; one malformed monospace paragraph on printed page 649 corrected and re-rendered clean |
 
 ---
 
@@ -963,3 +964,25 @@ mid-session at the owner's direction, so the build and visual passes are availab
   automated checks green. Rendered and read physical pages 39–42, 563–568 and 637–668 as eight
   contact sheets plus full-size risk pages. The two blank chapter-end verso pages are intentional;
   no clipping, overlap, malformed table, broken heading or other visual defect was found.
+
+### 2026-08-12 — Phase F corrective batch 18: Appendix reference truth
+
+- Re-audited Appendices A–H as bounded lookup surfaces rather than trusting Phase E's earlier
+  snapshot. Mechanically reconfirmed 46 public renderer identities / 42 implementation families,
+  fourteen framework/extension modules, all twelve repository pins, 544 xna4-spec entries, the
+  63/23/67 samples partition, 249 examples, sharp-runtime's 16,201 task rows / 2,183 tickets, CI's
+  eight-workflow trigger split and the glTF D1–D8/layer matrices.
+- Distinguished immutable edition pins from mutable sibling branch heads. Eleven local sibling
+  HEADs still match their recorded pins; `cna-template` advanced after the audit from retained pin
+  `1d86681` to `4d0a2c8a`, so Appendix D now states explicitly that its table remains revision-
+  scoped evidence rather than a live-HEAD promise.
+- Replaced Appendix E's rounded marker count with the reproducible whole-token result: 1,876
+  occurrences across 302 headers. Added Appendix F's missing distinction between vendored
+  SDL3_mixer's retained Timidity decoder and CNA's absent public `.mid` Song/Content mapping, and
+  made Appendix G require both Android APK installation and a frame from the selected renderer.
+- Ran `tools/verify-book.sh`: 709 pages, makeindex 2,183 accepted / 0 rejected / 0 warnings, all
+  automated checks green. Rendered and read every appendix page, physical pages 665–702, as seven
+  contact sheets plus full-size pin/CNAEXT/MIDI/evidence/glTF pages. Visual inspection caught an
+  accidental tab-expanded `texttt` paragraph on physical page 679 (printed 649); it was repaired,
+  the full verifier repeated, and physical pages 679–680 re-rendered clean. Physical page 702 is
+  the intentional blank verso before the index.

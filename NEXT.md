@@ -11,7 +11,7 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
 |---|---|
 | cna-bible branch | `next`; local commits are ahead of `origin/next` (push requires explicit external-publication approval) |
 | CNA pinned SHA | `7a64362efef4119bf880459ef1704fb2c52199e2` (`develop` == `origin/develop`, 2026-08-11) |
-| Book builds | **yes** — 709 pages, all automated checks green; all completed Phase D/E writing and seventeen Phase F corrective batches are visually verified |
+| Book builds | **yes** — 709 pages, all automated checks green; all completed Phase D/E writing and eighteen Phase F corrective batches are visually verified |
 | Phase | **A–E complete; F in progress:** Chapters 19–79 and Appendices A–H are complete. Phase F has filled omitted Chapters 8–11 and 18, corrected early graphics/lifecycle drift, and continues the whole-book consistency sweep. |
 
 ## What is done
@@ -295,6 +295,15 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     without turning it into current renderer evidence. Chapters 74, 76–78 were mechanically
     re-audited without further correction. The book remains 709 pages; physical pages 39–42,
     563–568 and 637–668 were rendered and read without visual defect.
+37. **Phase F corrective batch 18 is complete and verified.** Appendices A–H were re-audited as
+    one bounded reference surface. Renderer, module, pin, CNAEXT, service, CI and glTF inventories
+    were mechanically checked against the pinned repositories and corrected chapters. Appendix D
+    now distinguishes immutable edition pins from a sibling branch that later advanced; Appendix E
+    records the reproducible 1,876 whole-token CNAEXT occurrences across 302 headers; Appendix F
+    separates Timidity decoder presence from a supported `.mid` Song/Content route; and Appendix G
+    states Android installation and renderer-frame presentation as separate required evidence.
+    The book remains 709 pages; physical pages 665–702 were rendered and read. Visual review found
+    and corrected one malformed monospace paragraph on page 649, then re-rendered it cleanly.
 
 ## Do this next
 
@@ -320,7 +329,7 @@ bounded correction batch; finish with an edition-wide visual and automated pass 
 
 ## Verification status
 
-Everything through Phase E and Phase F corrective batch 17 is verified:
+Everything through Phase E and Phase F corrective batch 18 is verified:
 
 - `make -C latex book` succeeds; **709 pages**.
 - makeindex: 2,183 entries accepted, 0 rejected, 0 warnings.
@@ -429,6 +438,11 @@ Everything through Phase E and Phase F corrective batch 17 is verified:
   plus full-size database, performance, DirectSound, MIDI and Android-roadmap pages covered the
   affected span. Blank printed pages 626 and 630 are intentional chapter-end recto alignment;
   no clipping, overlap, malformed table, broken heading or other visual defect was found.
+- Phase F corrective batch 18 rendered and reviewed every appendix page, physical pages 665–702.
+  Seven contact sheets plus full-size pin, CNAEXT, MIDI, Android-evidence and glTF-tail pages
+  covered Appendices A–H. A malformed monospace paragraph on physical page 679 (printed 649) was
+  corrected, the complete verifier rerun, and pages 679–680 re-rendered cleanly. Physical page 702
+  is the intentional blank verso before the index.
 
 **No completed writing batch is pending PDF verification.** Continue with the Phase F whole-book
 consistency sweep, then perform Phase G final verification.
@@ -446,7 +460,7 @@ consistency sweep, then perform Phase G final verification.
 Ten source-audit reports and the 42-family draw-path matrix are complete against pinned CNA
 `7a64362e`. Phase B settled a 12-Part, 79-chapter, 8-appendix edition; Phase C put it on disk,
 migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–7
-rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: seventeen verified
+rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: eighteen verified
 batches filled omitted Chapters 8–11 and 18, removed stale totals/terminology, reconciled the
 early graphics, lifecycle and math narrative, and separated the four current shader strategies
 from the still-missing arbitrary-effect path. State, stream, instancing and programmable-GL
