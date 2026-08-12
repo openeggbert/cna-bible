@@ -301,6 +301,41 @@ else
 fi
 rm -f "$recorder_expected_file" "$recorder_actual_file" "$recorder_diff_file"
 
+# Recorder input is a set, so it cannot distinguish one image included twice from five images each
+# included once. Close the declared image graph separately: every source PNG must have exactly one
+# case-correct includegraphics target and no target may name a missing/non-PNG asset.
+image_targets_file=$(mktemp /tmp/cna-bible-image-targets.XXXXXX.txt)
+image_sources_file=$(mktemp /tmp/cna-bible-image-sources.XXXXXX.txt)
+image_orphans_file=$(mktemp /tmp/cna-bible-image-orphans.XXXXXX.txt)
+image_duplicates_file=$(mktemp /tmp/cna-bible-image-duplicates.XXXXXX.txt)
+image_missing_file=$(mktemp /tmp/cna-bible-image-missing.XXXXXX.txt)
+find "$chapters" "$front" -type f -name '*.tex' -print0 \
+    | xargs -0 perl -ne '
+        while (/\\includegraphics(?:\[[^]]*\])?\{([^{}]+)\}/g) { print "$1\n"; }
+    ' | LC_ALL=C sort > "$image_targets_file"
+find "$book_dir/images" -maxdepth 1 -type f -name '*.png' -printf 'images/%f\n' \
+    | LC_ALL=C sort > "$image_sources_file"
+comm -23 "$image_sources_file" "$image_targets_file" > "$image_orphans_file"
+uniq -d "$image_targets_file" > "$image_duplicates_file"
+comm -13 "$image_sources_file" "$image_targets_file" > "$image_missing_file"
+image_source_count=$(wc -l < "$image_sources_file")
+image_target_count=$(wc -l < "$image_targets_file")
+image_orphan_count=$(wc -l < "$image_orphans_file")
+image_duplicate_count=$(wc -l < "$image_duplicates_file")
+image_missing_count=$(wc -l < "$image_missing_file")
+if [ "$image_source_count" -eq 5 ] && [ "$image_target_count" -eq 5 ] \
+   && [ "$image_orphan_count" -eq 0 ] && [ "$image_duplicate_count" -eq 0 ] \
+   && [ "$image_missing_count" -eq 0 ]; then
+    pass "all 5 source PNGs are included exactly once with case-correct paths"
+else
+    fail "image-source closure failed ($image_source_count files, $image_target_count includes, $image_orphan_count orphaned, $image_duplicate_count duplicated, $image_missing_count missing/non-PNG)"
+    sed 's/^/        orphaned: /' "$image_orphans_file" | head -10
+    sed 's/^/        duplicated: /' "$image_duplicates_file" | head -10
+    sed 's/^/        missing/non-PNG: /' "$image_missing_file" | head -10
+fi
+rm -f "$image_targets_file" "$image_sources_file" "$image_orphans_file" \
+    "$image_duplicates_file" "$image_missing_file"
+
 # ---------------------------------------------------------------- stale facts
 echo "-- stale-fact sweep"
 

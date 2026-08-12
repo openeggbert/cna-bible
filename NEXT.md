@@ -688,6 +688,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     explicitly before the verifier creates its private run directory, and allocation failure has
     its own controlled error. A missing bootstrap command can no longer bypass the ordinary
     dependency preflight and cascade through an empty scratch path.
+96. **The source-image graph is closed, not merely observed by TeX.** The recorder and embedded-
+    pixel audits operate on sets, so neither alone detects one PNG included twice while another is
+    orphaned. The verifier now requires exactly five case-correct `images/*.png` targets, each
+    matching one of the five source files exactly once, with no duplicate, orphan or missing/
+    non-PNG target before checking their embedded RGB/alpha pixels.
 
 ## Do this next
 
