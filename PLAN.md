@@ -381,6 +381,7 @@ log grep replaces.
 | 2026-08-12 | Post-G preface reconciliation | **709 pages**, Part III overview corrected from 3D models to draw geometry/vertex streams, preserving Part VI's model-runtime remit; edition-wide audit dated to the recorded 2026-08-11 pins rather than conflated with July-dated source snapshots; new stable Appendix D link brings the current artifact to 1,803 valid link annotations; complete verifier green; physical pages 3–4 rendered and read clean |
 | 2026-08-12 | Post-G Task-citation audit | **709 pages**, all 92 compiled Task-bearing lines checked against their owning pinned plans, including 46 distinct numeric CNA IDs plus range/slash endpoints, decimal/avatar IDs, easy-gl U2 and three WEBGPU IDs; corrected Phase 70's off-by-one wording to 65 technical Tasks 666–730 plus closing document Task 731; verifier guard added; complete verifier green; physical page 349 rendered and read clean |
 | 2026-08-12 | Post-G interactive-index repair | **709 pages**, corrected `imakeidx`/`hyperref` load order so 1,848 index numbers are clickable; independent text/rectangle/name-tree/page-object audit proves every number, including range endpoints, lands on printed page + 30; artifact totals 3,651 valid link annotations / 1,541 unique targets; pre-fix PDF fails at 0 index links; text layer byte-identical; all seven recoloured index pages rendered and read clean |
+| 2026-08-12 | Post-G outline/TOC bijection | **709 pages unchanged**, all 1,066 visible Part-through-subsection TOC destinations proven identical to the PDF outline set; 27 deeper internal paragraph/subsubsection records correctly excluded by standard `tocdepth=2`; one-destination negative fixture triggered the new set comparison and existing landing audit; verifier-only change, no visual delta |
 
 ---
 
@@ -1150,3 +1151,7 @@ build and visual passes are available again.
   added an independent MuPDF extraction/rectangle/name-tree audit for all 1,848 printed index
   numbers. Every target lands on printed page + 30; the pre-fix artifact fails with zero links.
   Extracted text is byte-identical, and all seven recoloured index pages were visually read clean.
+- Strengthened outline validation from aggregate counts to exact destination-set equality with
+  every visible Part-through-subsection TOC entry. The 27 deeper `.toc` records are intentionally
+  outside standard `tocdepth=2`. A mutated destination fails both the new set and existing landing
+  checks; this verifier-only hardening leaves the PDF unchanged.

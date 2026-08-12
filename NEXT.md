@@ -398,6 +398,14 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     The pre-fix PDF fails this check at 0 of 0 links. Extracted text is byte-identical; all seven
     visibly recoloured index pages 703–709 were rendered and read, with first/middle/last pages
     inspected full-size and clean.
+51. **The PDF outline and visible TOC now agree entry-for-entry.** Beyond checking counts and
+    title/destination hygiene, the verifier compares the complete sorted destination sets: all
+    1,066 Part-through-subsection TOC targets occur exactly once in the outline, with nothing
+    extra. The 27 deeper `paragraph`/`subsubsection` records written internally to `.toc` are
+    intentionally outside the standard `book` class's `tocdepth=2` and therefore outside both
+    visible navigation surfaces. A fixture replacing one `chapter.1` destination with
+    `chapter.9999` triggered both the new two-entry set mismatch and the existing landing-page
+    audit. This verifier-only hardening does not alter the PDF.
 
 ## Do this next
 
@@ -581,6 +589,10 @@ Everything through Phase G is verified:
   matches every link rectangle to its printed number and physical target; all pass, giving 3,651
   valid annotations and 1,541 unique targets overall. The pre-fix artifact fails the new guard.
   Extracted text is identical, and all seven recoloured index pages were visually reviewed clean.
+- The 1,066-entry outline now must exactly match every visible Part-through-subsection TOC
+  destination, not merely its aggregate counts. A one-destination negative fixture triggered both
+  the set comparison and landing audit. The 27 deeper internal `.toc` records remain deliberately
+  hidden at the standard `tocdepth=2`; this verifier-only change did not alter the PDF.
 
 **No known writing, correction or PDF-verification defect is pending.**
 

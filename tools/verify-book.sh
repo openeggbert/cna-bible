@@ -442,6 +442,16 @@ if command -v mutool >/dev/null 2>&1; then
 
     outline_file=$(mktemp /tmp/cna-bible-outline.XXXXXX.txt)
     if mutool show "$pdf" outline > "$outline_file" 2>/dev/null; then
+        outline_dests_file=$(mktemp /tmp/cna-bible-outline-dests.XXXXXX.txt)
+        toc_outline_dests_file=$(mktemp /tmp/cna-bible-toc-outline-dests.XXXXXX.txt)
+        outline_toc_diff_file=$(mktemp /tmp/cna-bible-outline-toc-diff.XXXXXX.txt)
+        grep -o '#nameddest=[^[:space:]]*' "$outline_file" | sed 's/#nameddest=//' \
+            | sort > "$outline_dests_file"
+        perl -ne '
+            print "$2\n"
+                if /\\contentsline \{(part|chapter|section|subsection)\}.*\{([^{}]+)\}%$/;
+        ' "$book_dir/main.toc" | sort > "$toc_outline_dests_file"
+        comm -3 "$outline_dests_file" "$toc_outline_dests_file" > "$outline_toc_diff_file"
         outline_entries=$(grep -c '#nameddest=' "$outline_file" || true)
         outline_destinations=$(grep -o '#nameddest=[^[:space:]]*' "$outline_file" \
             | sort -u | wc -l)
@@ -463,6 +473,14 @@ if command -v mutool >/dev/null 2>&1; then
         else
             fail "damaged PDF outline ($outline_entries entries, $outline_destinations unique destinations, $outline_empty_titles empty titles)"
         fi
+        outline_toc_diff_count=$(wc -l < "$outline_toc_diff_file")
+        if [ "$outline_entries" -eq 1066 ] && [ "$outline_toc_diff_count" -eq 0 ]; then
+            pass "PDF outline exactly matches all 1066 Part-through-subsection TOC destinations"
+        else
+            fail "PDF outline/TOC mismatch ($outline_toc_diff_count differing destinations)"
+            head -10 "$outline_toc_diff_file" | sed 's/^/        /'
+        fi
+        rm -f "$outline_dests_file" "$toc_outline_dests_file" "$outline_toc_diff_file"
     else
         fail "mutool could not read the PDF outline"
     fi
