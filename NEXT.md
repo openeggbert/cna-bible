@@ -378,7 +378,7 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     and vertex streams, leaving the model runtime and asset pipeline in Part VI. Its date note now
     distinguishes July-dated facts quoted from CNA's documentation from this edition's complete
     repository-pin audit on 2026-08-11. The stable Appendix D reference raises the current link-
-    annotation total to 1,803; every target and rectangle remains valid. The complete verifier is
+    annotation total at that checkpoint to 1,803; every target and rectangle remained valid. The complete verifier is
     green, and both physical preface pages 3–4 were rendered and read full-size, clean.
 49. **Every compiled Task citation has been re-audited against its owning pin.** The sweep
     covered all 92 manuscript lines containing “Task,” including 46 distinct CNA numeric IDs,
@@ -388,6 +388,16 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     document, matching the pinned Phase 70 plan and completion report. A verifier rule rejects the
     former off-by-one wording. The complete verifier is green; physical page 349 was rendered and
     read full-size, clean.
+50. **The back-of-book index is now genuinely interactive and end-to-end verified.** The
+    `imakeidx`/`hyperref` load order had left all seven index pages without link annotations even
+    though their printed numbers and generated ranges were correct. Loading the index package
+    first activates hyperref's standard `hyperpage` integration: the artifact now contains 1,848
+    clickable index numbers, 3,651 total link annotations and 1,541 unique internal targets. A new
+    independent MuPDF text/geometry audit proves that every index rectangle covers exactly its
+    printed number and lands on physical page `number + 30`, including both endpoints of ranges.
+    The pre-fix PDF fails this check at 0 of 0 links. Extracted text is byte-identical; all seven
+    visibly recoloured index pages 703–709 were rendered and read, with first/middle/last pages
+    inspected full-size and clean.
 
 ## Do this next
 
@@ -560,12 +570,17 @@ Everything through Phase G is verified:
   1,066 outline entries for non-empty titles and unique destinations.
 - The preface's Part map now keeps 3D models in Part VI and describes Part III's actual geometry/
   vertex-stream remit. Its evidence note binds the complete audit to the 2026-08-11 repository
-  pins via Appendix D; all 1,803 current link annotations validate. Physical pages 3–4 were read
-  full-size and are clean.
+  pins via Appendix D. The later interactive-index repair brings the current artifact to 3,651
+  valid link annotations and 1,541 unique targets. Physical pages 3–4 were read full-size and are
+  clean.
 - All 92 compiled lines containing “Task” were checked against the relevant pinned CNA/easy-gl
   evidence. Chapter 30's sole count mismatch now separates the 65 technical Tasks 666–730 from
   Task 731's closing document; a verifier guard prevents the off-by-one wording from returning.
   Physical page 349 was rendered and read full-size, clean.
+- Corrected package order so all 1,848 back-of-book index numbers are clickable. The verifier now
+  matches every link rectangle to its printed number and physical target; all pass, giving 3,651
+  valid annotations and 1,541 unique targets overall. The pre-fix artifact fails the new guard.
+  Extracted text is identical, and all seven recoloured index pages were visually reviewed clean.
 
 **No known writing, correction or PDF-verification defect is pending.**
 

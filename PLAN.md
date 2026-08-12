@@ -380,6 +380,7 @@ log grep replaces.
 | 2026-08-12 | Post-G licensing/outline clarification | **709 pages**, CNA's Ms-PL software-license section distinguished from the book's undecided publication license; D3D9 vendored Stock Effects corrected from bytecode to the six `.fx` sources plus four `.fxh` includes present at the pin; all 1,066 outline entries checked for non-empty titles and unique destinations; complete verifier green; physical pages 5 and 37 rendered and read clean |
 | 2026-08-12 | Post-G preface reconciliation | **709 pages**, Part III overview corrected from 3D models to draw geometry/vertex streams, preserving Part VI's model-runtime remit; edition-wide audit dated to the recorded 2026-08-11 pins rather than conflated with July-dated source snapshots; new stable Appendix D link brings the current artifact to 1,803 valid link annotations; complete verifier green; physical pages 3–4 rendered and read clean |
 | 2026-08-12 | Post-G Task-citation audit | **709 pages**, all 92 compiled Task-bearing lines checked against their owning pinned plans, including 46 distinct numeric CNA IDs plus range/slash endpoints, decimal/avatar IDs, easy-gl U2 and three WEBGPU IDs; corrected Phase 70's off-by-one wording to 65 technical Tasks 666–730 plus closing document Task 731; verifier guard added; complete verifier green; physical page 349 rendered and read clean |
+| 2026-08-12 | Post-G interactive-index repair | **709 pages**, corrected `imakeidx`/`hyperref` load order so 1,848 index numbers are clickable; independent text/rectangle/name-tree/page-object audit proves every number, including range endpoints, lands on printed page + 30; artifact totals 3,651 valid link annotations / 1,541 unique targets; pre-fix PDF fails at 0 index links; text layer byte-identical; all seven recoloured index pages rendered and read clean |
 
 ---
 
@@ -1144,3 +1145,8 @@ build and visual passes are available again.
   easy-gl U2 and three WEBGPU-prefixed IDs. Corrected the one real mismatch: Phase 70's technical
   work is Tasks 666–730 (65 tasks), with Task 731 as its closing document. Added a regression guard;
   the complete verifier is green and physical page 349 was read full-size without defect.
+- Found that `imakeidx` loaded after `hyperref`, replacing its index hook and leaving all seven
+  index pages non-interactive. Reordered the packages to activate standard `hyperpage` links and
+  added an independent MuPDF extraction/rectangle/name-tree audit for all 1,848 printed index
+  numbers. Every target lands on printed page + 30; the pre-fix artifact fails with zero links.
+  Extracted text is byte-identical, and all seven recoloured index pages were visually read clean.

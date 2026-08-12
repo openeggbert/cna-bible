@@ -597,6 +597,108 @@ EOF
                 fail "TOC destination audit failed ($bad_toc_target_count wrong of $toc_target_count numbered entries)"
                 grep -v '^SUMMARY ' "$toc_target_result_file" | head -10 | sed 's/^/        /'
             fi
+
+            # Hyperlinked index numbers need a stronger check than target existence. Match every
+            # Link rectangle on physical index pages 703--709 to MuPDF's independently extracted
+            # numeric text fragment, then resolve its named destination to a physical page. This
+            # handles compact ranges such as 154--156, whose two endpoints are separate links.
+            index_text_file=$(mktemp /tmp/cna-bible-index-text.XXXXXX.json)
+            index_target_result_file=$(mktemp /tmp/cna-bible-index-targets.XXXXXX.txt)
+            if mutool draw -q -F stext.json -o "$index_text_file" "$pdf" 703-709 \
+                >/dev/null 2>&1; then
+                perl -MJSON::PP -e '
+                    my ($objects, $pages, $text_file) = @ARGV;
+                    open P, "<", $pages or die $!;
+                    while (<P>) {
+                        if (/page (\d+) = (\d+) 0 R/) {
+                            $physical_for_page_object{$2} = $1;
+                            $page_object_for_physical{$1} = $2;
+                        }
+                    }
+                    close P;
+                    open O, "<", $objects or die $!;
+                    while (<O>) {
+                        next unless /^(\d+) 0 obj (.*)$/;
+                        ($number, $body) = ($1, $2);
+                        $object{$number} = $body;
+                        $destination_page{$number} = $physical_for_page_object{$1}
+                            if $body =~ m{/D\[(\d+) 0 R/XYZ};
+                        if ($body =~ m{/Names\[}) {
+                            while ($body =~ /\(([^()]*)\)(\d+) 0 R/g) {
+                                $name_object{$1} = $2;
+                            }
+                        }
+                    }
+                    close O;
+                    open J, "<", $text_file or die $!;
+                    local $/;
+                    $json = decode_json(<J>);
+                    close J;
+                    for ($i = 0; $i < @{$json->{pages}}; $i++) {
+                        $source_page = 703 + $i;
+                        for $block (@{$json->{pages}[$i]{blocks} // []}) {
+                            for $line (@{$block->{lines} // []}) {
+                                $printed = $line->{text} // "";
+                                $printed =~ s/^\s+|\s+$//g;
+                                next unless $printed =~ /^\d+$/;
+                                $box = $line->{bbox};
+                                push @{$numbers{$source_page}}, [
+                                    $printed + 0, $box->{x}, $box->{y},
+                                    $box->{x} + $box->{w}, $box->{y} + $box->{h}
+                                ];
+                            }
+                        }
+                    }
+                    for $source_page (703 .. 709) {
+                        $page_body = $object{$page_object_for_physical{$source_page}} // "";
+                        ($annotations) = $page_body =~ m{/Annots\[(.*?)\]};
+                        while (($annotations // "") =~ /(\d+) 0 R/g) {
+                            $annotation = $object{$1} // "";
+                            next unless $annotation =~ m{/Subtype/Link};
+                            next unless $annotation =~ m{/D\(page\.(\d+)\)};
+                            $target_printed = $1 + 0;
+                            if ($annotation !~ m{/Rect\[([-.0-9]+) ([-.0-9]+) ([-.0-9]+) ([-.0-9]+)\]}) {
+                                $bad++; print "source=$source_page target=$target_printed missing-rectangle\n";
+                                next;
+                            }
+                            ($x0, $y0, $x1, $y1) = ($1, $2, $3, $4);
+                            ($top0, $top1) = (841.89 - $y1, 841.89 - $y0);
+                            @matching = grep {
+                                $cx = ($_->[1] + $_->[3]) / 2;
+                                $cy = ($_->[2] + $_->[4]) / 2;
+                                $cx >= $x0 - 1 && $cx <= $x1 + 1
+                                    && $cy >= $top0 - 1 && $cy <= $top1 + 1;
+                            } @{$numbers{$source_page} // []};
+                            $checked++;
+                            $actual_page = $destination_page{$name_object{"page.$target_printed"}};
+                            $expected_page = $target_printed + 30;
+                            if (@matching != 1 || $matching[0][0] != $target_printed
+                                || !defined($actual_page) || $actual_page != $expected_page) {
+                                $bad++;
+                                $seen = join(",", map { $_->[0] } @matching);
+                                $seen = "?" if $seen eq "";
+                                print "source=$source_page printed=$seen target=$target_printed "
+                                    . "expected=$expected_page actual="
+                                    . (defined($actual_page) ? $actual_page : "?") . "\n";
+                            }
+                        }
+                    }
+                    print "SUMMARY " . ($checked + 0) . " " . ($bad + 0) . "\n";
+                ' "$objects_file" "$page_objects_file" "$index_text_file" \
+                    > "$index_target_result_file"
+                read -r _ index_target_count bad_index_target_count <<EOF
+$(tail -1 "$index_target_result_file")
+EOF
+                if [ "$index_target_count" -eq 1848 ] && [ "$bad_index_target_count" -eq 0 ]; then
+                    pass "all $index_target_count clickable index numbers match their printed and physical pages"
+                else
+                    fail "index destination audit failed ($bad_index_target_count wrong of $index_target_count links)"
+                    grep -v '^SUMMARY ' "$index_target_result_file" | head -10 | sed 's/^/        /'
+                fi
+            else
+                fail "MuPDF could not extract the seven index pages for link verification"
+            fi
+            rm -f "$index_text_file" "$index_target_result_file"
         else
             fail "mutool could not map PDF page objects"
         fi
