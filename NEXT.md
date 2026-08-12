@@ -593,6 +593,12 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     sealed `tools/build-release.sh`, which should fail ordinary manuscript changes until a new
     release is authorized. Historical batched-writing, source-grounding and push rules remain
     unchanged.
+78. **The compiled-source closure includes front matter.** The input-graph verifier previously
+    required all 89 chapter/appendix/renderer-fragment sources exactly once but left
+    `front/titlepage.tex` and `front/preface.tex` outside that census. It now requires exactly 89
+    content plus two front-matter files, all 91 present, input exactly once and case-correct, with
+    zero orphan, duplicate or missing targets. The release already satisfies the stronger graph;
+    no PDF change was required.
 
 ## Do this next
 

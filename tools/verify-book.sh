@@ -153,7 +153,8 @@ fi
 
 # A syntactically valid chapter file can be forgotten during a restructure and never reach TeX;
 # conversely, a case-mismatched input may work on one filesystem and fail on another. Require
-# every chapter, appendix, and renderer fragment on disk to occur exactly once in the input graph.
+# every front-matter, chapter, appendix, and renderer-fragment source on disk to occur exactly once
+# in the input graph. Keep the 89-content-source count explicit as a second structural invariant.
 input_targets_file=$(mktemp /tmp/cna-bible-input-targets.XXXXXX.txt)
 chapter_sources_file=$(mktemp /tmp/cna-bible-chapter-sources.XXXXXX.txt)
 orphan_sources_file=$(mktemp /tmp/cna-bible-orphan-sources.XXXXXX.txt)
@@ -163,8 +164,13 @@ missing_inputs_file=$(mktemp /tmp/cna-bible-missing-inputs.XXXXXX.txt)
     grep -ho '\\input{[^}]*}' "$book_dir/main.tex" 2>/dev/null
     grep -rho '\\input{[^}]*}' "$chapters" "$front" 2>/dev/null
 } | sed 's/^\\input{//;s/}$//' | grep '^chapters/' | sort > "$input_targets_file"
-find "$chapters" -type f -name '*.tex' -printf '%P\n' | sed 's|^|chapters/|' | sort \
-    > "$chapter_sources_file"
+grep -ho '\\input{[^}]*}' "$book_dir/main.tex" 2>/dev/null \
+    | sed 's/^\\input{//;s/}$//' | grep '^front/' >> "$input_targets_file"
+sort -o "$input_targets_file" "$input_targets_file"
+{
+    find "$chapters" -type f -name '*.tex' -printf '%P\n' | sed 's|^|chapters/|'
+    find "$front" -type f -name '*.tex' -printf '%P\n' | sed 's|^|front/|'
+} | sort > "$chapter_sources_file"
 comm -23 "$chapter_sources_file" "$input_targets_file" > "$orphan_sources_file"
 uniq -d "$input_targets_file" > "$duplicate_inputs_file"
 while IFS= read -r input_target; do
@@ -175,12 +181,14 @@ compiled_source_count=$(wc -l < "$input_targets_file")
 orphan_source_count=$(wc -l < "$orphan_sources_file")
 duplicate_input_count=$(wc -l < "$duplicate_inputs_file")
 missing_input_count=$(wc -l < "$missing_inputs_file")
-if [ "$chapter_source_count" -eq 89 ] && [ "$compiled_source_count" -eq 89 ] \
+content_source_count=$(find "$chapters" -type f -name '*.tex' | wc -l)
+if [ "$content_source_count" -eq 89 ] && [ "$chapter_source_count" -eq 91 ] \
+   && [ "$compiled_source_count" -eq 91 ] \
    && [ "$orphan_source_count" -eq 0 ] && [ "$duplicate_input_count" -eq 0 ] \
    && [ "$missing_input_count" -eq 0 ]; then
-    pass "all 89 chapter, appendix, and fragment sources are compiled exactly once"
+    pass "all 2 front-matter + 89 content sources are compiled exactly once"
 else
-    fail "compiled-source closure failed ($chapter_source_count files, $compiled_source_count inputs, $orphan_source_count orphaned, $duplicate_input_count duplicated, $missing_input_count missing)"
+    fail "compiled-source closure failed ($content_source_count content, $chapter_source_count total files, $compiled_source_count inputs, $orphan_source_count orphaned, $duplicate_input_count duplicated, $missing_input_count missing)"
     sed 's/^/        orphaned: /' "$orphan_sources_file" | head -10
     sed 's/^/        duplicated: /' "$duplicate_inputs_file" | head -10
     sed 's/^/        missing: /' "$missing_inputs_file" | head -10
