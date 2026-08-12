@@ -634,6 +634,12 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     to overwrite one another and leaving empty files behind. Each run now creates a private
     `mktemp` directory, routes named diagnostics there and removes it on normal exit or
     `HUP`/`INT`/`TERM`. Generated artifacts and verification semantics are unchanged.
+85. **The sealed workflow passes from the current clean tracked archive.** A `git archive` of
+    commit `d551a3f` was extracted into a new path, initialized with a local baseline solely for
+    `git diff --check`, and ran `tools/build-release.sh` without workspace-only inputs. It rebuilt
+    3,314,744-byte SHA-256 `7c877ef...` and passed the complete expanded verifier, including the
+    98-input recorder, pixel image provenance, catalog/action allowlists, outline/TOC order and
+    round trip. Later documentation of this run has no typesetting delta.
 
 ## Do this next
 

@@ -415,6 +415,7 @@ log grep replaces.
 | 2026-08-12 | Post-G visible-TOC order integrity | Filtered physical TOC annotations to the first occurrence of each expected destination, excluding six legitimate duplicate surrounding-navigation links; the resulting 1,066-destination sequence matches `main.toc` byte-for-byte, closing row-order swaps that coverage/identity/landing set checks could miss; no PDF delta |
 | 2026-08-12 | Post-G internal-target/landing cardinalities | Replaced non-empty predicates with exact release populations for 1,542 unique internal link targets and 1,065 numbered TOC landings, complementing already-fixed link/name/TOC/index counts and preventing silent deletion of an internally consistent subgroup; complete verifier remains green, no PDF delta |
 | 2026-08-12 | Post-G concurrent verifier hygiene | Replaced eleven predictable `/tmp/cna-bible-*.txt` diagnostic paths with a private per-run `mktemp` directory and EXIT/HUP/INT/TERM cleanup, preventing concurrent verifier runs from overwriting stale-fact/whitespace evidence and eliminating newly leaked named scratch files; verification semantics and PDF unchanged |
+| 2026-08-12 | Post-G current clean-archive release run | Extracted tracked commit `d551a3f` via `git archive` into a new path, created a local baseline solely for `git diff --check`, and ran the sealed command without workspace-only inputs; reproduced 3,314,744-byte SHA-256 `7c877ef...` and passed the complete expanded verifier including recorder/image/catalog/action/order/round-trip checks; documentation-only record, no typesetting delta |
 
 ---
 
@@ -1344,3 +1345,6 @@ build and visual passes are available again.
 - Isolated named verifier diagnostics in a private per-run temporary directory with cleanup on
   normal exit and common termination signals. Concurrent runs can no longer overwrite eleven
   stale-fact/whitespace outputs, and successful runs leave no new named scratch files.
+- Ran the sealed workflow from a fresh `git archive` of tracked commit `d551a3f`, with a local
+  baseline only for whitespace status. It reproduced the exact 3,314,744-byte / `7c877ef...` PDF
+  and passed every expanded verifier check without any workspace-only input.
