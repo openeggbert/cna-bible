@@ -409,6 +409,7 @@ log grep replaces.
 | 2026-08-12 | Post-G explicit PDF profile | Bound the semantic artifact profile to PDF 1.7, exactly 709 pages, unencrypted, untagged, unsuspect and without user properties, in addition to all per-page A4/rotation/box checks; requiring the consciously untagged state prevents an accidental partial tag tree from being presented as a PDF/UA edition, while tagged accessibility remains an owner-selected future release decision |
 | 2026-08-12 | Post-G Claude workflow reconciliation | Updated `CLAUDE.md` to make `tools/verify-book.sh` the authoritative once-per-batch automated pass, retain rendered touched-page reading as a separate requirement, and distinguish the sealed `tools/build-release.sh` from ordinary manuscript work, without changing batched-writing, source-grounding or push policy |
 | 2026-08-12 | Post-G complete source-input closure | Expanded the exact-once input graph from 89 chapter/appendix/fragment files to all 91 compiled sources: 89 content plus title page and preface; verifier now requires all present, case-correct and input once with zero orphan/duplicate/missing targets, while retaining the 89-content count as a separate invariant; no PDF delta |
+| 2026-08-12 | Post-G TeX recorder provenance | Compared `main.fls` with a filesystem-derived exact set of 98 project inputs: main.tex, shared preamble, 91 front/content TeX sources and five PNGs; explicit path/type filtering excludes TeX-distribution and generated auxiliary inputs; current recorder has zero missing/unexpected project files, independently confirming what TeX actually opened; no PDF delta |
 
 ---
 
@@ -1320,3 +1321,6 @@ build and visual passes are available again.
 - Expanded source closure to include the title page and preface. The verifier now requires 89
   content sources plus two front-matter sources, all 91 case-correct and input exactly once, with
   no orphan, duplicate or missing target. The artifact already satisfied the stronger graph.
+- Bound TeX's `main.fls` recorder to a filesystem-derived 98-input project set: main source,
+  preamble, 91 front/content TeX files and five PNGs. There are zero missing or unexpected inputs;
+  distribution and generated files are deliberately outside the path/type boundary.

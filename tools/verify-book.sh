@@ -196,6 +196,42 @@ fi
 rm -f "$input_targets_file" "$chapter_sources_file" "$orphan_sources_file" \
     "$duplicate_inputs_file" "$missing_inputs_file"
 
+# The declared input graph and the files TeX actually opened are independent evidence. Compare
+# all project-owned manuscript/image inputs recorded by -recorder in main.fls with a filesystem-
+# derived expected set; ignore TeX-distribution and generated auxiliary inputs by construction.
+recorder_expected_file=$(mktemp /tmp/cna-bible-recorder-expected.XXXXXX.txt)
+recorder_actual_file=$(mktemp /tmp/cna-bible-recorder-actual.XXXXXX.txt)
+recorder_diff_file=$(mktemp /tmp/cna-bible-recorder-diff.XXXXXX.txt)
+{
+    printf '%s\n' main.tex ../common/preamble.tex
+    find "$front" "$chapters" -type f -name '*.tex' -printf '%P\n' \
+        | while IFS= read -r source; do
+            if [ -f "$front/$source" ]; then printf './front/%s\n' "$source"
+            else printf './chapters/%s\n' "$source"
+            fi
+        done
+    find "$book_dir/images" -maxdepth 1 -type f -name '*.png' -printf './images/%f\n'
+} | sort -u > "$recorder_expected_file"
+if [ -f "$book_dir/main.fls" ]; then
+    awk '/^INPUT / {print substr($0, 7)}' "$book_dir/main.fls" \
+        | grep -E '^(main\.tex|\.\./common/preamble\.tex|\./(front|chapters)/.*\.tex|\./images/.*\.png)$' \
+        | sort -u > "$recorder_actual_file"
+else
+    : > "$recorder_actual_file"
+fi
+comm -3 "$recorder_expected_file" "$recorder_actual_file" > "$recorder_diff_file"
+recorder_expected_count=$(wc -l < "$recorder_expected_file")
+recorder_actual_count=$(wc -l < "$recorder_actual_file")
+recorder_diff_count=$(wc -l < "$recorder_diff_file")
+if [ "$recorder_expected_count" -eq 98 ] && [ "$recorder_actual_count" -eq 98 ] \
+   && [ "$recorder_diff_count" -eq 0 ]; then
+    pass "TeX recorder opened exactly the expected 98 project manuscript/image inputs"
+else
+    fail "TeX recorder provenance mismatch ($recorder_expected_count expected, $recorder_actual_count actual, $recorder_diff_count differences)"
+    head -10 "$recorder_diff_file" | sed 's/^/        /'
+fi
+rm -f "$recorder_expected_file" "$recorder_actual_file" "$recorder_diff_file"
+
 # ---------------------------------------------------------------- stale facts
 echo "-- stale-fact sweep"
 

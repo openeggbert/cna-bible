@@ -599,6 +599,12 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     content plus two front-matter files, all 91 present, input exactly once and case-correct, with
     zero orphan, duplicate or missing targets. The release already satisfies the stronger graph;
     no PDF change was required.
+79. **TeX's recorder agrees with the declared input graph.** `main.fls` is now compared against a
+    filesystem-derived set of exactly 98 project-owned inputs: `main.tex`, the shared preamble,
+    91 front/content `.tex` files and five PNGs. TeX-distribution and generated auxiliary files
+    are excluded by explicit path/type boundary. The release recorder has zero missing or
+    unexpected project inputs, closing the gap between source declarations and files actually
+    opened during compilation; no artifact change was needed.
 
 ## Do this next
 
