@@ -382,6 +382,7 @@ log grep replaces.
 | 2026-08-12 | Post-G Task-citation audit | **709 pages**, all 92 compiled Task-bearing lines checked against their owning pinned plans, including 46 distinct numeric CNA IDs plus range/slash endpoints, decimal/avatar IDs, easy-gl U2 and three WEBGPU IDs; corrected Phase 70's off-by-one wording to 65 technical Tasks 666–730 plus closing document Task 731; verifier guard added; complete verifier green; physical page 349 rendered and read clean |
 | 2026-08-12 | Post-G interactive-index repair | **709 pages**, corrected `imakeidx`/`hyperref` load order so 1,848 index numbers are clickable; independent text/rectangle/name-tree/page-object audit proves every number, including range endpoints, lands on printed page + 30; artifact totals 3,651 valid link annotations / 1,541 unique targets; pre-fix PDF fails at 0 index links; text layer byte-identical; all seven recoloured index pages rendered and read clean |
 | 2026-08-12 | Post-G outline/TOC bijection | **709 pages unchanged**, all 1,066 visible Part-through-subsection TOC destinations proven identical to the PDF outline set; 27 deeper internal paragraph/subsubsection records correctly excluded by standard `tocdepth=2`; one-destination negative fixture triggered the new set comparison and existing landing audit; verifier-only change, no visual delta |
+| 2026-08-12 | Post-G print-geometry/blank-page audit | **709 pages unchanged**, all Media/Crop/Bleed/Trim/Art boxes resolve to identical A4 rectangles on every page; Ghostscript ink coverage identifies exactly twelve even open-right versos, with expected positions derived from the twelve Part entries in `main.toc`; verifier-only change, no visual delta |
 
 ---
 
@@ -1155,3 +1156,7 @@ build and visual passes are available again.
   every visible Part-through-subsection TOC entry. The 27 deeper `.toc` records are intentionally
   outside standard `tocdepth=2`. A mutated destination fails both the new set and existing landing
   checks; this verifier-only hardening leaves the PDF unchanged.
+- Checked all five standard PDF page boxes across all 709 pages and found identical A4 geometry.
+  Replaced the visual-only blank-page assertion with Ghostscript ink coverage whose twelve expected
+  even versos are derived from the Part entries in `main.toc`, not a fixed list. The verifier-only
+  change leaves the PDF unchanged.

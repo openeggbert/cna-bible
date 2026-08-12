@@ -354,11 +354,17 @@ a4_pages=$(printf '%s\n' "$page_boxes" \
     | grep -cE '^Page +[0-9]+ size:  +595\.276 x 841\.89 pts \(A4\)$' || true)
 unrotated_pages=$(printf '%s\n' "$page_boxes" \
     | grep -cE '^Page +[0-9]+ rot:  +0$' || true)
+complete_page_boxes=1
+for box_name in MediaBox CropBox BleedBox TrimBox ArtBox; do
+    box_count=$(printf '%s\n' "$page_boxes" \
+        | grep -cE "^Page +[0-9]+ ${box_name}: +0\.00 +0\.00 +595\.28 +841\.89$" || true)
+    [ "$box_count" -eq "$pages" ] || complete_page_boxes=0
+done
 if [ "$encrypted" = "no" ] && [ "$a4_pages" -eq "$pages" ] \
-   && [ "$unrotated_pages" -eq "$pages" ]; then
-    pass "all $pages PDF pages are unencrypted, unrotated A4"
+   && [ "$unrotated_pages" -eq "$pages" ] && [ "$complete_page_boxes" -eq 1 ]; then
+    pass "all $pages PDF pages are unencrypted, unrotated A4 with matching page boxes"
 else
-    fail "unexpected PDF page geometry or encryption ($a4_pages/$pages A4, $unrotated_pages/$pages unrotated, encrypted='${encrypted:-?}')"
+    fail "unexpected PDF page geometry or encryption ($a4_pages/$pages A4, $unrotated_pages/$pages unrotated, complete boxes=$complete_page_boxes, encrypted='${encrypted:-?}')"
 fi
 if [ "$form" = "none" ] && [ "$javascript" = "no" ]; then
     pass "PDF contains no forms or JavaScript"
@@ -733,11 +739,25 @@ fi
 # not replace the visual pass; it catches corrupt objects and page programs that Poppler or MuPDF
 # may tolerate differently.
 if command -v gs >/dev/null 2>&1; then
-    if gs -q -dNOPAUSE -dBATCH -sDEVICE=nullpage -o /dev/null "$pdf"; then
-        pass "Ghostscript processed every PDF page"
+    ink_file=$(mktemp /tmp/cna-bible-ink.XXXXXX.txt)
+    if gs -q -dNOPAUSE -dBATCH -sDEVICE=inkcov -o "$ink_file" "$pdf"; then
+        blank_pages=$(awk '$1 == 0 && $2 == 0 && $3 == 0 && $4 == 0 {print NR}' "$ink_file" \
+            | paste -sd, -)
+        expected_blank_pages=$(perl -ne '
+            if (/\\contentsline \{part\}.*\{(\d+)\}\{part\.\d+\}%$/) {
+                push @pages, $1 + 31;
+            }
+            END { print join(",", @pages); }
+        ' "$book_dir/main.toc")
+        if [ "$blank_pages" = "$expected_blank_pages" ]; then
+            pass "Ghostscript processed all pages; exactly the 12 Part-derived open-right versos are blank"
+        else
+            fail "unexpected blank-page set from Ghostscript ink coverage (actual='${blank_pages:-none}', expected='${expected_blank_pages:-none}')"
+        fi
     else
         fail "Ghostscript could not process the complete PDF"
     fi
+    rm -f "$ink_file"
 else
     fail "Ghostscript unavailable; independent PDF interpreter check cannot run"
 fi

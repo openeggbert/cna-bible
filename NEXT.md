@@ -406,6 +406,13 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     visible navigation surfaces. A fixture replacing one `chapter.1` destination with
     `chapter.9999` triggered both the new two-entry set mismatch and the existing landing-page
     audit. This verifier-only hardening does not alter the PDF.
+52. **Print geometry and intentional blank pages are mechanically closed.** `pdfinfo -box`
+    confirms that MediaBox, CropBox, BleedBox, TrimBox and ArtBox all resolve to the same A4
+    rectangle on every one of 709 pages. Ghostscript ink coverage finds exactly twelve fully blank
+    physical pages: all even versos immediately between a Part title and its following right-hand
+    chapter. The verifier derives their expected physical positions from the twelve Part entries
+    in `main.toc` rather than preserving a hand-written page list, so structural movement remains
+    safe. This verifier-only hardening leaves the already-reviewed PDF unchanged.
 
 ## Do this next
 
@@ -593,6 +600,10 @@ Everything through Phase G is verified:
   destination, not merely its aggregate counts. A one-destination negative fixture triggered both
   the set comparison and landing audit. The 27 deeper internal `.toc` records remain deliberately
   hidden at the standard `tocdepth=2`; this verifier-only change did not alter the PDF.
+- Every page now must expose matching A4 Media/Crop/Bleed/Trim/Art boxes. Ghostscript ink coverage
+  must find exactly the twelve blank versos derived from the Part-page entries in `main.toc`; the
+  current physical pages are 32, 50, 130, 216, 366, 420, 454, 532, 568, 582, 610 and 636. This
+  verifier-only change did not alter the PDF.
 
 **No known writing, correction or PDF-verification defect is pending.**
 
