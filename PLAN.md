@@ -348,6 +348,7 @@ log grep replaces.
 | 2026-08-12 | Phase F corrective batch 2 | **703 pages**, build clean; makeindex 2,176 / 0 / 0; early identity/build/graphics/effects and service-lifecycle drift reconciled, recorded test campaigns separated from universal totals, verifier manual terms made whole-word exact; 31 touched physical pages rendered and read as six contact sheets, all visually clean |
 | 2026-08-12 | Phase F corrective batch 4 | **707 pages**, build clean; makeindex 2,176 / 0 / 0; Chapter 17 separated stock reimplementation, D3D9 source recompilation, FNA3D/MojoShader stock-bytecode execution and renderer-specific ShaderEffect, while Chapters 2/17 dropped the stale 23-of-86 current-sample claim; physical page 42 and Chapter 17 pages 200–208 rendered and read, all visually clean |
 | 2026-08-12 | Phase F corrective batch 5 | **707 pages**, build clean; makeindex 2,178 / 0 / 0; Chapters 16/18 reconciled to BlendWriteState, sampler-mip hooks, live SpriteBatch rasterizer routing, declaration exceptions, stream semantic composition and current capability contradictions; physical pages 191–200 and 209–216 rendered and read; one full-size overflow fixed and re-rendered clean |
+| 2026-08-12 | Phase F corrective batch 6 | **707 pages**, build clean; makeindex 2,183 / 0 / 0; Chapters 19/22 reconciled to the complete vertex-stream and instancing bridge, current capability/refusal classes, coherent singular/plural bindings, live SpriteBatch state and EasyGL's post-remediation MRT/wireframe/fog/colour-mask/mip/viewport contracts; physical pages 235–239, 248–250 and 262–270 rendered and read, high-risk table/listing pages inspected full-size, all visually clean |
 
 ---
 
@@ -654,3 +655,26 @@ mid-session at the owner's direction, so the build and visual passes are availab
   automated checks green. Rendered and read physical pages 191–200 and 209–216. Full-size review
   found one overflowing run of `DepthBuffer*` identifiers on page 195; after a legal line-break
   rewrite, the full build and affected-page render were repeated cleanly.
+
+### 2026-08-12 — Phase F corrective batch 6: renderer transport and programmable-GL truth
+
+- Replaced Chapter 19's pre-remediation declaration and instancing model. `SetVertexDeclaration`
+  is required, `GpuDrawParams::vertexStreams` carries complete slot/buffer/stride/offset/frequency
+  tuples by value on all three public draw routes, semantic-pair composition and per-stream range
+  validation are explicit, and `MultiStreamVertexInput` gates only multiple streams of one rate.
+- Rebuilt the old seven-callback table around current mechanism classes: Magnum's native full
+  multistream path; EasyGL native divisors; Vulkan/bgfx/WebGPU record replication; D3D11/12 native
+  step rates; D3D9's measured boundary; further Diligent/OpenGL/Sokol/Wicked callbacks; explicit
+  FNA3D/Software refusals; and Headless/SDL GPU's remaining inherited-true hazards. Corrected the
+  formerly stale singular/plural binding-state and `SpriteBatch::Begin` rasterizer claims.
+- Reconciled Chapter 22 against current EasyGL source. Removed the obsolete MRT leak, ignored
+  wireframe, clip-space fog, absent colour-mask, ignored-mip-request, lost custom viewport and
+  historical three-failure claims. Documented the reusable/finalized MRT FBO, GL_LINES wireframe,
+  FNA fog vector, per-MRT masks plus clear restoration, allocated explicit mip chains, live
+  SpriteBatch viewport, current `SetDataRaw` helper, and factory-argument loss. Preserved the real
+  unchecked ES3 base-vertex termination risk, RGBA8/recovery limits, effect unbind no-op and
+  public 16-bit SpriteBatch ceiling.
+- Ran `tools/verify-book.sh`: 707 pages, makeindex 2,183 accepted / 0 rejected / 0 warnings, all
+  automated checks green. Rendered and read physical pages 235–239, 248–250 and 262–270; the
+  two-page instancing table and pages 237–238, 264 and 269 were inspected full-size. No clipping,
+  overlap, broken listing, overfull box or other visual defect was found.

@@ -24,48 +24,64 @@ it is evidence of real methodology, not because it is guaranteed current.
 
 \section{Confirmed fixed since the original bug list}
 
-Two fixes are independently re-confirmed current: real anisotropic filtering (the requested
-\texttt{maxAnisotropy} now genuinely reaches the GPU, gated on the
-\texttt{GL\_EXT\_texture\_filter\_anisotropic} extension), and a real, parameterized
-\texttt{depthFormat} for cube render targets, replacing what had been a hardcoded
-``always has depth'' boolean.
+The current source closes substantially more than the old list records. Real anisotropic
+filtering forwards the requested \texttt{maxAnisotropy} to the GPU, gated on the
+\texttt{GL\_EXT\_texture\_filter\_anisotropic} extension, and cube render targets have a real,
+parameterized \texttt{depthFormat}, replacing what had been a hardcoded
+``always has depth'' boolean. Further corrections below cover MRT lifetime, wireframe,
+colour-write masks, mip storage, fog, custom viewport handling, and vertex-binding transport.
 
 \section{Confirmed pre-existing gaps}
 
-A multi-render-target configuration with more than one attachment leaks the previous
-framebuffer object, because unbinding any single render target resets a shared ``MRT ready''
-flag regardless of how many targets are actually bound --- the suspected cause of a known,
-still-failing MRT test. Separately, an upstream \texttt{easy-gl} GL-state-desync bug (not a
-CNA defect) causes one of \texttt{easy-gl}'s own resource smoke tests to fail.
+The old MRT leak diagnosis is no longer current. EasyGL now owns one reusable MRT framebuffer,
+calls \texttt{FinalizeCurrentMRT()} before every destination transition, resolves/regenerates every
+surviving member, clears every old attachment, and installs the new ordered set atomically. Its
+public MRT fixture now writes distinct outputs to one through four attachments and covers set
+replacement, per-target colour masks, MSAA resolve, usage, readback, and immediate sampling. The
+historical two-attachment failure expected an old blue value to survive a
+\cnaclass{DiscardContents} bind through a single-output \cnaclass{BasicEffect}; that expectation
+could not diagnose whether attachment~1 was active. Separately, an upstream \texttt{easy-gl}
+GL-state-desynchronization bug (not a CNA defect) remains visible in that sibling project's own
+resource smoke test.
 
-Several platform ceilings are inherent to OpenGL ES~3.0 rather than fixable in CNA at all:
-\cnaclass{FillMode::WireFrame} is silently ignored, because GLES3 has no
-\texttt{glPolygonMode} to call; \texttt{glDrawElementsBaseVertex} is called unconditionally
-without checking for the extension that actually guarantees it (only certain on GLES~3.2,
-not the 3.0 baseline this renderer otherwise targets) --- on a device lacking the extension,
-an indexed draw with a non-zero base vertex can silently render the wrong geometry or crash;
-and \cnaclass{OcclusionQuery::PixelCount()} can only ever return 0 or 1 on this driver
-profile, because GLES3 exposes only \texttt{GL\_ANY\_SAMPLES\_PASSED}, a boolean visibility
-test, not a true sample count.
+Two profile ceilings remain. On the ES~3.0 path, a nonzero base vertex still reaches
+\texttt{glDrawElementsBaseVertex} without checking the ES~3.2/extension entry point. \texttt{meta-gl}
+terminates if that function pointer is absent, so this is a deterministic process-failure risk,
+not a safe silent fallback. The ES~2 path is separately corrected by rebasing each enabled
+attribute pointer and restoring it after the draw. Also,
+\cnaclass{OcclusionQuery::PixelCount()} returns only 0 or 1 on the ES profile, because the route
+uses \texttt{GL\_ANY\_SAMPLES\_PASSED}: a boolean visibility result rather than a true sample
+count.
 
-Two further, real behavioral divergences are documented rather than silently accepted: fog
-is computed from clip-space Z rather than true view-space depth, which diverges from XNA at
-oblique viewing angles; and \texttt{DrawColoredPrimitives} / \texttt{DrawIndexedColoredPrimitives}
-always render through one hardcoded-transform shader program, entirely ignoring whatever
-\cnaclass{GpuDrawParams} the effect layer actually supplied.
+The old wireframe and fog diagnoses are both stale. EasyGL re-expands triangle indices to
+\texttt{GL\_LINES}, so it needs no \texttt{glPolygonMode}; the shared asymmetric-triangle oracle
+proves empty interiors and all three edges, and \texttt{SupportsCapability(WireFrame)} now reports
+that implementation (conditionally on 32-bit element-index support for ES~2). Stock-effect fog is
+computed from FNA's CPU-prepared view-space fog vector as
+\texttt{1-saturate(dot(position,fogVector))}, including the post-skin position. The bare
+\texttt{DrawColoredPrimitives} callbacks receive matrices but no \cnaclass{GpuDrawParams} by
+contract; EasyGL's effect-aware stock path is its separate \texttt{Draw*PrimitivesEx} route, so the
+colored callback alone is not evidence that a supplied effect payload was discarded.
+
+The old colour-mask row is stale too. \texttt{ApplyBlendState()} stores all four
+\cnaclass{ColorWriteChannels} values and \texttt{ApplyCurrentColorWriteMasks()} submits slot~0
+through \texttt{glColorMask}; profiles with indexed-mask support submit every active MRT slot
+independently, while a profile without it rejects unequal active masks instead of silently
+collapsing them. Because GL clear operations respect the current mask but XNA clears do not, each
+EasyGL clear temporarily enables all active channels and then restores the requested masks.
 
 Missing features confirmed still open include: the renderer-level
 \texttt{preserveContents} factory flag (ignored), although the chapter's old conclusion that
 all targets therefore behave as \texttt{DiscardContents} is stale --- shared
 \cnaclass{GraphicsDevice} code black-clears exact Discard on every CNA bind, while this
 renderer's persistent FBO preserves both Preserve and Platform when not explicitly cleared
-(pixel-proven for Discard versus Preserve); \texttt{Texture2D::SetData}
-uploads never regenerating mipmaps (only the render-target-unbind path does, a separate code
-path); \texttt{Texture3D} / \texttt{TextureCube} both ignoring their requested
-\cnaclass{SurfaceFormat} (always RGBA8) and their \texttt{mipMap} request; neither type being
-registered with the GL-context-loss recovery mechanism the way ordinary 2D textures are;
-\texttt{EasyGLEffectRenderer::Unbind()} being a pure no-op; \texttt{ApplyBlendState} never
-calling \texttt{glColorMask}, so \cnaclass{ColorWriteChannels} has no effect at all; and
+(pixel-proven for Discard versus Preserve); ordinary \texttt{Texture2D::SetData} uploads
+allocating and accepting explicit mip levels but never automatically downsampling level~0
+(render-target unbind does generate its chain, a separate contract); \texttt{Texture3D} and
+\texttt{TextureCube} honoring \texttt{mipMap} by allocating every level but ignoring the requested
+\cnaclass{SurfaceFormat} and always using RGBA8; neither type being registered with the
+GL-context-loss recovery mechanism the way ordinary 2D textures are;
+\texttt{EasyGLEffectRenderer::Unbind()} being a pure no-op; and
 \cnaclass{SpriteBatch} carrying a 65{,}535-index limit from its \texttt{uint16\_t} index
 type, silently wrapping or corrupting any batch exceeding roughly 16{,}383 quads.
 \texttt{VertexBuffer::GetData} / \texttt{IndexBuffer::GetData} have no real per-renderer GPU
@@ -79,10 +95,11 @@ already-tested contract on \texttt{Texture::ValidateFormat} (Chapter~\ref{ch:tex
 --- closing this gap would require revisiting a decision the project has already committed
 tests against, not simply writing new code.
 
-The default backbuffer has a related but distinct selection gap. The renderer factory never
-receives \texttt{BackBufferFormat}, \texttt{DepthStencilFormat}, or
-\texttt{IsFullScreen}; SDL/GL chooses framebuffer~0 after CNA asks only for an ES~3.0 context
-and eight stencil bits. When backbuffer MSAA is active, CNA replaces that path with its own
+The default backbuffer has a related but distinct selection gap. The shared factory arguments
+now carry \texttt{BackBufferFormat}, \texttt{DepthStencilFormat}, and \texttt{IsFullScreen}, but
+the EasyGL factory does not pass those three fields into its constructor. SDL/GL chooses
+framebuffer~0 after CNA asks for the selected GL profile and eight stencil bits. When backbuffer
+MSAA is active, CNA replaces that path with its own
 fixed RGBA8 plus Depth24 renderbuffers --- still not the requested enums, and with no stencil
 attachment in that MSAA FBO. \texttt{easygl\_depth\_format\_test} is intentionally honest
 about this: it cycles all four public depth values and proves only storage/no throw. The
@@ -200,22 +217,20 @@ architectural reason rather than extra effort spent on this specific fix: \textt
 issues its OpenGL calls immediately, at the moment a game actually calls it, with no deferred
 recording step in between --- so the same fix genuinely applies whether or not a
 \cnaclass{RenderTarget2D} / \cnaclass{RenderTargetCube} face is currently bound, using the active
-target's own height (\texttt{currentRtHeight\_}) for the coordinate-origin flip instead of the
+target's own height (the current binding record's \texttt{height}) for the coordinate-origin flip instead of the
 window's physical height whenever one is. A concrete illustration of a theme
 Chapter~\ref{ch:backend-architecture} already introduced in the abstract: two renderers
 implementing the identical interface method can genuinely differ in how completely they can
 honor it, for reasons rooted in each renderer's own underlying execution model rather than in
 how carefully either one was built.
 
-That conclusion needs one draw-family qualifier the earlier Task~880 account missed.
-The EasyGL batch flush explicitly sets the GL viewport to the full active render target, or
-to the full physical window when no target is bound, before building its orthographic
-projection. It neither consults
-\texttt{GraphicsDevice.Viewport} nor restores the previous GL viewport afterward. Custom
-viewport behavior is therefore real for the 3D draw paths the dedicated sub-region pixel test
-exercises, but not for SpriteBatch; worse, after a flush the public property can still report
-the custom rectangle while native GL state has returned to full size. Reassign the public
-viewport after a SpriteBatch pass before relying on it for later 3D work.
+The earlier Task~880 account also missed a draw-family correction that has since landed.
+\texttt{EasyGLSpriteBatchRenderer::FlushBatch()} reads the active native viewport. For a genuine
+sub-region it leaves the GL rectangle in place and builds its orthographic projection from that
+viewport's width and height, making sprite coordinates viewport-local as in FNA. Only the default
+full-target case resets to the full active render target or physical window. Dedicated pixel tests
+cover one custom viewport and two batches using different viewports in one frame, so SpriteBatch
+no longer overwrites a public custom rectangle or leaves later 3D work behind a false public cache.
 
 Scissor does not share that overwrite. \texttt{ApplyRasterizerState()} owns the GL enable and
 \texttt{SetScissorRect()} owns only the rectangle, both immediate. The latter now flips Y
@@ -318,23 +333,24 @@ readback limitation. Chapter~\ref{ch:textures-rendertargets} traces the exact pa
 
 Chapter~\ref{ch:backend-architecture}'s Task~1080 custom-vertex-layout capability --- EasyGL's
 own extension letting a caller supply an arbitrary \cnaclass{VertexDeclaration} instead of only
-the five stock \texttt{VertexPositionXxx} types --- reaches the renderer through a different,
+the seven typed \texttt{VertexPositionXxx} shapes --- reaches the renderer through a different,
 \texttt{CNAEXT} entry point, \texttt{SetDataRaw()}, and that path does \emph{not} participate in
 the shadow mechanism at all:
 
 \begin{lstlisting}
 void VertexBuffer::SetDataRaw(const void* data, int count, int stride)
 {
-    if (getIsDisposedProperty())
-        throw System::ObjectDisposedException("VertexBuffer");
-    renderer_->SetVertexDeclaration(vertexDeclaration_.GetVertexElements());
-    renderer_->SetData(data, count, static_cast<std::size_t>(stride));
-    // No cpuShadow_ update here -- unlike every typed SetData(VertexPositionXxx*, ...)
-    // overload above.
+    const std::size_t uploadStride =
+        stride > 0 ? static_cast<std::size_t>(stride) : 0;
+    if (!ValidateSetDataRange(
+            data, 0, count, uploadStride, uploadStride, true))
+        return;
+    UploadValidatedData(
+        data, count, uploadStride, SetDataOptions::None, false);
 }
 \end{lstlisting}
 
-\texttt{GetData} itself is only ever declared for the five stock types, so there is no
+\texttt{GetData} itself is declared for those seven typed shapes, but there is no
 \texttt{GetDataRaw} counterpart to call after a custom-layout upload in the first place --- a
 caller who populates a buffer through \texttt{SetDataRaw()} and then genuinely needs the data
 back has no API surface to ask with at all, typed or raw. This is a narrower, more precisely
@@ -363,11 +379,14 @@ selectivity.
 
 \section{Test baseline}
 
-The feature matrix records exactly three known pre-existing test failures for this renderer:
-the two-attachment MRT test, a reference-stencil test, and the upstream \texttt{easy-gl}
-resource smoke-test issue already covered above --- against a full suite exceeding 4{,}500
-tests overall, giving a sense of how narrow the genuinely open surface is relative to the
-renderer's total scope.
+Do not carry the old ``exactly three failures'' count forward as a current baseline. One of its
+three names was the historical MRT fixture whose expectation has now been replaced by the
+one-through-four-target contract above, while later stabilization runs also widened the registered
+test set. Current persistent EasyGL-specific classes include the independent
+\texttt{GraphicsDevice.ReferenceStencil} override gap; the sibling
+\texttt{easy-gl-resource-smoke-tests} failure is upstream, and networking/audio failures observed
+in larger corpora are environment/control classes rather than renderer evidence. A baseline is
+meaningful only with its exact commit, configured registrations, display/driver, and test filter.
 
 \section{A real screenshot, captured headlessly under Xvfb}
 

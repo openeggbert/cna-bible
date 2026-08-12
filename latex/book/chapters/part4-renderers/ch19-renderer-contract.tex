@@ -1146,16 +1146,21 @@ their bytes but never update the shared \cnaclass{VertexBuffer}/\cnaclass{IndexB
 produces \texttt{ArgumentOutOfRangeException}; after an older ordinary upload it can return
 stale data. Chapter~\ref{ch:textures-rendertargets} gives the caller-facing consequence.
 
-The declaration default has one live override too. \path{VertexBuffer::SetDataRaw()} sends
-its element list through \path{SetVertexDeclaration()} before upload. EasyGL consumes all
-twelve \cnaclass{VertexElementFormat} shapes and binds GLSL attribute locations by declaration
-order; the other nine constructible implementations inherit the no-op and remain dependent on
-their fixed stride/effect combinations. The EasyGL test is deliberately discriminating even
-after the fixed layout family grew: its custom record is 48 bytes, the same total as CNA's PBR
-vertex, but has different offsets and a trailing color. Correct diagnostic pixels therefore
-prove the declaration won over the fixed 48-byte interpretation.
+The declaration route is no longer an optional default. \path{VertexBuffer::SetDataRaw()} sends
+the complete \cnaclass{VertexDeclaration} through \path{SetVertexDeclaration()} before upload,
+and that renderer method is pure virtual: every buffer implementation must explicitly consume,
+remember, or reject the declaration. That structural requirement is not the same as universal
+layout fidelity. EasyGL binds custom-effect attributes in declaration order, bgfx translates the
+declaration, and Magnum builds dynamic attributes from it; several fixed-layout renderers instead
+remember the declaration and apply a draw-time fidelity guard before selecting a layout from the
+stride. The guards turn known same-stride/different-layout wrong pixels into deterministic
+\texttt{NotSupportedException}, while full native translation remains open work on those
+backends. The one deliberate shared exception is the legacy
+\texttt{VertexBuffer(device,count)} shape: its empty, zero-stride declaration can use the old
+single-buffer route, because describing it as a zero-stride stream would fetch record zero for
+every vertex. Chapter~\ref{ch:vertex-streams-capabilities} gives the semantic and constructor rules in full.
 
-\subsection{DrawEx fallbacks and the narrow instancing bridge}
+\subsection{DrawEx fallbacks and the complete-but-uneven instancing bridge}
 \label{sec:drawex-instancing-matrix}
 
 The two ordinary effect-aware defaults look dangerously permissive:
@@ -1178,107 +1183,104 @@ family results, and the source evidence is curated in the edition audit rather t
 from a virtual-method declaration count.
 
 \path{DrawInstancedPrimitivesEx()} is different. Its shared default throws
-\path{std::runtime_error}, and is live on two constructible 3D implementations. The public
-bridge above it also narrows XNA/FNA's binding model before any renderer runs. CNA stores
-multiple bindings, but scans out only the first non-null entry with a positive instance
-frequency. \path{GpuDrawParams} receives one raw instance-buffer pointer, with no frequency,
-binding offset, or additional stream. FNA's \path{PrepareVertexBindingArray()} instead
-forwards every binding's buffer, declaration, offset, and frequency to FNA3D. CNA can
-therefore represent ``one mesh stream plus one first-element, divisor-one instance stream,''
-not the complete public type it stores.
+\path{std::runtime_error}, but the public bridge no longer narrows XNA/FNA's binding model before
+a renderer runs. The same \path{FillVertexStreamBindings()} helper serves ordinary indexed,
+ordinary non-indexed, and instanced draws. \cnaclass{GpuDrawParams} carries up to sixteen active
+streams by value; each tuple keeps its public slot, renderer buffer, declaration-derived stride,
+\cnaclass{VertexOffset}, \cnaclass{InstanceFrequency}, and element count. No tuple points back
+into mutable \cnaclass{GraphicsDevice} state, which matters to deferred renderers.
+
+Composition follows FNA3D's semantic rule, not byte position. A later stream that entirely
+repeats already-claimed \texttt{(VertexElementUsage, UsageIndex)} pairs contributes nothing; a
+partially duplicated declaration is rejected because CNA's combined layout cannot express it
+without ambiguity. The shared layer then validates every per-vertex range and every per-instance
+range. For instance stream $s$, an \texttt{instanceCount} of $n$ consumes exactly
+$1+\lfloor(n-1)/f_s\rfloor$ records starting at that stream's own offset, where $f_s$ is its
+positive frequency. More than one stream of either input rate additionally requires
+\texttt{MultiStreamVertexInput}; an unsupported renderer rejects the binding set before native
+submission instead of truncating it. The classic one-mesh-plus-one-instance shape requires no
+multi-stream capability and remains the broad portable subset.
 
 \begingroup
 \small
 \setlength{\tabcolsep}{3.5pt}
 \renewcommand{\arraystretch}{1.15}
-\begin{longtable}{@{}p{0.14\textwidth}p{0.28\textwidth}p{0.23\textwidth}p{0.27\textwidth}@{}}
+\begin{longtable}{@{}p{0.19\textwidth}p{0.34\textwidth}p{0.39\textwidth}@{}}
 \toprule
-\textbf{Renderer} & \textbf{Instanced implementation} &
-  \textbf{No positive-frequency binding} & \textbf{Strongest located evidence} \\
+\textbf{Implementation class} & \textbf{Current contract} &
+  \textbf{Strongest located evidence} \\
 \midrule
 \endfirsthead
 \toprule
-\textbf{Renderer} & \textbf{Instanced implementation} &
-  \textbf{No positive-frequency binding} & \textbf{Strongest located evidence} \\
+\textbf{Implementation class} & \textbf{Current contract} &
+  \textbf{Strongest located evidence} \\
 \midrule
 \endhead
-\texttt{EasyGL}
-  & Real GPU instanced call. A custom \cnaclass{ShaderEffect} binds both caller declarations;
-    instance attributes use divisor one. Its stock-effect branch binds no instance attributes.
-  & Draws the requested number of identical instances.
-  & Public two-instance test reads two distinct pixels and mutation-proves the divisor. It
-    deliberately uses a custom effect. \\
-\texttt{VULKAN}
-  & Fixed instanced pipeline; the instance record supplies a world matrix.
-  & Falls back to one ordinary indexed draw.
-  & Public three-instance test reads three distinct positions plus background. \\
-\texttt{BGFX}
-  & Fixed instanced program and transient instance-data buffer; insufficient transient
-    capacity also returns silently.
-  & Returns without drawing.
-  & Source only; no dedicated BGFX instancing test was found. \\
+\texttt{MAGNUM}
+  & Full native stream model: multiple streams of either rate, each declaration, offset, and
+    divisor, followed by a real instanced draw.
+  & The renderer explicitly reports both \texttt{MultiStreamVertexInput} and
+    \texttt{Instancing}; the shared four-stream mixed-frequency pixel oracle includes Magnum. \\
+\texttt{EasyGL} except
+\texttt{OPENGLES2}/\texttt{WEBGL1}
+  & Full stream transport and native \texttt{glVertexAttribDivisor}; the custom
+    \cnaclass{ShaderEffect} path consumes caller declarations. The two ES~2/WebGL~1 profiles
+    explicitly report no instancing.
+  & The mixed-stream oracle is 14/14; the classic matrix exercises offsets and frequencies 1,
+    2, 3, larger-than-count, and a 2--1--2 transition in one frame. \\
+\texttt{VULKAN}, \texttt{BGFX},
 \texttt{WEBGPU}
-  & Fixed two-stream pipeline and copied instance-buffer shadow.
-  & Falls back to one ordinary indexed draw.
-  & Direct-renderer three-instance pixel test; its separate fallback check also reads a pixel. \\
+  & One per-vertex plus one per-instance stream. Native APIs expose no enabled divisor on these
+    paths, so frequency above one is expanded into the staging/transient instance data while
+    preserving one native draw and one destination record per instance.
+  & Pixel tests prove offsets and divisor arithmetic. bgfx additionally pins identical submit,
+    primitive, transient-byte, and view counts for frequency 1 versus 2. \\
+\texttt{D3D11}, \texttt{D3D12}
+  & One stream of each rate with native per-instance step rate; input-layout/PSO identity includes
+    the frequency so alternating draws cannot reuse stale divisor state.
+  & The shared offset/frequency oracle covers both. D3D11 was runtime-tested under Wine; D3D12's
+    current evidence combines its oracle legs with cross-build/source verification where the
+    windowed environment remains constrained. \\
 \texttt{D3D9}
-  & Fixed 64-byte world-matrix stream using \texttt{SetStreamSourceFreq}; resets persistent
-    stream frequency after drawing.
-  & Falls back to one ordinary indexed draw.
-  & Direct-renderer two-instance pixels, fallback behavior, and post-draw reset are
-    mutation-tested. \\
-\texttt{D3D11}
-  & Fixed 64-byte \texttt{INSTANCEWORLD0--3} input and
-    \texttt{DrawIndexedInstanced}.
-  & Falls back to one ordinary indexed draw.
-  & Direct smoke test reads exact output for one identity instance; it does not prove
-    multi-instance stepping. \\
-\texttt{D3D12}
-  & Fixed dual-stream instanced PSO; currently requires an offscreen color target.
-  & Falls back to one ordinary indexed draw.
-  & Direct smoke test reads exact output for one identity instance only. \\
-\texttt{SDL\_GPU}
-  & Inherits the shared throwing default despite having real 3D buffers and pipelines.
-  & Same unconditional throw.
-  & Source-proven; no dedicated instancing test was found. \\
-\texttt{SOFTWARE}
-  & Inherits the shared throwing default despite real CPU vertex/index buffers.
-  & Same unconditional throw.
-  & Source-proven; no dedicated instancing test was found. \\
-\texttt{HEADLESS}
-  & Logic-only override: records one indexed draw and increments its draw-call statistic to
-    the requested instance count.
-  & Records the same logical count without requiring instance data.
-  & Source only; no dedicated public binding/instancing test was found. \\
-\textit{Four 2D-only products}
-  & Shared unconditional throw.
-  & Same throw.
-  & Public construction of the required buffers fails earlier under the 2D-only contract. \\
+  & Real \texttt{SetStreamSourceFreq} path with a fixed world-matrix stream and post-draw reset.
+  & Range and basic pixel behavior are tested, but the shared offset/frequency oracle deliberately
+    makes no claim because a suitable D3D display was unavailable for that measurement. \\
+\texttt{DILIGENT}, \texttt{OPENGL2},
+\texttt{OPENGL4}, \texttt{SOKOL}, \texttt{WICKED}
+  & Each owns an instanced callback and reports \texttt{Instancing}; OpenGL2's answer is a live
+    check for both required extension entry points. Their accepted layout/frequency subsets are
+    renderer-specific rather than a promise of arbitrary effects.
+  & Source and renderer-specific tests; these rows are not promoted to the stronger shared
+    offset/frequency-oracle claim above. \\
+\texttt{FNA3D}, \texttt{SOFTWARE},
+selected fixed/2D renderers
+  & Explicitly report no instancing and refuse. FNA3D can transport all bindings, but CNA's
+    vendored stock-effect shaders declare no per-instance input, so its refusal is intentional.
+  & Capability switches and refusal tests establish the boundary before a draw is attempted. \\
+\texttt{HEADLESS}, \texttt{SDL\_GPU}
+  & Two remaining default-true hazards: Headless records logical counts without rasterizing;
+    SDL GPU inherits the shared throwing callback. Neither is proof of real hardware instancing.
+  & Direct source comparison of the inherited capability default with the callback routes. \\
 \bottomrule
 \end{longtable}
 \endgroup
 
-The seven real GPU callbacks do not imply a portable arbitrary-effect contract. Except for
-EasyGL's custom-effect branch, each chooses a CNA-owned instancing shader rather than making
-the currently applied effect consume the caller's declarations. Their common useful subset is
-a per-vertex position stream, one per-instance world matrix, shared view/projection, and a
-small fixed material payload. This is why a valid stock or custom effect does not by itself
-establish that the same instanced scene is portable across these rows.
+Those callbacks still do not imply a portable arbitrary-effect contract. Many choose a CNA-owned
+instancing shader whose useful common subset is a per-vertex position/color record, one
+per-instance world matrix, shared view/projection, and a small fixed material payload. A valid
+stock or custom effect does not by itself establish that the same instanced scene is portable.
 
-The binding state has an independent defect above this matrix: the offset-taking singular
-setter discards its offset, and both singular setters write only
-the singular buffer pointer; the old binding vector survives. Conversely,
-\path{SetVertexBuffers({})} clears the vector while leaving that pointer live. The plural
-getter can therefore disagree with the singular getter, and replacing a mesh through the
-singular setter after an earlier instanced binding can reuse the stale instance buffer on the
-next instanced draw. The existing \path{VertexBufferBindingTests.cpp} checks value copying in
-a standalone vector, never these \cnaclass{GraphicsDevice} transitions.
+The binding state above the matrix is now coherent too. Both singular setters clear the vector and
+install exactly one binding, including the supplied offset; the plural setter replaces the vector
+and updates the singular pointer to slot zero (or null for an empty list). A singular draw after an
+instanced one therefore cannot reuse a stale instance stream, and the two getters describe the
+same state transition.
 
-Finally, \cnaclass{GraphicsCapability} has no hardware-instancing entry. This is not merely
-the usual false-positive-default problem: there is no query value to override. FNA asks
-FNA3D directly and throws \texttt{NoSuitableGraphicsDeviceException} when hardware
-instancing is unavailable; CNA callers cannot perform an equivalent portable preflight and
-will instead see the row-specific throw, fallback, repeated draw, or silent return above.
+\cnaclass{GraphicsCapability::Instancing} now provides the preflight the earlier interface lacked.
+Its documentation says ``hardware instancing,'' but unlike \texttt{MultiStreamVertexInput} it
+inherits the base class's optimistic \texttt{true}. Explicit answers such as EasyGL's live profile
+split, OpenGL2's extension check, Magnum's native support, and Software/FNA3D's refusal are useful;
+the Headless/SDL GPU rows show why an inherited answer must still be audited against the callback.
 
 \subsection{Texture2D updates: one dead default and one live silent discard}
 \label{sec:texture2d-update-matrix}
@@ -1982,14 +1984,14 @@ do reset both public values to the first target's or backbuffer's full bounds. C
 preserves both custom values when size is unchanged or resets only the viewport after a real
 size change. FNA initializes both to presentation bounds and unconditionally resets both.
 
-\cnaclass{SpriteBatch} adds another shared gap above the table. The rasterizer pointer in its
-full \texttt{Begin()} overload is never read, whereas FNA
-stores the caller's state (defaulting null to \texttt{CullCounterClockwise}) and applies it
-before drawing. A capable row therefore still cannot be reached through CNA's ordinary
-``pass a scissor-enabled rasterizer to Begin'' idiom; the game must assign device rasterizer
-state separately. There is no \cnaclass{GraphicsCapability} entry for either feature, and
-invalid rectangles are not normalized at the shared boundary, so portable code must neither
-probe by getter nor rely on one renderer's clamp/ignore/throw behavior.
+\cnaclass{SpriteBatch} now reaches the same state route as an explicit device assignment. Its
+full \texttt{Begin()} overload applies the supplied blend state, depth/stencil state, rasterizer
+state, and sampler through the ordinary \cnaclass{GraphicsDevice} property setters; a null
+rasterizer is resolved to \texttt{CullCounterClockwise}, matching FNA. Passing a
+scissor-enabled rasterizer to \texttt{Begin()} can therefore reach every capable row in the
+table. There is still no \cnaclass{GraphicsCapability} entry for viewport or scissor, and invalid
+rectangles are not normalized at the shared boundary, so portable code must neither probe by
+getter nor rely on one renderer's clamp/ignore/throw behavior.
 
 \section{GpuDrawParams: already covered, worth remembering here}
 

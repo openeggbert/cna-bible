@@ -166,6 +166,17 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     and the truthful closed-stock FNA3D contrast. The book remains 707 pages; every physical page
     191–200 and 209–216 was rendered and read. A full-size pass found one overflowing
     `DepthBuffer*` run on page 195; it was rebroken, rebuilt, and re-rendered cleanly.
+25. **Phase F corrective batch 6 is complete and verified.** Chapters 19 and 22 now match the
+    post-audit renderer contract rather than their pre-remediation snapshots. The shared vertex
+    bridge carries complete declaration/slot/stride/offset/frequency tuples through all three draw
+    routes, validates every stream, and gates same-rate multiplicity; the instancing account now
+    includes Magnum, native and replicated divisor mechanisms, explicit refusals, and the remaining
+    Headless/SDL GPU capability false positives. Singular/plural vertex bindings and
+    `SpriteBatch::Begin` rasterizer submission are current. EasyGL prose now distinguishes its
+    resolved MRT lifetime, wireframe, fog, colour-mask, mip-storage and SpriteBatch viewport work
+    from the real base-vertex, RGBA8/recovery, effect-unbind and 16-bit batch boundaries. The book
+    remains 707 pages; physical pages 235–239, 248–250 and 262–270 were rendered and read, with the
+    instancing table, long identifiers and `SetDataRaw` listing inspected full-size and clean.
 
 ## Do this next
 
@@ -191,10 +202,10 @@ bounded correction batch; finish with an edition-wide visual and automated pass 
 
 ## Verification status
 
-Everything through Phase E and Phase F corrective batch 5 is verified:
+Everything through Phase E and Phase F corrective batch 6 is verified:
 
 - `make -C latex book` succeeds; **707 pages**.
-- makeindex: 2,176 entries accepted, 0 rejected, 0 warnings.
+- makeindex: 2,183 entries accepted, 0 rejected, 0 warnings.
 - No undefined references, no undefined control sequences, no duplicate labels, no doubled-
   backslash `\ref`, no hard-coded chapter numbers.
 - `git diff --check` clean.
@@ -243,6 +254,11 @@ Everything through Phase E and Phase F corrective batch 5 is verified:
   191–200 and 209–216. State-object lists, worked examples, the capability table, long hook names
   and the Part IV boundary were read at full size. One `DepthBuffer*` overflow was corrected and
   the full verification plus affected-page render repeated cleanly.
+- Phase F corrective batch 6 rendered and reviewed physical pages 235–239, 248–250 and 262–270.
+  The two-page instancing mechanism table, declaration and binding contracts, viewport/scissor
+  tail, EasyGL gap reconciliation, long GL identifiers, `SetDataRaw` listing and test-baseline
+  transition were read in contact sheets; pages 237–238, 264 and 269 were also inspected full-size.
+  The final rebuild and rerender were visually clean with no overfull box in the LaTeX log.
 
 **No completed writing batch is pending PDF verification.** Continue with the Phase F whole-book
 consistency sweep, then perform Phase G final verification.
@@ -260,9 +276,10 @@ consistency sweep, then perform Phase G final verification.
 Ten source-audit reports and the 42-family draw-path matrix are complete against pinned CNA
 `7a64362e`. Phase B settled a 12-Part, 79-chapter, 8-appendix edition; Phase C put it on disk,
 migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–7
-rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: five verified
+rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: six verified
 batches filled omitted Chapters 8–11 and 18, removed stale totals/terminology, reconciled the
 early graphics, lifecycle and math narrative, and separated the four current shader strategies
-from the still-missing arbitrary-effect path. State, stream and capability bridges now also match
-the pinned renderer interface. The book is 707 pages; continue the remaining whole-book
+from the still-missing arbitrary-effect path. State, stream, instancing and programmable-GL
+contracts now also match the pinned renderer interface and post-audit remediation state. The book
+is 707 pages; continue the remaining whole-book
 consistency sweep.
