@@ -417,6 +417,7 @@ log grep replaces.
 | 2026-08-12 | Post-G concurrent verifier hygiene | Replaced eleven predictable `/tmp/cna-bible-*.txt` diagnostic paths with a private per-run `mktemp` directory and EXIT/HUP/INT/TERM cleanup, preventing concurrent verifier runs from overwriting stale-fact/whitespace evidence and eliminating newly leaked named scratch files; verification semantics and PDF unchanged |
 | 2026-08-12 | Post-G current clean-archive release run | Extracted tracked commit `d551a3f` via `git archive` into a new path, created a local baseline solely for `git diff --check`, and ran the sealed command without workspace-only inputs; reproduced 3,314,744-byte SHA-256 `7c877ef...` and passed the complete expanded verifier including recorder/image/catalog/action/order/round-trip checks; documentation-only record, no typesetting delta |
 | 2026-08-12 | Post-G sealed-input preflight | Added a Git preflight to `tools/build-release.sh`: requires exact reviewed `HEAD:latex` tree `406104d29871dab11757fdd72ded5d9fbc7fc9f1` and no tracked or non-ignored untracked status under `latex/` before invoking TeX; documentation/verifier-only commits remain compatible, while committed/staged/unstaged/untracked release-input drift fails early with diagnostics |
+| 2026-08-12 | Post-G sealed PDF-date check | Sealed build now reads the PDF Info object with MuPDF and requires CreationDate and ModDate `D:20260812100654Z`, the UTC representation of `SOURCE_DATE_EPOCH=1786529214`, in addition to exact tree/size/SHA-256; provides direct timestamp diagnostics without constraining ordinary working builds |
 
 ---
 
@@ -1352,3 +1353,6 @@ build and visual passes are available again.
 - Added an early sealed-input preflight: `HEAD:latex` must equal reviewed tree `406104d...`, and
   `git status -- latex` must be empty including non-ignored untracked files. Typesetting drift now
   fails before the expensive rebuild while documentation/verifier-only commits remain valid.
+- Bound the sealed PDF Info dates to `D:20260812100654Z`, matching epoch 1786529214, via MuPDF.
+  CreationDate/ModDate drift now has a direct diagnostic in addition to the byte hash; ordinary
+  working builds remain timestamp-agnostic.

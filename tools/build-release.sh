@@ -14,8 +14,9 @@ source_date_epoch=1786529214
 expected_bytes=3314744
 expected_sha256=7c877ef20bdb20042bdd32483b2e79cb07e81dec7a8d86dc24f6d29d4a04b2af
 expected_latex_tree=406104d29871dab11757fdd72ded5d9fbc7fc9f1
+expected_pdf_date=D:20260812100654Z
 
-for required_command in git latexmk sha256sum stat; do
+for required_command in git latexmk mutool sha256sum stat; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         printf 'ERROR: missing required release command: %s\n' "$required_command" >&2
         exit 1
@@ -50,12 +51,21 @@ fi
 
 actual_bytes=$(stat -c '%s' "$pdf")
 actual_sha256=$(sha256sum "$pdf" | awk '{print $1}')
+pdf_info_object=$(mutool show -g "$pdf" trailer/Info 2>/dev/null || true)
+creation_date=$(printf '%s\n' "$pdf_info_object" \
+    | sed -n 's/.*\/CreationDate(\([^)]*\)).*/\1/p')
+modification_date=$(printf '%s\n' "$pdf_info_object" \
+    | sed -n 's/.*\/ModDate(\([^)]*\)).*/\1/p')
 printf 'main.pdf: %s bytes\n' "$actual_bytes"
 printf 'SHA-256: %s\n' "$actual_sha256"
+printf 'PDF dates: %s / %s\n' "${creation_date:-missing}" "${modification_date:-missing}"
 
-if [ "$actual_bytes" -ne "$expected_bytes" ] || [ "$actual_sha256" != "$expected_sha256" ]; then
+if [ "$actual_bytes" -ne "$expected_bytes" ] || [ "$actual_sha256" != "$expected_sha256" ] \
+   || [ "$creation_date" != "$expected_pdf_date" ] \
+   || [ "$modification_date" != "$expected_pdf_date" ]; then
     printf 'ERROR: PDF does not match the reviewed release fingerprint\n' >&2
-    printf 'expected: %s bytes, %s\n' "$expected_bytes" "$expected_sha256" >&2
+    printf 'expected: %s bytes, %s, dates %s\n' \
+        "$expected_bytes" "$expected_sha256" "$expected_pdf_date" >&2
     exit 1
 fi
 

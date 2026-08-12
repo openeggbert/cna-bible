@@ -646,6 +646,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     `latex/`. Documentation and verifier-only commits remain compatible, but committed, staged,
     unstaged or non-ignored untracked release-input changes fail with the actual tree/status.
     Positive clean-tree and negative mutated-archive fixtures exercise both paths.
+87. **The sealed source date is verified semantically as well as by hash.** After the fixed-epoch
+    build, `tools/build-release.sh` reads the PDF Info object through MuPDF and requires both
+    CreationDate and ModDate to equal `D:20260812100654Z`, the UTC form of epoch `1786529214`.
+    This gives an actionable timestamp diagnostic before the full verifier; ordinary working
+    builds remain exempt. README records the date alongside size and SHA-256.
 
 ## Do this next
 
