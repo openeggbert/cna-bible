@@ -418,6 +418,7 @@ log grep replaces.
 | 2026-08-12 | Post-G current clean-archive release run | Extracted tracked commit `d551a3f` via `git archive` into a new path, created a local baseline solely for `git diff --check`, and ran the sealed command without workspace-only inputs; reproduced 3,314,744-byte SHA-256 `7c877ef...` and passed the complete expanded verifier including recorder/image/catalog/action/order/round-trip checks; documentation-only record, no typesetting delta |
 | 2026-08-12 | Post-G sealed-input preflight | Added a Git preflight to `tools/build-release.sh`: requires exact reviewed `HEAD:latex` tree `406104d29871dab11757fdd72ded5d9fbc7fc9f1` and no tracked or non-ignored untracked status under `latex/` before invoking TeX; documentation/verifier-only commits remain compatible, while committed/staged/unstaged/untracked release-input drift fails early with diagnostics |
 | 2026-08-12 | Post-G sealed PDF-date check | Sealed build now reads the PDF Info object with MuPDF and requires CreationDate and ModDate `D:20260812100654Z`, the UTC representation of `SOURCE_DATE_EPOCH=1786529214`, in addition to exact tree/size/SHA-256; provides direct timestamp diagnostics without constraining ordinary working builds |
+| 2026-08-12 | Post-G verifier CLI hardening | Replaced silent unknown-argument fallback with an exact interface: no argument builds/checks, `--no-build` checks, `--help` prints usage, and every unknown/multiple-argument form exits 2 before make; negative fixtures confirm no build log or temporary diagnostic directory is created |
 
 ---
 
@@ -1356,3 +1357,6 @@ build and visual passes are available again.
 - Bound the sealed PDF Info dates to `D:20260812100654Z`, matching epoch 1786529214, via MuPDF.
   CreationDate/ModDate drift now has a direct diagnostic in addition to the byte hash; ordinary
   working builds remain timestamp-agnostic.
+- Made verifier arguments fail closed: only default build/check, `--no-build`, and `--help` are
+  accepted. Unknown or multiple arguments now return 2 with usage before make or scratch setup,
+  preventing an accidental expensive build under a mistyped option.

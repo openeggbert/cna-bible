@@ -651,6 +651,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     CreationDate and ModDate to equal `D:20260812100654Z`, the UTC form of epoch `1786529214`.
     This gives an actionable timestamp diagnostic before the full verifier; ordinary working
     builds remain exempt. README records the date alongside size and SHA-256.
+88. **Verifier arguments are fail-closed.** The script previously treated any unknown argument as
+    a normal build request. It now accepts only no argument, exactly `--no-build`, or `--help`;
+    unknown/multiple arguments print usage and return 2 before invoking make. Negative CLI
+    fixtures confirm that no build log or temporary diagnostic directory is created, while both
+    supported verification modes retain their prior behavior.
 
 ## Do this next
 

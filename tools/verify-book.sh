@@ -19,6 +19,24 @@ book_dir="$repo_root/latex/book"
 log="$book_dir/main.log"
 pdf="$book_dir/main.pdf"
 
+usage() {
+    printf 'Usage: %s [--no-build]\n' "${0##*/}"
+}
+
+do_build=1
+case "$#:${1:-}" in
+    0:) ;;
+    1:--no-build) do_build=0 ;;
+    1:--help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+esac
+
 # Fixed /tmp filenames make concurrent verifier runs overwrite each other's diagnostics. Keep all
 # named scratch outputs in one private session directory and remove it on normal exit or signals.
 diagnostic_dir=$(mktemp -d /tmp/cna-bible-verify.XXXXXX)
@@ -27,9 +45,6 @@ cleanup_diagnostics() {
     rmdir "$diagnostic_dir" 2>/dev/null || true
 }
 trap cleanup_diagnostics EXIT HUP INT TERM
-
-do_build=1
-[ "${1:-}" = "--no-build" ] && do_build=0
 
 failures=0
 pass() { printf '  \033[32mPASS\033[0m  %s\n' "$1"; }
