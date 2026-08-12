@@ -19,6 +19,15 @@ book_dir="$repo_root/latex/book"
 log="$book_dir/main.log"
 pdf="$book_dir/main.pdf"
 
+# Fixed /tmp filenames make concurrent verifier runs overwrite each other's diagnostics. Keep all
+# named scratch outputs in one private session directory and remove it on normal exit or signals.
+diagnostic_dir=$(mktemp -d /tmp/cna-bible-verify.XXXXXX)
+cleanup_diagnostics() {
+    find "$diagnostic_dir" -mindepth 1 -maxdepth 1 -type f -delete 2>/dev/null || true
+    rmdir "$diagnostic_dir" 2>/dev/null || true
+}
+trap cleanup_diagnostics EXIT HUP INT TERM
+
 do_build=1
 [ "${1:-}" = "--no-build" ] && do_build=0
 
@@ -261,9 +270,9 @@ fi
 # therefore create misleading keys such as "Album*" or "Game& game" instead of indexing the
 # underlying symbol. Keep declarators outside the semantic macro (e.g. \cnaclass{Album}\texttt{*}).
 if grep -rEn '\\(cnaclass|cnans)\{[^}]*(\*|\\&)[^}]*\}' "$chapters" "$front" \
-    > /tmp/cna-bible-index-declarators.txt 2>/dev/null; then
+    > "$diagnostic_dir/index-declarators.txt" 2>/dev/null; then
     fail "pointer/reference declarators inside semantic index macros"
-    head -10 /tmp/cna-bible-index-declarators.txt | sed 's/^/        /'
+    head -10 "$diagnostic_dir/index-declarators.txt" | sed 's/^/        /'
 else
     pass "no pointer/reference declarators inside semantic index macros"
 fi
@@ -272,9 +281,9 @@ fi
 # intentional conceptual pairs such as XNB/.xnb and free-direct/FREEDIRECT, but reject the known
 # C++ symbol aliases caused by optional call parentheses, omitted owners, or C# namespace dots.
 index_alias_re='\\cnaclass\{ContentManager::Load<(Song|T)>\(\)\}|\\cnaclass\{Load<Song>\(\)\}|\\cnaclass\{System\.(GC|Type)\}|\\cnaclass\{SystemException\}'
-if grep -rEn "$index_alias_re" "$chapters" "$front" > /tmp/cna-bible-index-aliases.txt 2>/dev/null; then
+if grep -rEn "$index_alias_re" "$chapters" "$front" > "$diagnostic_dir/index-aliases.txt" 2>/dev/null; then
     fail "noncanonical aliases split API symbols across index keys"
-    head -10 /tmp/cna-bible-index-aliases.txt | sed 's/^/        /'
+    head -10 "$diagnostic_dir/index-aliases.txt" | sed 's/^/        /'
 else
     pass "no known noncanonical API aliases in semantic index macros"
 fi
@@ -284,46 +293,46 @@ fi
 # the current manuscript. Historical discussion should spell out the old name without using
 # it as a live identifier, or live in the audit/plan evidence outside the compiled book.
 obsolete_re='IGraphicsBackend|ITextureBackend|ITexture3DBackend|ISpriteBatchBackend|IEffectBackend|ITextureCubeBackend|IRenderTargetBackend|IRenderTargetCubeBackend|IIndexBufferBackend|IVertexBufferBackend|IOcclusionQueryBackend|GraphicsBackendType|GetGraphicsBackendType|GetGraphicsBackendName|GraphicsBackendCreateArgs|CreateGraphicsBackend|D3D11RenderTargetBackend|CNA_GRAPHICS_BACKEND|CNA\\_GRAPHICS\\_BACKEND|CNA_BACKEND_|CNA\\_BACKEND\\_|CNA_RENDERER_(D3D9|D3D11|D3D12|DX3|EASYGL|ASCII)|CNA\\_RENDERER\\_(D3D9|D3D11|D3D12|DX3|EASYGL|ASCII)|NOXNA|BackendSelection\.cmake|BackendLibraries\.cmake|customEffectBackend|GraphicsRendererType::Ascii|dx3\\_(texture\\_rendertarget|no3d)\\_test\.cpp'
-if grep -rEn "$obsolete_re" "$chapters" "$front" > /tmp/cna-bible-obsolete-identifiers.txt 2>/dev/null; then
-    n=$(wc -l < /tmp/cna-bible-obsolete-identifiers.txt)
+if grep -rEn "$obsolete_re" "$chapters" "$front" > "$diagnostic_dir/obsolete-identifiers.txt" 2>/dev/null; then
+    n=$(wc -l < "$diagnostic_dir/obsolete-identifiers.txt")
     fail "obsolete CNA identifiers/options in compiled manuscript: $n"
-    head -10 /tmp/cna-bible-obsolete-identifiers.txt | sed 's/^/        /'
+    head -10 "$diagnostic_dir/obsolete-identifiers.txt" | sed 's/^/        /'
 else
     pass "no obsolete CNA identifiers/options in compiled manuscript"
 fi
 
 if grep -rEn '106 headers under' "$chapters" "$front" \
-    > /tmp/cna-bible-stale-graphics-header-count.txt 2>/dev/null; then
+    > "$diagnostic_dir/stale-graphics-header-count.txt" 2>/dev/null; then
     fail "stale 106-header Graphics subtree count in compiled manuscript"
 else
     pass "Graphics include count distinguishes 107 direct and 18 PackedVector headers"
 fi
 
 if grep -rEn 'production translation units' "$chapters" "$front" \
-    > /tmp/cna-bible-stale-production-unit-label.txt 2>/dev/null; then
+    > "$diagnostic_dir/stale-production-unit-label.txt" 2>/dev/null; then
     fail "production-file inventory mislabeled as translation units"
 else
     pass "physical-module inventory is labeled as production files"
 fi
 
 if grep -rEn 'Only 56 of 1\\{,\\}195|contain 159 directives|There are 109[[:space:]]*$' \
-    "$chapters" "$front" > /tmp/cna-bible-stale-platform-counts.txt 2>/dev/null; then
+    "$chapters" "$front" > "$diagnostic_dir/stale-platform-counts.txt" 2>/dev/null; then
     fail "stale platform-directive inventory in compiled manuscript"
 else
     pass "platform inventory defines its 1195-file and 152-directive populations"
 fi
 
 if grep -rEn '19 production files include.*meta-gl|sixteen implementation files' \
-    "$chapters" "$front" > /tmp/cna-bible-stale-metagl-consumer-count.txt 2>/dev/null; then
+    "$chapters" "$front" > "$diagnostic_dir/stale-metagl-consumer-count.txt" 2>/dev/null; then
     fail "stale easy-gl direct meta-gl consumer count"
 else
     pass "easy-gl names 3 header and 15 implementation meta-gl consumers"
 fi
 
-if grep -rEn 'CNA(_|\\_)GRAPHICS(_|\\_)RENDERER=(EASYGL|DX3|D3D9|D3D11|D3D12|ASCII)' "$chapters" "$front" > /tmp/cna-bible-obsolete-selectors.txt 2>/dev/null; then
-    n=$(wc -l < /tmp/cna-bible-obsolete-selectors.txt)
+if grep -rEn 'CNA(_|\\_)GRAPHICS(_|\\_)RENDERER=(EASYGL|DX3|D3D9|D3D11|D3D12|ASCII)' "$chapters" "$front" > "$diagnostic_dir/obsolete-selectors.txt" 2>/dev/null; then
+    n=$(wc -l < "$diagnostic_dir/obsolete-selectors.txt")
     fail "removed renderer selector in a live CMake assignment: $n"
-    head -10 /tmp/cna-bible-obsolete-selectors.txt | sed 's/^/        /'
+    head -10 "$diagnostic_dir/obsolete-selectors.txt" | sed 's/^/        /'
 else
     pass "no removed renderer selectors in live CMake assignments"
 fi
@@ -331,9 +340,9 @@ fi
 # Phase 70 contains 65 technical tasks (666--730); Task 731 is its closing documentation task.
 # The old wording paired the inclusive 666--731 range with a 65-task total, an off-by-one claim.
 if grep -rEn 'Tasks(~|[[:space:]])+666--731,? 65 tasks' "$chapters" "$front" \
-    > /tmp/cna-bible-phase70-count.txt 2>/dev/null; then
+    > "$diagnostic_dir/phase70-count.txt" 2>/dev/null; then
     fail "Phase 70 task range is paired with the obsolete off-by-one total"
-    head -10 /tmp/cna-bible-phase70-count.txt | sed 's/^/        /'
+    head -10 "$diagnostic_dir/phase70-count.txt" | sed 's/^/        /'
 else
     pass "Phase 70 separates 65 technical tasks from its closing documentation task"
 fi
@@ -381,16 +390,16 @@ echo "-- working tree"
 # A literal tab can silently replace the backslash of a mistyped \texttt command and still yield
 # a green LaTeX build (caught visually in Appendix D on 2026-08-12). The manuscript uses spaces,
 # so tabs and CRLF carriage returns are always defects in compiled TeX sources.
-if grep -rIn $'\t' "$chapters" "$front" "$book_dir/main.tex" > /tmp/cna-bible-tabs.txt 2>/dev/null; then
+if grep -rIn $'\t' "$chapters" "$front" "$book_dir/main.tex" > "$diagnostic_dir/tabs.txt" 2>/dev/null; then
     fail "literal tab characters in compiled TeX sources"
-    head -10 /tmp/cna-bible-tabs.txt | sed 's/^/        /'
+    head -10 "$diagnostic_dir/tabs.txt" | sed 's/^/        /'
 else
     pass "no literal tabs in compiled TeX sources"
 fi
 
-if grep -rIl $'\r' "$chapters" "$front" "$book_dir/main.tex" > /tmp/cna-bible-crlf.txt 2>/dev/null; then
+if grep -rIl $'\r' "$chapters" "$front" "$book_dir/main.tex" > "$diagnostic_dir/crlf.txt" 2>/dev/null; then
     fail "carriage returns in compiled TeX sources"
-    head -10 /tmp/cna-bible-crlf.txt | sed 's/^/        /'
+    head -10 "$diagnostic_dir/crlf.txt" | sed 's/^/        /'
 else
     pass "no carriage returns in compiled TeX sources"
 fi

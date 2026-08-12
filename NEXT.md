@@ -629,6 +629,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     link targets and exactly 1,065 numbered TOC entries with correct physical landings. These
     counts join the already-fixed 3,653 links, 5,054 names, 1,066 visible TOC identities and 1,850
     index numbers, preventing silent removal of a valid subgroup. The release passes unchanged.
+84. **Concurrent verifier diagnostics are isolated and cleaned.** Eleven stale-fact/whitespace
+    checks previously wrote predictable `/tmp/cna-bible-*.txt` names, allowing simultaneous runs
+    to overwrite one another and leaving empty files behind. Each run now creates a private
+    `mktemp` directory, routes named diagnostics there and removes it on normal exit or
+    `HUP`/`INT`/`TERM`. Generated artifacts and verification semantics are unchanged.
 
 ## Do this next
 

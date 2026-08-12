@@ -414,6 +414,7 @@ log grep replaces.
 | 2026-08-12 | Post-G outline order integrity | Added byte-for-byte comparison of the unsorted 1,066-destination MuPDF outline sequence with source `main.out`; destination/title/parent set checks alone could not detect two otherwise-valid subtrees trading positions, while the sequence guard does; current order matches exactly, with no PDF delta |
 | 2026-08-12 | Post-G visible-TOC order integrity | Filtered physical TOC annotations to the first occurrence of each expected destination, excluding six legitimate duplicate surrounding-navigation links; the resulting 1,066-destination sequence matches `main.toc` byte-for-byte, closing row-order swaps that coverage/identity/landing set checks could miss; no PDF delta |
 | 2026-08-12 | Post-G internal-target/landing cardinalities | Replaced non-empty predicates with exact release populations for 1,542 unique internal link targets and 1,065 numbered TOC landings, complementing already-fixed link/name/TOC/index counts and preventing silent deletion of an internally consistent subgroup; complete verifier remains green, no PDF delta |
+| 2026-08-12 | Post-G concurrent verifier hygiene | Replaced eleven predictable `/tmp/cna-bible-*.txt` diagnostic paths with a private per-run `mktemp` directory and EXIT/HUP/INT/TERM cleanup, preventing concurrent verifier runs from overwriting stale-fact/whitespace evidence and eliminating newly leaked named scratch files; verification semantics and PDF unchanged |
 
 ---
 
@@ -1340,3 +1341,6 @@ build and visual passes are available again.
 - Fixed the remaining navigation cardinalities that had only non-empty predicates: exactly 1,542
   unique internal link targets and 1,065 numbered TOC landings. Silent removal of a still-valid
   subgroup now fails alongside the existing exact link/name/TOC/index populations.
+- Isolated named verifier diagnostics in a private per-run temporary directory with cleanup on
+  normal exit and common termination signals. Concurrent runs can no longer overwrite eleven
+  stale-fact/whitespace outputs, and successful runs leave no new named scratch files.
