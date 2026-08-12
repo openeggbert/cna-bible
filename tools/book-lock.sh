@@ -5,8 +5,10 @@
 acquire_book_lock() {
     local requested_mode=$1
     local inherited_fd=${CNA_BIBLE_LOCK_FD:-}
+    local existing_fd=${book_lock_fd:-}
+    local existing_mode=${book_lock_mode:-}
     local lock_dir lock_dir_owner lock_dir_mode lock_id lock_file prior_umask
-    local inherited_identity lock_identity
+    local inherited_identity lock_identity existing_identity
 
     case "$requested_mode" in
         exclusive|shared) ;;
@@ -33,6 +35,20 @@ EOF
 
     lock_id=$(printf '%s' "$repo_root" | sha256sum | awk '{print $1}')
     lock_file="$lock_dir/${lock_id}.lock"
+    lock_identity=$(stat -Lc '%d:%i' "$lock_file" 2>/dev/null || true)
+
+    # Repeated compatible calls in one shell reuse the already-held descriptor. This matters for
+    # future composed tools that source more than one artifact helper. Never silently upgrade a
+    # shared lock to exclusive: another reader could hold it, and conversion would be racy.
+    if [ -n "$existing_fd" ]; then
+        existing_identity=$(stat -Lc '%d:%i' "/proc/self/fd/$existing_fd" 2>/dev/null || true)
+        if [ -n "$existing_identity" ] && [ "$existing_identity" = "$lock_identity" ] \
+           && { [ "$existing_mode" = "exclusive" ] || [ "$requested_mode" = "shared" ]; }; then
+            return 0
+        fi
+        printf 'ERROR: incompatible or invalid repeated book-lock acquisition\n' >&2
+        return 1
+    fi
 
     # A sealed build keeps its exclusive descriptor open while invoking verify-book --no-build.
     # Reuse that exact open file description rather than trying to convert a child lock, but prove
@@ -45,13 +61,13 @@ EOF
                 ;;
         esac
         inherited_identity=$(stat -Lc '%d:%i' "/proc/self/fd/$inherited_fd" 2>/dev/null || true)
-        lock_identity=$(stat -Lc '%d:%i' "$lock_file" 2>/dev/null || true)
         if [ -z "$inherited_identity" ] || [ "$inherited_identity" != "$lock_identity" ] \
            || ! flock -n "$inherited_fd" 2>/dev/null; then
             printf 'ERROR: inherited book-lock descriptor does not match this repository\n' >&2
             return 1
         fi
         book_lock_fd=$inherited_fd
+        book_lock_mode=exclusive
         return 0
     fi
 
@@ -62,10 +78,15 @@ EOF
     if [ "$requested_mode" = "exclusive" ]; then
         if ! flock -n -x "$book_lock_fd"; then
             printf 'ERROR: another CNA Bible artifact operation is already running\n' >&2
+            exec {book_lock_fd}>&-
+            unset book_lock_fd book_lock_mode
             return 1
         fi
     elif ! flock -n -s "$book_lock_fd"; then
         printf 'ERROR: a CNA Bible build is already running\n' >&2
+        exec {book_lock_fd}>&-
+        unset book_lock_fd book_lock_mode
         return 1
     fi
+    book_lock_mode=$requested_mode
 }

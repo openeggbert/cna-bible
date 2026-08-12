@@ -436,6 +436,7 @@ log grep replaces.
 | 2026-08-12 | Post-G workflow dependency/transaction docs | Updated README to name Poppler `pdftoppm` for the visual-page driver and util-linux `flock` for sealed serialization, and documented prior-PDF restoration/partial removal on sealed failure; documentation only, no typesetting delta |
 | 2026-08-12 | Post-G unified artifact lock protocol | Added shared `tools/book-lock.sh`: default verifier and sealed release take an exclusive per-repository lock; `--no-build` verifier and isolated page rendering take shared locks; concurrent readers remain allowed while every reader is excluded from mid-build aux/PDF state; sealed release passes its inherited descriptor through the nested verifier, which accepts it only when device/inode identity matches the correct repository lock |
 | 2026-08-12 | Post-G artifact-lock contributor contract | Listed `tools/book-lock.sh` in README and made CLAUDE require shared locks for future artifact readers and exclusive locks for aux/log/PDF writers, so new entry points do not bypass the reconciled concurrency boundary; documentation only |
+| 2026-08-12 | Post-G idempotent lock acquisition | Made repeated compatible helper calls reuse the validated repository descriptor, reject shared-to-exclusive upgrade explicitly, and close every newly opened descriptor when non-blocking acquisition fails; future composed tools cannot leak FDs or race on implicit conversion |
 
 ---
 
@@ -1415,3 +1416,5 @@ build and visual passes are available again.
   and inherited descriptor identity is bound to the correct repository lock inode.
 - Recorded the shared/exclusive artifact-lock rule in README and CLAUDE so future PDF consumers or
   writers inherit the same concurrency boundary instead of bypassing it.
+- Made helper acquisition idempotent for compatible repeated calls, rejected racy shared-to-
+  exclusive upgrades, and closed fresh descriptors immediately on contention failure.

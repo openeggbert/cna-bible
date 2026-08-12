@@ -739,6 +739,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      beside the public tools, and `CLAUDE.md` requires every future artifact reader to take a
      shared lock and every aux/log/PDF writer an exclusive lock. This prevents a later entry point
      from silently reintroducing mid-build reads after the current three tools were reconciled.
+106. **Lock acquisition is idempotent and leak-free.** Repeated compatible calls in one shell now
+     reuse the validated repository descriptor; an exclusive holder may satisfy either request,
+     while a shared-to-exclusive upgrade fails explicitly instead of racing. Fresh descriptors are
+     closed immediately when non-blocking acquisition fails, so future composed tools cannot leak
+     FDs even when they recover from contention rather than exiting.
 
 ## Do this next
 
