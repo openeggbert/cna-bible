@@ -422,6 +422,7 @@ log grep replaces.
 | 2026-08-12 | Post-G release CLI hardening | Restricted `tools/build-release.sh` to its argument-free workflow plus `--help`; every unknown or multiple-argument invocation exits 2 before repository/dependency inspection or release-log writes, preventing typo-triggered sealed rebuilds |
 | 2026-08-12 | Post-G generated-index structure | Parsed all 2,389 `main.idx` records rather than trusting only makeindex's transcript: every key is non-empty, every encapsulator is `hyperpage`, every printed reference is 1–670, and 681 case-folded logical keys map exactly to 676 `main.ind` items plus five subitems; no PDF delta |
 | 2026-08-12 | Post-G complete verifier scratch lifecycle | Routed every per-run text, JSON, PDF and decoded-image intermediate into the existing private diagnostic directory and made its EXIT cleanup recursive; normal, failed and HUP/INT/TERM exits now share one cleanup path, closing more than forty individually removed scratch files without changing verification semantics |
+| 2026-08-12 | Post-G PDF Info closure | Extended semantic metadata verification to require `Creator: LaTeX with hyperref` and `/Trapped /False` alongside the established title/author/subject/keywords; dates remain an explicit sealed-build check and producer/version drift remains covered by the exact release fingerprint |
 
 ---
 
@@ -1372,3 +1373,5 @@ build and visual passes are available again.
 - Completed verifier scratch lifecycle management: every temporary text, JSON, PDF and image now
   lives below one private run directory whose recursive EXIT trap covers ordinary completion,
   failed checks and signal exits; index key folding is also fixed to the C locale.
+- Extended PDF Info semantics with exact creator and non-trapped state checks, producing direct
+  diagnostics for fields that were previously protected only indirectly by the sealed hash.

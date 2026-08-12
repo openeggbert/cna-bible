@@ -670,6 +670,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     still relied on reaching their individual `rm` lines. `mktemp` calls now resolve inside the
     run's private directory; one recursive EXIT cleanup covers normal, failed and interrupted
     runs, while HUP/INT/TERM retain meaningful exit status. No artifact or check changed.
+92. **PDF Info semantics include creator and trapping state.** The release metadata guard now
+    requires `Creator: LaTeX with hyperref` and `/Trapped /False` alongside title, author, subject
+    and keywords. Producer/version and fixed dates remain covered separately by the sealed byte
+    fingerprint and release entry point; ordinary verifier diagnostics now identify these two
+    previously implicit Info-field drifts directly.
 
 ## Do this next
 

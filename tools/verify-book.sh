@@ -488,6 +488,9 @@ title=$(printf '%s\n' "$pdf_info" | awk -F: '/^Title:/ {sub(/^[[:space:]]+/, "",
 author=$(printf '%s\n' "$pdf_info" | awk -F: '/^Author:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
 subject=$(printf '%s\n' "$pdf_info" | awk -F: '/^Subject:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
 keywords=$(printf '%s\n' "$pdf_info" | awk -F: '/^Keywords:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
+creator=$(printf '%s\n' "$pdf_info" | awk -F: '/^Creator:/ {sub(/^[[:space:]]+/, "", $2); print $2}')
+trapped=$(mutool show -g "$pdf" trailer/Info 2>/dev/null \
+    | sed -n 's/.*\/Trapped\/\([^/>]*\).*/\1/p')
 page_boxes=$(pdfinfo -f 1 -l "$pages" -box "$pdf" 2>/dev/null)
 a4_pages=$(printf '%s\n' "$page_boxes" \
     | grep -cE '^Page +[0-9]+ size:  +595\.276 x 841\.89 pts \(A4\)$' || true)
@@ -514,10 +517,11 @@ else
 fi
 if [ "$title" = "The CNA Bible" ] && [ "$author" = "Robert Vokac" ] \
    && [ "$subject" = "A source-grounded guide to CNA and the Microsoft XNA 4.0 programming model" ] \
-   && [ "$keywords" = "CNA, Microsoft XNA, C++23, graphics renderers, game development" ]; then
-    pass "PDF title, author, subject, and keywords match the release metadata"
+   && [ "$keywords" = "CNA, Microsoft XNA, C++23, graphics renderers, game development" ] \
+   && [ "$creator" = "LaTeX with hyperref" ] && [ "$trapped" = "False" ]; then
+    pass "PDF title, author, subject, keywords, creator, and trapped state match release metadata"
 else
-    fail "unexpected or incomplete PDF release metadata"
+    fail "unexpected or incomplete PDF release metadata (creator='${creator:-?}', trapped='${trapped:-?}')"
 fi
 
 # LaTeX's Overfull diagnostics include harmless internal boxes as well as real clipping. Parse
