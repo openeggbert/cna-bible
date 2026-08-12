@@ -45,15 +45,21 @@ not infer it from the bit.
 
 \section{SOFTWARE: bounded 3D with real CPU pixels}
 
-Software is a renderer, not a recorder.  It rasterizes sprites and a bounded 3D subset into CPU
-buffers, supports \texttt{TriangleList}, depth, a BasicEffect subset, nearest-neighbour texture
-sampling, and simplified Opaque/AlphaBlend behavior.  Lighting and fog are outside the declared
-v1 surface.
+Software is a renderer, not a recorder. It rasterizes sprites and a bounded 3D subset into CPU
+buffers: triangle lists, depth/stencil, complete per-stream vertex fetch, texture/sampler state,
+the five stock-effect packet shapes, cube storage and environment-map sampling, and the public
+blend-factor/equation surface all have real CPU paths. The fixed shader logic remains deliberately
+narrower than a programmable renderer: stock lighting and fog flags are still outside the v1
+surface, and accepting source text into \texttt{SoftwareEffectRenderer} does not execute that
+source as a custom shader.
 
 Both extended draw methods are native CPU paths, and \cnaclass{RenderTarget2D} produces real
-pixels.  MRT is not implemented and the occlusion-query factory remains the base null.  The
-capability switch nevertheless reports both as supported through its default branch, the same
-overclaim shape as Headless but with a real rasterizer beneath other operations.
+pixels. Plain \cnaclass{TextureCube} has every declared mip/face stored and can feed the bounded
+environment-map path, but \cnaclass{RenderTargetCube}, \cnaclass{Texture3D}, instancing, MRT and
+occlusion queries remain outside v1. The capability switch explicitly returns false for
+\texttt{Texture3D} and instancing and true for multistream input, but its default branch still
+overclaims MRT and queries --- the same default-policy shape as Headless, with a real rasterizer
+beneath other operations.
 
 That distinction matters for test design.  A Software screenshot is genuine pixel evidence for
 the bounded CPU algorithm.  It is not evidence for GPU precision, driver shader compilation,
@@ -62,9 +68,10 @@ MSAA resolve, or a programmable effect path.
 \subsection{A useful reference with known semantic limits}
 
 Software's deterministic memory buffers make it a strong local oracle for geometry ordering,
-basic texture coordinates, target usage, and simple blending.  When another renderer differs,
-first check that the scene stays inside Software's declared subset.  A lit, fogged, custom-shader
-scene cannot use the simplified CPU result as an XNA-exact ground truth.
+stream offsets, texture/cube sampling, target usage, depth/stencil and blending. When another
+renderer differs, first check that the scene stays inside Software's declared subset. A lit,
+fogged, instanced, custom-shader or render-target-cube scene cannot use the CPU result as an
+XNA-exact ground truth.
 
 \section{STUB: the smallest terminal implementation}
 

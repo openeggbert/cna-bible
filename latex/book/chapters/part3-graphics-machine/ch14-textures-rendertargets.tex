@@ -297,33 +297,30 @@ device.SetRenderTarget(nullptr); // back to the backbuffer
 \end{lstlisting}
 
 Sampling and CPU readback are separate capabilities here. The code above can feed the cube to
-an effect without ever calling \texttt{probe.GetData()}; direct CPU readback of a
-\cnaclass{RenderTargetCube} is currently real only on WebGPU and SDL GPU. EasyGL, Vulkan,
-BGFX, and D3D9/11/12 construct and sample the target but inherit the cube interface's no-op
-\texttt{GetData()}, whose public wrapper produces transparent black. The central matrix in
-\S\ref{sec:texture-volume-readback-matrix} records this otherwise easy-to-miss split.
+an effect without ever calling \texttt{probe.GetData()}; nevertheless public rendered-face
+readback is now exact on EasyGL, Vulkan, BGFX, WebGPU, SDL GPU, and D3D9/11/12. Skia provides a
+separate exact six-surface CPU emulation. Unsupported identities now throw instead of converting
+a renderer no-op into fabricated transparent black. Mip/MSAA scope still differs --- notably
+D3D9 has only level~0 and WebGPU refuses a mipmapped cube target --- so the central matrix in
+\S\ref{sec:texture-volume-readback-matrix} remains the authoritative per-level comparison.
 
 The inherited \texttt{SetData} family has narrower renderer support still. It is legal at
 compile time because \cnaclass{RenderTargetCube} inherits the whole
-\cnaclass{TextureCube} upload family, exactly as it does in FNA. In current CNA, however, only
-EasyGL's render-target-cube renderer implements that upload. Every other constructed target
-inherits the intentional empty \texttt{SetData()} body on the render-target renderer interface;
-the public call validates and converts its input, then returns normally without changing the
-cube. This is a silent compatibility gap, not an unsupported-operation exception.
+\cnaclass{TextureCube} upload family, exactly as it does in FNA. EasyGL implements the GPU upload
+with its documented row convention, and Skia implements exact CPU-surface upload. Every other
+constructed target returns failure from the renderer contract; the public call validates first
+and then throws \cnaclass{NotSupportedException} instead of returning normally after changing
+nothing. Thus the feature remains narrow, but the former silent compatibility gap is closed.
 
-There is also a caller-visible trap in the unbind line itself. Vulkan, WebGPU, SDL GPU,
-EasyGL's ordinary single-face path, BGFX's ordinary 2D-null path, and D3D9 all route it
-successfully under their respective execution models. D3D11 does not: its public cube bind is
-never entered into the renderer's 2D-only current-target tracker, so the following null call
-neither invokes the cube's \texttt{UnbindAsRenderTarget()} nor restores the backbuffer.
-D3D12 does restore the backbuffer, but likewise skips that callback, so cube MSAA resolve and
-cube mip generation never run through this public sequence. Their existing exact smoke tests
-call the two renderer methods directly and therefore prove the callback implementations, not
-this missing public routing. EasyGL has a narrower sibling edge case: switching directly
-between faces of the same \emph{multisampled} cube skips the outgoing face's resolve; insert a
-backbuffer unbind between faces if that combination must be used. The full transition matrix
-and BGFX's separate explicit-cube-null overload defect are recorded in
-\S\ref{sec:rendertargetcube-default-contracts}.
+The unbind line now routes correctly on Vulkan, WebGPU, SDL GPU, BGFX, D3D9, D3D11 and D3D12.
+The Direct3D~11/12 renderers explicitly track the active cube and finalize it before every
+cube/2D/MRT/backbuffer transition; shared public readback, usage and per-face-MSAA fixtures make
+that edge observable. EasyGL retains a narrower exception: switching directly between faces of
+the same cube skips outgoing-face finalization. Per-face MSAA storage now preserves each face's
+samples, but only a finalized face is resolved/generated for later sampling; insert a
+backbuffer unbind between freshly rendered faces when all must immediately be sampled. The full
+transition matrix and BGFX's renderer-local (not normalized public) cube-null no-op are recorded
+in \S\ref{sec:rendertargetcube-default-contracts}.
 
 Whether this actually produces a correct image is, per \S\ref{sec:rendertargets} below,
 renderer-dependent in ways the call site cannot infer. EasyGL renders it correctly. Vulkan's

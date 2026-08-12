@@ -16,7 +16,7 @@ Identity & Delivery path & 3D result & RT / MRT / query \\
 \midrule
 \endhead
 \texttt{DIRECT2D} & ID2D1 over Windows/Wine D2D, D3D11, and DXGI components & inherited route rejects & yes / no / no \\
-\texttt{GDI} & software raster into a GDI bitmap & explicit rejection & yes / no / no \\
+\texttt{GDI} & privately composed CPU 2D raster, then Win32 DIB presentation & explicit rejection & yes / no / no \\
 \bottomrule
 \end{longtable}
 
@@ -35,10 +35,12 @@ effect packet.
 
 \subsection{Evidence and the release boundary}
 
-The repository has a Windows workflow whose renderer matrix can include Direct2D, while local
-development also uses Wine/Proton.  The renderer's own release-gate document remains stricter:
-it calls the gate blocked pending a documented native-Windows run.  A workflow definition and
-a completed qualifying run are different facts; the latter needs an attributable result.
+The repository has a dedicated native-Windows graphics workflow whose matrix includes Direct2D,
+while local development also uses Wine/Proton. Its Direct2D leg runs the five labelled tests with
+the D3D11 debug layer, a WARP lifetime pass and a live-object log gate. The renderer's own release
+gate remains stricter: it is blocked pending an attributable native adapter/driver run and a
+physical multi-DPI presentation capture. A workflow definition and even a hosted hidden-window
+pass do not satisfy those two recorded-evidence criteria.
 
 The practical report for a Direct2D failure must therefore record whether it ran through native
 Windows or the Wine built-ins, and whether presentation, readback, or only off-screen rendering
@@ -47,15 +49,19 @@ gate.
 
 \section{GDI: Win32 presentation over the software renderer}
 
-The key line in the implementation is its inheritance: the GDI renderer subclasses the
-software renderer.  The build enters the software module when \texttt{GDI} is selected and
-exports the CPU raster sources into the GDI target.  Geometry, depth, stencil, sampling, and
-blend behavior therefore belong to the shared CPU core; GDI owns the Windows bitmap and
-presentation edge.
+The key line in the implementation is now composition, not public inheritance.
+\texttt{GdiRenderer} derives directly from \cnaclass{IGraphicsRenderer} and privately owns a
+\texttt{GdiSoftware2DCore}. The build publishes a reviewed subset of the Software module's CPU-2D
+translation units into the GDI archive, and GDI forwards only its intended sprite, texture,
+target and state operations. No complete Software renderer pointer escapes, so a future Software
+3D virtual cannot silently appear in GDI's public vtable. GDI separately owns the Windows bitmap,
+damage tracking and DIB presentation edge.
 
-This architecture provides more than a trivial blit.  The CPU path has real stencil and an
-honest four-sample MSAA mode.  It implements a single 2D target, but not MRT or occlusion
-queries.  Its extended 3D methods reject unsupported input directly rather than relying on the
+This architecture provides more than a trivial blit. The CPU path has a real standalone 8-bit
+stencil plane and an opt-in, exact 4x CPU-MSAA backbuffer mode, but no depth buffer. A 2D render
+target has color, stencil and optional authored mip generation; it deliberately has neither
+depth nor an MSAA attachment. GDI implements one active 2D target, but not MRT or occlusion
+queries. Its extended 3D methods reject unsupported input directly rather than relying on the
 base colored fallback.
 
 \subsection{Why shared code does not make the identities equivalent}

@@ -408,7 +408,7 @@ cases, not redundant screenshots.  By the end of that series the D3D11 smoke exe
 specific paths named here; it is not a license to extrapolate that any arbitrary, untested
 D3D11 state combination must therefore be correct.
 
-\subsection{Viewport/scissor: D3D9 and D3D11 are direct; D3D12 is full-target-only}
+\subsection{Viewport/scissor: three viewport paths, but only two scissor paths}
 
 D3D9 and D3D11 take the simplest possible immediate route. Their public setters call the
 corresponding native viewport and scissor setters; their rasterizer mapping separately controls
@@ -425,26 +425,29 @@ scissor scene, and the D3D9 smoke program's resize check proves a full-size post
 not a custom sub-region. The safest current claim is therefore native-source implementation
 plus broad D3D9 draw coverage, not a zero-tolerance XNA comparison for these two states.
 
-D3D12 is not the analogous modern implementation. It inherits both setters' empty defaults,
-and every ordinary, extended, instanced, and SpriteBatch command list constructs a fresh
-full-target \texttt{D3D12\_VIEWPORT} and \texttt{D3D12\_RECT} immediately before drawing.
-Consequently the public properties round-trip but custom values never reach rasterization.
-The renderer's real rasterizer-state pixel suite proves culling/fill/depth-bias-era PSO fields;
-it does not turn that specific full-target-only source behavior into viewport/scissor support.
-The complete product comparison is \S\ref{sec:backend-viewport-scissor-matrix}.
+D3D12 now splits the two states. Its \texttt{SetViewport()} override stores rectangle and depth
+range, and every ordinary, extended, instanced, and SpriteBatch command list obtains that value
+through \texttt{GetEffectiveViewportEXT()}. The getter clamps depth to $[0,1]$ and falls back to
+the current full target only when no positive custom rectangle is active. SpriteBatch also uses
+the same effective width and height as its projection basis, so coordinates remain local to the
+sub-viewport rather than being transformed twice. A native off-screen GPU check distinguishes
+inside/outside pixels, two custom rectangles in successive draws, depth-range behavior, and the
+full-target reset on a target switch. Scissor remains the negative half: there is still no
+rectangle hook, \texttt{scissorTestEnable} is not part of the PSO, and every draw installs a
+full-target \texttt{D3D12\_RECT}. The complete product comparison is
+\S\ref{sec:backend-viewport-scissor-matrix}.
 
 \subsection{Clear: exact native bits do not imply one shared public contract}
 
 D3D11 immediately clears every bound RTV and selects the native depth and stencil clear bits
 independently when a DSV exists. D3D12 mirrors that selection with synchronous command lists.
-Both have strong
-direct-renderer proof: stencil-plane bytes are read back from the GPU, changed to a second
+Both have strong direct-renderer proof: stencil-plane bytes are read back from the GPU, changed to a second
 value, and depth is distinguished by whether one identical triangle passes. Those tests bypass
-\cnaclass{GraphicsDevice}'s active-format mask. That matters because the shared mask retains
-stencil for public \texttt{Depth16}/\texttt{Depth24}; D3D11/12 physically map
-\texttt{Depth24} to D24S8, but \texttt{Depth16} has no stencil plane. D3D12 also requires a
-bound colour resource at the start of every combination helper, so its headless off-screen
-device can throw before a depth-only no-op.
+\cnaclass{GraphicsDevice}'s public route, but the route now derives depth and stencil availability
+independently from the actually bound 2D/cube attachment rather than inferring stencil from every
+non-\texttt{None} depth enum. D3D12 still requires a bound colour resource before its combination
+helper can record any command list; once one is bound, however, a requested depth/stencil aspect
+with no DSV is deliberately a legal no-op, matching D3D11.
 
 D3D9's native \texttt{IDirect3DDevice9::Clear} bits are likewise immediate and individually
 selected, but their final gate consults \texttt{depthStencilFormatOrdinal\_}, the presentation
@@ -754,24 +757,25 @@ successful compilation: the fixed input layout, automatic viewport slot, \texttt
 constant-buffer/root binding, \texttt{t0}/\texttt{s0} resource path, custom pixel shader, and
 GPU readback all participated in one observable public-API draw.
 
-\section{Persistent Direct3D resources do not make every usage contract complete}
+\section{Persistent Direct3D resources implement the shared usage contract}
 
-All three Direct3D factories ignore the 2D preserve Boolean, but their color resources persist
-across binding. Shared code therefore supplies the visible policy: Discard immediately clears
-black plus optional depth, while Preserve and Platform do not clear. The implicit request
-never includes stencil. A redundant bind is not a no-op; D3D9/11 can resolve the same target
-before rebinding it, D3D12 runs its own unbind/finalization path, and shared code then repeats
-the discard clear and rectangle reset.
+All three Direct3D factories receive the preserve Boolean for 2D and cube targets but need not
+translate it into a native load action: their resources persist across binding. Shared code
+supplies the visible policy instead. \texttt{DiscardContents} clears black plus every real depth
+and stencil aspect; \texttt{PreserveContents} and \texttt{PlatformContents} do not. The first
+descriptor controls the same policy for MRT. A redundant bind is not a no-op: native
+resolve/finalization can run before the resource is rebound, and a discard target receives its
+three-aspect clear again.
 
-Cube construction has no usage input on any of the three. Their persistent resources
-therefore retain content unless explicitly cleared, subject to the public D3D11/12
-cube finalization and unbind failures below. MRT uses the first 2D target's shared usage
-decision, as FNA does, but no current Direct3D test compares usage values, Platform, preserved
-depth/stencil, or redundant binding. The strong resolve/mip tests prove finalization when their
-paths run, not \cnaclass{RenderTargetUsage}; see
-\S\ref{sec:backend-rendertarget-usage-matrix}.
+This is now public pixel evidence rather than inference from persistent allocation. The shared
+cube-usage fixture renders an asymmetric face, rebinds it and adds only a small marker, so a
+discard masquerading as preservation cannot pass. Parallel depth and stencil fixtures preserve
+an occluder or stamp across a bind cycle, while pass-boundary and ordered-clear tests separate
+usage policy from explicit clear chronology. D3D9 and D3D11 register these tests in their routine
+renderer suites; D3D12 cross-builds the same public fixtures, while its headless/direct smoke
+coverage supplies the local GPU mechanisms. See \S\ref{sec:backend-rendertarget-usage-matrix}.
 
-\section{A reopened feature, and a public routing gap above the finished mechanisms}
+\section{A reopened feature whose public routing edge is now closed}
 
 \texttt{D3DCommon}'s shared HLSL/DXBC and state-mapping tables, named above, make it easy to
 assume the two renderers are near-identical beneath that layer. A late pair of tasks in the
@@ -779,12 +783,11 @@ Direct3D~11/12 implementation plan --- opened well after both renderers were oth
 considered feature-complete, once a full feature-matrix percentage audit against \texttt{EasyGL}
 turned up a handful of remaining gaps --- shows a case where that assumption holds
 (\cnaclass{RenderTargetCube} MSAA) and one where it genuinely does not (mip-chain generation).
-The mechanisms described below are real, but a later interface-default audit found that the
-book's former conclusion was too broad: both test suites invoke the cube renderer's
-\texttt{BindAsRenderTargetFace()} and \texttt{UnbindAsRenderTarget()} directly.
-\cnaclass{GraphicsDevice}'s public cube-target route invokes the first but, on D3D11/12,
-currently never invokes the second. The following subsections therefore describe working
-renderer algorithms with a missing public finalization edge, not end-to-end public features.
+An interface-default audit did expose a public routing hole after those mechanisms landed:
+early smoke checks invoked \texttt{BindAsRenderTargetFace()} and
+\texttt{UnbindAsRenderTarget()} directly, while the public route never finalized the outgoing
+cube. That defect is now closed. The following subsections describe both the renderer algorithms
+and the tracking edge which makes them public features rather than isolated smoke mechanisms.
 
 \subsection{\cnaclass{RenderTargetCube} MSAA: a deliberate exclusion, reopened on request}
 
@@ -836,27 +839,24 @@ every individual feature, and a reader porting code that depends on either rende
 or cost characteristics for this specific operation should not assume the other renderer behaves
 the same way underneath.
 
-\subsection{Why the direct smoke proofs do not establish the public feature}
+\subsection{How renderer tracking closes the public finalization edge}
 
-The missing edge is visible only by following the public call chain. The common cube-target
-method on \cnaclass{IGraphicsRenderer} binds a non-null cube directly and delegates a null cube
-to the 2D-null path; it never calls the outgoing cube's unbind callback. Both Direct3D
-renderers inherit that default and track only a current 2D target. D3D11's 2D-null branch
-assumes that target restored the backbuffer as part of its unbind, so after a public cube bind
-it does not even restore the backbuffer. D3D12 restores the backbuffer unconditionally, but
-still skips the cube's resolve/mipmap callback. Switching directly between cube faces has the
-same missing-finalization shape on both.
+D3D11 and D3D12 now override the cube-face route and retain the active cube separately from the
+single-2D and MRT state. Before any cube-to-cube, cube-to-2D, cube-to-MRT or cube-to-backbuffer
+transition, \texttt{FlushPendingCubeResolveEXT()} clears that tracking pointer and calls the
+outgoing cube's \texttt{UnbindAsRenderTarget()}. That ordering is important: the callback performs
+the active-face MSAA resolve and mip generation before the new destination replaces native state.
+The plural normalized-descriptor path recognizes a single cube face and delegates to this same
+route; cube faces in a multi-target set remain an explicit renderer rejection rather than being
+silently treated as 2D targets.
 
-The smoke checks cited above deliberately bypass this chain. They create a renderer cube, call
-\texttt{BindAsRenderTargetFace()}, clear it, and then call
-\texttt{UnbindAsRenderTarget()} themselves before reading the resolved/mip resource. Their
-exact pixels prove that each algorithm works when called, but cannot catch an absent caller.
-No D3D11 or D3D12 example was found that performs the equivalent sequence through
-\cnaclass{GraphicsDevice}'s public cube-target overload followed by the public null-target
-overload. Until renderer-level cube tracking or explicit overrides close that edge, public
-D3D11 cube rendering is unsafe even at single-sample level~0 because later backbuffer work may
-still hit the cube; public D3D12 single-sample level~0 survives, but cube MSAA resolve and
-generated mips do not.
+The original direct smoke checks still prove the two low-level algorithms described above, but
+they are no longer the only evidence. Shared \cnaclass{GraphicsDevice} fixtures now drive an
+asymmetric rendered cube face through public binding and readback, rebind it for the usage test,
+and isolate preserved multisample content across two faces. Those fixtures make a skipped
+finalization, wrong face/subresource, stale resolve or false preservation visibly fail. Thus the
+former caution remains a useful account of how the hole escaped an implementation-local smoke
+test, not a current feature limitation.
 
 \section[\texttt{HeadlessEXT}: letting three D3D12 tests join the routine suite]{\texttt{HeadlessEXT}: the CNAEXT property that let three D3D12 tests join the
 routine suite}

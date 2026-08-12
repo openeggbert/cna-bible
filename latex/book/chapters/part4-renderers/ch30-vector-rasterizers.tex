@@ -96,30 +96,27 @@ the same explicit ``does not support 3D'' runtime error, rather than an
 need portable validation should validate their input before asking SDL\_Renderer to allocate a
 3D buffer.
 
-\subsection{A worked example: the one renderer that answers every capability honestly}
+\subsection{A worked example: one narrow positive capability among explicit refusals}
 
 Chapter~\ref{ch:backend-architecture}'s \cnaclass{GraphicsCapability} mechanism defaults to
-answering \texttt{true} for everything unless a renderer overrides it --- and reading
-\texttt{SdlRenderer.hpp} directly shows this renderer takes the blanket, honest opposite
-stance rather than enumerating exceptions one at a time:
+answering \texttt{true} for everything unless a renderer overrides it. Reading
+\texttt{SdlRenderer.hpp} directly shows this renderer instead makes one narrow positive claim
+and refuses every broader 3D/resource capability:
 
 \begin{lstlisting}
-bool SupportsCapability(GraphicsCapability /*capability*/) const override
+bool SupportsCapability(GraphicsCapability capability) const override
 {
-    // 2D-only by design: none of the capabilities GraphicsCapability currently
-    // enumerates are supported on this renderer.
-    return false;
+    // SDL_ComposeCustomBlendMode represents the standard Additive preset.
+    return capability == GraphicsCapability::AdditiveBlending;
 }
 \end{lstlisting}
 
-Every single \cnaclass{GraphicsCapability} value --- not just \texttt{ThreeD}, but
-\texttt{DepthStencilBuffer}, \texttt{Multi\allowbreak{}Sample\allowbreak{}AntiAliasing},
-\texttt{OcclusionQuery}, all
-eight --- returns \texttt{false} on \texttt{SDL\_RENDERER}, unconditionally. This makes it the
-one renderer in the whole project where \texttt{SupportsCapability} genuinely never needs a
-per-feature audit the way Chapter~\ref{ch:backend-architecture}'s own
-\cnaclass{MultipleRenderTargets} finding showed was necessary elsewhere --- a real, useful
-asymmetry to know before trusting any other renderer's answer the same way:
+Of the current thirteen values, only \texttt{AdditiveBlending} is true. SDL's custom blend mode
+can express that preset's independent colour and alpha equations; this does not imply arbitrary
+\cnaclass{BlendState} support. \texttt{ThreeD}, complete depth/stencil, standalone stencil,
+MSAA, MRT, anisotropy, wireframe, queries, custom effects, volume storage, multistream input and
+instancing all return false. The important property is not a blanket answer but an explicit,
+auditable boundary: adding the legitimate 2D blend claim did not reopen any 3D promise.
 
 \begin{lstlisting}
 if (device.SupportsCapability(GraphicsCapability::ThreeD)) {
@@ -132,7 +129,7 @@ if (device.SupportsCapability(GraphicsCapability::ThreeD)) {
 }
 \end{lstlisting}
 
-\section{The Phase 70 audit: fifteen real bugs, two still open}
+\section{The Phase 70 audit: fifteen real bugs, followed by later contract repairs}
 \label{sec:phase70-audit-bugs}
 
 The single most thorough renderer audit in the project (Tasks~666--731, 65 tasks total)
@@ -198,10 +195,10 @@ touches:
         do anything.
 \end{itemize}
 
-\section{Two blocked decisions, and why they are genuinely blocked}
+\section{One blocked sampler decision, and one resource gap that later closed}
 
-Two gaps remain open specifically because closing them requires a project-owner
-architecture decision, not more engineering effort:
+One renderer-local architecture decision remains open; the former resource-construction item no
+longer does:
 
 \begin{description}
   \item[\texttt{TextureAddressMode::Wrap} / \texttt{Mirror} via \texttt{SpriteBatch}.]
@@ -215,11 +212,15 @@ architecture decision, not more engineering effort:
         a hybrid that only throws when the source rectangle actually exceeds the texture's
         bounds (the common case where it does not would keep working, coincidentally, under
         the existing clamp-like behavior).
-  \item[\texttt{Texture3D} / \texttt{TextureCube} construction.] These currently succeed
-        silently with a null renderer rather than throwing. Prototyping a fix that makes
-        construction throw instead was found to have a 94-test blast radius (33 tests in one
-        file, 42 in another, 19 in a third) --- large enough that the change was left
-        unresolved rather than made unilaterally.
+  \item[\texttt{Texture3D} / \texttt{TextureCube}: former silent-resource gap, now closed.]
+        \cnaclass{Texture3D} now consults the false \texttt{Texture3D} capability and throws
+        \cnaclass{NotSupportedException} during construction. A plain \cnaclass{TextureCube}
+        may still exist as a renderer-independent description with no native resource, but its
+        public \texttt{SetData}/\texttt{GetData} paths detect that absence and throw instead of
+        accepting a write or fabricating a transparent-black face. Shared read/write contract
+        fixtures pin both outcomes on this renderer. The old 94-test blast-radius note explains
+        why the first proposed blanket-construction change was deferred; it is not the current
+        observable contract.
 \end{description}
 
 \subsection{A worked example: exactly what ``clamp-like, by coincidence'' means in pixels}
@@ -296,14 +297,12 @@ the precise distinction the inherited fourteen-product audit matrix in
 
 \section{Reading the feature matrix for this renderer}
 
-\texttt{docs/graphics-renderer-feature-matrix.md}'s own snapshot for
-\texttt{SDL\_RENDERER} shows a 67-of-67 integration-test pass rate; the custom-\cnaclass{Effect}
-throw-by-design is the matrix's own explicit gap marker, alongside SDL\_Renderer's two named
-BLOCKED rows (\texttt{Wrap} / \texttt{Mirror}, and \texttt{Texture3D} / \texttt{TextureCube}
-construction) --- the same two items covered above, and, notably, two of only four
-project-wide entries anywhere in the whole feature matrix that carry the ``blocked, needs a
-project-owner decision'' status rather than either a solid pass or an openly acknowledged,
-still-being-worked gap.
+The repository's feature-matrix document is a dated planning snapshot, not a live test census.
+Its historical custom-\cnaclass{Effect} refusal remains accurate, but its two blocked rows do
+not: only \texttt{Wrap}/\texttt{Mirror} still needs the renderer-architecture decision described
+above; cube/volume silent success was closed by the shared resource-contract repairs. Current
+claims in this chapter therefore come from the registered renderer tests and pinned source, not
+from the snapshot's old pass total or status count.
 
 \section{A real screenshot, captured headlessly under Xvfb}
 

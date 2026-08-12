@@ -11,7 +11,7 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
 |---|---|
 | cna-bible branch | `next`; local commits are ahead of `origin/next` (push requires explicit external-publication approval) |
 | CNA pinned SHA | `7a64362efef4119bf880459ef1704fb2c52199e2` (`develop` == `origin/develop`, 2026-08-11) |
-| Book builds | **yes** — 707 pages, all automated checks green; all completed Phase D/E writing and seven Phase F corrective batches are visually verified |
+| Book builds | **yes** — 707 pages, all automated checks green; all completed Phase D/E writing and eight Phase F corrective batches are visually verified |
 | Phase | **A–E complete; F in progress:** Chapters 19–79 and Appendices A–H are complete. Phase F has filled omitted Chapters 8–11 and 18, corrected early graphics/lifecycle drift, and continues the whole-book consistency sweep. |
 
 ## What is done
@@ -189,6 +189,21 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     Chapters 26–27 were audited against the same pin and required no correction. The book remains
     707 pages; all 31 touched physical pages were rendered and read, with dense matrices and
     representative WebGPU, SDL_GPU and BGFX pages inspected full-size and visually clean.
+27. **Phase F corrective batch 8 is complete and verified.** Chapters 14, 19 and 28–32 now
+    reconcile the remaining renderer families with the post-remediation target/resource contract.
+    D3D11/12 public cube finalization, preserve forwarding, exact rendered-face readback and D3D12
+    dynamic viewport state are current; D3D12's color-bound/depthless clear nuance and independent
+    depth/stencil attachment mask are explicit. GDI is described as an independent renderer that
+    privately composes its software 2D core, with standalone stencil and opt-in CPU 4x MSAA;
+    Direct2D's workflow presence is separated from missing recorded native release evidence.
+    SDL_RENDERER now claims only additive blending, refuses rather than discards unsupported
+    cube/volume storage, and retains one blocked Wrap/Mirror decision. SVG_DOM's browser-dependent
+    `plus-lighter` path and weaker non-CI evidence are recorded. SOFTWARE's bounded CPU 3D/cube
+    surface and its inherited MRT/query overclaims are separated from HEADLESS trace-only behavior.
+    Shared readback/upload matrices now encode the boolean complete-or-refuse contract, including
+    Skia and LLGL, instead of the obsolete transparent-black no-op. The book remains 707 pages;
+    all 49 touched physical pages were rendered and read, and the two cube matrices plus dense
+    renderer pages were inspected full-size and visually clean.
 
 ## Do this next
 
@@ -214,10 +229,10 @@ bounded correction batch; finish with an edition-wide visual and automated pass 
 
 ## Verification status
 
-Everything through Phase E and Phase F corrective batch 7 is verified:
+Everything through Phase E and Phase F corrective batch 8 is verified:
 
 - `make -C latex book` succeeds; **707 pages**.
-- makeindex: 2,161 entries accepted, 0 rejected, 0 warnings.
+- makeindex: 2,168 entries accepted, 0 rejected, 0 warnings.
 - No undefined references, no undefined control sequences, no duplicate labels, no doubled-
   backslash `\ref`, no hard-coded chapter numbers.
 - `git diff --check` clean.
@@ -276,6 +291,10 @@ Everything through Phase E and Phase F corrective batch 7 is verified:
   touched page; matrices on pages 244, 246 and 248 and representative WebGPU, SDL_GPU and BGFX
   pages 286, 289, 295, 299 and 307 were inspected full-size. No clipping, overlap, malformed
   listing, broken heading or other visual defect was found.
+- Phase F corrective batch 8 rendered and reviewed physical pages 176, 238–245 and 327–366.
+  Three contact sheets covered all 49 pages; readback/transition matrices on pages 240–242 and
+  representative renderer pages 327 and 348 were inspected full-size. No clipping, overlap,
+  malformed table, broken heading or other visual defect was found.
 
 **No completed writing batch is pending PDF verification.** Continue with the Phase F whole-book
 consistency sweep, then perform Phase G final verification.
@@ -293,11 +312,12 @@ consistency sweep, then perform Phase G final verification.
 Ten source-audit reports and the 42-family draw-path matrix are complete against pinned CNA
 `7a64362e`. Phase B settled a 12-Part, 79-chapter, 8-appendix edition; Phase C put it on disk,
 migrated terminology, selectors and paths, and verified all 645 pages. Phase D batches 1–7
-rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: seven verified
+rewrote Chapters 19–79; Phase E rebuilt Appendices A–H. Phase F is now active: eight verified
 batches filled omitted Chapters 8–11 and 18, removed stale totals/terminology, reconciled the
 early graphics, lifecycle and math narrative, and separated the four current shader strategies
 from the still-missing arbitrary-effect path. State, stream, instancing and programmable-GL
 contracts now also match the pinned renderer interface and post-audit remediation state. Shared
 render-target binding, usage, ordered-clear and dynamic viewport/scissor semantics now match the
-four deferred modern renderers as well. The book is 707 pages; continue the remaining whole-book
-consistency sweep.
+four deferred modern renderers as well. Modern Direct3D, Windows/vector/DOM 2D families and the
+diagnostic renderers now also agree with the complete-or-refuse cube/resource boundary. The book
+is 707 pages; continue the remaining whole-book consistency sweep.

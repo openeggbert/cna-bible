@@ -350,6 +350,7 @@ log grep replaces.
 | 2026-08-12 | Phase F corrective batch 5 | **707 pages**, build clean; makeindex 2,178 / 0 / 0; Chapters 16/18 reconciled to BlendWriteState, sampler-mip hooks, live SpriteBatch rasterizer routing, declaration exceptions, stream semantic composition and current capability contradictions; physical pages 191–200 and 209–216 rendered and read; one full-size overflow fixed and re-rendered clean |
 | 2026-08-12 | Phase F corrective batch 6 | **707 pages**, build clean; makeindex 2,183 / 0 / 0; Chapters 19/22 reconciled to the complete vertex-stream and instancing bridge, current capability/refusal classes, coherent singular/plural bindings, live SpriteBatch state and EasyGL's post-remediation MRT/wireframe/fog/colour-mask/mip/viewport contracts; physical pages 235–239, 248–250 and 262–270 rendered and read, high-risk table/listing pages inspected full-size, all visually clean |
 | 2026-08-12 | Phase F corrective batch 7 | **707 pages**, build clean; makeindex 2,161 / 0 / 0; normalized 2D/cube target binding, shared usage, aspect-selective ordered clears and per-command viewport/scissor semantics reconciled across the shared device and Vulkan/BGFX/WebGPU/SDL_GPU; current renderer-specific closures and bounded gaps recorded; Chapters 26–27 audited without correction; 31 touched physical pages rendered and read, dense matrices and representative renderer pages inspected full-size, all visually clean |
+| 2026-08-12 | Phase F corrective batch 8 | **707 pages**, build clean; makeindex 2,168 / 0 / 0; D3D11/12 public cube transitions, D3D12 viewport/clear semantics, GDI composition/stencil/MSAA, SDL_RENDERER capability/refusal boundaries, SVG_DOM additive evidence and Software/Headless scope reconciled; shared cube/volume readback and RT-cube upload matrices converted from obsolete silent-no-op behavior to the current complete-or-refuse contract; 49 touched physical pages rendered and read, dense matrices inspected full-size, all visually clean |
 
 ---
 
@@ -703,3 +704,32 @@ mid-session at the owner's direction, so the build and visual passes are availab
   140, 154–155, 177, 197, 243–248, 274–277, 286–290, 294–301, 307–309 and 312 as five contact
   sheets; pages 244, 246, 248, 286, 289, 295, 299 and 307 were inspected full-size. No clipping,
   overlap, malformed listing, broken heading or other visual defect was found.
+
+### 2026-08-12 — Phase F corrective batch 8: remaining renderer and cube-resource truth
+
+- Reconciled Modern Direct3D with the current public contract. D3D11 and D3D12 track and finalize
+  the active cube before every cube/2D/MRT/backbuffer transition, forward preserve policy, and
+  expose exact rendered-face/mip/MSAA readback. D3D12 snapshots effective viewport state for every
+  ordinary, extended, instanced and SpriteBatch command; its scissor remains full-target only.
+  Clear now distinguishes the required bound color resource from a requested depth/stencil aspect
+  that legally becomes a no-op when no DSV exists, and the shared mask queries depth and stencil
+  attachments independently.
+- Corrected the remaining 2D and diagnostic families. GDI is an independent `IGraphicsRenderer`
+  that privately composes a software 2D core, adds standalone 8-bit stencil and opt-in CPU 4x
+  backbuffer MSAA, while target resources remain color/stencil without depth/MSAA. SDL_RENDERER
+  claims only additive blending across the thirteen capabilities, refuses unsupported cube/volume
+  storage, and leaves only Wrap/Mirror blocked. SVG_DOM exposes browser-dependent `plus-lighter`
+  but lacks a workflow that drives its optional host/browser pages. SOFTWARE's real CPU triangle,
+  depth/stencil, multistream, stock-effect packet, cube-storage and sampling surface is separated
+  from absent Texture3D/instancing/RT-cube and inherited MRT/query overclaims; HEADLESS remains
+  trace/state validation without pixels.
+- Replaced Chapter 19's pre-remediation cube/volume account with the boolean completion contract:
+  public wrappers convert only a complete read/store and otherwise throw without touching the
+  caller. Exact/refusal rows now cover EasyGL, Vulkan, BGFX, D3D9/11/12, WebGPU, SDL_GPU, LLGL,
+  Skia, Software, Headless and the historical 2D cohort. The transition matrix records EasyGL's
+  same-cube face-finalization limit, LLGL's unflushed-frame preserve bound, and the public D3D
+  closure rather than relying only on direct-object smoke tests.
+- Ran `tools/verify-book.sh`: 707 pages, makeindex 2,168 accepted / 0 rejected / 0 warnings, all
+  automated checks green. Rendered and read physical pages 176, 238–245 and 327–366 as three
+  contact sheets; pages 240–242, 327 and 348 were inspected full-size. No clipping, overlap,
+  malformed table, broken heading or other visual defect was found.

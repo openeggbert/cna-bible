@@ -1378,17 +1378,17 @@ WebGPU instead bypass the public shadow and read native subresources directly. T
 same audit rule the volume/cube matrix below applies to Headless's misleadingly named
 ``round-trip'' tests: follow the assertion to the storage layer it actually observes.
 
-\subsection{Volume and cube readback: the no-op default mostly became real}
+\subsection{Volume and cube readback: success is now an explicit renderer answer}
 \label{sec:texture-volume-readback-matrix}
 
 \cnaclass{ITexture3DRenderer::GetData()} and
-\cnaclass{ITextureCubeRenderer::GetData()} both default to an empty body. The public wrappers
-make the consequence subtler than ``the caller is untouched.'' When a renderer object exists,
-each wrapper allocates a zero-initialized RGBA byte vector, calls the renderer, then converts
-the whole requested element range back to \cnaclass{Color}. An inherited no-op therefore
-\emph{overwrites} that destination range with transparent black. When a resource factory
-returns \texttt{nullptr}, by contrast, the wrapper returns before allocating or converting
-anything and really does leave the caller's destination unchanged.
+\cnaclass{ITextureCubeRenderer::GetData()} historically defaulted to an empty body. The old
+public wrappers nevertheless converted their zero-initialized RGBA scratch vector back to
+\cnaclass{Color}, so an inherited no-op fabricated a complete transparent-black result. A null
+resource factory silently returned even earlier. The current contract makes completion visible:
+each method returns \texttt{true} only after writing the complete region and returns \texttt{false}
+when it read nothing. The shared wrappers convert only the former; either a null resource or
+\texttt{false} now raises \cnaclass{NotSupportedException} without touching the caller's buffer.
 
 The ordinary-resource columns below cover \cnaclass{Texture3D} and
 \cnaclass{TextureCube}. The third is separate because \cnaclass{RenderTargetCube} inherits
@@ -1408,80 +1408,85 @@ the same public \texttt{GetData()} but supplies a different renderer object:
 \midrule
 \endhead
 \texttt{EasyGL}
-  & real GPU readback & real GPU readback & inherited no-op; transparent black \\
+  & exact GPU readback & exact GPU readback & exact level/mip/MSAA readback \\
 \texttt{VULKAN}
-  & real GPU readback & real GPU readback & inherited no-op; transparent black \\
+  & exact GPU readback & exact GPU readback & exact level/mip readback; cube MSAA follows the
+    renderer-wide sample count \\
 \texttt{BGFX}
-  & real if transfer caps exist & real if transfer caps exist
-  & inherited no-op; transparent black \\
+  & exact when transfer caps exist & exact when transfer caps exist
+  & exact level/mip/MSAA readback when transfer caps exist \\
 \texttt{D3D9}
-  & real GPU readback & real GPU readback & inherited no-op; transparent black \\
+  & exact GPU readback & exact GPU readback
+  & exact level~0; unallocated upper target mips are refused \\
 \texttt{D3D11}
-  & real GPU readback & real GPU readback & inherited no-op; transparent black \\
+  & exact GPU readback & exact GPU readback & exact level/mip/MSAA readback \\
 \texttt{D3D12}
-  & real GPU readback & real GPU readback & inherited no-op; transparent black \\
+  & exact GPU readback & exact supported-level readback & exact level/mip/MSAA readback \\
 \texttt{WEBGPU}
-  & real GPU readback & real GPU readback & real GPU readback; level~0 only \\
+  & exact GPU readback & exact GPU readback
+  & exact level~0; mipmapped cube targets are refused at creation \\
 \texttt{SDL\_GPU}
-  & real GPU readback & real GPU readback & real GPU readback \\
+  & exact GPU readback & exact GPU readback & exact level/mip/MSAA readback \\
+\texttt{LLGL}
+  & exact GPU readback & exact GPU readback & exact level/mip/MSAA readback \\
+\texttt{SKIA}
+  & exact CPU storage & exact CPU storage
+  & exact six-surface CPU storage; MSAA clamps to zero \\
 \texttt{SOFTWARE}
-  & null factory; caller unchanged & real CPU readback; level~0
-  & null factory; caller unchanged \\
+  & construction refused & exact CPU storage at every mip
+  & construction refused \\
 \texttt{HEADLESS}
-  & explicit transparent black & explicit transparent black
-  & inherited no-op; transparent black \\
+  & construction refused & explicit refusal & explicit refusal; trace state only \\
 \texttt{SDL\_RENDERER}, \texttt{ASCII}, \texttt{CANVAS}, \texttt{FREEDIRECT}
-  & null factory; caller unchanged & null factory; caller unchanged
-  & null factory; caller unchanged \\
+  & construction refused & null factory; public call refuses
+  & construction refused \\
 \bottomrule
 \end{longtable}
 \endgroup
 
-The eight ordinary GPU implementations are not CPU-shadow echoes. EasyGL attaches the
-requested slice or face to a temporary framebuffer and calls \texttt{glReadPixels}; Vulkan
+The native GPU implementations are not CPU-shadow echoes. EasyGL attaches the requested
+slice or face to a temporary framebuffer and calls \texttt{glReadPixels}; Vulkan
 copies the requested image subresource into host-visible staging memory; D3D9 locks its
 managed cube/volume resource, while D3D11 and D3D12 use staging/readback resources with
 native row and slice pitches; WebGPU maps a staged copy asynchronously; and SDL GPU waits on
 a download transfer and fence. BGFX cannot mark an ordinary sampled source
 \texttt{READ\_BACK}, so it blits the requested region into a temporary transfer texture and
 advances frames until \texttt{readTexture()} completes. If the selected renderer lacks its
-required blit/readback capabilities, that path logs and returns; the public zero-initialized
-staging vector then makes the result transparent black.
+required complete transfer, it returns \texttt{false}; the public layer refuses instead of
+answering from untouched scratch memory.
 
 The proof is correspondingly stronger than ``did not throw.'' EasyGL, Vulkan, and BGFX
 share exact slice, off-origin rectangle, and mip round trips; WebGPU's public checks
 distinguish all six faces, a non-origin rectangle, and mip data, plus separate volume slices,
 voxel, and mip cases. SDL GPU checks distinct slices/faces and authored/generated mip
 retention. D3D9/11/12 smoke tests compare exact subregion bytes (D3D9 first gates its
-volume/cube cases on the real device caps). Software's cube storage is source-proven and its
-environment-map sampling is pixel-proven, but no dedicated public exact
-\texttt{TextureCube::GetData()} assertion was found.
+volume/cube cases on the real device caps). LLGL has the same shared public contract fixture.
+Software's exact cube result is now asserted by that fixture at level~0 and an upper mip;
+Skia's answer is deliberately bounded to CPU RGBA storage rather than presented as a native
+3D sampling pipeline.
 
-Headless is the cautionary counterexample. The first comments in
-\path{headless_resource_renderers_test.cpp} call its volume and cube checks ``round-trips,''
-but the implementation deliberately discards uploads and returns zero placeholders. The
-actual assertions only prove that calls on two faces and one volume do not throw; they never
-compare returned colors. A test title or introductory comment is not evidence when the
-assertion body establishes a weaker contract.
+Headless is now the explicit counterexample. It records cube operations but keeps no pixels;
+cube upload and readback therefore return \texttt{false}, and volume construction is refused
+because the renderer reports no \cnaclass{Texture3D} capability. The shared contract fixture
+requires the resulting public \cnaclass{NotSupportedException} and proves that the caller's
+sentinel destination remains byte-for-byte unchanged.
 
-\subsection{RenderTargetCube: one inherited upload, two independent transition traps}
+\subsection{RenderTargetCube: explicit upload refusal and renderer-owned transitions}
 \label{sec:rendertargetcube-default-contracts}
 
 \cnaclass{RenderTargetCube} inherits \cnaclass{TextureCube}'s complete public
 \texttt{SetData()} family. FNA leaves that inherited call live and forwards it to
 \texttt{FNA3D\_SetTextureDataCube()}, including when the texture was created as a render
 target. CNA's renderer contract instead redeclares \texttt{SetData()} on
-\cnaclass{IRenderTargetCubeRenderer} with an empty default body and the comment ``render targets
-do not support CPU-side SetData.'' Only EasyGL overrides it. The shared public wrapper still
-performs face, rectangle, mip-level, pointer, and count validation and still converts the
-requested \cnaclass{Color} range to RGBA bytes before making that call. Consequently a valid
-upload reports success everywhere: EasyGL changes the requested face/subregion; every other
-constructed cube target silently discards the bytes. Software and the four 2D-only renderers
-construct no cube target, so their public object has a null renderer and discards the upload
-one layer earlier. No dedicated test calls \texttt{SetData()} on a
-\cnaclass{RenderTargetCube}; the EasyGL result and every no-op are source-proven only.
+\cnaclass{IRenderTargetCubeRenderer}. Its historical empty body is now a deterministic
+\texttt{false}; the base \cnaclass{ITextureCubeRenderer::SetData()} contract is itself a pure
+boolean completion method. EasyGL overrides it with a real GPU upload and Skia with an exact CPU
+store; the render-target cube families in the table below refuse. The shared public wrapper still
+validates and converts the request, but raises \cnaclass{NotSupportedException} unless the whole
+region was stored. A shared write-contract fixture exercises both outcomes, including the public
+\cnaclass{RenderTargetCube} inheritance path.
 
-Target switching is a separate default. \cnaclass{IGraphicsRenderer}'s
+Target switching remains a separate renderer responsibility. \cnaclass{IGraphicsRenderer}'s
 \texttt{SetRenderTargetCubeFace(rt, face)} calls
 \texttt{rt->BindAsRenderTargetFace(face)} when non-null, but on null merely delegates to
 \texttt{SetRenderTarget2D(nullptr)}. It never remembers or calls the outgoing cube target's
@@ -1502,53 +1507,61 @@ method, tracks cube state elsewhere, or finalizes each face without an unbind ca
 \midrule
 \endhead
 \texttt{EasyGL}
-  & real GPU upload & Explicit tracking finalizes on cube-to-2D/backbuffer and between different
-    cube objects. Direct face-to-face switching on the \emph{same} cube skips unbind. That is
-    safe for single-sample level~0 and final whole-cube mip generation, but a shared MSAA
-    renderbuffer means only the last face is resolved unless the caller unbinds between faces. \\
+  & real GPU upload & Exact rendered-face readback. Explicit tracking finalizes on
+    cube-to-2D/backbuffer and between different cube objects. Direct face switching on the same
+    cube skips outgoing finalization; per-face MSAA storage preserves samples, but callers needing
+    several freshly resolved/sampleable faces must unbind between them. \\
 \texttt{VULKAN}
-  & no-op & The common route is sound: deferred draw commands retain their face proxy, and
+  & explicit refusal & Exact rendered-face/mip readback. The common route is sound: deferred draw commands retain their face proxy, and
     command recording performs per-face render-pass resolve and mip generation independently
     of the cube object's unbind callback. \\
 \texttt{BGFX}
-  & no-op & Ordinary unbind through the 2D-null overload restores view~0, and BGFX performs
-    attachment resolve/mip work. Its explicit cube-null overload is broken: the renderer override
-    returns immediately on null. All six faces also share one view ID, so same-frame face
-    rendering still needs the test suite's forced frame boundary. \\
+  & explicit refusal & Exact level/mip/MSAA readback. Normalized public transitions finalize the
+    active face in ordered views before selecting the next target. Calling the renderer's
+    \texttt{SetRenderTargetCubeFace(nullptr,...)} directly is still a no-op, but
+    \cnaclass{GraphicsDevice}'s empty descriptor route does not use it. \\
 \texttt{D3D9}
-  & no-op & An explicit override tracks the cube and unbinds it on every transition, including
+  & explicit refusal & Exact level-0 readback; requested upper mip levels have no storage and are
+    refused. An explicit override tracks the cube and unbinds it on every transition, including
     face-to-face; resolve and backbuffer restoration therefore run. \\
 \texttt{D3D11}
-  & no-op & Broken. The common bind never populates the renderer's 2D-only
-    \texttt{currentCustomRT\_}; the later 2D-null call neither invokes the cube's resolve/mip
-    callback nor restores the backbuffer. Subsequent backbuffer work can still target the cube. \\
+  & explicit refusal & Exact level/mip/MSAA readback. Separate active-cube tracking finalizes the
+    outgoing face before cube/2D/MRT/backbuffer transitions, including direct face switches. \\
 \texttt{D3D12}
-  & no-op & Partly broken. The 2D-null path restores the backbuffer unconditionally, but no cube
-    is tracked, so its \texttt{ResolveMsaaEXT()} and \texttt{GenerateMipsEXT()} callbacks never
-    run through the public API. Single-sample level~0 rendering survives this omission. \\
+  & explicit refusal & Exact level/mip/MSAA readback. Its active-cube tracker mirrors D3D11 while
+    finalization performs explicit barriers, resolve and CPU-generated mip uploads. \\
 \texttt{WEBGPU}
-  & no-op & Sound within its declared scope: binding another face or target eagerly flushes the
-    outgoing target identity. Cube-target mipmaps are rejected and cube MSAA reports zero. \\
+  & explicit refusal & Exact level-0 readback. Binding another face or target eagerly flushes the
+    outgoing identity; mipmapped cube targets are rejected and cube MSAA reports zero. \\
 \texttt{SDL\_GPU}
-  & no-op & Sound: mutually exclusive 2D/cube pointers and queued per-face state preserve
-    face-to-face work; public tests prove cube MSAA resolve and generated mip content. \\
+  & explicit refusal & Exact level/mip/MSAA readback. Mutually exclusive 2D/cube pointers and
+    queued per-face state preserve face-to-face work and ordered finalization. \\
+\texttt{LLGL}
+  & explicit refusal & Exact level/mip/MSAA readback. Public target descriptors select distinct
+    per-face binding proxies and deferred replay groups their commands into ordered render passes;
+    the cube object's own bind/unbind callbacks are intentionally no-ops. Preserve-on-rebind is
+    bounded to an unflushed frame because cube creation ignores the preserve flag. \\
+\texttt{SKIA}
+  & exact CPU upload & Six independent CPU raster surfaces provide exact level/mip readback and
+    transfer. MSAA is clamped to zero; this is bounded storage/raster support, not native GPU cube
+    sampling. \\
 \texttt{HEADLESS}
-  & no-op & The common route changes logical trace state only; it cannot establish pixel,
-    resolve, or mip behavior. \\
+  & explicit refusal & The common route changes logical trace state only; readback refuses rather
+    than inventing pixels, and requested MSAA remains bookkeeping rather than a resolved surface. \\
 \texttt{SOFTWARE}, \texttt{SDL\_RENDERER}, \texttt{ASCII}, \texttt{CANVAS}, \texttt{FREEDIRECT}
   & null renderer & No cube render-target factory, so no native transition or upload occurs. \\
 \bottomrule
 \end{longtable}
 \endgroup
 
-The Direct3D distinction is especially easy to miss because both smoke suites prove the
-underlying algorithms with direct renderer calls:
-\texttt{BindAsRenderTargetFace()} followed by \texttt{UnbindAsRenderTarget()}. Those tests
-establish that the resolve and mip implementations work \emph{when invoked}; no D3D11/12 test
-was found that routes a cube through \cnaclass{GraphicsDevice}'s public cube-target overload
-and then back through the public null-target call. They therefore cannot prove the public
-transition that currently fails to invoke them. This is the same audit lesson as the Headless
-``round-trip'' above: inspect the call layer the test exercises, not only its feature name.
+Direct3D11 and Direct3D12 now close the distinction between a working low-level cube object and
+the public device path. Each renderer tracks the active cube independently of its 2D target,
+flushes the outgoing resolve/mip work before cube, 2D, MRT, or backbuffer transitions, and forwards
+the requested preserve policy at creation. The shared public readback, usage, MSAA,
+depth/stencil, pass-boundary, and ordered-clear fixtures exercise those paths; the D3D12 suite is
+cross-built even where the local Wine swapchain environment prevents registering it as a runnable
+\texttt{ctest}. Direct object smoke checks remain useful mechanism evidence, but are no longer the
+only evidence for the public transition.
 
 \subsection{IIndexBufferRenderer::SetData32: a defensive throw traced out to dead code}
 
@@ -1797,16 +1810,16 @@ and asks the backbuffer renderer independently when no target is bound. The tabl
 \texttt{D3D11}
   & Immediate full-view clears: all bound colour RTVs, plus exactly requested native
     depth/stencil flags when a DSV exists.
-  & Renderer selection is exact. Shared routing drops stencil for public
-    \texttt{Depth16}/\texttt{Depth24} even if an implementation uses a combined native format.
+  & Renderer selection is exact. Shared routing asks the bound 2D/cube attachment independently
+    for real depth and stencil and masks only the absent aspect.
   & Strong direct-renderer GPU readback proves stencil values and depth-only colour
-    preservation; ordinary public tests do not cover the format-mask edge. \\
+    preservation; shared clear-options and ordered-clear fixtures exercise public routing. \\
 \texttt{D3D12}
   & Immediate, synchronous command lists clear bound off-screen/swap-chain RTVs and selected
     DSV flags exactly.
-  & Shared format masking is exact as above. In an off-screen device with no colour resource
-    bound, every combination helper checks that colour binding first, so even a depth-only no-op
-    throws \texttt{NotYetImplemented}.
+  & Shared format masking queries the actual attachment aspects. The helper still requires some
+    bound colour resource, but with colour bound and no DSV a requested depth/stencil clear is a
+    legal no-op.
   & Strong direct-renderer depth-test and stencil-plane readback proof exists. It bypasses the
     shared public mask and requires a real bound target. \\
 \texttt{D3D9}
@@ -1926,11 +1939,12 @@ clear operations are a separate native-API question.
   & Persists into subsequent 3D and SpriteBatch draws. Smoke Check~O reads the native state back,
     but calls renderer methods directly and is not a behavioral public pixel test. \\
 \texttt{D3D12}
-  & Empty hook; every 3D and SpriteBatch command list explicitly installs the full target.
+  & Stored custom rectangle/depth range consumed by every 3D and SpriteBatch command list;
+    SpriteBatch uses the same viewport-local projection basis.
   & Empty hook; every draw installs a full-target native scissor regardless of the public
     rectangle/Boolean.
-  & Source-proven negative contract. State-object pixel tests cover other fields, not a custom
-    viewport/scissor discriminator. \\
+  & Native GPU pixels distinguish subregion, multiple successive viewports, depth range and
+    target-switch reset. Scissor remains the source-proven negative half. \\
 \texttt{D3D9}
   & Immediate native viewport, including depth range.
   & Immediate native rectangle; \texttt{D3DRS\_SCISSORTESTENABLE} is independent.

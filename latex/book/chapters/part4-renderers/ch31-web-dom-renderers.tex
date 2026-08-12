@@ -18,7 +18,7 @@ Identity & Browser representation & Additive blend & RT / MRT / query \\
 \endhead
 \texttt{CANVAS} & \texttt{CanvasRenderingContext2D} pixels & reported true & yes / no / no \\
 \texttt{HTML\_DOM} & pooled \texttt{div} elements with CSS transforms & browser-dependent \texttt{plus-lighter} & yes / no / no \\
-\texttt{SVG\_DOM} & SVG \texttt{image} nodes and \texttt{feColorMatrix} & not claimed & yes / no / no \\
+\texttt{SVG\_DOM} & SVG \texttt{image} nodes and \texttt{feColorMatrix} & browser-dependent \texttt{plus-lighter} & yes / no / no \\
 \bottomrule
 \end{longtable}
 
@@ -71,14 +71,18 @@ from final composited pixels.
 
 \texttt{SVG\_DOM} creates SVG image nodes and uses SVG transforms for sprite placement.
 Tinting is expressed through a real \texttt{feColorMatrix} filter rather than by rewriting
-texture pixels.  The retained tree is inspectable and naturally matches vector composition,
-but it inherits SVG's filter, sampling, and browser-layout semantics.
+texture pixels. Additive sprites set \texttt{mix-blend-mode: plus-lighter}; the capability query
+returns the running browser's \texttt{CSS.supports} answer, just as HTML\_DOM does. The retained
+tree is inspectable and naturally matches vector composition, but it inherits SVG's filter,
+sampling, blending, and browser-layout semantics.
 
 Like HTML DOM, it owns a DOM off-screen target, has no MRT or queries, and its 3D refusal
-bypasses \texttt{WarnAndStub}.  Its verification tier is weaker: no renderer test is registered,
-the host target is behind an off-by-default \texttt{CNA\_BUILD\_SVG\_DOM\_HOST\_TESTS} option,
-and no CI workflow references that option.  A runnable browser script exists, which is a route
-to evidence rather than evidence that the route currently gates changes.
+bypasses \texttt{WarnAndStub}. Its browser smoke page checks raw CSS support, the public
+capability answer and the emitted sprite style together, and separate screenshot fixtures cover
+pixels and scissor order. Its verification tier nevertheless remains weaker: the native host
+target is behind an off-by-default \texttt{CNA\_BUILD\_SVG\_DOM\_HOST\_TESTS} option, and no CI
+workflow drives either it or the browser pages. A runnable browser script is a real test route,
+not evidence that the route currently gates changes.
 
 \section{The removed ASCII identity}
 
