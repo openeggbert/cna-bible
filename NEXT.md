@@ -640,6 +640,12 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     3,314,744-byte SHA-256 `7c877ef...` and passed the complete expanded verifier, including the
     98-input recorder, pixel image provenance, catalog/action allowlists, outline/TOC order and
     round trip. Later documentation of this run has no typesetting delta.
+86. **Sealed builds reject typesetting drift before invoking TeX.** `tools/build-release.sh` now
+    requires a Git worktree, exact `HEAD:latex` tree
+    `406104d29871dab11757fdd72ded5d9fbc7fc9f1`, and empty tracked/untracked `git status` under
+    `latex/`. Documentation and verifier-only commits remain compatible, but committed, staged,
+    unstaged or non-ignored untracked release-input changes fail with the actual tree/status.
+    Positive clean-tree and negative mutated-archive fixtures exercise both paths.
 
 ## Do this next
 

@@ -416,6 +416,7 @@ log grep replaces.
 | 2026-08-12 | Post-G internal-target/landing cardinalities | Replaced non-empty predicates with exact release populations for 1,542 unique internal link targets and 1,065 numbered TOC landings, complementing already-fixed link/name/TOC/index counts and preventing silent deletion of an internally consistent subgroup; complete verifier remains green, no PDF delta |
 | 2026-08-12 | Post-G concurrent verifier hygiene | Replaced eleven predictable `/tmp/cna-bible-*.txt` diagnostic paths with a private per-run `mktemp` directory and EXIT/HUP/INT/TERM cleanup, preventing concurrent verifier runs from overwriting stale-fact/whitespace evidence and eliminating newly leaked named scratch files; verification semantics and PDF unchanged |
 | 2026-08-12 | Post-G current clean-archive release run | Extracted tracked commit `d551a3f` via `git archive` into a new path, created a local baseline solely for `git diff --check`, and ran the sealed command without workspace-only inputs; reproduced 3,314,744-byte SHA-256 `7c877ef...` and passed the complete expanded verifier including recorder/image/catalog/action/order/round-trip checks; documentation-only record, no typesetting delta |
+| 2026-08-12 | Post-G sealed-input preflight | Added a Git preflight to `tools/build-release.sh`: requires exact reviewed `HEAD:latex` tree `406104d29871dab11757fdd72ded5d9fbc7fc9f1` and no tracked or non-ignored untracked status under `latex/` before invoking TeX; documentation/verifier-only commits remain compatible, while committed/staged/unstaged/untracked release-input drift fails early with diagnostics |
 
 ---
 
@@ -1348,3 +1349,6 @@ build and visual passes are available again.
 - Ran the sealed workflow from a fresh `git archive` of tracked commit `d551a3f`, with a local
   baseline only for whitespace status. It reproduced the exact 3,314,744-byte / `7c877ef...` PDF
   and passed every expanded verifier check without any workspace-only input.
+- Added an early sealed-input preflight: `HEAD:latex` must equal reviewed tree `406104d...`, and
+  `git status -- latex` must be empty including non-ignored untracked files. Typesetting drift now
+  fails before the expensive rebuild while documentation/verifier-only commits remain valid.

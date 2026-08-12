@@ -13,15 +13,31 @@ pdf="$book_dir/main.pdf"
 source_date_epoch=1786529214
 expected_bytes=3314744
 expected_sha256=7c877ef20bdb20042bdd32483b2e79cb07e81dec7a8d86dc24f6d29d4a04b2af
+expected_latex_tree=406104d29871dab11757fdd72ded5d9fbc7fc9f1
 
-for required_command in latexmk sha256sum stat; do
+for required_command in git latexmk sha256sum stat; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         printf 'ERROR: missing required release command: %s\n' "$required_command" >&2
         exit 1
     fi
 done
 
+if ! git -C "$repo_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    printf 'ERROR: sealed release build requires a Git worktree\n' >&2
+    exit 1
+fi
+actual_latex_tree=$(git -C "$repo_root" rev-parse HEAD:latex 2>/dev/null || true)
+latex_status=$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all -- latex)
+if [ "$actual_latex_tree" != "$expected_latex_tree" ] || [ -n "$latex_status" ]; then
+    printf 'ERROR: tracked release inputs do not match the reviewed clean latex tree\n' >&2
+    printf 'expected tree: %s\nactual tree:   %s\n' \
+        "$expected_latex_tree" "${actual_latex_tree:-missing}" >&2
+    [ -n "$latex_status" ] && printf '%s\n' "$latex_status" >&2
+    exit 1
+fi
+
 printf '%s\n' '== The CNA Bible: sealed release build =='
+printf 'latex tree: %s\n' "$actual_latex_tree"
 printf 'SOURCE_DATE_EPOCH=%s\n' "$source_date_epoch"
 if ! (
     cd "$book_dir"

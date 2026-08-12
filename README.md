@@ -41,7 +41,9 @@ tools/build-release.sh
 That command must produce a 3,314,744-byte PDF with SHA-256
 `7c877ef20bdb20042bdd32483b2e79cb07e81dec7a8d86dc24f6d29d4a04b2af`. A manuscript or layout
 change is expected to fail this gate until a new release has been independently reproduced and
-reviewed; do not update the fingerprint merely to make the command pass.
+reviewed. The command also requires the reviewed clean `latex/` Git tree before invoking TeX, so
+committed, staged, unstaged, or untracked release-input drift fails early; do not update its tree
+or PDF fingerprints merely to make the command pass.
 
 The suite checks the build, references, structure, index, physical page bounds,
 fonts, PDF navigation, page labels, link geometry and action safety, plus
