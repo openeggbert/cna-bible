@@ -684,6 +684,10 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     once, requires a numeric page count and exits immediately if either condition fails. Geometry,
     metadata, extraction and navigation checks therefore never consume an empty page variable or
     emit a cascade of secondary shell/parser errors for one damaged input.
+95. **Scratch bootstrap failure is diagnosed before scratch allocation.** `mktemp` is now resolved
+    explicitly before the verifier creates its private run directory, and allocation failure has
+    its own controlled error. A missing bootstrap command can no longer bypass the ordinary
+    dependency preflight and cascade through an empty scratch path.
 
 ## Do this next
 

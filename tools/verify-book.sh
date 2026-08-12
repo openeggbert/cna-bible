@@ -39,9 +39,16 @@ esac
 
 # Keep every scratch output in one private session directory. Besides preventing concurrent runs
 # from colliding, this lets one EXIT trap remove text, JSON, PDF and decoded-image intermediates
-# after normal completion, a failed check, or an interrupt.
-diagnostic_dir=$(mktemp -d /tmp/cna-bible-verify.XXXXXX)
-system_mktemp=$(command -v mktemp)
+# after normal completion, a failed check, or an interrupt. Resolve mktemp before its first use so
+# a missing bootstrap dependency produces one controlled diagnostic rather than shell fallout.
+system_mktemp=$(command -v mktemp) || {
+    printf 'ERROR: missing required verification command: mktemp\n' >&2
+    exit 1
+}
+diagnostic_dir=$("$system_mktemp" -d /tmp/cna-bible-verify.XXXXXX) || {
+    printf 'ERROR: could not create private verification scratch directory\n' >&2
+    exit 1
+}
 mktemp() {
     if [ "${1:-}" = "-d" ]; then
         shift
