@@ -779,6 +779,11 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
      physical page from FIRST through LAST, in addition to the count. A same-cardinality set with
      a duplicate/substituted page number or unexpected naming convention can no longer be reported
      as the requested review span.
+114. **Every reported review PNG is fully decodable with the expected profile.** The renderer now
+     requires each exact page file to be a non-interlaced 993×1404 8-bit RGB PNG—the A4 dimensions
+     produced at the fixed 120 DPI—and sends the entire image through Netpbm `pngtopnm`. A truncated,
+     header-only, wrong-size or wrong-colour-mode file fails and the run child is removed before any
+     paths are offered for human/model visual inspection.
 
 ## Do this next
 

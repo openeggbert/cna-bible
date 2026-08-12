@@ -444,6 +444,7 @@ log grep replaces.
 | 2026-08-12 | Post-G real reader/writer exclusion | During a complete no-build verifier, a default build verifier failed immediately at exclusive-lock acquisition without changing the PDF hash or `latex/build.log` timestamp/size; the original shared-lock reader continued through every check and exited 0, proving real artifact exclusion without reader disruption |
 | 2026-08-12 | Post-G private default visual output | Changed implicit page-render output to `/tmp/cna-bible-pages-$EUID`, requiring a real effective-user-owned mode-0700 directory before allocating the isolated run child; explicit `OUTDIR` remains caller-controlled and README documents both paths, closing the predictable shared-0775 default |
 | 2026-08-12 | Post-G exact rendered-page filenames | Supplemented PNG count with exact sorted basename equality against shell-generated `page-%03d.png` names for every requested physical page FIRST–LAST; same-cardinality duplicate/substituted or unexpectedly named outputs can no longer masquerade as complete visual coverage |
+| 2026-08-12 | Post-G rendered-PNG integrity | Require every exact page output to have the fixed 120-DPI A4 profile (993×1404, 8-bit RGB, non-interlaced) and fully decode through Netpbm `pngtopnm`; truncated/header-only/wrong-size/wrong-mode outputs fail and their run child is cleaned before paths are reported |
 
 ---
 
@@ -1439,3 +1440,5 @@ build and visual passes are available again.
   explicit third-operand output directories remain intentionally caller-controlled.
 - Bound visual output to the exact zero-padded basename sequence for every requested physical page,
   not merely the expected number of PNG files.
+- Bound every visual-review file to the fixed 120-DPI A4 RGB PNG profile and a complete Netpbm
+  decode, rejecting truncated or structurally wrong images before reporting their paths.

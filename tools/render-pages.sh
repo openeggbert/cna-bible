@@ -59,7 +59,7 @@ if [ "$first" -gt "$last" ]; then
 fi
 
 missing_commands=""
-for required_command in pdfinfo pdftoppm mktemp flock mkdir stat sha256sum; do
+for required_command in pdfinfo pdftoppm mktemp flock mkdir stat sha256sum file pngtopnm; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         missing_commands="$missing_commands $required_command"
     fi
@@ -146,6 +146,22 @@ if [ "$rendered_count" -ne "$expected_count" ] || [ "$actual_names" != "$expecte
     if [ "$actual_names" != "$expected_names" ]; then
         printf 'ERROR: rendered PNG names do not exactly cover requested physical pages\n' >&2
     fi
+    exit 1
+fi
+bad_pngs=0
+while IFS= read -r png_name; do
+    png_path="$run_dir/$png_name"
+    png_profile=$(LC_ALL=C file -b "$png_path" 2>/dev/null || true)
+    if [ "$png_profile" != "PNG image data, 993 x 1404, 8-bit/color RGB, non-interlaced" ] \
+       || ! pngtopnm "$png_path" >/dev/null 2>&1; then
+        printf 'ERROR: invalid/incomplete rendered PNG: %s (%s)\n' \
+            "$png_name" "${png_profile:-unreadable}" >&2
+        bad_pngs=$((bad_pngs + 1))
+    fi
+done <<EOF
+$actual_names
+EOF
+if [ "$bad_pngs" -ne 0 ]; then
     exit 1
 fi
 render_complete=1

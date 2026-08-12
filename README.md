@@ -17,7 +17,7 @@ The build requires a TeX installation with `latexmk`, `pdflatex`, and
 `makeindex`. The complete verifier additionally requires Poppler's `pdfinfo`,
 `pdftotext`, `pdffonts`, and `pdfimages`; Netpbm's `pngtopnm`; MuPDF's `mutool`;
 Ghostscript's `gs`; plus Perl, Git, and standard `cmp`. The visual-page driver
-uses Poppler's `pdftoppm`. The sealed workflow also uses util-linux `flock` to
+uses Poppler's `pdftoppm`, `file`, and Netpbm `pngtopnm`. The sealed workflow also uses util-linux `flock` to
 serialize builds; the artifact-lock protocol expects Linux procfs at `/proc/self/fd` and GNU
 `stat`. Each tool reports missing prerequisites before doing expensive work.
 
