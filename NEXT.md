@@ -10,7 +10,7 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
 | | |
 |---|---|
 | cna-bible branch | `next`; local commits are ahead of `origin/next` (push requires explicit external-publication approval) |
-| CNA pinned SHA | `7a64362efef4119bf880459ef1704fb2c52199e2` (`develop` == `origin/develop`, 2026-08-11) |
+| CNA pinned SHA | `7a64362efef4119bf880459ef1704fb2c52199e2` (`develop` == `origin/develop` at pin time, 2026-08-11; later drift is item 43) |
 | Book builds | **yes** — 709 pages, all automated and release-artifact checks green; every physical page has passed the final visual review |
 | Phase | **A–G complete.** The source audit, restructuring, writing, appendices, whole-book consistency sweep and final artifact verification are closed against the pinned source. |
 
@@ -339,6 +339,18 @@ edition's plan and handoff are archived as `PLAN-ARCHIVE-2026-07-26.md` and
     byte-identical (SHA-256 `c61e4121d5afd7524cc0c1a8143489279409abc2600b45b01ca409c5388aab32`).
     All 89 chapter, appendix and renderer-fragment sources are compiled exactly once; the PDF has
     only the three reviewed primary-reference HTTPS links and no active or remote-launch actions.
+43. **Post-pin repository movement is recorded, not absorbed.** CNA's branch later advanced one
+    commit to `d316653a`, adding only the proposal document `cnaplatform.md`; `cna-template`
+    advanced three material commits to `4d0a2c8`. Both recorded pins still exist and are ancestors
+    of those HEADs. `PLAN.md` §2 now distinguishes the immutable evidence baseline from this later
+    observation; no claim was silently rebased.
+44. **PDF metadata and image provenance received a second postflight.** The catalog now declares
+    `en-US` and carries a descriptive subject and keywords in addition to the existing title and
+    author. Extracted text and low-resolution rasters of all 709 pages are identical to the
+    pre-metadata artifact. The five source PNGs map exactly to the five PDF image objects; all are
+    opaque and non-empty. The byte-identical SDL Renderer/EasyGL pair is intentional: Git history
+    and the retained Xvfb reproduction recipe show two separately executed renderers producing
+    the same three-colour oracle scene.
 
 ## Do this next
 
@@ -498,6 +510,8 @@ Everything through Phase G is verified:
   the destination audit. A third fixture substituted an unreviewed URI while preserving the
   709-page layout and proved the external-action allowlist. Two clean, independently located
   builds with a fixed source date produced byte-identical PDFs.
+- A metadata-only comparison proved the searchable text and every one of 709 rendered pages
+  unchanged after adding the PDF language/subject/keywords. The verifier now requires `en-US`.
 
 **No known writing, correction or PDF-verification defect is pending.**
 
@@ -506,6 +520,9 @@ Everything through Phase G is verified:
 - **TeX Live** was absent at session start and was installed mid-session at the owner's
   direction. `latexmk`, `pdflatex`, `makeindex`, `pdftoppm` are all present and confirmed working.
 - **No blocking questions for the project owner** at this time.
+- Post-pin drift: CNA is now at documentation-only descendant `d316653a`; `cna-template` is at
+  material descendant `4d0a2c8`. The edition remains intentionally pinned to the recorded commits;
+  see item 43 and `PLAN.md` §2.
 - Push status: local checkpoints are committed, but publishing them to `origin/next` was rejected
   by the external-action approval gate. Do not work around it; push only after explicit approval.
 

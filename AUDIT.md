@@ -25,7 +25,7 @@ Confidence vocabulary used throughout:
 | Pinned SHA | `7a64362efef4119bf880459ef1704fb2c52199e2` |
 | Commit subject | `integration: reconcile parallel feature lanes` |
 | Commit date | 2026-08-11 18:33:25 +0200 |
-| `develop` vs `origin/develop` | **Identical** — both resolve to `7a64362e`; no divergence, no fetch required. |
+| `develop` vs `origin/develop` at audit time | **Identical** — both resolved to `7a64362e`; no divergence or fetch was required. Later movement is recorded in `PLAN.md` §2. |
 | Working tree | Clean (`git status --short` empty) at audit start. |
 | Access mode | **Read-only.** No CNA commit, checkout, reset, clean, merge, or build was performed for this audit. |
 

@@ -401,6 +401,13 @@ if command -v mutool >/dev/null 2>&1; then
         fail "unexpected or missing PDF page-label transition"
     fi
 
+    document_language=$(mutool show -g "$pdf" trailer/Root/Lang 2>/dev/null || true)
+    if [ "$document_language" = "(en-US)" ]; then
+        pass "PDF catalog declares English (United States) as its document language"
+    else
+        fail "unexpected or missing PDF document language ('${document_language:-?}')"
+    fi
+
     outline_file=$(mktemp /tmp/cna-bible-outline.XXXXXX.txt)
     if mutool show "$pdf" outline > "$outline_file" 2>/dev/null; then
         outline_parts=$(grep -c '#nameddest=part\.' "$outline_file" || true)

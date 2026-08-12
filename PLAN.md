@@ -39,7 +39,7 @@ in-place editing fixes:
 | CNA repository | `/rv/data/development/github.com/openeggbert/cna` |
 | Branch / SHA | `develop` @ `7a64362efef4119bf880459ef1704fb2c52199e2` |
 | Commit | `integration: reconcile parallel feature lanes`, 2026-08-11 18:33:25 +0200 |
-| `develop` vs `origin/develop` | identical; no divergence, no fetch needed |
+| `develop` vs `origin/develop` at pin time | identical; no divergence, no fetch needed |
 | Access | **read-only** — no CNA build, checkout, reset, commit or fix at any point |
 
 Sibling repositories, recorded for citation:
@@ -61,6 +61,17 @@ Sibling repositories, recorded for citation:
 `easy-gl` and `meta-gl` HEADs match the SHAs CNA's `integration/INTEGRATION_BRANCH_INVENTORY.md`
 names as current public authority after the authorised history rewrite — so that record is
 current, not stale.
+
+Later branch movement does not silently advance this edition's evidence baseline. A read-only
+postflight on 2026-08-12 observed these descendants after the audit had closed:
+
+| Repo | Pinned commit | Later observed HEAD | Relationship and disposition |
+|---|---|---|---|
+| `cna` | `7a64362e` | `d316653a` | one direct descendant adding only root-level proposal document `cnaplatform.md`; no audited code or tests changed; pin retained |
+| `cna-template` | `1d86681` | `4d0a2c8` | three descendants with a material renderer/build/demo rewrite; intentionally outside this edition; pin retained pending a future bounded re-audit |
+
+All other locally available sibling HEADs in the table still matched their recorded pins at that
+postflight. A moving branch name is never evidence for silently replacing a recorded commit.
 
 ---
 
@@ -1087,3 +1098,13 @@ mid-session at the owner's direction, so the build and visual passes are availab
   exactly three reviewed HTTPS API-reference links and no form, JavaScript, remote-navigation,
   launch, submission, import or embedded-file action. A 709-page negative fixture with one URI
   substituted proved that the allowlist reports both the unexpected and missing destination.
+- Rechecked all twelve repository pins read-only. Ten locally available HEADs still matched
+  exactly; CNA's one-commit documentation-only drift and `cna-template`'s three-commit material
+  drift both retain the book's pin as an ancestor and are recorded in §2 without rebasing claims.
+- Added standard PDF language (`en-US`), subject and keyword metadata. A before/after comparison
+  found byte-identical extracted text and identical low-resolution rasters for all 709 pages, so
+  the change affected only the PDF catalog. The verifier now rejects a missing/wrong language.
+- Audited all image assets: five source PNGs map to five PDF image objects; each is opaque,
+  non-empty and cited. The SDL Renderer and EasyGL oracle screenshots are byte-identical by
+  design; commit history and `tools/cna-screenshot-infra/README.md` preserve their independent
+  build/run provenance and reproduction commands.
