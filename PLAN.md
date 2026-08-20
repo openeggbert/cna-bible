@@ -33,19 +33,21 @@ technical report.
 | Tests/CI/build/dependencies | Re-audited and integrated; numeric claims retain denominators |
 | Defect ledger and roadmap | Complete through CNA-BUG-060, including two reproduced alpha.1 C API build failures |
 | Whole-book verification and visual review | Complete: authoritative verifier green at 584 pages; all 264 materially changed pages inspected; two visual corrections rebuilt and rechecked |
-| Sealed release profile | Intentionally pending: policy requires a reviewed committed clean tree and independent fixed-date reproduction |
+| Sealed release profile | Complete: two independent clean fixed-date builds are byte-identical; profile updated and authoritative sealed pipeline passes |
 
 This campaign does not undo the editorial pass, does not repin unrelated sibling technical
 audits, and adds no chapter solely for page count.  The chapter count remains 79; Appendix I is
 the ninth appendix because the C API is a distinct language/ABI lookup surface.
 
-The final candidate is 584 A4 pages and 2,602,891 bytes, SHA-256
-`79fb8b75416127bde94775647e0e8954a19dfb8a1cf2c91a0e875d858704b762`.  Editorial metrics report
+The sealed release is 584 A4 pages and 2,602,878 bytes, SHA-256
+`f4916143649d3e5e64bf6c4a5e2e0027ef136b8510ba338f58450c33a984870e`, with PDF dates
+`D:20260820191513Z` from `SOURCE_DATE_EPOCH=1787253313`. Two clean archives of the committed
+LaTeX tree produced byte-identical artifacts before the profile was changed. Editorial metrics report
 179,457 prose tokens, 192 listings, 25 figures and 109 tables. `tools/verify-book.sh` passes the
 complete source/PDF suite. Twenty-two contact sheets cover every materially changed physical
 page; dense release, renderer, platform, glTF and C API pages were also inspected full-size. A
 mid-word Chapter 21 title break and a platform-table collision were corrected and their final
-pages re-rendered cleanly.
+pages re-rendered cleanly; the final platform diagram label was also widened and rechecked.
 
 ---
 

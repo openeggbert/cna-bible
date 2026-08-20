@@ -24,8 +24,11 @@ does not soften that negative build evidence. The resulting candidate is 584 A4 
 chapters, nine appendices, 179,457 prose tokens, 192 listings, 25 figures and 109 tables. The full
 semantic/PDF verifier passes. All 264 materially changed pages were rendered and read; full-size
 review found a Chapter 21 mid-word title break and a platform-table collision, both corrected and
-re-rendered cleanly. The prior sealed fingerprint remains historical until repository release
-policy permits a clean committed fixed-date reproduction.
+re-rendered cleanly; a tight platform-diagram label was widened and rechecked. Two clean builds
+of the committed LaTeX tree at `SOURCE_DATE_EPOCH=1787253313` then produced the same 2,602,878-byte
+PDF with SHA-256 `f4916143649d3e5e64bf6c4a5e2e0027ef136b8510ba338f58450c33a984870e`.
+The alpha.1 sealed profile therefore supersedes the prior release fingerprint without rewriting
+the historical record below.
 
 ## 1. Repository and evidence baseline
 

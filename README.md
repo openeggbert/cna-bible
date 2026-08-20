@@ -19,10 +19,10 @@ native C API's final library target is compile-blocked because its public render
 entries while CNA has 50 identities. The source/header inventory remains documented, but the book
 does not present `cna_c_api` as a consumable alpha.1 artifact.
 
-The unsealed candidate is 2,602,891 bytes with SHA-256
-`79fb8b75416127bde94775647e0e8954a19dfb8a1cf2c91a0e875d858704b762`. The complete verifier passes,
-and every materially changed page has been rendered and reviewed. This descriptive fingerprint
-does not replace the repository's sealed release profile.
+The sealed release is 2,602,878 bytes with SHA-256
+`f4916143649d3e5e64bf6c4a5e2e0027ef136b8510ba338f58450c33a984870e`. Two clean builds at
+`SOURCE_DATE_EPOCH=1787253313` produced byte-identical PDFs, the complete verifier passes, and
+every materially changed page has been rendered and reviewed.
 
 ## Build
 
@@ -53,13 +53,9 @@ the complete verifier, run:
 tools/build-release.sh
 ```
 
-Until the alpha.1 candidate is committed and independently resealed,
-`tools/release-profile.sh` intentionally describes the preceding 709-page release. That profile
-produces a 3,314,744-byte PDF with SHA-256
-`7c877ef20bdb20042bdd32483b2e79cb07e81dec7a8d86dc24f6d29d4a04b2af` and PDF creation/modification
-date `D:20260812100654Z`. Running the sealed command from the current uncommitted candidate is
-expected to fail its clean-tree preflight. After an authorized commit, update the profile only
-after an independent fixed-date reproduction and visual review. The command requires the reviewed
+The alpha.1 release profile produces a 2,602,878-byte PDF with SHA-256
+`f4916143649d3e5e64bf6c4a5e2e0027ef136b8510ba338f58450c33a984870e` and PDF
+creation/modification date `D:20260820191513Z`. The command requires the reviewed
 committed `latex/` tree plus clean `latex/` and `tools/` worktree state before invoking TeX, so
 committed, staged, unstaged, or untracked release-input/tool drift fails early. Its header records
 the exact HEAD and source/tool trees, and the transaction checks that provenance again after
