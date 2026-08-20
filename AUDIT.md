@@ -1,9 +1,33 @@
-# The CNA Bible — New Edition Source Audit
+# The CNA Bible — Source Audit
 
-This file is the **canonical audit matrix and contradiction log** for the new edition of
-The CNA Bible. It is owned by the coordinating session; research subagents report into it
-but never edit it directly. It supersedes, for new-edition purposes, any per-chapter
-verification status recorded in `PLAN.md` before 2026-08-11.
+The canonical current edition is CNA **`v0.1.0-alpha.1` @
+`1bb2145d99ed572dd4eb15009c34e2e5f410fcf0`**, dated 2026-08-20.  The bounded current audit is
+[`audit/alpha1-delta.md`](audit/alpha1-delta.md).  It records the owner-specified
+`ae0be4b5211957efaef60f2f23627ae5a9ddda23..v0.1.0-alpha.1` interval, distinguishes the part
+already represented by the previous book pin, and makes final-tag facts authoritative.
+
+The remainder of this file is the canonical matrix and contradiction log for the previous
+`7a64362e` source audit.  It remains valuable historical evidence and was not rewritten to make
+its dated counts look current.  For the alpha.1 edition, any conflict is resolved by the delta
+layer and the immutable tag.
+
+## Alpha.1 canonical facts
+
+| Subject | Current edition fact |
+|---|---|
+| Product release | SemVer `0.1.0-alpha.1`; first tag `v0.1.0-alpha.1`; pre-1.0 API may change |
+| Renderers | 50 public identities / 46 implementation families |
+| Renderer composition | singular mode remains; compatible multi-renderer sets are opt-in; default and active device renderer are distinct concepts |
+| Platform | SDL3, SDL2, HEADLESS and POSIX-only TERMINAL are implemented selectors; SDL12/WIN32/EMSCRIPTEN are reserved |
+| Audio | independent SDL3, SDL2 or NULL selection |
+| Effects | bounded XNA/FNA D3D9 Effect Framework bytecode; renderer-qualified; not `.fx`, HLSL source, DXBC or MGFX |
+| Native C API | experimental C17 source/header surface, ABI 0.7.0; product and ABI versions are independent; alpha.1 final library build is blocked by a 49-versus-50 renderer identity invariant |
+| Counts | 568 candidate C++ test sources; 8,263 lexical GoogleTest definitions; 1,720 renderer registration call sites; none is an executed-test total |
+| CI source | 21 workflows: 19 push/PR-triggerable and two dispatch-only; existence is not execution evidence |
+
+---
+
+## Historical `7a64362e` audit
 
 Confidence vocabulary used throughout:
 

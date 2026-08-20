@@ -15,6 +15,7 @@ matrix, whose names and cells predate the current registry.
 \index{OPENGLES1}\index{OPENGL1}\index{OPENGLES2}\index{OPENGLES3}
 \index{OPENGL33}\index{WEBGL1}\index{WEBGL2}\index{OPENGL2}\index{OPENGL4}
 \index{PORTABLEGL}\index{VULKAN}\index{WEBGPU}\index{SDL GPU@SDL\_GPU}\index{METAL}
+\index{IGL}\index{NANOVG}\index{PIXIJS}\index{TINYGL}
 \index{BGFX}\index{MAGNUM}\index{LLGL}\index{DILIGENT}\index{SOKOL}\index{WICKED}
 \index{FNA3D}\index{DIRECTX1}\index{DIRECTX2}\index{DIRECTX3}\index{FREEDIRECT}
 \index{DIRECTX5}\index{DIRECTX6}\index{DIRECTX7}\index{DIRECTX8}\index{GLIDE}
@@ -35,11 +36,12 @@ matrix, whose names and cells predate the current registry.
 \textbf{Cluster} & \textbf{Accepted \texttt{CNA\_GRAPHICS\_RENDERER} values} & \textbf{Count} \\
 \midrule
 \endhead
-OpenGL fixed function & \texttt{OPENGLES1}, \texttt{OPENGL1} & 2 \\
+OpenGL fixed function & \texttt{OPENGLES1}, \texttt{OPENGL1}, \texttt{TINYGL} & 3 \\
 OpenGL programmable / portable & \texttt{OPENGLES2}, \texttt{OPENGLES3},
   \texttt{OPENGL33}, \texttt{WEBGL1}, \texttt{WEBGL2}, \texttt{OPENGL2},
   \texttt{OPENGL4}, \texttt{PORTABLEGL} & 8 \\
-Native modern GPU & \texttt{VULKAN}, \texttt{WEBGPU}, \texttt{SDL\_GPU}, \texttt{METAL} & 4 \\
+Native modern GPU & \texttt{VULKAN}, \texttt{WEBGPU}, \texttt{SDL\_GPU}, \texttt{METAL},
+  \texttt{IGL} & 5 \\
 Abstraction layers & \texttt{BGFX}, \texttt{MAGNUM}, \texttt{LLGL}, \texttt{DILIGENT},
   \texttt{SOKOL}, \texttt{WICKED}, \texttt{FNA3D} & 7 \\
 DirectX 1--3 / free-direct & \texttt{DIRECTX1}, \texttt{DIRECTX2}, \texttt{DIRECTX3},
@@ -50,8 +52,8 @@ Modern Direct3D & \texttt{DIRECTX9}, \texttt{DIRECTX10}, \texttt{DIRECTX11},
   \texttt{DIRECTX12} & 4 \\
 Windows 2D & \texttt{DIRECT2D}, \texttt{GDI} & 2 \\
 2D / vector rasterizers & \texttt{SDL\_RENDERER}, \texttt{SKIA}, \texttt{BLEND2D},
-  \texttt{OPENVG} & 4 \\
-Web / DOM & \texttt{CANVAS}, \texttt{HTML\_DOM}, \texttt{SVG\_DOM} & 3 \\
+  \texttt{OPENVG}, \texttt{NANOVG} & 5 \\
+Web / DOM & \texttt{CANVAS}, \texttt{HTML\_DOM}, \texttt{SVG\_DOM}, \texttt{PIXIJS} & 4 \\
 Diagnostic / non-GPU & \texttt{HEADLESS}, \texttt{SOFTWARE}, \texttt{STUB} & 3 \\
 \midrule
 \textbf{Total} & \textbf{\RendererIdentityCount{} identities / \RendererFamilyCount{} families}
@@ -114,24 +116,28 @@ fna3d & \texttt{FNA3D} & native & yes & yes & yes \\
 freedirect & \texttt{FREEDIRECT} & fallback--reject & yes & no & no \\
 gdi & \texttt{GDI} & reject & yes & no & no \\
 glide & \texttt{GLIDE} & native fixed & throws & no & no \\
-headless & \texttt{HEADLESS} & trace & trace & no; claims yes & trace; claims yes \\
+headless & \texttt{HEADLESS} & trace & trace & trace & trace; not a GPU query \\
 html-dom & \texttt{HTML\_DOM} & fallback--reject & yes & no & no \\
+igl & \texttt{IGL} & native & yes & yes & no \\
 llgl & \texttt{LLGL} & native & yes & yes & yes \\
 magnum & \texttt{MAGNUM} & native & yes & conditional & yes \\
 metal & \texttt{METAL} & native & yes & no & no \\
+nanovg & \texttt{NANOVG} & fallback--reject & no & no & no \\
 opengl1 & \texttt{OPENGL1} & native fixed & conditional & no & conditional \\
 opengl2 & \texttt{OPENGL2} & native & yes & conditional & conditional \\
 opengl4 & \texttt{OPENGL4} & hybrid & yes & yes & yes \\
 opengles1 & \texttt{OPENGLES1} & hybrid fixed & yes & no & no \\
 openvg & \texttt{OPENVG} & fallback--reject & no & no & no \\
+pixijs & \texttt{PIXIJS} & fallback--reject & yes & no & no \\
 portablegl & \texttt{PORTABLEGL} & native CPU & no & no & no \\
 sdl-gpu & \texttt{SDL\_GPU} & hybrid & yes & yes & no; claims yes \\
 sdl-renderer & \texttt{SDL\_RENDERER} & fallback--reject & yes & no & no \\
 skia & \texttt{SKIA} & reject & yes & no & no \\
-software & \texttt{SOFTWARE} & native CPU & yes & no; claims yes & no; claims yes \\
+software & \texttt{SOFTWARE} & native CPU & yes & no & no; claims yes \\
 sokol & \texttt{SOKOL} & native & yes & yes & GL build only \\
 stub & \texttt{STUB} & fallback--no-op & no & no & no \\
 svg-dom & \texttt{SVG\_DOM} & fallback--reject & yes & no & no \\
+tinygl & \texttt{TINYGL} & native CPU fixed & no & no & no \\
 vulkan & \texttt{VULKAN} & native & yes & yes & yes \\
 webgpu & \texttt{WEBGPU} & hybrid & yes & no; claims yes & no; claims yes \\
 wicked & \texttt{WICKED} & native & yes & yes & yes \\
@@ -139,19 +145,17 @@ wicked & \texttt{WICKED} & native & yes & yes & yes \\
 \end{longtable}
 \end{center}
 
-The table is a routing audit, not runtime certification.  It was mechanically checked to contain
-\RendererFamilyCount{} families; EasyGL contributes the remaining four public identities.
-Thirty-one families own
-both ordinary effect-aware methods and eleven inherit both shared defaults.  Of the inheritors,
-nine refuse 3D, \texttt{STUB} intentionally does nothing, and \texttt{DIRECTX10} alone produces
-a real coloured draw after silently losing the effect parameters.  Four owner routes---OpenGL
-ES~1, OpenGL~4, SDL GPU, and WebGPU---retain narrower coloured tails.
+The table is a routing audit, not runtime certification. It is mechanically checked to contain
+\RendererFamilyCount{} families; EasyGL contributes the remaining four public identities. New
+alpha.1 families IGL, NanoVG, PixiJS, and TinyGL are explicit rows rather than being inferred from
+their native libraries. Inherited refusal, deliberate no-op, CPU fixed-function, trace-only and
+hybrid colored-tail routes remain different outcomes even when the public method exists.
 
 \section{Capability answers require operation-level proof}
 
 \cnaclass{GraphicsDevice::SupportsCapability} is a useful preflight query, but its shared default
-is permissive.  At the pin, \texttt{HEADLESS}, \texttt{SOFTWARE}, and \texttt{WEBGPU} report MRT
-while rejecting every multi-target set.  \texttt{SDL\_GPU}, \texttt{WEBGPU}, and
+is permissive. At the pin, \texttt{WEBGPU} reports MRT while rejecting every multi-target set.
+\texttt{SDL\_GPU}, \texttt{WEBGPU}, and
 \texttt{SOFTWARE} report occlusion-query support while inheriting a null factory; \texttt{HEADLESS}
 returns a bookkeeping object with a constant pseudo-count rather than a real GPU query.  These are
 tracked defects, not support.

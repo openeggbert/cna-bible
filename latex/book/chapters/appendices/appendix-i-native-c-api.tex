@@ -1,0 +1,165 @@
+\chapter{Experimental Native C API}
+\label{ch:native-c-api}
+\index{C API}\index{ABI version}\index{CNA::CApi}
+
+\CnaEditionTag{} contains the source and public headers for an experimental C17 binding over CNA's
+canonical C\texttt{++} implementation. It is intended as an optional shared-library surface, not
+a replacement implementation and not evidence that every C\texttt{++} expression has a useful C
+spelling. The tag-level build result is important context for the nominal command:
+
+\begin{lstlisting}[style=cnashell]
+cmake -S . -B build-c \
+  -DCNA_BUILD_C_API=ON \
+  -DCNA_GRAPHICS_RENDERER=HEADLESS \
+  -DCNA_PLATFORM=HEADLESS \
+  -DCNA_AUDIO_PLATFORM=NULL \
+  -DCNA_ENABLE_NET=ON
+cmake --build build-c --target cna_c_api
+\end{lstlisting}
+
+\begin{limitationnote}
+This command does not produce the library at the immutable alpha.1 tag. A clean GNU~14.2 build
+with networking enabled reaches \path{CnaCApiCoreExt.cpp} and fails its own compile-time identity
+invariant: the C table and \texttt{CNA\_GRAPHICS\_RENDERER\_MAXIMUM} contain 49 identities, while
+the canonical C\texttt{++} enumeration contains 50. The missing C identity is \texttt{NANOVG}.
+This is a build-blocked source surface, not a consumable alpha.1 binary artifact. The command is
+retained so the failure is reproducible and a later tag can be rechecked against the same build
+contract.
+\end{limitationnote}
+
+The target definition is \texttt{cna\_c\_api}, exported to CMake consumers as
+\texttt{CNA::CApi}. Its intended normal product is a shared library; the source also defines an
+explicitly controlled static form for packaging tests. Public headers live under \path{CNA/C/}, and
+\path{CNA/C/cna.h} is the 59-header umbrella. A C consumer includes those headers and links the C
+API library; it does not include CNA or Sharp Runtime C\texttt{++} headers.
+The project builds its C translation units as required C17.  The compatibility generator also
+checks that each public header remains self-contained under C99, C11, C17 and C23 modes where the
+declared compiler is installed; C99 header compatibility does not lower the project's C17 build
+standard.
+
+\section{Two version systems, deliberately independent}
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{3.2cm}p{3.4cm}X}
+\toprule
+\textbf{Version} & \textbf{At this tag} & \textbf{What it governs} \\
+\midrule
+CNA product & \CnaProductVersion{} & Source release, C\texttt{++} API, tools, modules and
+  documentation. The leading zero and prerelease component mean that compatibility may still
+  change. \\
+Native C ABI & \texttt{0.7.0} & Binary layouts, exported C symbols and the C binding's
+  compatibility rules. \texttt{CNA\_ABI\_VERSION} encodes it as a 32-bit integer. \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+The header macros \texttt{CNA\_ABI\_VERSION\_MAJOR}, \texttt{\_MINOR}, \texttt{\_PATCH} and
+\texttt{CNA\_ABI\_VERSION} describe the headers. \texttt{cna\_get\_abi\_version()} reports the
+loaded library. Consumers should compare the encoded values and reject an incompatible major.
+This is separate from the generated C\texttt{++} product-version API in
+\path{CNA/Version.hpp}; \texttt{0.7.0} is not CNA product release 0.7.0, and
+\CnaProductVersion{} is not C ABI 0.1.0.
+
+\begin{limitationnote}
+The tag's generated C API release-gate report still labels its header ``CNA C ABI 0.1.0'', while
+\path{CNA/C/abi.h} and \texttt{cna\_get\_abi\_version()} establish 0.7.0. The implementation and
+public header are the edition authority; the report label is a documentation defect, not a second
+supported ABI. Its ``Ready'' verdict is not a build result: the checker confirms that test,
+install and consumer-gate definitions exist, but does not execute them, and therefore misses the
+49-versus-50 compile failure.
+\end{limitationnote}
+
+\section{Results, diagnostics, and handles}
+
+Every fallible operation returns the fixed-width \texttt{CNA\_Result}. At the tag the public
+codes are 0 through 14: success, invalid argument, invalid handle, invalid state, out of memory,
+I/O, unsupported, platform, thread, callback, overflow, encoding, internal, shutting down, and
+buffer too small. Failure details are thread-local. Call
+\texttt{cna\_error\_get\_last\_info()}, query the UTF-8 message size, then copy the message into
+caller-owned storage. A successful call can replace the diagnostic, so error retrieval belongs
+immediately beside the failing call.
+
+Objects cross the boundary as the 64-bit \texttt{CNA\_Handle}; zero is invalid. The internal
+registry validates generation, object kind, owning runtime, lifetime and thread affinity before
+recovering a C\texttt{++} object. Destroy operations invalidate their handle. A borrowed handle
+does not transfer ownership, callbacks must obey the route's re-entry rule, and a handle is not a
+native pointer that C may dereference. Versioned structures carry \texttt{struct\_size} and
+\texttt{struct\_version}; strings use explicit UTF-8 byte lengths; collections use counts plus
+indexed access or dedicated enumerator handles.
+
+\section{Surface and coverage boundary}
+
+The headers cover framework/runtime, math and value types, graphics devices and resources,
+effects and models, input, content, gamer services and networking, storage, audio/XACT, media,
+sensors, devices, components, windows, and the graphics-device manager. This breadth should not
+be summarized as ``complete C coverage.'' The tag's generated inventory classifies 6,712 public
+C\texttt{++} declarations as follows:
+
+\begin{center}
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{Disposition} & \textbf{Declarations} \\
+\midrule
+Implemented & 6,317 \\
+Partially mapped, with an approved limitation & 15 \\
+Planned / unclassified & 0 \\
+No C form & 380 \\
+\midrule
+Total & 6,712 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The 380 exclusions include deleted operations, iterators, arbitrary C\texttt{++} templates,
+protected subclass hooks, Sharp Runtime objects, friendship and internal platform interfaces.
+The 15 partial entries name their usable subset and alternative route. For example, generic
+\cnaclass{ContentManager::Load} cannot accept an arbitrary C\texttt{++} type from C, so the binding
+supplies typed asset routes. This is reviewed coverage, not one-to-one syntactic transliteration.
+
+The generated limitations prose opens with a stale total of 6,415 even though its own current
+rows and the coverage inventory sum to 6,712. This edition uses the reproducible inventory and
+records the prose total as drift.
+
+\section{Renderer and platform consequences}
+
+Once the adapter builds, its C routes create canonical CNA objects, so their capabilities and
+lifetime rules remain those of the active renderer and selected platform/audio modules. It does not expose an
+\cnaclass{IGraphicsRenderer} pointer or a second renderer implementation. A multi-renderer build
+still resolves the runtime renderer through CNA's C\texttt{++} selection service before the first
+graphics device; C routes then observe the chosen device and receive
+\texttt{CNA\_RESULT\_NOT\_SUPPORTED} for unavailable operations. Renderer rebuild for a changed
+multisample request is explicitly resource-destructive and is only safe before GPU resources
+exist.
+
+This corrects an ambiguity in the tag's C API renderer prose, which says only that the backend is
+``compiled into CNA.'' That wording describes a single-renderer build but does not erase the
+tag's generated multi-renderer registry.
+
+\section{Verification inventory, not a universal pass claim}
+
+Source inspection at the tag finds 74 pure-C test translation units, 82 CTest registrations whose
+names begin \texttt{CApi\_}, 176 recorded structure layouts, and 2,861 recorded exports. Five
+dedicated workflows cover the ABI baseline, compatibility matrix, coverage inventory,
+limitations matrix, and combined release gate. Their presence proves automation is declared;
+it does not by itself prove that GitHub executed every cell for this tag. The compatibility
+matrix describes 23 compiler cells across seven toolchain families, while actual outcomes require
+workflow-run evidence.
+
+The declared release gates are designed to check that public declarations have a disposition,
+generated reports are current, headers compile as C and C\texttt{++}, layout/export baselines are
+reviewable, examples consume the installed package, and selected renderer builds validate the
+same ABI boundary. At alpha.1, neither the five narrow workflows nor the source-only aggregate
+checker closes the final-library-build predicate. The missing NanoVG identity, stale ABI label and
+stale declaration count show why generated records still require a fresh artifact build.
+
+\begin{evidencenote}
+The header count, result values, ABI 0.7.0, coverage partition, test-source and registration counts
+are Source-proven at \CnaEditionTag{}. They are not reported as an executed 82-test run. Two
+build probes were attempted. With \texttt{CNA\_ENABLE\_NET=OFF}, configuration succeeds but the C
+adapter cannot see GamerServices headers because CMake neither refuses nor repairs the invalid
+closure. With networking enabled, compilation reaches and fails the 49-versus-50 renderer
+\texttt{static\_assert}. The tag-level library status is therefore \textbf{Blocked at compile
+time}, while the generated product-version example remains independently Compile-proven.
+\end{evidencenote}

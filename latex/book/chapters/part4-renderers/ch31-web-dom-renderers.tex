@@ -2,9 +2,11 @@
 \label{ch:web-dom-renderers}
 \label{ch:canvas-ascii-backends}
 
-Three CNA identities render XNA-style sprites in a browser without WebGL.  \texttt{CANVAS}
+Four CNA identities render XNA-style sprites in a browser without exposing CNA's WebGL renderer
+contract. \texttt{CANVAS}
 paints pixels into a Canvas2D context.  \texttt{HTML\_DOM} represents sprites as pooled,
-CSS-transformed elements.  \texttt{SVG\_DOM} emits SVG image nodes and filters.  All are
+CSS-transformed elements. \texttt{SVG\_DOM} emits SVG image nodes and filters. \texttt{PIXIJS}
+uses the pinned PixiJS~7 UMD runtime over the browser's own rendering choice. All are
 Emscripten-only and 2D-only, but their browser object models and evidence differ sharply.
 
 \begin{longtable}{p{0.18\textwidth}p{0.32\textwidth}p{0.20\textwidth}p{0.17\textwidth}}
@@ -19,6 +21,7 @@ Identity & Browser representation & Additive blend & RT / MRT / query \\
 \texttt{CANVAS} & \texttt{CanvasRenderingContext2D} pixels & reported true & yes / no / no \\
 \texttt{HTML\_DOM} & pooled \texttt{div} elements with CSS transforms & browser-dependent \texttt{plus-lighter} & yes / no / no \\
 \texttt{SVG\_DOM} & SVG \texttt{image} nodes and \texttt{feColorMatrix} & browser-dependent \texttt{plus-lighter} & yes / no / no \\
+\texttt{PIXIJS} & PixiJS sprites and render textures & Pixi blend mode & yes / no / no \\
 \bottomrule
 \end{longtable}
 
@@ -84,6 +87,20 @@ target is behind an off-by-default \texttt{CNA\_BUILD\_SVG\_DOM\_HOST\_TESTS} op
 workflow drives either it or the browser pages. A runnable browser script is a real test route,
 not evidence that the route currently gates changes.
 
+\section{PIXIJS: browser library objects and render textures}
+
+\texttt{PIXIJS} is Emscripten-only and resolves a pinned PixiJS~7.4.2 UMD artifact with a recorded
+SHA-256; automatic download is on unless \texttt{CNA\_PIXIJS\_ROOT} supplies the file. It maps
+textures, SpriteBatch/SpriteFont draws, transforms, scissor, blend state and one active
+\cnaclass{RenderTarget2D} to PixiJS objects. The browser library may use WebGL internally, but the
+CNA identity remains PIXIJS and its contract is the 2D adapter, not CNA's WEBGL2 family.
+
+MRT, mip levels above zero, 3D, custom/compiled effects, cube and volume textures, cube targets
+and occlusion queries are explicit refusals. Render textures make its off-screen route stronger
+than NanoVG's, while more than one simultaneous target still throws. Browser execution must prove
+the resolved library, object lifetime and final pixels; a successful Emscripten link alone does
+not.
+
 \section{The removed ASCII identity}
 
 Older editions paired Canvas with an \texttt{ASCII} renderer.  That public identity and its
@@ -94,7 +111,7 @@ registry.
 
 \section{Comparison by object model}
 
-The three families can display an identical sprite scene while failing in different places:
+The four families can display an identical sprite scene while failing in different places:
 
 \begin{itemize}
   \item Canvas failures cluster around pixel upload, context state, clipping, and immediate
@@ -103,6 +120,8 @@ The three families can display an identical sprite scene while failing in differ
         support;
   \item SVG DOM failures cluster around retained-node lifetime, SVG transforms, filters, and
         sampling.
+  \item PixiJS failures cluster around UMD artifact resolution, Pixi object/render-texture
+        lifetime, batching, and the browser driver selected below the library.
 \end{itemize}
 
 A useful cross-renderer scene therefore includes crop, origin-centred rotation, alpha and

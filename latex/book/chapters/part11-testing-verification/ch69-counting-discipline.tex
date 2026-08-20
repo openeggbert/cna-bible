@@ -3,13 +3,15 @@
 \label{ch:counting-discipline}
 
 ``How many tests does CNA have?'' has no context-free answer.  The repository contains source
-files, GoogleTest definitions, standalone executables, and CTest registrations; one renderer is
-selected per configure; GoogleTest cases are discovered by executing the binary.  A useful
+files, GoogleTest definitions, standalone executables, and CTest registrations; a configure
+selects one renderer or a compatible renderer set; GoogleTest cases are discovered by executing
+the binary.  A useful
 number must therefore name both its unit and its configuration.
 
 \section{Four quantities that must not be exchanged}
 
-At CNA commit \texttt{7a64362e}, static inspection gives the following representative counts:
+At \CnaEditionTag{} @ \CnaRevisionShort{}, static inspection gives the following representative
+counts:
 
 \begin{center}
 \small
@@ -17,14 +19,13 @@ At CNA commit \texttt{7a64362e}, static inspection gives the following represent
 \toprule
 Count & Exact definition \\
 \midrule
-433 & C\texttt{++} source files in the three roots matched by the CnaTests glob, before
+568 & C\texttt{++} source files in the three roots matched by the CnaTests glob, before
       configure-dependent filtering. \\
-6,818 & GoogleTest macro definitions across all those test-directory sources. \\
-6,670 & Definitions compiled into the default Linux \texttt{OPENGLES3}, Net-enabled,
-        FFmpeg-available CnaTests source set. \\
-1,785 & Static CTest registration statements made through the renderer-test helper, after
-        expanding Skia's wrapper calls; not active tests in one build. \\
-1,233 & C\texttt{++} files under module \texttt{examples} directories; 1,169 happen to be named
+8,263 & Lexical \texttt{TEST}, \texttt{TEST\_F} and \texttt{TEST\_P} definitions across those
+        files, before filtering and parameter expansion. \\
+1,720 & Direct \texttt{cna\_register\_renderer\_test} call sites in renderer-family
+        \texttt{CMakeLists.txt} files; not active tests in one build. \\
+1,297 & C\texttt{++} files under module \texttt{examples} directories; 1,232 happen to be named
         \texttt{*\_test.cpp}, but almost none are GoogleTest sources. \\
 \bottomrule
 \end{tabular}
@@ -45,21 +46,21 @@ The source population is a sorted union, not a sum of unchecked directory totals
 \end{verbatim}
 
 Macro counts search only declaration starts, distinguishing \texttt{TEST}, \texttt{TEST\_F},
-and \texttt{TEST\_P}.  The default-configure figure then subtracts the renderer test directories
-excluded by CMake.  This is still a source definition count, not a run count.  Six
+and \texttt{TEST\_P}.  This is still a source-definition count, not a run count.  Nine
 \texttt{INSTANTIATE\_TEST\_SUITE\_P} sites and platform conditionals can change runtime
 expansion.
 
-Renderer registrations require another derivation.  The tree contains 1,624 direct calls to
-\texttt{cna\_register\_renderer\_test}; three are Skia wrapper bodies rather than registrations,
-and 164 calls invoke those wrappers.  Hence $1624-3+164=1785$ static statements.  Nested CMake
-conditions still decide which subset exists in any actual configure.
+Renderer registrations require another derivation.  A lexical search finds 1,720 direct helper
+call sites under renderer \texttt{CMakeLists.txt} files.  Helper definitions, wrapper expansion
+and nested CMake conditions mean that number is deliberately described as call sites, not
+registered or executed tests.
 
 \section{Why there is no all-renderer total}
 
-The build enters exactly one selected renderer family.  EasyGL's 293 registration statements,
-Vulkan's 211, bgfx's 179, and Skia's 175 belong to mutually exclusive configurations.  Summing
-them creates a number that no build can expose and no machine can run as one CTest suite.
+Singular builds enter one selected family; multi-renderer builds enter only the explicitly named,
+compatible set.  Platform gates and incompatible native dependency graphs prevent a universal
+all-family configuration.  Summing every family's registration sites therefore creates a number
+that no supported build exposes as one CTest suite.
 
 CTest discovery adds a second barrier.  \texttt{PRE\_TEST} obtains case names by running
 \texttt{CnaTests --gtest\_list\_tests}; configure-time source inspection cannot know the complete
@@ -106,6 +107,6 @@ H.''  A source audit uses a different sentence: ``At commit X, this command foun
 matching definition D.''
 
 Three historical comments claimed approximately 247, 330, and 600 renderer registrations, each
-using a different unstated meaning; the audited tree statically contains 1,785 statements across
-exclusive configurations.  Comments rot, while reproducible definitions can be rerun.  The
+using a different unstated meaning; the tag tree contains 1,720 direct helper call sites across
+configuration-dependent families.  Comments rot, while reproducible definitions can be rerun.  The
 discipline is therefore not to avoid numbers, but to make every number carry its derivation.

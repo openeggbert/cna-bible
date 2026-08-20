@@ -9,24 +9,25 @@ document.''  It is preserving a chain from intent to source, test, artifact, and
 
 \section{Documents have roles, not equal authority}
 
-The root \texttt{NEXT.md} is a session and integration handoff.  At the pinned revision it opens
-with the eleven-lane renderer integration, frozen SHAs, merge order, identity arithmetic, and
-cross-lane defects.  Older sections remain below it.  It is operational history, not a normalized
-single source of current feature truth.
+The root \texttt{NEXT.md} is a session and integration handoff. At alpha.1 it opens with the
+2026-08-18 merge and compiled-effect follow-up, while thousands of lines of earlier renderer,
+platform, C API, glTF, and remediation history remain below it. It is operational history, not a
+normalized single source of current feature truth.
 
 \texttt{CHECKLIST.md} defines repeatable port rules: API surface comes from XNA reference
 assemblies, behavior from FNA, extensions require CNAEXT, and each public member needs tests or an
 explicit host-dependent exception.  It is a policy document; compliance still has to be checked
 against code and gates.
 
-\texttt{AUDIT.md} is a large historical class table.  It contains valuable provenance and many
-stale rows: it still describes Content as non-XNB, understates implemented effects, and cites old
-paths and counts.  It must be treated as a dated claim corpus rather than a durable current
-authority.  The same warning applies to source-audit files generated before modularization.
+\texttt{AUDIT.md} is a large historical class table with a current C-ABI tracking banner above
+older per-class rows. It contains valuable provenance and many dated claims; current banner text
+does not automatically refresh older rows. Treat it as a claim corpus that must be checked against
+the tag, not a normalized current API inventory. The same warning applies to source-audit files
+generated before modularization.
 
 \section{Subsystem plans preserve causality}
 
-The CNA root contains 52 \texttt{plan\_*.md} files at the audited SHA, not a small fixed set.  Their
+The CNA root contains 62 \texttt{plan\_*.md} files at the alpha.1 tag, not a small fixed set. Their
 numbered tasks record rationale, experiments, owner decisions, defects discovered while doing the
 work, and follow-up boundaries.  A stable identifier such as \texttt{GLTF-245} or
 \texttt{REMED-GFX-188} is useful because commits, tests, and later tasks can point back to the same
@@ -80,6 +81,25 @@ Executable documents can rot too.  Four wired validators at the pin read paths r
 modularization.  A gate that cannot find its input is not current evidence.  Self-validation must
 include its input mapping, and a physical source move should update implementation, tests,
 validators, and cited docs atomically.
+
+\section{SemVer and phase tracking coexist}
+
+The first tagged release adds a second durable coordinate without replacing task history.
+Product version authority begins in the root CMake numeric version plus its prerelease field;
+configuration generates \path{CNA/Version.hpp}, and release preparation synchronizes Doxygen,
+the changelog, and the \texttt{v0.1.0-alpha.1} tag. \texttt{CNA::getVersionString()} and the
+\texttt{CNA\_VERSION\_*} macros expose that product version to C++ consumers.
+
+The experimental native C package has a separate ABI version in \path{CNA/C/abi.h}. Its package
+compatibility and release gate must move according to C ABI rules, not because the C++ product tag
+changed. A release record is therefore complete only when it names both coordinates where the C
+surface is in scope. Alpha.1 remains pre-1.0: SemVer identifies the snapshot and communicates
+prerelease status; it does not promise a stable 1.0 API.
+
+The release checklist in \path{docs/releasing.md} treats source, changelog, generated version API,
+tag, and verification evidence as a coordinated operation. Phase/task identifiers remain the
+causal engineering ledger underneath that snapshot. A task answers \emph{why and how}; the tag
+answers \emph{which immutable product state}.
 
 \section{sharp-runtime's database makes scope measurable}
 

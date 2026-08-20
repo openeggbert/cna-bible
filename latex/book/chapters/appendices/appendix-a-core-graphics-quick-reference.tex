@@ -207,11 +207,15 @@ depends on the renderer family.
 \label{sec:api-buffers-effect-base}
 
 \cnaclass{Effect} owns parameter and technique collections, a current technique, cloning, and
-the CNA-added convenience that applies the current pass.  \cnaclass{EffectParameter} exposes
+the CNA-added convenience that applies the current pass.  Its bytecode constructor accepts the
+XNA/FNA D3D9 Effect Framework payload supported by the selected renderer; FNA3D is the normal
+alpha.1 route, while SDL\_GPU, EasyGL and Vulkan require their explicit experimental effect
+options.  \cnaclass{EffectParameter} exposes
 typed scalar/vector/matrix/string/texture setters and getters plus class/type/dimension metadata
-and nested collections.  CNA's public arbitrary compiled-effect constructor remains a refusal;
-\cnaclass{ShaderEffect} is a distinct renderer-specific source/program route.  The existence of a
-stock effect or parameter setter therefore does not prove arbitrary XNA \texttt{.fxb} execution.
+and nested collections.  This is not a source compiler and does not accept \texttt{.fx}/HLSL,
+DXBC or MGFX.  \cnaclass{ShaderEffect} is a distinct renderer-specific source/program route.
+The existence of a stock effect or parameter setter therefore does not prove compiled-effect
+execution for a renderer absent the matching capability and factory.
 
 \cnaclass{OcclusionQuery} exposes \texttt{Begin}, \texttt{End}, completion, and pixel count.
 Appendix~\ref{ch:feature-matrix} identifies families with real, conditional, trace-only, null, or
@@ -222,6 +226,6 @@ without a usable renderer object and a discriminating sample-count test.
 
 For exact declarations, search the selected type under
 \path{modules/<owner>/include/Microsoft/Xna/Framework/} at CNA
-\texttt{7a64362efef4119bf880459ef1704fb2c52199e2}.  Then pair the header with its implementation,
+\CnaEditionTag{} @ \CnaRevision.  Then pair the header with its implementation,
 renderer route, tests and host evidence.  This appendix answers ``where is the surface?''; the
 book's chapters and retained audit reports answer ``what does this revision actually do?''

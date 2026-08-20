@@ -2,16 +2,19 @@
 \index{roadmap}\index{re-audit}\index{open gap}
 \label{ch:roadmap}
 
-This roadmap is a snapshot against CNA \texttt{7a64362e} and the sibling revisions pinned in the
-edition plan.  It deliberately avoids one global completion percentage.  API presence, behavior,
+This roadmap is a snapshot against \CnaEditionTag{} @ \CnaRevisionShort{} and the sibling
+revisions pinned in Appendix~\ref{ch:repo-map}. It deliberately avoids one global completion
+percentage. API presence, behavior,
 renderer evidence, platform execution, and automation are different axes, and several CNA
 documents carrying headline percentages are already stale about XNB, glTF, renderers, or tests.
 
 \section{Triage correctness before expanding breadth}
 
-The source audit recorded 54 CNA findings in \texttt{cnabugs.md}.  They were derived by static
-reading and configuration analysis; CNA itself was not built or modified during that audit.  The
-first upstream step is therefore triage and focused reproduction, not bulk patching.
+The ledger now records 60 CNA findings in \texttt{cnabugs.md}: the original 54 implementation,
+capability, gate and documentation findings plus six alpha.1 release/build contradictions.
+Nine original findings are fixed in tag source, several are narrowed, one is an explicit
+architecture decision, and the rest remain open.  The dispositions are source-derived rather
+than a 60-case runtime reproduction, so focused reproduction remains the first upstream step.
 
 High-value starting points have small counterexamples and broad consequences: aliased
 \texttt{Matrix::Transpose} corrupts \texttt{Plane::Transform}; StorageContainer lacks path
@@ -27,9 +30,10 @@ behavior should move into the documented-deviation contract rather than disappea
 
 CNA already exposes \RendererIdentityCount{} identities across \RendererFamilyCount{} families.
 The next renderer milestone is not a
-larger count; it is truthful answers from the existing contract.  HEADLESS, SOFTWARE, and WEBGPU
-advertise MRT while rejecting multi-target use; WebGPU and bgfx overclaim custom effects; several
-query and stencil reports disagree with implementation; DIRECTX10 inherits an unconditional
+larger count; it is truthful answers from the existing contract.  Alpha.1 corrected the recorded
+HEADLESS/SOFTWARE MRT claims, but WebGPU's MRT route and several query reports still disagree with
+their implementation; WebGPU and bgfx overclaim custom effects; several stencil reports remain
+inverted; DIRECTX10 inherits an unconditional
 colored extended-draw downgrade.
 
 Build a table-driven capability conformance suite that pairs every \texttt{true} with a usable
@@ -39,16 +43,16 @@ controls.  A registry count cannot substitute for this behavioral matrix.
 
 \section{Close the arbitrary-effect boundary deliberately}
 
-The public compiled-effect constructor and general XNB \texttt{EffectReader} remain unsupported.
-FNA3D proves that real XNA stock \texttt{.fxb} blobs can execute through MojoShader, while D3D9
-vendors source and compares much of its compiled instruction stream.  These are strong foundations,
-not a completed arbitrary-effect pipeline.
+The public compiled-effect constructor and general XNB \texttt{EffectReader} now accept bounded
+XNA/FNA Direct3D~9 Effect Framework binaries. FNA3D enables the route normally; SDL\_GPU, EasyGL
+and Vulkan require opt-in MojoShader-backed builds. D3D9's separate stock-source comparison and
+\cnaclass{ShaderEffect}'s renderer-specific input remain different routes.
 
-A roadmap decision must define accepted bytecode, reflection, parameter and technique mapping,
-renderer translation routes, failure behavior, and licensing/provenance.  Vulkan needs a path from
-MojoShader's output to SPIR-V; bgfx expects offline binaries; several renderers intentionally have no
-custom-effect support.  Do not hide that matrix behind one Boolean or widen the public constructor
-until each supported identity has an engagement test.
+Further work is breadth and conformance: more renderer runtimes, hostile-binary hardening,
+real-game fixture coverage, and renderer-engaged parity for parameters, techniques, passes,
+samplers, textures, pass state, SpriteBatch and 3D draws. BGFX and many other families still have
+no compiled-effect runtime; MGFX, DXBC and source compilation remain out of this constructor's
+contract. Do not hide that matrix behind one Boolean.
 
 \section{Harden content symmetrically}
 
@@ -64,16 +68,17 @@ retain the separation between caller-selected asset paths and file-internal refe
 
 \section{Complete glTF semantics beyond importer coverage}
 
-The conformance ladder proves D1--D4 and D8 repairs and exposes remaining material and animation
-limits.  Runtime import still discards a computed PBR UV-set mismatch warning, ignores declared
-required extensions, supports only the first mesh group in one route, and applies position-only
-morphing to some PBR strides without diagnosis.  D6/D7-era material and rigid-animation work
-remain the clearest compatibility targets.
+The tag closes the old UV-report, required-extension and PBR morph-stride findings and now exposes
+losses through \cnaclass{GltfImportReportEXT}.  Remaining work is the explicitly bounded
+\texttt{GLTF ROBUST} matrix: broader renderer consumption of the newer PBR state, real point and
+spot lights through a shared light ABI, and a wider external-renderer image campaign.  KTX2/Basis
+and WebP without fallback remain unsupported; carried-but-application-owned state and finite
+vertex-layout ceilings remain documented rather than silently discarded.
 
-Advance one independently generated fixture at a time.  Update the manifest, scene digest,
-semantic golden, runtime/offline parity, and renderer evidence together.  Run a pinned external
-glTF validator rather than claiming generator self-validation that the current tool does not
-perform.
+Advance one independently generated fixture at a time. Update the manifest, scene digest,
+semantic golden, runtime/offline parity, and renderer evidence together. Keep the pinned external
+validator audit distinct from deterministic generator self-checks; alpha.1 contains both, and
+neither replaces renderer-engaged evidence.
 
 \section{Turn platform claims into retained artifacts}
 
@@ -83,11 +88,13 @@ the APK, configure log, logcat, screenshot, ABI/API/NDK identity, and lifecycle 
 background, foreground, low-memory, termination, asset access through ContentManager, and physical
 hardware.
 
-The adapted Metal tree needs a native compile, link, validation, pixel, Retina, and frame-pacing run;
-the historical pre-adaptation workflow does not close that boundary.  iOS/tvOS require a designed
-host and remain explicit non-claims.  WebGL1, WebGL2, and Canvas need the HTTP-served browser verdict
-and compositor pattern already demonstrated by HTML-DOM/SVG-DOM, plus context-loss and shader
-compilation evidence.
+The tag's Apple workflow source contains macOS build/app launch plus iOS device final-link and
+simulator final-link/install/launch legs with a one-frame marker. Those definitions are stronger
+than compile-only project files, but this book did not observe a tag run; retain artifacts before
+promoting them to current execution evidence. Native Metal still needs retained validation,
+pixels, Retina, and frame-pacing evidence. tvOS remains an explicit non-claim. WebGL1, WebGL2,
+Canvas and PixiJS need HTTP-served browser verdicts, context-loss coverage, and shader/runtime
+evidence where applicable.
 
 For Windows, retain the MinGW/Wine route while adding genuine native MSVC evidence where the public
 support table claims it.  Every result must name translation runtime, GPU/software device, display,
@@ -109,16 +116,22 @@ Add code-coverage tooling only with a defined question.  Line coverage can ident
 but cannot replace oracle authority, mutation sensitivity, or runtime engagement.  Keep API-surface
 ``coverage'' under a different name so the metrics cannot be confused.
 
-\section{Make CNA consumable as a package}
+\section{Extend packaging beyond the native C boundary}
 
-The pinned build is designed around sibling \texttt{add\_subdirectory} composition and has no
-complete install/export package for CNA.  A mature consumer path should define installed module
-targets, public headers, renderer selection, dependency discovery, version compatibility, and a
-small out-of-tree package consumer test.  Sibling libraries such as meta-gl already demonstrate
-that installed-package and exported-symbol tests can make this boundary executable.
+Alpha.1's optional C API defines shared/static packaging, a version file, exported C headers, and
+an out-of-tree \texttt{find\_package(CNA CONFIG)} consumer gate, but the tag cannot build the
+library because NanoVG is absent from its C renderer map. First repair that identity closure, add
+a CI leg that builds the final library and installed consumer, and make the aggregate release
+checker execute rather than recognize those gates. The broader C++ framework is still designed
+around sibling \texttt{add\_subdirectory} composition and has no complete installed module/renderer
+SDK. A mature C++ consumer path would need installed module targets, public headers, renderer
+selection, dependency discovery, product-version compatibility, and its own small out-of-tree
+consumer test. It must not reuse the native C package's ABI 0.7.0 as though that were the product
+or C++ API version.
 
 Packaging work must preserve the one-SDL-instance invariant and optional-module closure.  It should
-not force every renderer dependency onto a consumer that selects one identity.
+not force every renderer dependency onto a consumer that selects one identity or a small compatible
+runtime set.
 
 \section{Reconcile documentation from generated facts}
 

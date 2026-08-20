@@ -7,7 +7,7 @@ whose scope is narrowest by explicit design: a 2D-only rendering path built dire
 SDL3's own 2D texture-blit renderer, with no 3D pipeline, no programmable shader stage, no
 depth/stencil buffer, and no multisample antialiasing at all.
 
-It is one of four 2D/vector families in this chapter.  Their common output is a raster image;
+It is one of five 2D/vector families in this chapter. Their common output is a raster image;
 the route to that image ranges from SDL texture blits through two CPU rasterizers to an
 OpenVG-on-fixed-OpenGL implementation.
 
@@ -24,6 +24,7 @@ Identity & Raster route & 3D result & RT / MRT / query \\
 \texttt{SKIA} & Skia raster or Ganesh mode & explicit rejection & yes / no / no \\
 \texttt{BLEND2D} & CPU Blend2D, streamed through SDL & inherited route rejects & yes / no / no \\
 \texttt{OPENVG} & ShivaVG on fixed-function OpenGL & inherited route rejects & no / no / no \\
+\texttt{NANOVG} & NanoVG on a real OpenGL context & explicit rejection & no / no / no \\
 \bottomrule
 \end{longtable}
 
@@ -454,10 +455,26 @@ coherent: the renderer supplies its 2D drawing surface without promising the bro
 features those flags describe.  It has no render-target factory, MRT, queries, shaders, or 3D;
 effect-aware draws inherit the common route and reject.
 
-\section{Four ways to prove a 2D renderer}
+\section{NANOVG: immediate vectors without off-screen storage}
 
-For SDL Renderer, observe the actual SDL target and presentation mode.  For Skia, name raster
+\texttt{NANOVG} fetches a pinned upstream revision and uses NanoVG's OpenGL backend for paths,
+images and 2D composition. It is deliberately 2D-only: there is no vertex/index-buffer 3D
+pipeline, programmable custom effect, depth/stencil contract, MRT or query. Although NanoVG ships
+an optional framebuffer helper, CNA does not include it in this family's scope;
+\cnaclass{RenderTarget2D} construction therefore fails transactionally rather than returning a
+resource that cannot be bound.
+
+The family reports the relevant capabilities false and refuses anisotropic sampling, wireframe
+and non-default color-write masks it cannot preserve through NanoVG's flush. Its tests cover real
+context creation, images, scissor, transformations, blending and refusal behavior; a dedicated
+workflow declares NanoVG automation. These are source-visible gates here, not a newly executed
+pixel campaign by this edition.
+
+\section{Five ways to prove a 2D renderer}
+
+For SDL Renderer, observe the actual SDL target and presentation mode. For Skia, name raster
 or Ganesh and test the bounded SkSL path separately.  For Blend2D, compare the CPU pixels before
 and after SDL upload.  For OpenVG, capture the GL implementation and context profile alongside
-the vector result.  A single screenshot can look identical across all four while exercising
-four materially different ownership and delivery paths.
+the vector result. For NanoVG, name the OpenGL context and distinguish immediate vector output
+from absent off-screen-target storage. A single screenshot can look identical across all five
+while exercising materially different ownership and delivery paths.

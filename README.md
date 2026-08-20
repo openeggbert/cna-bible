@@ -6,12 +6,23 @@ Microsoft XNA 4.0 programming model. The single LaTeX volume covers the core
 framework, graphics renderers, content, input, audio, networking, sibling
 libraries, cross-platform engineering, migration, and project practice.
 
-The current editorial candidate contains 79 chapters and eight appendices in one
-574-page volume. It remains pinned to the same source baseline while separating
-current contracts, evidence, limitations, and historical notes more clearly.
+The current source candidate is the **CNA 0.1.0-alpha.1 edition**, pinned to
+`v0.1.0-alpha.1` @ `1bb2145d99ed572dd4eb15009c34e2e5f410fcf0`. It contains 79 chapters and
+nine appendices in one 584-page volume while preserving the preceding editorial pass's separation of
+current contracts, evidence, limitations, and historical notes.
 [NEXT.md](NEXT.md) records the precise handoff, [PLAN.md](PLAN.md) preserves the
 authoritative plan and verification history, and
 [EDITORIAL-AUDIT.md](EDITORIAL-AUDIT.md) records the quality pass.
+
+The edition records a release-level limitation discovered by an exact-tag build: the experimental
+native C API's final library target is compile-blocked because its public renderer map has 49
+entries while CNA has 50 identities. The source/header inventory remains documented, but the book
+does not present `cna_c_api` as a consumable alpha.1 artifact.
+
+The unsealed candidate is 2,602,891 bytes with SHA-256
+`79fb8b75416127bde94775647e0e8954a19dfb8a1cf2c91a0e875d858704b762`. The complete verifier passes,
+and every materially changed page has been rendered and reviewed. This descriptive fingerprint
+does not replace the repository's sealed release profile.
 
 ## Build
 
@@ -42,7 +53,7 @@ the complete verifier, run:
 tools/build-release.sh
 ```
 
-Until the editorial candidate is committed and independently resealed,
+Until the alpha.1 candidate is committed and independently resealed,
 `tools/release-profile.sh` intentionally describes the preceding 709-page release. That profile
 produces a 3,314,744-byte PDF with SHA-256
 `7c877ef20bdb20042bdd32483b2e79cb07e81dec7a8d86dc24f6d29d4a04b2af` and PDF creation/modification
@@ -85,7 +96,7 @@ a fresh child below the private default `/tmp/cna-bible-pages-$EUID`, or below a
 
 ## Contribution rules
 
-Claims must be checked against the live CNA ecosystem source, tests, or
+Claims must be checked against the edition-pinned CNA ecosystem source, tests, or
 authoritative plans. Code examples must be real and compilable. Screenshots
 must come from an actual running build—never a mockup. See [CLAUDE.md](CLAUDE.md)
 before changing manuscript content.

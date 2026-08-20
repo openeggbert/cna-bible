@@ -1,10 +1,10 @@
-\chapter{Web III: Five Renderers, Four Kinds of Evidence}
+\chapter{Web III: Six Renderers, Four Kinds of Evidence}
 \index{Web renderer evidence}\index{browser testing}
 \label{ch:web-renderer-evidence}
 
-CNA's five web-focused renderer identities do not imply five equally verified implementations;
-they are also a narrower set than the 24 identities admitted by the Emscripten configuration
-gate. The audited tree contains four distinct kinds of evidence: translation, module startup,
+CNA's six web-focused renderer identities do not imply six equally verified implementations:
+\texttt{WEBGL1}, \texttt{WEBGL2}, \texttt{CANVAS}, \texttt{HTML\_DOM}, \texttt{SVG\_DOM} and
+\texttt{PIXIJS}. The tag contains four distinct kinds of evidence: translation, module startup,
 browser structure, and browser pixels. Keeping those levels separate produces a more useful map
 than a binary supported/unsupported table.
 
@@ -40,17 +40,18 @@ A separate host-integration case rewrites the HTML response with Playwright
 its viewport.  Earlier injection through \texttt{addInitScript} was measurably too late, so the
 test modifies the document before module bootstrap.  The timing mechanism is part of the proof.
 
-\section{SVG\_DOM: strong manual evidence, no workflow}
+\section{SVG\_DOM: browser harness plus bundle CI}
 
 SVG-DOM has a browser driver and 34 checks across three pages.  It verifies SVG namespace
 identity for the root and its flush-slot descendants, keeps the SDL canvas hidden, and performs
 a four-point scissor-order pixel check.  Those namespace assertions are anti-spoofing evidence:
 an HTML or canvas renderer cannot satisfy them merely by producing a similar picture.
 
-The limitation is automation, not test design.  Its shell runner has no CI or CTest caller.
-The evidence is therefore reproducible on demand but is not refreshed on every change.  It
-should be described as a browser-tested implementation with a manual gate, not as continuously
-verified.
+Its shell browser runner still has no direct CI/CTest caller.  Alpha.1 does add an Emscripten
+multi-renderer workflow that compiles and links WEBGL2, Canvas, HTML-DOM and SVG-DOM into one
+Wasm bundle and checks four generated-registry entries.  That job explicitly does not launch a
+browser.  SVG-DOM therefore has a reproducible manual browser route and an automatic bundle/link
+route, not a continuous SVG compositor test.
 
 \section{WEBGL2 and WEBGL1: translation without browser execution}
 
@@ -72,6 +73,15 @@ browser execution evidence, and certainly not pixel evidence.  The correct next 
 another Node invocation; it is an HTTP-served browser page with an explicit verdict and a
 small compositor sample.
 
+\section{PIXIJS: new source route, browser proof still required}
+
+The tag adds the Emscripten-only PIXIJS identity, pinned to PixiJS~7.4.2 with a recorded download
+hash.  It adapts SpriteBatch, SpriteFont, scissor/blend state, textures and one
+\cnaclass{RenderTarget2D} to Pixi objects while refusing 3D, compiled/custom effects, MRT, cube and
+volume resources and queries.  Neither the HTML-DOM workflow nor the four-renderer bundle workflow
+selects PIXIJS.  Its tag evidence in this edition is source/configuration evidence; an HTTP-served
+browser test must still prove artifact resolution, object lifetime and compositor pixels.
+
 \section{The matrix}
 
 \begin{center}
@@ -85,6 +95,7 @@ Identity & Builds & Browser run & Structure & Pixels \\
 \texttt{WEBGL2}    & yes & no & no & no \\
 \texttt{WEBGL1}    & yes & no & no & no \\
 \texttt{CANVAS}    & yes & no & no & no \\
+\texttt{PIXIJS}    & source route & no automated run & no & no \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -95,7 +106,7 @@ precise meaning and exposes the shortest path to stronger evidence.
 
 \section{A common browser-verification shape}
 
-All five identities can converge on one harness pattern: serve artifacts over loopback HTTP;
+All six identities can converge on one harness pattern: serve artifacts over loopback HTTP;
 wait for a named \texttt{window} verdict with a timeout; fail on console errors and page
 exceptions; assert a renderer-specific structural token; sample a few compositor pixels; and
 archive the page log plus screenshot.  Renderer-specific tests then add shader compilation,

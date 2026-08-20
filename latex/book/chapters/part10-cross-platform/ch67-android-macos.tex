@@ -1,12 +1,19 @@
-\chapter{Android, macOS, and Platforms Not Yet Reached}
+\chapter{Android and Apple Platform Evidence}
 \label{ch:android-macos}
 \label{ch:android-ndk}
 \index{Android}\index{Android emulator}\index{macOS}\index{iOS}\index{tvOS}
 
 Platform support is not one fact.  A source tree may contain platform branches, cross-compile,
 run tests in an emulator, package an application, draw a frame, and survive real hardware---or
-stop at any rung in between.  Android has climbed several of those rungs; the adapted macOS
-renderer has not yet crossed its native boundary; iOS and tvOS are explicitly unreached.
+stop at any rung in between.  Android retains recorded emulator evidence.  Alpha.1 contains
+declared native macOS, iOS device-link and iOS simulator-launch routes, while tvOS remains outside
+the implemented host.  Workflow source establishes those routes; without the tag's Actions run
+records this edition does not promote each route to observed success.
+
+Target OS, selected platform implementation and renderer are separate.  The Apple and Android
+routes described here use the SDL3 platform implementation unless configured otherwise; iOS is a
+target OS, not a fifth \texttt{CNA\_PLATFORM} value.  The iOS smoke selects
+\texttt{SDL\_RENDERER}; native \texttt{METAL} remains macOS-only at the tag.
 
 \section{Android application structure}
 
@@ -52,14 +59,13 @@ containing an explicit Android native-window surface path, and it has not run th
 claim is thus recorded pre-adaptation SDL-renderer presentation on an AVD, not current Android
 graphics verification and not evidence for OpenGL or WebGPU.
 
-\section{Lifecycle coverage is partial}
+\section{Lifecycle coverage is explicit but partial}
 
-The game loop handles \texttt{SDL\_EVENT\_WILL\_ENTER\_BACKGROUND} and
-\texttt{SDL\_EVENT\_DID\_ENTER\_FOREGROUND}.  It has no corresponding handling for
-\texttt{DID\_ENTER\_BACKGROUND}, \texttt{WILL\_ENTER\_FOREGROUND},
-\texttt{TERMINATING}, or \texttt{LOW\_MEMORY}.  These events fall through the default branch.
-There is consequently no proven save-on-terminate hook, background GPU-resource policy, or
-low-memory cache response.
+The platform event contract carries will-enter-background, did-enter-foreground, low-memory and
+terminating events.  \cnaclass{Game} suspends between the first two, dispatches low-memory to
+content cleanup and exits on termination.  That is source-level lifecycle policy plus portable
+tests; it does not prove every mobile host delivers the events in the expected order or that a
+game's GPU resources survive a background transition.
 
 This is best expressed as a state-machine gap.  Launch-to-visible behavior covers only the
 straight path.  A useful mobile test must drive background, foreground, low-memory, and process
@@ -81,10 +87,10 @@ A complete mobile asset contract should choose one route, base it on the package
 platform asset API, and test it through \texttt{ContentManager} rather than through an isolated
 helper.
 
-\section{macOS: implementation without adapted execution}
+\section{macOS: native routes are declared}
 
-The Metal renderer is substantial: 3,842 lines of Objective-C\texttt{++} behind a 563-line
-pure-C\texttt{++} PIMPL header.  Objective-C\texttt{++}, Metal, QuartzCore, and Foundation are
+The Metal renderer keeps Objective-C\texttt{++} behind a pure-C\texttt{++} PIMPL boundary.
+Objective-C\texttt{++}, Metal, QuartzCore, and Foundation are
 enabled only when the selected identity is \texttt{METAL}.  This is a sound portability seam,
 but source isolation is not native validation.
 
@@ -99,26 +105,32 @@ result.
 There is genuine historical Apple evidence: a macOS~14/Xcode~15.4 workflow on the original
 feature tree ran 143 tests, passing 136 and failing seven.  The later adaptation changed
 interfaces, ownership, transfer policy, registration, and supported behavior.  That run is
-valuable history, not evidence for the adapted tree.  At the audited revision there is no fresh
-adapted Objective-C\texttt{++} compile, native link, Metal validation, pixel result, Retina or
-frame-pacing result, or Apple-Silicon/Intel comparison.
+valuable history, not evidence for alpha.1.
 
-The tracked workflow is a route to new evidence, but even its automatic trigger is partly stale:
-three push path filters still name dissolved central CMake files. Pull-request and manual triggers
-remain unfiltered, so the workflow is not dead; editing a newly module-owned file can simply fail
-to start it automatically. Workflow presence, trigger coverage, and an observed adapted run are
-three separate claims.
+At the tag, the dedicated automatic Metal workflow configures \texttt{METAL} on macOS~14, builds
+the native target, enables Metal shader validation/debug-layer variables and runs the Metal CTest
+prefix plus a renderer-definition control.  The separate Apple workflow builds an
+\texttt{SDL\_RENDERER} macOS suite and a self-contained \texttt{.app}, checks Mach-O dependency
+paths and launches it for a success marker.  These definitions are materially stronger than the
+old stale-filter route, but this edition did not retrieve workflow-run artifacts and therefore
+records declared gates rather than a new pixel/Retina/frame-pacing observation.
 
-\section{iOS and tvOS are explicit non-claims}
+\section{iOS: final-link and simulator route; tvOS remains a non-claim}
 
-An iOS platform enum exists, and the generic configuration gate even admits the same 24 renderer
-identities counted for Android. That is configuration truth only: native \texttt{METAL} is scoped
-to macOS and explicitly calls iOS/tvOS unvalidated, while the tree has no Xcode project,
-application metadata, SDK-root configuration, signing path, or device/simulator test. Treating an
-enum or a non-rejection as support would confuse vocabulary and CMake reachability with a port.
+The tag now contains an iOS toolchain, application metadata and a minimal UIKit/SDL-main/Game
+smoke application.  Its workflow matrix final-links \texttt{SDL\_RENDERER} application bundles
+for arm64 device and arm64 simulator, inspects Mach-O platform load commands, verifies the SDL
+entry symbols and absence of build-machine dynamic dependencies, then ad-hoc signs, installs and
+launches the simulator bundle until a one-frame success marker appears.  Tests/examples and Net
+are deliberately off; no physical device is run.  This is an executable route in source, not
+evidence that the tag's matrix ran successfully unless its Actions record is also retained.
+
+tvOS has no corresponding toolchain/application/workflow route and remains an explicit
+non-claim.  Native \texttt{METAL} is also not an iOS claim: the available smoke uses
+\texttt{SDL\_RENDERER} over the SDL3 platform implementation.
 
 The next durable milestone is intentionally narrower than ``mobile support'': archive a fresh
-Android graphics build and emulator frame with logs; run the adapted Metal workflow on macOS
-and retain its artifacts; then design, rather than infer, an iOS host.  Each step should state
+Android graphics build and emulator frame with logs; retain alpha.1 Metal and Apple workflow
+artifacts; add a physical iOS-device result; then design, rather than infer, a tvOS host.  Each step should state
 which rung it proves.  That makes platform progress cumulative without allowing yesterday's
 partial result to masquerade as today's complete one.

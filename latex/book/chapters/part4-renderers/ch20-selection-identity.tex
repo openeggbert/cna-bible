@@ -1,11 +1,12 @@
 \chapter{Renderer Selection and Identity}
 \label{ch:renderer-selection-identity}
 
-CNA exposes \RendererIdentityCount{} public renderer identities, but it does not ship that many
-unrelated rendering engines or choose among them while a game is running. Configuration selects
-one public identity; CMake maps it to one of \RendererFamilyCount{} implementation families; the
-resulting binary contains one implementation of the renderer factory. Keeping those three facts
-separate prevents most of the counting and portability mistakes surrounding CNA's renderer list.
+CNA exposes \RendererIdentityCount{} public renderer identities mapped to
+\RendererFamilyCount{} implementation families. The normal build still contains one family, but
+\CnaEditionTag{} also has an opt-in multi-renderer mode: configuration chooses the compiled set
+and its default, and the process chooses one available identity before constructing its first
+\cnaclass{GraphicsDevice}. Keeping compiled set, default, selected and active renderer separate
+prevents the most consequential portability and lifetime mistakes around CNA's registry.
 
 \input{figures/fig-renderer-identity.tex}
 
@@ -26,8 +27,8 @@ A \emph{public identity} is the spelling supplied to
 \texttt{OPENGLES3}. It becomes a \texttt{GraphicsRendererType} enumerator and a
 \texttt{CNA\_RENDERER\_*} compile definition.
 
-An \emph{implementation family} is the source module that provides
-\texttt{CreateGraphicsRenderer()}. Five public identities share the \texttt{easygl} family:
+An \emph{implementation family} is the source module that provides a generated-registry factory.
+Five public identities share the \texttt{easygl} family:
 \texttt{OPENGLES2}, \texttt{OPENGLES3}, \texttt{OPENGL33}, \texttt{WEBGL1}, and
 \texttt{WEBGL2}. That one five-to-one mapping accounts for the arithmetic:
 $\RendererIdentityCount-5+1=\RendererFamilyCount$ families.
@@ -60,7 +61,7 @@ Independent OpenGL-shaped
   & \texttt{OPENGL1}, \texttt{OPENGL2}, \texttt{OPENGL4},
     \texttt{OPENGLES1}, \texttt{PORTABLEGL} \\
 Native modern
-  & \texttt{VULKAN}, \texttt{SDL\_GPU}, \texttt{WEBGPU}, \texttt{METAL} \\
+  & \texttt{VULKAN}, \texttt{SDL\_GPU}, \texttt{WEBGPU}, \texttt{METAL}, \texttt{IGL} \\
 Cross-API abstractions
   & \texttt{BGFX}, \texttt{MAGNUM}, \texttt{LLGL}, \texttt{DILIGENT},
     \texttt{SOKOL}, \texttt{WICKED}, \texttt{FNA3D} \\
@@ -73,11 +74,11 @@ DirectX / retro ladder
     \texttt{DIRECTX8}, \texttt{FREEDIRECT}, \texttt{GLIDE} \\
 2D raster and vector
   & \texttt{SDL\_RENDERER}, \texttt{GDI}, \texttt{SKIA},
-    \texttt{BLEND2D}, \texttt{OPENVG} \\
+    \texttt{BLEND2D}, \texttt{OPENVG}, \texttt{NANOVG} \\
 Browser DOM
-  & \texttt{CANVAS}, \texttt{HTML\_DOM}, \texttt{SVG\_DOM} \\
+  & \texttt{CANVAS}, \texttt{HTML\_DOM}, \texttt{SVG\_DOM}, \texttt{PIXIJS} \\
 Diagnostic / CPU
-  & \texttt{HEADLESS}, \texttt{SOFTWARE}, \texttt{STUB} \\
+  & \texttt{HEADLESS}, \texttt{SOFTWARE}, \texttt{STUB}, \texttt{TINYGL} \\
 \bottomrule
 \end{longtable}
 \endgroup
@@ -86,7 +87,7 @@ These groups are explanatory, not another registry. Appendix~\ref{ch:feature-mat
 reference; the chapters that follow group families by the API they speak and how their shaders
 arrive.
 
-\section{Selection happens at configure time}
+\section{One renderer remains the default build mode}
 
 The normal interface is one cache variable:
 
@@ -96,10 +97,9 @@ cmake --build build
 \end{lstlisting}
 
 CMake validates the spelling, applies platform and dependency gates, sets the matching
-\texttt{CNA\_RENDERER\_*} definition, chooses a \texttt{RENDERER\_DIR}, and builds the selected
-module as the renderer target. There is no supported call that swaps a live
-\cnaclass{GraphicsDevice} from Vulkan to SDL\_GPU or from SOFTWARE to BGFX. Comparing two families
-means producing two configurations or binaries.
+\texttt{CNA\_RENDERER\_*} default definition, and builds the selected family. In this mode
+\cnaclass{GraphicsRendererSelection::GetAvailable()} has one entry; requesting a different one
+fails rather than inventing a renderer that is not linked.
 
 The default is platform-sensitive:
 
@@ -113,13 +113,66 @@ Treat those defaults as convenience, not as a portability promise. A game depend
 hardware instancing, or a particular shader source language should select and test an explicit
 identity.
 
+\section{Opt-in multi-renderer builds}
+
+\texttt{CNA\_GRAPHICS\_RENDERERS} is a semicolon-separated list of identities to compile into
+one binary. \texttt{CNA\_GRAPHICS\_RENDERER} remains singular: it names the default and must be a
+member of the list. For example:
+
+\begin{lstlisting}[style=cnashell]
+cmake -S . -B build-multi \
+  -DCNA_GRAPHICS_RENDERER=HEADLESS \
+  '-DCNA_GRAPHICS_RENDERERS=HEADLESS;SOFTWARE;STUB'
+cmake --build build-multi
+\end{lstlisting}
+
+CMake removes duplicate identities, puts the default first, emits
+\texttt{CNA\_MULTI\_RENDERER}, builds the required family targets, and generates the descriptor
+and factory registry. A list is not automatically valid. PORTABLEGL cannot coexist with a family
+that imports the real global \texttt{gl*} symbols; GDI and SOFTWARE would compile the same
+translation units with different bodies; GLIDE pins the binary to its 32-bit ABI; and a single
+toolchain cannot combine Windows-only, Emscripten-only, and macOS-only partitions. The validation
+fails during configuration with the conflicting pair and reason.
+
+All five EasyGL identities may now coexist when their platform partition permits it: the GL
+profile became runtime family state. They remain five public identities backed by one source
+family, so multi-renderer support does not change the \RendererIdentityCount{}/\RendererFamilyCount{}
+taxonomy.
+
+\section{Runtime choice, precedence, and latch}
+
+\cnaclass{CNA::GraphicsRendererSelection} is a process-wide CNAEXT policy surface. Before the
+first graphics device, a program may call \texttt{SetPreferred(type)} or
+\texttt{SetPreferred(name)}. The exact precedence is:
+
+\begin{enumerate}
+  \item an explicit \texttt{SetPreferred()} call;
+  \item the \texttt{CNA\_GRAPHICS\_RENDERER} environment variable (or the equivalent Emscripten
+        module property when no environment value exists);
+  \item the configured build default.
+\end{enumerate}
+
+\texttt{GetSelected()} reports the identity CNA will attempt without freezing it;
+\texttt{GetAvailable()} and \texttt{IsAvailable()} report the compiled set. Construction of the
+first \cnaclass{GraphicsDevice} latches selection. \texttt{GetActive()} becomes meaningful only
+after a renderer was created and may differ from \texttt{GetSelected()} only when explicit
+fallback succeeded. Changing preference after the latch throws. Reset and multisample recreation
+may rebuild the \emph{same} renderer; no supported operation migrates live textures, buffers,
+effects, render targets, query objects, or presentation state to a different family.
+
+Unavailable or failed initialization is an error by default. A caller may opt in to an ordered
+fallback chain or automatic fallback; CNA records skipped/not-compiled and failed attempts in
+\texttt{GetFallbackHistory()}. This makes substitution observable. Automatic ordering derives
+from the registry's maturity and category metadata, with CPU renderers after mature GPU routes and
+STUB last; it is a recovery policy, not a claim of equivalent output.
+
 \subsection{Legacy Boolean options are a compatibility surface}
 
 The \texttt{CNA\_RENDERER\_*} Booleans still exist for scripts that predate the single selector.
 If any are enabled, exactly one must be true. Mixing them does not create a multi-renderer build;
 the configure step terminates instead. New build instructions should prefer
 \texttt{CNA\_GRAPHICS\_RENDERER}, because one string is easier to cache, display, and validate
-than forty-six mutually exclusive switches.
+than fifty mutually exclusive switches. Use \texttt{CNA\_GRAPHICS\_RENDERERS} for an actual set.
 
 \section{Names that no longer select anything}
 
@@ -148,8 +201,8 @@ An entry in the registry means CNA has an implementation family, not that the cu
 build it. The most important gates are:
 
 \begin{itemize}
-  \item \texttt{WEBGL1}, \texttt{WEBGL2}, \texttt{CANVAS}, \texttt{HTML\_DOM}, and
-    \texttt{SVG\_DOM} are Emscripten identities; native builds reject them.
+  \item \texttt{WEBGL1}, \texttt{WEBGL2}, \texttt{CANVAS}, \texttt{HTML\_DOM},
+    \texttt{SVG\_DOM}, and \texttt{PIXIJS} are Emscripten identities; native builds reject them.
   \item The native EasyGL profiles are rejected under Emscripten.
   \item DirectX, Direct2D, GDI, and Glide are Windows-shaped families. Some can be exercised under
     Wine or Proton; that is a verification route, not a change in their API ownership.
@@ -170,16 +223,17 @@ declared boundary.
 back into the correct public identity, rather than returning a generic family name.
 \cnaclass{GraphicsDevice::GetGraphicsRendererType()} exposes the result to game code.
 
-The factory boundary is deliberately smaller:
+The per-family factory boundary is deliberately smaller:
 
 \begin{lstlisting}
 std::unique_ptr<IGraphicsRenderer>
 CreateGraphicsRenderer(const GraphicsRendererCreateArgs& args);
 \end{lstlisting}
 
-Exactly one selected module supplies that symbol. \cnaclass{GraphicsRendererCreateArgs} carries
-the SDL window, virtual dimensions, presentation mode, swap interval, MSAA request, recovery
-policy, graphics profile, and CNAEXT presentation fields. A field's presence does not mean every
+The generated registry associates each compiled descriptor with the appropriate function.
+\cnaclass{GraphicsRendererCreateArgs} carries
+platform window/native handles, virtual dimensions, presentation mode, swap interval, MSAA
+request, recovery policy, graphics profile, and CNAEXT presentation fields. A field's presence does not mean every
 family honors it: Chapter~\ref{ch:renderer-contract} shows why the contract includes truthful
 no-op, refusal, and renderer-specific interpretations.
 
@@ -197,10 +251,10 @@ OpenGL to D3D11 does not turn the public identity into \texttt{OPENGL4} or
 
 \section{Mechanical checks and the remaining CI trap}
 
-\texttt{scripts/check\_renderer\_identities.py} compares the enum and CMake registry against a
-hard-coded identity table. The check is useful even though its prose count was stale at the pin:
-the comparison itself enforces the forty-six entries and caught an integration reconciliation
-error.
+Registry validators compare the enum, CMake selector list, descriptors, factories, categories,
+maturity values and generated metadata. At this pin those sources settle fifty identities and
+forty-six physical families. The release changelog's claim of 49 identities and the runtime
+selection document's phrase ``45 factories'' are both one low; neither overrides the registries.
 
 One live build-system defect demonstrates why registry checks and workflow checks are different.
 Two CI workflow areas still pass \texttt{EASYGL}, even though the selector rejects it. The

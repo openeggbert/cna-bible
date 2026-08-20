@@ -1,25 +1,25 @@
 \begin{figure}[tbp]
 \centering
-\begin{figurealt}{CMake receives one public CNA graphics renderer selector. It emits one public renderer identity and compile definition, chooses a factory, and links one implementation family. A family may then call a native API or library. Five selectors map to the single easygl family, while most selectors map one to one.}
+\begin{figurealt}{CMake receives a default renderer and optionally a list of renderers to compile. A generated registry maps public identities to family factories. Program preference, environment and default resolve to a selected identity; the first graphics device latches the active family. A family may then call a native API or library. Five identities map to the single easygl family.}
 \resizebox{\textwidth}{!}{%
 \begin{tikzpicture}[node distance=9mm and 13mm]
-  \node[cna public] (selector) {\texttt{CNA\_GRAPHICS\_RENDERER}};
-  \node[cna public, right=of selector] (identity) {public identity\\enum + compile definition};
-  \node[cna internal, right=of identity] (factory) {\texttt{CreateGraphicsRenderer()}};
-  \node[cna internal, right=of factory] (family) {implementation family};
+  \node[cna public] (options) {default + compiled set};
+  \node[cna internal, right=of options] (registry) {generated identity /\\factory registry};
+  \node[cna public, right=of registry] (policy) {explicit preference $>$\\environment $>$ default};
+  \node[cna internal, right=of policy] (family) {first device latches\\active family};
   \node[cna public, right=of family] (api) {native API / library};
-  \node[cna public, below=of identity] (five) {OPENGLES2, OPENGLES3,\\OPENGL33, WEBGL1, WEBGL2};
-  \node[cna internal, below=of family] (easy) {one \texttt{easygl} family\\profile chosen at compile time};
-  \draw[cna flow] (selector) -- (identity);
-  \draw[cna flow] (identity) -- (factory);
-  \draw[cna flow] (factory) -- (family);
+  \node[cna public, below=of registry] (five) {OPENGLES2, OPENGLES3,\\OPENGL33, WEBGL1, WEBGL2};
+  \node[cna internal, below=of family] (easy) {one \texttt{easygl} family\\runtime profile};
+  \draw[cna flow] (options) -- (registry);
+  \draw[cna flow] (registry) -- (policy);
+  \draw[cna flow] (policy) -- (family);
   \draw[cna flow] (family) -- (api);
   \draw[cna flow] (five) -- (easy);
   \draw[cna flow] (easy) -- (api);
 \end{tikzpicture}}
 \end{figurealt}
-\caption{Identity, factory, family, and native API are different axes. The five-to-one EasyGL
-mapping explains the \RendererIdentityCount{}-identity / \RendererFamilyCount{}-family count.}
+\caption{Compiled set, default, runtime selection, active family, and native API are distinct.
+The five-to-one EasyGL mapping explains the \RendererIdentityCount{}-identity /
+\RendererFamilyCount{}-family count.}
 \label{fig:renderer-identity-family-api}
 \end{figure}
-

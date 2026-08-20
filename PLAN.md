@@ -1,13 +1,51 @@
 # The CNA Bible — Edition Plan and Campaign Record
 
-**Current status:** the 2026-08-12 editorial and technical quality campaign is complete in the
-working tree. Section 0 is the authoritative status and handoff. Sections 1 onward preserve the
+**Current status:** the book has been repinned and verified against CNA's first release,
+`v0.1.0-alpha.1` @ `1bb2145d99ed572dd4eb15009c34e2e5f410fcf0`.  Section A1 is the
+authoritative current campaign record. Section 0 preserves the completed 2026-08-12 editorial
+campaign; Sections 1 onward preserve the
 source-audit and 709-page production campaign that preceded it; their page counts and release
 metrics are historical. The earlier expansion plan and handoff remain in
 `PLAN-ARCHIVE-2026-07-26.md` and `NEXT-ARCHIVE-2026-07-26.md`.
 
 The source findings remain in `AUDIT.md` and `audit/`. The editorial problem inventory, decisions,
 and closure evidence are in `EDITORIAL-AUDIT.md`.
+
+---
+
+## A1. CNA 0.1.0-alpha.1 edition campaign
+
+The owner-specified source interval is
+`ae0be4b5211957efaef60f2f23627ae5a9ddda23..v0.1.0-alpha.1`.  BASE is an ancestor of the
+tag.  The previous book pin `7a64362e` lies inside that interval and is also an ancestor of the
+tag, so the current audit separates already-incorporated work from the 3,129-path
+manuscript-sensitive tail.  [`audit/alpha1-delta.md`](audit/alpha1-delta.md) is the canonical
+technical report.
+
+| Workstream | State |
+|---|---|
+| Immutable pin and ancestry | Complete: tag resolves to `1bb2145d`; ordinary CNA HEAD equals the tag; detached tag worktree used |
+| Full delta inventory | Complete: 1,445 commits, 215 first-parent commits, 6,303 rename-aware changed paths |
+| Release/version architecture | Written: SemVer, pre-1.0 policy, generated version API and C ABI distinction |
+| Renderer/platform/audio architecture | Written: 50/46 registry, runtime renderer sets, platform and audio axes, new families |
+| Compiled effects | Written: bounded format and renderer-specific routes replace blanket refusal |
+| Native C API | Written as Appendix I; source/header surface audited, but exact-tag final library is compile-blocked by a 49-versus-50 renderer map; Net-off closure also reproduced broken |
+| Tests/CI/build/dependencies | Re-audited and integrated; numeric claims retain denominators |
+| Defect ledger and roadmap | Complete through CNA-BUG-060, including two reproduced alpha.1 C API build failures |
+| Whole-book verification and visual review | Complete: authoritative verifier green at 584 pages; all 264 materially changed pages inspected; two visual corrections rebuilt and rechecked |
+| Sealed release profile | Intentionally pending: policy requires a reviewed committed clean tree and independent fixed-date reproduction |
+
+This campaign does not undo the editorial pass, does not repin unrelated sibling technical
+audits, and adds no chapter solely for page count.  The chapter count remains 79; Appendix I is
+the ninth appendix because the C API is a distinct language/ABI lookup surface.
+
+The final candidate is 584 A4 pages and 2,602,891 bytes, SHA-256
+`79fb8b75416127bde94775647e0e8954a19dfb8a1cf2c91a0e875d858704b762`.  Editorial metrics report
+179,457 prose tokens, 192 listings, 25 figures and 109 tables. `tools/verify-book.sh` passes the
+complete source/PDF suite. Twenty-two contact sheets cover every materially changed physical
+page; dense release, renderer, platform, glTF and C API pages were also inspected full-size. A
+mid-word Chapter 21 title break and a platform-table collision were corrected and their final
+pages re-rendered cleanly.
 
 ---
 

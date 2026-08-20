@@ -715,9 +715,9 @@ if [ "$pdf_info_fields_ok" -eq 1 ] && [ "$form" = "none" ] && [ "$javascript" = 
 else
     fail "unexpected active PDF content (form='${form:-?}', JavaScript='${javascript:-?}')"
 fi
-if [ "$title" = "The CNA Bible" ] && [ "$author" = "Robert Vokac" ] \
-   && [ "$subject" = "A revision-bounded technical account of CNA and the Microsoft XNA 4.0 programming model" ] \
-   && [ "$keywords" = "CNA, Microsoft XNA, C++23, graphics renderers, content pipeline, verification" ] \
+if [ "$title" = "The CNA Bible – CNA 0.1.0-alpha.1 Edition" ] && [ "$author" = "Robert Vokac" ] \
+   && [ "$subject" = "A revision-bounded technical account of CNA 0.1.0-alpha.1 and the Microsoft XNA 4.0 programming model" ] \
+   && [ "$keywords" = "CNA, 0.1.0-alpha.1, Microsoft XNA, C++23, graphics renderers, content pipeline, verification" ] \
    && [ "$creator" = "LaTeX with hyperref" ] && [ "$pdf_info_fields_ok" -eq 1 ] \
    && [ "$info_object_ok" -eq 1 ] \
    && [ "$trapped" = "False" ]; then
@@ -1616,7 +1616,7 @@ EOF
                             $quoted = quotemeta($expected);
                             $ok = length($expected) > 0
                                 && $visible =~ /(?<![A-Za-z])$quoted(?![A-Za-z])/;
-                        } elsif ($destination =~ /^appendix\.([A-H])$/) {
+                        } elsif ($destination =~ /^appendix\.([A-I])$/) {
                             $expected = $1;
                             $quoted = quotemeta($expected);
                             $ok = $visible =~ /(?<![A-Za-z])$quoted(?![A-Za-z])/;

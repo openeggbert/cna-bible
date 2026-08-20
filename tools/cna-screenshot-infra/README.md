@@ -5,7 +5,8 @@ book's five raster figures. The figures are execution artifacts, not architectur
 Their captions and surrounding prose state which renderer, host route, and observation boundary
 they establish.
 
-The current edition is pinned to CNA `7a64362efef4119bf880459ef1704fb2c52199e2` and
+The current edition is pinned to CNA `v0.1.0-alpha.1` @
+`1bb2145d99ed572dd4eb15009c34e2e5f410fcf0` and
 sharp-runtime `f827a6c5349234d5ac938886788ed8eca8fe1c10`. Commands below use the current renderer
 terminology and selector. The two patch files in this directory predate CNA's module and renderer
 renames; they are retained as provenance and should not be applied to the pinned tree.

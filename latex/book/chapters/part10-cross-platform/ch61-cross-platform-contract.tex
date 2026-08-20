@@ -1,141 +1,144 @@
 \chapter{The Cross-Platform Contract}
 \index{cross-platform engineering}\index{platform evidence}
+\index{CNA PLATFORM@CNA\_PLATFORM}\index{IPlatform}
 \label{ch:cross-platform-contract}
 
-CNA's two-level taxonomy names four platform families and, inside \texttt{Desktop}, four host
-OS outcomes. That is richer than a flat platform list, and support is not a Boolean attached
-to any leaf. Linux x86\_64 is the only self-hosting first-class target at the audited revision.
-Other paths are cross-compiled and exercised through Wine, a browser, or an Android emulator,
-or have not executed at all. The architectural contract is nevertheless coherent: SDL absorbs
-common host services, while platform-only code is selected as CMake targets rather than
-scattered behind preprocessor branches.
+At \CnaEditionTag{}, ``platform'' no longer means simply the target OS or ``the SDL3 layer.'' CNA
+has five related axes: target OS/toolchain; the selected \cnaclass{CNA::Platform::IPlatform}
+implementation; the compiled graphics-renderer set and active family; the selected audio
+implementation; and the XNA-shaped framework surface used by the game. They are composed, not
+collapsed into one backend name.
 
 \input{figures/fig-platform-routes.tex}
 
+\section{The five-axis model}
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{2.5cm}p{4.8cm}X}
+\toprule
+\textbf{Axis} & \textbf{Selector or API} & \textbf{Responsibility} \\
+\midrule
+Target & CMake toolchain / OS & Object format, native SDKs, architecture and host admission. \\
+Platform implementation & \texttt{CNA\_PLATFORM} & Windows, events, input, time, system services,
+  cameras, GL contexts, Vulkan surfaces and CPU-surface presentation. \\
+Graphics & \texttt{CNA\_GRAPHICS\_RENDERER(S)} and
+  \cnaclass{GraphicsRendererSelection} & How pixels are produced; a compiled set, configured
+  default, runtime selection and first-device latch. \\
+Audio implementation & \texttt{CNA\_AUDIO\_PLATFORM} & Playback/capture infrastructure,
+  independent of both the window platform and graphics family. \\
+Game/framework & \cnans{Microsoft::Xna::Framework} and optional CNAEXT & Stable application-facing
+  shape above the three native-service axes. \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+The separation permits meaningful combinations: HEADLESS platform with NULL audio and HEADLESS
+graphics for a server; SDL3 platform with NULL audio for a deterministic graphics test; TERMINAL
+platform with SOFTWARE graphics for a POSIX terminal application; or SDL2 platform/audio while
+retaining an otherwise current framework. It does not mean every Cartesian product is buildable.
+Capability and toolchain gates reject combinations that lack a native window, presentation route,
+SDK, ABI, or common target.
+
+\section{The platform contract is implemented}
+
+\path{modules/platform} now owns \texttt{CNA::Platform}. Its root
+\cnaclass{IPlatform} is created once by \cnaclass{PlatformFactory} and is not swapped while the
+process runs. The interface groups:
+
+\begin{itemize}
+  \item refcounted acquisition of video, audio, gamepad, haptic, and sensor subsystems;
+  \item window creation/adoption and native-window identity;
+  \item batched event polling into caller-owned storage;
+  \item monotonic counters, ticks, delay and system services;
+  \item keyboard, mouse, text, gamepad, joystick, haptics, sensors and camera services;
+  \item optional GL-context, Vulkan-surface and CPU-surface-presentation interfaces.
+\end{itemize}
+
+This is not a nominal wrapper around SDL types. Public platform headers do not expose SDL; the
+platform target links the selected toolkit privately on desktop, and a source ratchet rejects new
+direct SDL ownership outside the admitted boundary. Hot-path lint separately rejects platform
+calls inside per-pixel, vertex, fragment, sample and event loops. Capability queries are intended
+to be read once and cached, not dispatched repeatedly in a render loop.
+
+The lifecycle also preserves host ownership. CNA production code acquires individual subsystems
+lazily; it does not seize the application's global SDL initialization/shutdown policy. Unpaired
+release during partial cleanup is tolerated, while successful acquisitions are normally balanced.
+
+\section{Implemented, host-limited, and reserved choices}
+
+\begin{description}
+  \item[\texttt{SDL3}] Default implementation. Owns current SDL3 window, event, input and system
+    service adaptation. Mobile entrypoint glue is an explicit public-build exception.
+  \item[\texttt{SDL2}] Independent implementation selected and linked only when requested; it is
+    not SDL3 operating in a compatibility mode.
+  \item[\texttt{HEADLESS}] No native windowing dependency. It supplies deterministic platform
+    behavior and remains compiled as a conformance reference even when another implementation is
+    selected.
+  \item[\texttt{TERMINAL}] POSIX \texttt{termios}/\texttt{poll} implementation with terminal
+    input and a CPU surface presenter. It is implemented on non-Windows targets only and is not
+    offered on Windows. Compatible renderer identities at the tag are SOFTWARE, SKIA, BLEND2D,
+    PORTABLEGL, HEADLESS, and STUB.
+\end{description}
+
+\texttt{SDL12}, \texttt{WIN32}, and \texttt{EMSCRIPTEN} are reserved but unimplemented platform
+identifiers. On Windows, TERMINAL joins the refused set because no Windows console implementation
+exists. Selecting any reserved name is a hard configure error naming the implemented alternatives;
+there is no silent SDL3 fallback. Targeting Emscripten with an SDL platform is distinct from a
+future native \texttt{CNA\_PLATFORM=EMSCRIPTEN} implementation.
+
+\section{Platform capabilities and renderer needs}
+
+A renderer descriptor declares requirements rather than assuming every platform supplies an SDL
+window. Windowed GPU routes may need a native window system, a GL context or a Vulkan surface.
+CPU rasterizers may instead hand a finished surface to
+\cnaclass{IPlatformSurfacePresenter}. HEADLESS and STUB need neither. The registry/combination
+gates evaluate these requirements before factory invocation, so a refused pair is configuration
+evidence rather than a runtime null dereference.
+
+Runtime renderer selection does not relax those rules. Every family in
+\texttt{CNA\_GRAPHICS\_RENDERERS} must be buildable for the selected target and platform. Once the
+first device latches an active renderer, its windows, swapchain or CPU surface and every graphics
+resource belong to that choice. Fallback may try another compiled descriptor during initial
+creation only when the application enabled it; it cannot migrate a live resource graph.
+
+\section{Audio remains orthogonal}
+
+The implemented \texttt{CNA\_AUDIO\_PLATFORM} values are SDL3, SDL2 and NULL. OPENAL, WASAPI and
+ALSA are reserved and fail configuration. The axis is deliberately independent: a terminal or
+headless program may still use SDL3 audio, and an SDL3-windowed program may choose NULL. Chapter
+\ref{ch:audio-system} describes what this changes in the sound route and what remains a shared
+XNA-shaped contract.
+
+\section{Target taxonomy is still useful, but different}
+
+CNA retains target vocabulary that distinguishes Desktop, Android, iOS and Web, with desktop OS
+values for Windows, Linux, macOS and Other. Those values answer where the binary is targeted.
+They do not answer which \cnaclass{IPlatform}, renderer, or audio implementation was composed.
+For example, Linux is compatible with SDL3, SDL2, HEADLESS or TERMINAL platform implementations;
+``Linux renderer'' would still be underspecified.
+
 \section{A platform claim is an evidence vector}
 
-The useful progression is:
+The useful progression remains:
 
 \begin{enumerate}
-  \item a source path exists;
-  \item configuration admits it;
-  \item it cross-compiles;
-  \item it links a real artifact;
-  \item the artifact runs under emulation or translation;
-  \item it runs on real hardware; and
-  \item its output is verified by an appropriate oracle.
+  \item a target/platform/renderer/audio source path exists;
+  \item configuration admits the exact combination;
+  \item it compiles and links;
+  \item the artifact executes on the named native, emulated or translated host;
+  \item the selected platform and intended renderer/service engage; and
+  \item behavior or pixels meet an identified oracle.
 \end{enumerate}
 
-Later steps do not follow automatically from earlier ones. A renderer may pass the platform
-gate and then fail because a sibling checkout, SDK, prebuilt archive, or 32-bit ABI is missing.
-A PE executable may link and still never engage the intended DXVK DLL. A browser test may run
-and prove DOM state without proving compositor pixels. This book therefore uses qualified verbs
-rather than collapsing the vector into ``supported.''
+Later steps do not follow from earlier ones. A renderer descriptor may compile while its driver is
+unavailable; a PE artifact may execute without loading the intended DXVK DLL; a browser test may
+prove DOM state without compositor pixels; a platform conformance test can use HEADLESS without
+exercising SDL. This edition therefore reports each coordinate and preserves unsupported,
+blocked, and not-attempted states separately.
 
-At this revision no CNA binary is evidenced on genuine Windows, macOS, iOS, or Android hardware.
-Windows results run under Wine/DXVK/vkd3d on a real Linux GPU; Web results run in headless
-Chromium; Android evidence comes from an AVD and survives mainly as narrative; macOS has no
-post-adaptation native build; iOS/tvOS is explicitly unvalidated.
-
-\section{Two compile-time taxonomy levels}
-
-\texttt{CNA::Platform} distinguishes \texttt{Desktop}, \texttt{Android}, \texttt{iOS}, and
-\texttt{Web}. A constexpr selector uses Emscripten, Android, and Apple target macros.
-\texttt{CNA::DesktopOS} then distinguishes \texttt{Windows}, \texttt{Linux},
-\texttt{MacOSX}, and \texttt{Other}, and rejects use on a non-desktop platform.
-
-These enums are real API vocabulary, not a platform service layer. The runtime platform module
-has no implementation body, and there is no family of \texttt{cna-platform-*} targets or
-pluggable \texttt{IDevicesBackend} objects. Consumers use the taxonomy for decisions such as
-sensor selection and orientation support; they do not route all filesystem, window, and device
-operations through one universal CNA interface.
-
-\section{CMake exclusion does most of the branching}
-
-Here ``production file'' means a \texttt{.hpp}, \texttt{.cpp}, or \texttt{.mm} below
-\texttt{modules/}, excluding \texttt{tests/} and \texttt{examples/}: 720 headers, 474 C\texttt{++}
-sources, and one Objective-C\texttt{++} source, 1{,}195 files in all. Only 55 of them contain a
-preprocessor directive line that names an OS macro. Those files contain 152 such lines, 97 in
-renderer native-handle or SDK glue and 55 in the framework proper. Compiler-only branches such
-as \texttt{\_MSC\_VER} in a generated shader header are deliberately not counted as OS selection.
-Seven whole modules --- storage, media, audio, math, gamer services, devices-ext, and
-graphics-ext --- contain none; graphics has two guarded files among its 208 production files.
-
-The low count is structural. Renderer selection rejects impossible platform/identity pairs
-before the module is added. A Glide source can include \texttt{windows.h} without an internal
-guard because its target is never compiled off 32-bit Windows. There are 110
-\texttt{CNA\_RENDERER\_*} conditionals in production, reflecting the true implementation axis,
-and 104 platform conditions in CMake that decide which sources exist in the build.
-
-\begin{lstlisting}
-# Architectural pattern, simplified:
-if(CNA_GRAPHICS_RENDERER STREQUAL "GLIDE")
-    # Earlier platform gates have already required 32-bit Windows.
-    add_subdirectory(modules/renderers/glide)
-endif()
-\end{lstlisting}
-
-This is not the same as saying CNA has no platform-specific code. It means excluded code is not
-parsed or linked, so it does not need a defensive \texttt{\#ifdef} around every Win32 or Android
-token.
-
-\section{SDL is the common platform layer}
-
-Production code contains roughly 6{,}000 SDL/Mixer/Image/TTF token occurrences --- about 39 for
-every OS-directive line under the definition above. This is a lexical magnitude, not a count of
-distinct API calls. SDL supplies windows,
-events, timers, paths, power information, URL launching, user folders, GL procedure lookup, and
-the entry-point bridge. Subsystems link SDL privately instead of routing through a central CNA
-platform target.
-
-The abstraction is intentionally not perfect. Launch parameters use Win32 APIs on Windows and
-\texttt{/proc/self/cmdline} on Linux/Android, returning empty elsewhere. Graphics-adapter PCI
-IDs come from Linux \texttt{/sys/class/drm} and remain zero on other hosts. Glide and GDI use
-raw Win32 dynamic loading, while GL families use \texttt{SDL\_GL\_GetProcAddress}. These narrow
-exceptions are easier to audit precisely than a nominal universal interface that leaks the same
-differences through virtual methods.
-
-\section{Concurrency is mostly supplied by dependencies}
-
-CNA has exactly one production \texttt{std::thread} construction site, in the Android sensor
-bridge. That is a source-site count, not a one-worker runtime guarantee: each bridge instance can
-own a worker, and the Motion backend aggregates six bridges. Audio registers callbacks into
-SDL3\_mixer's thread; content loading is synchronous; networking is single-threaded by contract;
-input delivery is main-thread-only. Internal synchronization uses standard \texttt{mutex},
-\texttt{atomic}, and \texttt{condition\_variable}, not SDL thread primitives.
-
-This distinction matters on platforms whose host controls the event loop. A dependency-owned
-callback thread is still concurrent with CNA state even though CNA did not create it. Conversely,
-the existence of threading primitives in sharp-runtime does not make CNA content or networking
-asynchronous.
-
-\section{Renderer admissibility is only configuration truth}
-
-Platform gates admit 26 renderer identities on Linux, 39 on 64-bit Windows, 40 on 32-bit
-Windows, 26 on Darwin, 24 on Android/iOS, and 24 on Emscripten. Those numbers mean only that
-\texttt{RendererSelection.cmake} does not issue a platform \texttt{FATAL\_ERROR}. They do not
-mean dependencies resolve or artifacts build.
-
-Examples expose the gap. OpenGL4 still needs a system OpenGL package; OPENGLES1 needs
-\texttt{libGLESv1\_CM}; five GL profiles need easy-gl and meta-gl sibling checkouts;
-FREEDIRECT needs free-direct; SKIA needs a prepared artifact; DIRECTX8 needs D8VK import
-libraries. No repository artifact enumerates a smaller, fully built set for every platform.
-
-The correct workflow is therefore two-stage: use the gate to reject structurally impossible
-pairs, then record dependency, link, execution, engagement, and pixel evidence for the actual
-pair tested. Chapters~\ref{ch:windows-cross-compiling} and~\ref{ch:wine-engagement} apply this
-discipline to the best-developed non-native path.
-
-\section{The honest platform baseline}
-
-Linux x86\_64 has native execution and real pixel goldens, though its principal workflows are
-not uniformly healthy. MinGW Windows has cross-build and translated execution evidence, not
-native Windows proof. Web's five focused identities sit at four distinct evidence levels, while
-the broader Emscripten configuration gate admits 24 identities.
-Android has emulator history without committed APK, logcat, or screenshots, and graphics was
-not revalidated after adaptation. Metal's portable policy tests can pass on Linux without compiling Objective-C++
-or touching a Metal device. iOS/tvOS remains a hard, explicit non-claim.
-
-This baseline is not pessimism. It prevents a portable helper test, configure-time allowance,
-or emulator narrative from being promoted into hardware validation, while preserving the real
-engineering each path has already earned.
+At the tag, Linux x86\_64 has the strongest self-hosted evidence. Windows campaigns largely use
+MinGW plus Wine/DXVK/vkd3d; browser campaigns use Emscripten and Chromium; Android evidence is
+emulator-scoped; and Apple routes require their native toolchains and hosts. The new platform
+architecture makes these routes cleaner to compose and test, but does not retroactively promote
+historical compile evidence into hardware or oracle evidence.

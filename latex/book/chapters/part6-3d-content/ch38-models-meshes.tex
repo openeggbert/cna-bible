@@ -71,8 +71,9 @@ to current XNB, CNJ, and direct glTF/GLB outputs.
 \label{sec:model-draw-contract}
 
 \cnaclass{Model::Draw} is deliberately a thin convenience path, not a validator or a general
-scene graph. It retains one process-wide, static vector of absolute bone matrices (the same
-shape as FNA's static array), grows it only when a later model has more bones, copies the
+scene graph. It retains one \texttt{thread\_local} static vector of absolute bone matrices (the
+same scratch-buffer shape as FNA's static array, but one instance per thread), grows it only
+when a later model on that thread has more bones, copies the
 absolute transforms into it, then visits every mesh. For every distinct effect listed by that
 mesh it requires the matrix interface, writes
 \texttt{boneMatrix * world}, \texttt{view}, and \texttt{projection}, and only then asks the mesh
@@ -89,8 +90,8 @@ which the public/extended hand-build API does not enforce:
         parent to obtain its index and fails for null. This is a sensible C++ safety
         improvement for a one-root-bone hand-built model, and the real EasyGL/Bgfx hierarchy
         pixel tests exercise it for their root mesh. It does \emph{not} make a zero-bone model
-        renderable: with a positive-effect mesh, index~0 is outside an initially empty static
-        vector; after some other model has grown that shared vector, it can instead reuse that
+        renderable: with a positive-effect mesh, index~0 is outside an initially empty scratch
+        vector; after another model has grown that thread's vector, it can instead reuse that
         earlier model's stale slot. FNA's static array is likewise retained, but its usual null
         \texttt{ParentBone} path fails first rather than recovering. Give every model that can
         draw at least one bone, and give each mesh a parent explicitly when it is not that root.
@@ -145,14 +146,15 @@ by a part, and a duplicate is configured twice. Do not populate \texttt{Effects}
 ordinary game code; set each part's effect and retain the buffers/effects for at least as long as
 the model uses their raw pointers.
 
-\subsection{Serial use and evidence boundary}
+\subsection{Thread-local scratch and evidence boundary}
 
-The static bone-matrix scratch vector has no mutex or per-model ownership. Concurrent
-\texttt{Model::Draw} calls, even for different models, can resize/write it simultaneously and
-are a C++ data race; concurrent mutation of bones, effects, or parts has the same ordinary
-object-state problem. FNA also uses one unsynchronised static scratch array, but CNA's race is
-undefined behaviour rather than merely a managed-runtime ordering hazard. Render models on the
-graphics thread or otherwise serialize the entire draw/mutation sequence.
+At alpha.1 the bone-matrix scratch vector is \texttt{thread\_local}. Draws on different threads
+therefore no longer resize or overwrite the same scratch storage. That change does not make a
+graphics device, its effects, buffers, or a shared mutable model graph generally thread-safe:
+concurrent mutation of bones, effects, or parts remains ordinary shared-state contention, and
+renderer resources retain their platform-specific thread-affinity rules. Keep a model's update
+and draw sequence on its owning graphics thread unless the application supplies a stronger
+synchronization contract.
 
 The focused CPU tests cover transform multiplication, destination-size checks, constructor
 parent wiring, and part-to-effect collection bookkeeping. Renderer tests go further: the EasyGL
@@ -209,16 +211,21 @@ graphs are the important distinction here.
         parses glTF~2.0 and its buffers without producing a CNJ or binary sidecars first. It
         reuses the offline converter's import core, including sparse-accessor-safe extraction,
         topological skin ordering, material/image extraction, and morph/animation data. Its
-        visible limit is deliberate: one \texttt{Load<Model>} returns only the first
-        scene-scoped mesh group, with a fixed unit scale of~1.0. Convert a multi-character or
-        differently-scaled file offline when the other groups or a scale factor matter.
+        runtime shape is one \texttt{Load<Model>} containing the selected scene's mesh
+        placements, including independent skin groups, with a fixed unit scale of~1.0.
+        \texttt{Model::SkinsEXT} preserves each skin-to-mesh mapping while the legacy
+        \texttt{Model.Tag} convention aliases the first skin. Convert offline when a scale factor
+        or one-output-per-group asset layout matters.
 
         Direct glTF creates an identity synthetic root followed by one \cnaclass{ModelBone} per
         reachable node of the selected scene, in parent-before-child order. A rigid mesh is
         attached to its instancing node; a skinned mesh is attached to the synthetic root so the
         skin palette does not double-apply the mesh-node transform. The separate reordered skin
-        hierarchy is retained as \cnaclass{SkinningData} on \cnaclass{Model.Tag}; morph targets
-        and their tracks are retained on each \cnaclass{ModelMeshPart.Tag}. Extracted images are
+        hierarchies are retained through \texttt{Model::SkinsEXT}; morph targets and their tracks
+        are retained on each \cnaclass{ModelMeshPart.Tag}. Imported cameras live in
+        \texttt{Model::CamerasEXT}; material variants have a source-order selection API; and
+        \cnaclass{GltfImportReportEXT} records counts plus named dropped/approximated features.
+        Extracted images are
         decoded in memory and cached by glTF image pointer during that one import, but mesh
         buffers and effects remain per primitive.
   \item[The legacy \texttt{.skinnedmodel.json} route]
@@ -232,14 +239,13 @@ graphs are the important distinction here.
 \end{description}
 
 The evidence is much stronger than the old chapter wording suggested. The focused CNJ tests
-cover a real descriptor and envelope rejection, shared animation-clip resolution has three
-additional tests, and the direct runtime-glTF suite has eight unconditional end-to-end cases
-(textures, reversed-order skinning/animation, morph weights and cubic splines, PBR, skinned PBR,
-occlusion remapping, and punctual lights), plus a Draco case when that optional dependency is
-enabled. Those tests do not make the four routes interchangeable: use XNB for compiled XNA
-asset fidelity, CNJ for a controlled self-contained/imported description, direct glTF/GLB for
-the first supported group of a glTF~2.0 file when the resolver priority selects it, and the
-legacy route only when the application actually consumes \cnaclass{SkinnedModelEXT}.
+cover descriptors, envelope rejection, report persistence, variants, cameras, and shared clips.
+The generated glTF corpus and its L1--L7 ladder cover scene graphs, multiple skins, rigid and
+skeletal animation, morphs, material state, and pixels; Chapter~\ref{ch:gltf-conformance} states
+the exact denominators. Those tests do not make the four routes interchangeable: use XNB for
+compiled XNA asset fidelity, CNJ for a controlled self-contained/imported description, direct
+glTF/GLB for an in-process glTF~2.0 import, and the legacy route only when the application
+consumes \cnaclass{SkinnedModelEXT}.
 
 \section{Lifetime and copies: value syntax, one mutable graph}
 \label{sec:model-lifetime-copy}

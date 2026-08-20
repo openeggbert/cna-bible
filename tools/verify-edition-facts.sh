@@ -7,7 +7,9 @@ cna_repo=${CNA_SOURCE_DIR:-"$repo_root/../cna"}
 sharp_repo=${SHARP_RUNTIME_SOURCE_DIR:-"$repo_root/../sharp-runtime"}
 preamble="$repo_root/latex/common/preamble.tex"
 registry_appendix="$repo_root/latex/book/chapters/appendices/appendix-b-feature-matrix.tex"
-cna_pin=7a64362efef4119bf880459ef1704fb2c52199e2
+cna_pin=1bb2145d99ed572dd4eb15009c34e2e5f410fcf0
+cna_tag=v0.1.0-alpha.1
+cna_version=0.1.0-alpha.1
 sharp_pin=f827a6c5349234d5ac938886788ed8eca8fe1c10
 
 die()
@@ -20,6 +22,8 @@ die()
 [ -d "$sharp_repo/.git" ] || die "sharp-runtime repository not found at $sharp_repo"
 git -C "$cna_repo" cat-file -e "$cna_pin^{commit}" 2>/dev/null \
     || die "pinned CNA commit $cna_pin is unavailable"
+[ "$(git -C "$cna_repo" rev-parse "$cna_tag^{commit}")" = "$cna_pin" ] \
+    || die "$cna_tag does not resolve to pinned CNA commit $cna_pin"
 git -C "$sharp_repo" cat-file -e "$sharp_pin^{commit}" 2>/dev/null \
     || die "pinned sharp-runtime commit $sharp_pin is unavailable"
 [ -f "$preamble" ] || die "book preamble not found"
@@ -48,8 +52,9 @@ sed -n '/set_property(CACHE CNA_GRAPHICS_RENDERER PROPERTY STRINGS/ {
     p
 }' "$selection" | tr ' ' '\n' | tr -d '"' | sed '/^$/d' | LC_ALL=C sort > "$selectors"
 
-sed -n '/switch (getCurrentGraphicsRendererType())/,/^        }/p' "$renderer_header" \
+sed -n '/switch (type)/,/return "UNKNOWN"/p' "$renderer_header" \
     | sed -n 's/.*return "\([A-Z0-9_]*\)";.*/\1/p' \
+    | sed '/^UNKNOWN$/d' \
     | LC_ALL=C sort > "$header_names"
 
 git -C "$cna_repo" ls-tree -d --name-only "$cna_pin" modules/renderers/ \
@@ -83,6 +88,12 @@ listing_include_count=0
 while IFS= read -r include_path; do
     [ -n "$include_path" ] || continue
     listing_include_count=$((listing_include_count + 1))
+    if [ "$include_path" = "CNA/Version.hpp" ]; then
+        git -C "$cna_repo" cat-file -e \
+            "$cna_pin:cmake/templates/Version.hpp.in" 2>/dev/null \
+            || die "generated manuscript include CNA/Version.hpp has no template at the edition pin"
+        continue
+    fi
     case "$include_path" in
         CNA/*|Microsoft/*) tree=$cna_tree ;;
         System/*|SharpRuntime/*) tree=$sharp_tree ;;
@@ -106,6 +117,9 @@ macro_value()
 }
 
 macro_pin=$(sed -n 's/^\\newcommand{\\CnaRevisionShort}{\\texttt{\([0-9a-f]*\)}}$/\1/p' "$preamble")
+macro_full_pin=$(sed -n 's/^\\newcommand{\\CnaRevision}{\\texttt{\([0-9a-f]*\)}}$/\1/p' "$preamble")
+macro_tag=$(sed -n 's/^\\newcommand{\\CnaEditionTag}{\\texttt{\([^}]*\)}}$/\1/p' "$preamble")
+macro_version=$(sed -n 's/^\\newcommand{\\CnaProductVersion}{\\texttt{\([^}]*\)}}$/\1/p' "$preamble")
 macro_identities=$(macro_value RendererIdentityCount)
 macro_families=$(macro_value RendererFamilyCount)
 macro_scenes=$(macro_value XnaOracleSceneCount)
@@ -128,6 +142,12 @@ cmp -s "$source_families" "$book_families" \
     || die "XnaOracleSceneCount=$macro_scenes but pinned source derives $oracle_scene_count"
 [ "$macro_pin" = "${cna_pin:0:8}" ] \
     || die "CnaRevisionShort=$macro_pin but the edition pin begins ${cna_pin:0:8}"
+[ "$macro_full_pin" = "$cna_pin" ] \
+    || die "CnaRevision=$macro_full_pin but the edition pin is $cna_pin"
+[ "$macro_tag" = "$cna_tag" ] \
+    || die "CnaEditionTag=$macro_tag but the canonical tag is $cna_tag"
+[ "$macro_version" = "$cna_version" ] \
+    || die "CnaProductVersion=$macro_version but tag source declares $cna_version"
 
 printf 'PASS  CNA %s derives %d renderer identities, %d implementation families, and %d XNA-oracle scenes; book macros and %d project-header includes match the edition pins\n' \
     "$cna_pin" "$identity_count" "$family_count" "$oracle_scene_count" "$listing_include_count"

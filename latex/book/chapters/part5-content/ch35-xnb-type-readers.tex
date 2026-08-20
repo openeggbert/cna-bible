@@ -276,8 +276,17 @@ Five readers construct \cnaclass{BasicEffect}, \cnaclass{AlphaTestEffect},
 manager's GraphicsDevice and return \texttt{shared\_ptr<Effect>}; textures are external
 Texture2D/TextureCube references with CNA's logical containment.
 
-The general \texttt{EffectReader} is separately registered as a deliberate refusal for compiled
-platform shader bytecode. It is not a fallback for the five stock formats.
+The general \texttt{EffectReader} is separately registered for a length-prefixed XNA/FNA
+Direct3D~9 Effect Framework binary. It requires a GraphicsDevice, reads at most 64~MiB exactly,
+and calls the public \cnaclass{Effect} byte-buffer constructor. FNA3D accepts it in the normal
+build; SDL\_GPU, EasyGL and Vulkan require their compiled-effects option. A renderer whose
+\texttt{CompiledEffects} capability is false yields a wrapped \cnaclass{ContentLoadException}.
+This route is distinct from the five field-wise stock readers and does not accept \texttt{.fx}
+source, HLSL source, DXBC, or MGFX.
+
+The tag's \path{XnbBuiltInReaders.hpp} umbrella comment still calls the general reader a
+``known-unsupported'' registration, but \path{EffectContentTypeReader.cpp} constructs the effect
+as described above. The implementation and focused tests supersede that stale comment.
 
 The external Model fixture establishes its nested BasicEffect. The other four have locally built
 field-order tests but no external-producer root XNB or texture graph. Reader success also does
@@ -306,7 +315,7 @@ safety, or every platform decoder.
 
 \texttt{RegisterAllBuiltInXnbReaders} registers primitives, math, Decimal/DateTime/TimeSpan,
 Curve, 2D/3D/cube textures, SpriteFont, SoundEffect, Song, stock effects, Model support, and the
-known-unsupported general Effect reader. Video is included only when FFmpeg is compiled.
+renderer-qualified general Effect reader. Video is included only when FFmpeg is compiled.
 Decimal availability also varies by compiler. A single unconditional reader count would
 misrepresent those builds.
 

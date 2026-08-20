@@ -1,17 +1,15 @@
 \chapter{glTF Importer, Runtime, and Test-Evidence Matrix}
 \label{ch:gltf-evidence-matrix}
 
-This matrix preserves three questions that a single ``supported'' column would collapse:
-does the shared import core parse or transform the feature, does a CNA runtime route represent
-and use it, and what executable evidence reaches that boundary?  It describes CNA at the pinned
-revision.  ``None'' means no focused evidence was found, not proof of failure.  The detailed
-coordinate, packing, animation, toolchain, and oracle explanations live in
-Chapters~\ref{ch:gltf-import-core}--\ref{ch:gltf-conformance}.
+This matrix keeps three questions separate: what the shared import core accepts or transforms,
+what the alpha.1 runtime represents, and how far the tag's evidence reaches. ``Reported'' means
+\cnaclass{GltfImportReportEXT} makes a loss visible; it does not mean the missing feature was
+implemented. Chapters~\ref{ch:gltf-import-core}--\ref{ch:gltf-conformance} explain the contracts.
 
 \section{Containers, scenes, and geometry}
 
 \begin{small}
-\begin{longtable}{>{\raggedright\arraybackslash}p{3.05cm}>{\raggedright\arraybackslash}p{3.2cm}>{\raggedright\arraybackslash}p{3.2cm}>{\raggedright\arraybackslash}p{2.8cm}}
+\begin{longtable}{>{\raggedright\arraybackslash}p{3.0cm}>{\raggedright\arraybackslash}p{3.25cm}>{\raggedright\arraybackslash}p{3.25cm}>{\raggedright\arraybackslash}p{2.75cm}}
 \toprule
 \textbf{glTF feature} & \textbf{Importer / offline route} & \textbf{Runtime representation} & \textbf{Focused evidence} \\
 \midrule
@@ -20,57 +18,36 @@ Chapters~\ref{ch:gltf-import-core}--\ref{ch:gltf-conformance}.
 \textbf{glTF feature} & \textbf{Importer / offline route} & \textbf{Runtime representation} & \textbf{Focused evidence} \\
 \midrule
 \endhead
-\texttt{.gltf} and \texttt{.glb} containers & Both enter the same cgltf-based core; GLB twins are
-  checked as valid containers. & Direct \texttt{Load<Model>} and offline CNJ both consume the
-  extracted groups. & Digest-locked corpus and GLB-twin tests. \\
-Embedded \texttt{data:} buffers & Parsed and loaded. & Used by the direct and offline routes. &
-  All committed audit fixtures use embedded buffers. \\
-External / percent-encoded buffer URI & Production path delegates loading/decoding to cgltf. &
-  Intended to feed the same buffers. & No focused corpus case at the pin. \\
-Version and required extensions & Asset version is rejected when incompatible;
-  \texttt{extensionsRequired} is not consulted. & An unknown required extension can therefore
-  reach partial interpretation. & No focused required-extension test. \\
-Default scene and reachability & Selects the default scene and excludes unreachable nodes. &
-  One \cnaclass{ModelBone} per selected scene node, under a synthetic root. & L1/L3/L4
-  default-scene fixture. \\
-Node TRS and \texttt{node.matrix} & Uses cgltf local transforms, converts to CNA row-vector form,
-  and composes hierarchy. & Bone locals and absolute transforms retain the placement. & D1--D3
-  fixtures and independent recomposition checks. \\
-One mesh instanced by multiple nodes & Emits one placement per referencing node while sharing
-  extracted geometry. & Multiple \cnaclass{ModelMesh} instances share buffers. & Shared-mesh
-  scene-graph test. \\
-Multiple mesh/skin groups & Offline converter writes every group with stable suffixes. & Direct
-  runtime loading returns only the first group. & Offline all-groups test; runtime loss is
-  documented but not directly exercised. \\
-Accessor offsets, stride, interleaving & Supported for production attribute extraction. & Packed
-  into one of seven CNA vertex strides. & Eight accessor lock tests plus L2/L5 dumps. \\
-Normalized integer attributes & Decoded and repacked. & Normalized colour reaches packed vertex
-  data. & Byte-exact normalized-u8 fixture. \\
-Sparse attributes and indices & Sparse attributes include null-base views; sparse indices use a
-  CNA reader with named validation. & Materialized dense data reaches buffers. & Attribute
-  fixture plus sixteen index-decode cases; D4 fixed. \\
-Index widths & Reads u8/u16/u32; output width is re-selected from vertex count, not preserved from
-  source. & 16- or 32-bit CNA index buffer. & Decode matrix and L5 byte oracle. \\
-Non-indexed primitive & Synthesizes the implicit sequential range. & Draws as an indexed CNA
-  primitive after conversion. & Dedicated implicit-range test. \\
-TRIANGLES (mode 4) & Accepted. & Triangle-list draw path. & Entire corpus. \\
-Other primitive modes & Modes 0/1/2/3/5/6 are classified and rejected by name; they are not
-  converted. & Not represented or drawn. & Nine topology cases and two D5 known-defect locks;
-  D5 is only partially remediated. \\
-Core vertex attributes & POSITION, NORMAL, TANGENT, TEXCOORD, COLOR, JOINTS and WEIGHTS set~0 are
-  extracted. & Selected combinations map to the seven documented stride ABIs. & Corpus, L3
-  semantic dump, and byte-golden checks. \\
-More than four skin influences & JOINTS/WEIGHTS set~1 is not imported. & No runtime form. & None. \\
-Generated tangents & Angle-weighted generation when a required tangent is absent; not full
-  MikkTSpace. & Stride 48 or 68 carries tangent data. & Two focused tangent tests. \\
+\texttt{.gltf}/\texttt{.glb} & Shared cgltf core; paired generated containers. & Direct
+  \texttt{Load<Model>} and offline CNJ. & Manifest, L0/L1, 148 container pairs. \\
+External/data resources & Data URI, buffer view, and contained percent-decoded external paths;
+  absolute/traversal/symlink escapes refused. & In-memory decode and owned textures/buffers. &
+  Structural/URI rejection tests and corpus cases. \\
+Version/extensions & Version 2.0 check, overflow/alignment guards, \texttt{cgltf\_validate};
+  unsupported required extensions rejected, optional losses warned. & Ordered diagnostics on the
+  model. & Validator audit, extension-registry and rejection fixtures. \\
+Scene graph/instancing & Default scene, parent-before-child graph, node matrix/TRS, shared-mesh
+  placements. & Synthetic root plus one \cnaclass{ModelBone} per reachable node. & L1--L4 and
+  D1--D3 regressions. \\
+Multiple skins/groups & Every group extracted; converter emits separate outputs. & Direct route
+  retains all groups in one model; \texttt{SkinsEXT} maps palettes to meshes. & Multi-skin,
+  mixed static/skinned, direct/CNJ parity tests. \\
+Accessors & Offsets, strides, normalization, sparse base/override, safe bounds and index range. &
+  Dense semantic streams and packed buffers. & L2, fuzz/robustness locks, D4 regression. \\
+Vertex layouts & Selection table emits ten glTF strides; source attribute losses counted. &
+  Canonical stride/declaration table reaches renderers. & L5 byte goldens and table validators. \\
+All seven topologies & Points/lines retained; loop closed; strips/fans converted; incomplete tails
+  counted. & Per-part CNAEXT \texttt{PrimitiveType}. & Topology corpus; D5 fixed. \\
+Mirrored placement & Negative determinant detected per instance. & Fact reported; application
+  owns cull-state response. & L3/L4 fixtures and diagnostic lock. \\
 \bottomrule
 \end{longtable}
 \end{small}
 
-\section{Materials, textures, skinning, and animation}
+\section{Materials, scenes, and animation}
 
 \begin{small}
-\begin{longtable}{>{\raggedright\arraybackslash}p{3.05cm}>{\raggedright\arraybackslash}p{3.2cm}>{\raggedright\arraybackslash}p{3.2cm}>{\raggedright\arraybackslash}p{2.8cm}}
+\begin{longtable}{>{\raggedright\arraybackslash}p{3.0cm}>{\raggedright\arraybackslash}p{3.25cm}>{\raggedright\arraybackslash}p{3.25cm}>{\raggedright\arraybackslash}p{2.75cm}}
 \toprule
 \textbf{glTF feature} & \textbf{Importer / offline route} & \textbf{Runtime representation} & \textbf{Focused evidence} \\
 \midrule
@@ -79,79 +56,62 @@ Generated tangents & Angle-weighted generation when a required tangent is absent
 \textbf{glTF feature} & \textbf{Importer / offline route} & \textbf{Runtime representation} & \textbf{Focused evidence} \\
 \midrule
 \endhead
-PBR texture maps & Base-colour, metallic-roughness, normal, emissive and occlusion routes are
-  extracted where applicable. & \cnaclass{PbrEffect}, \cnaclass{SkinnedPbrEffect}, or the
-  occlusion \cnaclass{DualTextureEffect} route. & All-maps fixture and production extraction
-  tests. \\
-PBR factors & Material factors are retained only after another condition has
-  selected PBR. & Applied by a PBR effect when that route exists. & Map-plus-factor fixture. \\
-Factor-only PBR and base colour factor & \texttt{baseColorFactor}, alpha mode/cutoff, and
-  double-sided state are absent from the extracted mesh result; factor-only material falls back. &
-  White \cnaclass{BasicEffect}, not the requested material. & D7 known-failing tests. \\
-Texture UV-set selection & Base-colour's selected set is used.  Per-map disagreements are detected
-  as a mismatch flag. & One shared UV channel; runtime computes then hides the mismatch warning. &
-  Success and mismatch extraction tests. \\
-Image storage forms & Buffer view, data URI, and external file are all decoded. & In-memory image
-  decode and texture cache. & Embedded base-colour focused case; not every storage form has an
-  independent fixture. \\
-Sampler and colour-space semantics & Sampler wrap/filter and sRGB-vs-linear intent are not
-  represented by the import result. & Device defaults are used. & None. \\
-Skin joints and inverse binds & Joints are topologically reordered and the palette is remapped. &
-  \cnaclass{SkinningData} drives \cnaclass{AnimationPlayer}. & Reversed-joint-order fixture. \\
-Skin ancestry above joint set & Preserved as a root-prefix matrix instead of folding it into bind
-  locals. & \texttt{SkeletonRootPrefix} participates exactly once. & D8 root-ancestry and
-  mesh-node cancellation tests. \\
-Skinned TRS animation & Channels are sampled at the union of key times. & Bone clips play through
-  \cnaclass{AnimationPlayer}. & Runtime glTF and animation-player tests. \\
-LINEAR / STEP / CUBICSPLINE & CUBICSPLINE uses Hermite with time-scaled tangents and normalized
-  quaternions. & Bone tracks contain baked keys; morph weights retain their tangent form. &
-  Focused cubic-spline tests. \\
-Rigid node animation & Extraction is gated to the skeletal route and the resulting clip is not
-  attached for unskinned nodes. & Silently absent at runtime. & D6 known-failing test. \\
-Morph POSITION/NORMAL & Deltas, defaults, and weight animation are extracted. & CPU blend followed
-  by vertex-buffer re-upload. & Morph import and runtime unit tests. \\
-Morph TANGENT & Deliberately outside the current importer scope. & Not represented. & None. \\
-Draco compression & Optional system Draco dependency; clear rejection when unavailable. & Decoded
-  geometry follows ordinary buffer paths when enabled. & Focused compressed-triangle test. \\
-Texture transform / emissive strength & Base-colour transform is baked into shared UV; emissive
-  strength is retained on the PBR route. & Used within the limitations of one shared UV set. &
-  Combined extension fixture. \\
-Punctual lights & At most three are approximated as directional lights. & \cnaclass{IEffectLights}
-  fields, not full glTF light semantics. & Two approximation tests. \\
-Cameras, transmission, variants, negative-scale winding & Not imported. & Not represented. & None. \\
+Core metallic--roughness & Factors and seven texture slots, alpha/cull state, samplers, colour
+  space, independent transforms and two UV selectors retained. & Rigid/skinned PBR parameter
+  contract; factor-only materials remain PBR. & L3/L5/L6 and L7 material fixtures; D7 fixed. \\
+Vertex colour & \texttt{COLOR\_0} multiplied through unlit/basic and PBR layouts. & Strides
+  24/56/60/80, with renderer capability policy. & Byte and pixel fixtures. \\
+Material variants & Source-order names and sparse primitive mappings retained direct/offline. &
+  Model-wide CNAEXT selection restores full part state or default. & Variant L3--L7 cases. \\
+Extension textures & Specular factors transported; optional maps have named renderer gaps.
+  KTX2/WebP require a PNG/JPEG fallback. & Registry qualifies each claim. & Registry validator,
+  renderer inventories, selected pixels. \\
+Texture transforms/samplers & Independent state per sampled map; up to two source UV sets packed. &
+  Effect parameters plus renderer sampler slots. & L3/L5/L6 and multi-map L7 fixtures. \\
+Skins & Joint order remapped; ancestry and mesh-node cancellation kept as root prefixes. & All
+  \texttt{ModelSkinEXT} mappings plus first-skin Tag alias. & Reversed order, multi-skin, D8. \\
+Animation & Skeletal clips use palette indices; rigid clips use scene-node indices. &
+  \cnaclass{SkinningData} or \cnaclass{ModelAnimationsEXT}; mixed-carrier drops reported. &
+  LINEAR/STEP/CUBICSPLINE, D6 fixed. \\
+Morphs & Position/normal/tangent targets and weights imported; invalid omissions reported. & CPU
+  blend and buffer re-upload using canonical layout offsets. & Semantic, CNJ parity, runtime tests. \\
+Cameras & Perspective/orthographic projection data and node placement imported. &
+  \texttt{Model::CamerasEXT}. & Camera corpus and model tests. \\
+Punctual lights & Up to three mapped to directional slots; point/spot/range/cone losses counted. &
+  XNA \cnaclass{IEffectLights} approximation. & L3/L6/L7 plus report tests. \\
+Draco & Supported only in builds with the decoder; required use otherwise refused. & Ordinary
+  model buffers after decode. & Compressed/uncompressed parity fixtures. \\
 \bottomrule
 \end{longtable}
 \end{small}
 
 \section{Route and oracle boundaries}
 
-The direct reader and \texttt{cna\_tool\_gltf\_to\_cnj} share semantic extraction but do not
-promise identical products.  The command-line route can emit every group and apply an explicit
-unit scale; direct loading selects the first group and fixes scale at~1.  CNJ then serializes the
-chosen model, buffers, materials and optional sidecars; a successful CNJ reload proves that
-serialized boundary, not arbitrary parity with the original glTF file.
-
-The conformance corpus implements five of seven planned oracle layers:
+The direct reader and \texttt{cna\_tool\_gltf\_to\_cnj} share semantic extraction but package the
+result differently. Direct loading creates one model containing every represented group and fixes
+unit scale at~1. The converter can apply an explicit scale and emits one named CNJ output per
+group. A CNJ reload proves the serialized boundary for the fields it carries; it is not a claim
+that JSON bytes and a live object are identical.
 
 \begin{center}
-\begin{tabular}{clp{7.6cm}}
+\begin{tabular}{clp{7.5cm}}
 \toprule
 \textbf{Layer} & \textbf{State} & \textbf{Observation} \\
 \midrule
-L1 & implemented & source/corpus identity, container and high-level counts \\
-L2 & implemented & accessor and decoded-value dumps \\
-L3 & implemented & semantic mesh/material/animation digest \\
-L4 & implemented & scene graph, bone hierarchy and composed transforms \\
-L5 & implemented & packed GPU-buffer bytes and stride interpretation \\
-L6 & absent & effect binding and complete draw-parameter observation \\
-L7 & absent & rendered glTF pixel/golden comparison \\
+L0 & implemented & corpus, manifest, helper integrity, and suite/rung partition \\
+L1 & implemented & container structure, scene and declared relationships \\
+L2 & implemented & decoded accessor values \\
+L3 & implemented & semantic mesh/material/scene/diagnostic state \\
+L4 & implemented & composed scene and skin coordinate spaces \\
+L5 & implemented & packed vertex/index bytes; 140 goldens, 8 explicit absences \\
+L6 & implemented & bound matrices, materials, maps, samplers, lights, palettes \\
+L7 & recorded & four 148-disposition renderer campaigns (140 PNGs + 8 rejections each) \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-Consequently, the matrix can make strong claims through packed buffers and selected runtime
-objects, and it can lock known wrong behavior without calling it correct.  It cannot promote
-every successful import to material fidelity or visible rendering.  D1--D4 and D8 are fixed at
-the pin; D5 is partially remediated by named rejection; D6 and D7 remain executable known
-defects.  The ledger's bidirectional meta-test requires open defects to keep tests and fixed
-defects to relinquish obsolete expected-failure locks.
+All original D1--D8 records are fixed at alpha.1 and remain in the append-only ledger as
+regression history. The broader \texttt{GLTF ROBUST} milestone remains 9/12: two renderer
+specular-map bindings, native point/spot lighting, and a fourth renderer on the bounded external
+retake matrix remain the three open rows. The tag therefore supports strong layer-qualified
+claims, not an unqualified promise about every file and renderer combination.

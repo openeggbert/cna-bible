@@ -23,7 +23,8 @@ will remain there.  For example, the local \texttt{cna-template} \texttt{next} b
 \textbf{Repository} & \textbf{Pin} & \textbf{Role in this edition} \\
 \midrule
 \endhead
-\texttt{cna} & 7a64362e & Primary C\texttt{++}23 XNA-style framework; source, build,
+\texttt{cna} & 1bb2145d & Primary C\texttt{++}23 XNA-style framework at
+  \texttt{v0.1.0-alpha.1}; source, build,
   renderer, platform and verification subject of the book. \\
 \texttt{sharp-runtime} & f827a6c5 & .NET-shaped C\texttt{++} foundation consumed by CNA;
   object/type, collections, IO, threading/task and compatibility evidence. \\
@@ -51,6 +52,14 @@ will remain there.  For example, the local \texttt{cna-template} \texttt{next} b
 \end{longtable}
 \end{small}
 
+The CNA tag also records sharp-runtime
+\texttt{625476d5b5fff5fa89f392c3c9af8638\allowbreak ff237692} as the revision used for release
+verification.  That is release evidence, not a dependency lock: CNA's CMake consumes a caller-
+supplied \texttt{SHARP\_RUNTIME\_ROOT} and does not enforce the recorded SHA.  The older
+\texttt{f827a6c5} pin in the table is retained as this book's bounded sharp-runtime technical
+audit source; alpha.1 claims that depend on sharp-runtime were checked against the release
+record separately.
+
 The dependency arrows are not all equivalent:
 
 \begin{verbatim}
@@ -68,8 +77,9 @@ their platform and acquisition gates recorded in Part~\ref{part:renderers}.
 
 \section{Physical CNA framework modules}
 
-The root \path{modules/CMakeLists.txt} composes fourteen framework/extension modules plus the
-renderer tree.  Directory location is source ownership: production code belongs under the
+The root \path{modules/CMakeLists.txt} composes fifteen framework/extension modules when Net is
+enabled, plus the renderer tree; the experimental C adapter is a separate optional module.
+Directory location is source ownership: production code belongs under the
 owner's \texttt{src/}, public and public-internal contracts under its \texttt{include/}, and its
 tests/examples alongside them.  A configure-time validator rejects translation units outside a
 declared module tree.
@@ -81,6 +91,8 @@ declared module tree.
 \midrule
 \texttt{core} & CNA helper/marker surface and root framework primitives \\
 \texttt{math} & vectors, matrices, geometry, curves and packed math values \\
+\texttt{platform} & host/window/event abstraction and the selected SDL3, SDL2, headless or
+  POSIX-terminal implementation \\
 \texttt{graphics} & device facade, resources, effects, model runtime and shared renderer contract \\
 \texttt{input} & keyboard, mouse, gamepad, touch and SDL input extensions \\
 \texttt{audio} & SoundEffect/XACT-facing audio objects and SDL3\_mixer integration \\
@@ -94,12 +106,16 @@ declared module tree.
 \texttt{gamer-services} & local gamer identity, guide, achievements and leaderboards; conditional
   on networking enablement \\
 \texttt{net} & sessions, gamers, packets and ENet-backed delivery/discovery; conditional \\
+\texttt{c-api} & optional C17 shared-library adapter over the C\texttt{++} aggregate; separate
+  experimental ABI, enabled by \texttt{CNA\_BUILD\_C\_API} \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 The interface target \texttt{CNA} composes the framework modules, extension umbrellas, shared
-build flags, sharp-runtime closure, and exactly one selected renderer target.  Individual module
+build flags, sharp-runtime closure, and the selected renderer target set.  In a singular build
+the set has one family; \texttt{CNA\_GRAPHICS\_RENDERERS} can compose several compatible
+families and a configured default.  Individual module
 aliases support narrower link-closure probes.  \texttt{CNA::CnaExt} composes
 \texttt{graphics-ext} and \texttt{devices-ext}; it is distinct from the empty \texttt{CNAEXT}
 declaration marker and from the \texttt{CNA\_CNAEXT} build option that enables selected extension
@@ -122,17 +138,17 @@ Only EasyGL maps multiple public identities to one family.
 \midrule
 \endhead
 OpenGL & \texttt{easygl}, \texttt{opengles1}, \texttt{opengl1}, \texttt{opengl2},
-  \texttt{opengl4}, \texttt{portablegl} \\
+  \texttt{opengl4}, \texttt{portablegl}, \texttt{tinygl} \\
 Native modern & \texttt{vulkan}, \texttt{webgpu}, \texttt{sdl-gpu}, \texttt{metal} \\
 Abstraction layers & \texttt{bgfx}, \texttt{magnum}, \texttt{llgl}, \texttt{diligent},
-  \texttt{sokol}, \texttt{wicked}, \texttt{fna3d} \\
+  \texttt{sokol}, \texttt{wicked}, \texttt{fna3d}, \texttt{igl} \\
 DirectX / retro & \texttt{directx1}, \texttt{directx2}, \texttt{directx3},
   \texttt{directx5}, \texttt{directx6}, \texttt{directx7}, \texttt{directx8},
   \texttt{directx9}, \texttt{directx10}, \texttt{directx11}, \texttt{directx12},
   \texttt{glide}, \texttt{freedirect} \\
 2D / vector / Windows & \texttt{sdl-renderer}, \texttt{skia}, \texttt{blend2d},
-  \texttt{openvg}, \texttt{direct2d}, \texttt{gdi} \\
-Web DOM & \texttt{canvas}, \texttt{html-dom}, \texttt{svg-dom} \\
+  \texttt{openvg}, \texttt{nanovg}, \texttt{direct2d}, \texttt{gdi} \\
+Web DOM & \texttt{canvas}, \texttt{html-dom}, \texttt{svg-dom}, \texttt{pixijs} \\
 Diagnostic / CPU & \texttt{headless}, \texttt{software}, \texttt{stub} \\
 \bottomrule
 \end{longtable}

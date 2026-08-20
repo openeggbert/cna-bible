@@ -1,15 +1,33 @@
 \chapter{The Audio System}
 \label{ch:audio-system}
 
-CNA parses XACT containers with its own \texttt{XactParser} and plays through SDL3\_mixer. It
-does not use Microsoft's XACT engine or FNA's FAudio. This choice yields usable sound effects,
-streaming, capture, and much of the XACT object model, but it also defines the limits: no
-auxiliary reverb bus, no native 3D graph, and one per-track cooked-callback slot shared by
-filtering and stereo crossfeed.
+CNA parses XACT containers with its own \texttt{XactParser}. The default audio implementation
+plays through SDL3\_mixer, but audio is now an independent build axis rather than an implied
+property of the window/input platform. It does not use Microsoft's XACT engine or FNA's FAudio.
+This choice yields usable sound effects, streaming, capture, and much of the XACT object model,
+but it also defines the limits: no auxiliary reverb bus, no native 3D graph, and one per-track
+cooked-callback slot shared by filtering and stereo crossfeed.
+
+\section{Audio implementation is a separate axis}
+\index{CNA AUDIO PLATFORM@CNA\_AUDIO\_PLATFORM}
+
+\texttt{CNA\_AUDIO\_PLATFORM} accepts implemented values \texttt{SDL3}, \texttt{SDL2}, and
+\texttt{NULL}; the default is SDL3. It is independent of \texttt{CNA\_PLATFORM} and renderer
+selection. A HEADLESS or TERMINAL program may retain SDL3 audio, while an SDL3 windowed program
+may select NULL for deterministic no-device behavior. The matching
+\texttt{CNA\_AUDIO\_PLATFORM\_*} definition selects the implementation sources and links only the
+needed mixer edge. \texttt{OPENAL}, \texttt{WASAPI}, and \texttt{ALSA} are recognized reserved
+identifiers that fail configuration; they are not hidden aliases or implemented routes.
+
+This separation is architectural, not a larger set of XNA audio APIs. The public
+\cnaclass{SoundEffect}, \cnaclass{DynamicSoundEffectInstance}, XACT, microphone, and Media-facing
+contracts remain the same. Capability, device enumeration, playback and capture behavior belong
+to the chosen audio implementation, while window/event/input behavior belongs to
+\cnaclass{CNA::Platform::IPlatform} and pixels belong to the active renderer.
 
 \section{Mixer architecture and lifetime}
 
-The process-wide \texttt{MIX\_Mixer} requests signed 16-bit stereo at 44.1 kHz and logs the
+Under the SDL3 audio selection, the process-wide \texttt{MIX\_Mixer} requests signed 16-bit stereo at 44.1 kHz and logs the
 format SDL3\_mixer negotiates. Decoded \texttt{MIX\_Audio} objects hold assets; each playback
 uses a \texttt{MIX\_Track} for gain, rate, looping, and the cooked callback.
 \cnaclass{SoundEffect} owns decoded audio, while \cnaclass{SoundEffectInstance} controls a

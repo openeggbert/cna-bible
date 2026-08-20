@@ -32,9 +32,9 @@ The rule is stronger than tidiness.  Moving an implementation file changes the c
 its symbols, dependency declarations, test registration, and include reachability.  The validator
 turns a physical move into an architectural change that must be reconciled explicitly.
 
-\section{Fourteen framework modules}
+\section{Fifteen framework modules and one optional ABI module}
 
-The declared framework set contains fourteen physical modules.  Their responsibilities can be
+The declared framework set contains fifteen physical modules. Their responsibilities can be
 read in four clusters:
 
 \begin{center}
@@ -43,8 +43,9 @@ read in four clusters:
 \toprule
 Cluster & Modules and ownership \\
 \midrule
-Foundation & \texttt{core} owns CNA project vocabulary and leaf infrastructure;
-  \texttt{math} owns the \cnans{Microsoft::Xna::Framework} value and geometry types. \\
+Foundation and host & \texttt{core} owns CNA project vocabulary and leaf infrastructure;
+  \texttt{math} owns the \cnans{Microsoft::Xna::Framework} value and geometry types; and
+  \texttt{platform} owns \cnaclass{CNA::Platform::IPlatform} and the selected implementation. \\
 Runtime and graphics & \texttt{runtime}, \texttt{graphics}, \texttt{input}, \texttt{audio}, and
   \texttt{media} own the game loop, renderer-independent graphics surface, device state, mixer,
   and media playback. \\
@@ -66,6 +67,12 @@ The concrete aliases are correspondingly narrow.  Foundation and runtime code us
 Appendix~\ref{ch:repo-map}
 maps every module to its pinned role without turning that inventory into an inferred dependency
 graph.
+
+With \texttt{CNA\_BUILD\_C\_API=ON}, \texttt{modules/c-api} defines a separate consumer surface as
+the shared \texttt{cna\_c\_api} / \texttt{CNA::CApi} target. It wraps the canonical
+C\texttt{++} modules and exports C17 headers; it is not another framework implementation. The
+alpha.1 target is present in the module graph but compile-blocked by its stale renderer-identity
+map, as Appendix~\ref{ch:native-c-api} demonstrates.
 
 \section{The module factory and one public include root}
 
@@ -115,8 +122,8 @@ helpers.  This keeps their link closures small while preserving the same include
 \section{Renderer families are physical modules too}
 
 \path{modules/renderers/} declares \RendererFamilyCount{} implementation families plus shared
-infrastructure. Only
-the selected family is normally entered, and each family receives a concrete target named
+infrastructure. Only the selected family is normally entered. In an opt-in multi-renderer build,
+each distinct family required by \texttt{CNA\_GRAPHICS\_RENDERERS} is entered and receives a concrete target named
 \texttt{cna\_renderer\_<family>}.  One family may carry more than one public identity: EasyGL owns
 five GL-profile identities, which is why the public registry contains \RendererIdentityCount{}
 identities but the source partition contains \RendererFamilyCount{} families.
@@ -139,8 +146,8 @@ There are explicit composition exceptions:
 \end{itemize}
 
 These are declared source relationships, not permission for arbitrary cross-family includes.
-Chapter~\ref{ch:renderer-selection-identity} explains how one public identity reaches this physical
-target.
+Chapter~\ref{ch:renderer-selection-identity} explains how the generated registry maps the
+compiled identity set to these physical targets and latches one active family.
 
 \section{Examples moved to their owners}
 

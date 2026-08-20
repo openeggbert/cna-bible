@@ -12,6 +12,9 @@ for the shared EasyGL implementation selected by \texttt{OPENGLES2}, \texttt{OPE
 \texttt{OPENGL33}, \texttt{WEBGL1}, or \texttt{WEBGL2}). SDL3, SDL3\_image, and SDL3\_mixer are built from
 vendored Git submodules by default, so no system SDL packages are required on a first build.
 
+The root project version is 0.1.0 and \texttt{CNA\_VERSION\_PRERELEASE} is
+\texttt{alpha.1}; a configure of this edition prints \texttt{CNA: version 0.1.0-alpha.1}.
+
 On Windows, any of MSVC~2022 (v17.8+), clang-cl, or MinGW-w64 (native or cross-compiled from
 Linux) works; only \texttt{../sharp-runtime} is needed as a sibling dependency, and the same
 vendored-submodule SDL story applies.
@@ -67,15 +70,16 @@ GL families & \texttt{OPENGLES1}, \texttt{OPENGLES2}, \texttt{OPENGLES3},
   \texttt{WEBGL1}, \texttt{WEBGL2}, \texttt{PORTABLEGL} \\
 Native and abstraction APIs & \texttt{BGFX}, \texttt{VULKAN}, \texttt{WEBGPU},
   \texttt{MAGNUM}, \texttt{WICKED}, \texttt{SOKOL}, \texttt{DILIGENT},
-  \texttt{LLGL}, \texttt{METAL}, \texttt{FNA3D}, \texttt{SDL\_GPU} \\
+  \texttt{LLGL}, \texttt{IGL}, \texttt{METAL}, \texttt{FNA3D}, \texttt{SDL\_GPU} \\
 DirectX and Windows families & \texttt{DIRECTX1}, \texttt{DIRECTX2},
   \texttt{DIRECTX3}, \texttt{DIRECTX5}, \texttt{DIRECTX6}, \texttt{DIRECTX7},
   \texttt{DIRECTX8}, \texttt{DIRECTX9}, \texttt{DIRECTX10}, \texttt{DIRECTX11},
   \texttt{DIRECTX12}, \texttt{DIRECT2D}, \texttt{GDI}, \texttt{GLIDE},
   \texttt{FREEDIRECT} \\
 2D, web, CPU, and diagnostic & \texttt{SDL\_RENDERER}, \texttt{CANVAS},
-  \texttt{HTML\_DOM}, \texttt{SVG\_DOM}, \texttt{SKIA}, \texttt{BLEND2D},
-  \texttt{OPENVG}, \texttt{HEADLESS}, \texttt{SOFTWARE}, \texttt{STUB} \\
+  \texttt{HTML\_DOM}, \texttt{SVG\_DOM}, \texttt{PIXIJS}, \texttt{SKIA},
+  \texttt{BLEND2D}, \texttt{OPENVG}, \texttt{NANOVG}, \texttt{HEADLESS},
+  \texttt{SOFTWARE}, \texttt{TINYGL}, \texttt{STUB} \\
 \bottomrule
 \end{tabularx}
 \caption{All \RendererIdentityCount{} public renderer identities, grouped into
@@ -102,6 +106,19 @@ them read directly from that file rather than assumed from memory:
   is already set. \\
 \texttt{CNA\_BUILD\_TESTS} & \texttt{ON} & Builds the \texttt{CnaTests} GoogleTest target and
   registers CTest entries. \\
+\texttt{CNA\_BUILD\_EXAMPLES} & \texttt{ON} & Builds examples admitted by the selected modules,
+  renderer and host. \\
+\texttt{CNA\_GRAPHICS\_RENDERERS} & \emph{(empty)} & Opt-in semicolon-separated renderer set.
+  Empty preserves single-renderer mode; otherwise \texttt{CNA\_GRAPHICS\_RENDERER} names its
+  required default. \\
+\texttt{CNA\_PLATFORM} & \texttt{SDL3} & Chooses window, event, input, timing and system-service
+  implementation: \texttt{SDL3}, \texttt{SDL2}, \texttt{HEADLESS}, or POSIX-only
+  \texttt{TERMINAL}. \\
+\texttt{CNA\_AUDIO\_PLATFORM} & \texttt{SDL3} & Independently chooses \texttt{SDL3},
+  \texttt{SDL2}, or deterministic \texttt{NULL} playback/capture infrastructure. \\
+\texttt{CNA\_BUILD\_C\_API} & \texttt{OFF} & Adds the experimental C17 shared-library target
+  \texttt{CNA::CApi}. At alpha.1 that target is compile-blocked by a stale 49-identity C renderer
+  map; see Appendix~\ref{ch:native-c-api}. \\
 \texttt{CNA\_CNAEXT} & \texttt{OFF} & Enables an opt-in, project-specific extended render
   pipeline (see below) --- unrelated to the \texttt{CNAEXT} marker macro from
   Chapter~\ref{ch:design-philosophy}. \\
@@ -109,6 +126,9 @@ them read directly from that file rather than assumed from memory:
   XNA 4.0 (battery, camera, clipboard, and similar). \\
 \texttt{CNA\_ENABLE\_NET} & \texttt{ON} & Builds \cnans{Net} and \cnans{GamerServices}
   networking; pulls in the vendored ENet dependency when on. \\
+\texttt{CNA\_SHARP\_RUNTIME\_ROOT} & \path{../sharp-runtime} & Overrides the required Sharp
+  Runtime source tree. The release records a verified revision but does not enforce that revision
+  in CMake. \\
 \texttt{CNA\_USE\_SYSTEM\_SDL} & \texttt{OFF} & Uses \texttt{find\_package} for system SDL3
   packages instead of the vendored submodules (see above). \\
 \texttt{CNA\_TEST\_DISPLAY} & \texttt{":0"} & The \texttt{DISPLAY} value baked into every
@@ -121,8 +141,37 @@ them read directly from that file rather than assumed from memory:
 \end{tabularx}
 \end{center}
 
-Every one of these is independent of \texttt{-DCNA\_GRAPHICS\_RENDERER}
-(Table~\ref{tab:backend-option-list}).
+These switches are separately declared, but some combinations are intentionally refused. For
+example, a terminal platform admits only CPU or diagnostic renderers; SDL2-only mode has an
+explicit consistency gate; and a renderer may add its own SDK or architecture constraint. One
+combination lacks such a gate: the C API references Net and GamerServices unconditionally, but
+\texttt{CNA\_BUILD\_C\_API=ON} with \texttt{CNA\_ENABLE\_NET=OFF} configures successfully and
+then fails on missing GamerServices headers. Keep networking enabled when reproducing the separate
+NanoVG identity failure recorded in Appendix~\ref{ch:native-c-api}.
+
+\section{Generated product-version API}
+\index{CNA Version.hpp@CNA/Version.hpp}\index{Semantic Versioning}
+
+Configuration generates \path{CNA/Version.hpp} under the build include tree. It exposes
+\texttt{CNA\_VERSION\_MAJOR}, \texttt{\_MINOR}, \texttt{\_PATCH},
+\texttt{\_PRERELEASE}, and \texttt{\_STRING}, plus constexpr accessors. The tag spelling has a
+leading \texttt{v}; the API's product string does not:
+
+\begin{lstlisting}[language=C++]
+#include <CNA/Version.hpp>
+#include <iostream>
+
+int main()
+{
+    std::cout << CNA::getVersionString() << '\n'; // 0.1.0-alpha.1
+    return CNA::isPreReleaseVersion() ? 0 : 1;
+}
+\end{lstlisting}
+
+This listing was compile-checked as C\texttt{++}23 against the header generated by an exact-tag
+HEADLESS/HEADLESS/NULL configure; the executable returned \texttt{0.1.0-alpha.1}. It is a
+compile/runtime observation of the version header, not a renderer test. The C API's independent
+ABI version remains 0.7.0.
 
 \begin{sourcenote}
 \textbf{Two similar spellings at different gates.} \texttt{CNA\_CNAEXT} (a CMake
@@ -254,7 +303,7 @@ packages to already be installed system-wide.
 
 \section{Linux system dependencies beyond SDL}
 
-Two optional native libraries extend specific subsystems and are not vendored:
+Two native dependency routes deserve explicit configuration:
 
 \begin{itemize}
   \item \textbf{FFmpeg} (\texttt{libavcodec-dev libavformat-dev libavutil-dev
@@ -262,13 +311,12 @@ Two optional native libraries extend specific subsystems and are not vendored:
         \texttt{libswscale-dev} is notably \emph{not} required even though FFmpeg's own video
         pipeline usually pairs with it --- CNA implements YUV$\to$RGBA conversion internally,
         so only the runtime \texttt{libswscale8} library needs to be present, not its headers.
-  \item \textbf{Draco} (\texttt{libdraco-dev}) is optional and enables
-        \texttt{KHR\_draco\_mesh\_compression} decoding in \texttt{GltfImportCore}. It is
-        detected via CMake's \texttt{find\_package(draco CONFIG)}; when absent, importing a
-        Draco-compressed glTF primitive throws a clear ``not supported'' error at import time
-        rather than failing to build at all. Unlike \texttt{cgltf.h} and \texttt{stb\_image.h}
-        (single-header vendored dependencies), Draco is a real multi-file library and is
-        deliberately not vendored.
+  \item \textbf{Draco} decoding is on by default through CNA's immutable
+        \texttt{third\_party/draco} gitlink at Draco~1.5.7.  A packager may request a system
+        package with \texttt{CNA\_USE\_SYSTEM\_DRACO=ON};
+        \texttt{CNA\_ENABLE\_DRACO=OFF} deliberately builds the refusal path.  The default
+        therefore requires that submodule to be initialized, and does not vary with the host's
+        installed Draco version.
 \end{itemize}
 
 \section{Verifying a build}
@@ -279,17 +327,16 @@ executable. Two commands stand in for ``does this build actually work'':
 
 \begin{lstlisting}[style=cnashell]
 ctest --test-dir build --output-on-failure
-cmake --build build --target hello-triangle-sdl
+cmake --build build --target cna_demo_2d
 \end{lstlisting}
 
 \texttt{ctest} runs the GoogleTest-based \texttt{CnaTests} suite (thousands of unit tests,
-plus, on renderers where a display is available, GPU pixel tests); \texttt{hello-triangle-sdl}
-is the minimal environment/rendering-path smoke test mentioned throughout the renderer chapters
-in Part~\ref{part:renderers}.
+plus, on renderers where a display is available, GPU pixel tests); \texttt{cna\_demo\_2d} is the
+shared 2D integration program used by the platform and renderer infrastructure.
 
 \begin{sourcenote}
-\textbf{On CI coverage.} At the pin, six workflows trigger automatically and two Windows
-renderer workflows are manual.  The intended general unfiltered job and two Input legs carry
+\textbf{On CI coverage.} At the tag, 19 workflows have an automatic push or pull-request
+trigger and the Direct3D/GDI workflows are manual-only.  The intended general unfiltered job and two Input legs carry
 a retired renderer value and stop during configuration; other automatic jobs exercise narrower
 Input, Devices, Web, Metal, or arithmetic populations.  Chapter~\ref{ch:ci-reality} traces each
 route from trigger through verdict.  Treat a green badge as evidence for those engaged routes,

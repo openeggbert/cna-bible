@@ -1,12 +1,20 @@
 \chapter*{Preface}
 \addcontentsline{toc}{chapter}{Preface}
 
-CNA is a C\texttt{++}23 reimplementation of the Microsoft XNA~4.0 programming model. It uses
-SDL3 for platform integration and selects one graphics renderer at build time. At this edition's
-pin, the public selector exposes \RendererIdentityCount{} renderer identities implemented by
-\RendererFamilyCount{} source families. CNA is neither a game nor an editor-centered engine. It
-is a compatibility framework for native C\texttt{++} programs written in the shape of
-\texttt{Microsoft::Xna::Framework}.
+CNA is a C\texttt{++}23 reimplementation of the Microsoft XNA~4.0 programming model. This is the
+\CnaProductVersion{} edition, pinned to the immutable \CnaEditionTag{} tag at
+\CnaRevision. The tag is CNA's first Semantic Versioning release and remains explicitly
+pre-1.0: the project may change public interfaces between prereleases. It does not turn every
+source-visible route into a stable or runtime-proven contract.
+
+The release separates platform integration, graphics, and audio into independent build axes.
+SDL3 remains the default platform and audio implementation, but SDL2, headless and terminal
+platform routes and a null-audio route are represented separately. A build may contain one or
+several renderer families; \RendererIdentityCount{} public renderer identities map to
+\RendererFamilyCount{} implementation families, and a multi-renderer build chooses one at
+runtime before its first graphics device is created. CNA is neither a game nor an
+editor-centered engine. It is a compatibility framework for native C\texttt{++} programs
+written in the shape of \texttt{Microsoft::Xna::Framework}.
 
 The surrounding repositories provide capabilities CNA should not duplicate.
 \texttt{sharp-runtime} supplies selected .NET-shaped types; \texttt{easy-gl} and
@@ -27,6 +35,11 @@ The book is not the project's live API documentation. Software changes faster th
 can. Treat the text as a revision-bounded map: use it to locate the relevant subsystem and its
 constraints, then check the current repository before relying on a detail in new code. The full
 pin set and observed checkout state appear in Appendix~\ref{ch:repo-map}.
+
+The release also introduces an experimental native C API. Appendix~\ref{ch:native-c-api}
+documents its handle, result, version and coverage boundaries, including the exact-tag renderer
+identity mismatch that blocks the final library build. Its C ABI version is independent of the
+CNA product version; neither number is a substitute for the other.
 
 The organization follows the path of a call through the system. Parts~\ref{part:ecosystem}
 and~\ref{part:architecture-framework} introduce the ecosystem, build, framework lifecycle,

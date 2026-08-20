@@ -3,12 +3,12 @@
 \label{ch:gpu-packing}
 
 Between glTF's typed accessors and a renderer's vertex fetch lies a compact byte protocol that
-is not declared as a C++ type. \texttt{ExtractMesh} chooses one of seven layouts, writes tightly
+is not declared as a C++ type. \texttt{ExtractMesh} chooses one of ten layouts, writes tightly
 packed bytes, and records only the stride. Later, \texttt{ContentManager} switches on that
 stride to choose an upload route. Renderer shaders must independently agree with the same
 offsets. The stride is therefore a de-facto ABI.
 
-\section{The seven glTF layouts}
+\section{The ten glTF layouts}
 
 \begin{table}[htbp]
 \centering
@@ -23,7 +23,10 @@ Stride & Fields and byte offsets & Effect family \\
 48 & position 0, normal 12, tangent vec4 at 24, UV 40 & PBR \\
 52 & position 0, normal 12, UV 24, weights 32, joint u8x4 at 48 & skinned \\
 56 & stride 52 plus colour u8x4 at 52 & skinned, vertex colour \\
+60 & rigid PBR stride 48, UV1 at 48, colour u8x4 at 56 & PBR, dual UV/colour \\
 68 & position 0, normal 12, tangent 24, UV 40, weights 48, joint u8x4 at 64 & skinned PBR \\
+76 & skinned PBR stride 68 plus UV1 at 68 & skinned PBR, dual UV \\
+80 & stride 76 plus colour u8x4 at 76 & skinned PBR, dual UV/colour \\
 \bottomrule
 \end{tabularx}
 \caption{The glTF vertex-byte ABI. Offsets and strides are bytes.}
@@ -33,12 +36,13 @@ Stride & Fields and byte offsets & Effect family \\
 Selection is semantic rather than user-configurable. A base-colour plus occlusion texture on an
 unskinned, uncoloured, non-PBR primitive selects stride~20 and
 \cnaclass{DualTextureEffect}; colour selects~24 unless skinning changes it to~56; normal or
-metallic--roughness maps select a tangent-bearing PBR layout; and skinning otherwise selects
-52. Missing normals, UVs, and colours receive stable defaults.
+metallic--roughness materials select a tangent-bearing PBR layout; and skinning otherwise selects
+52. PBR layouts widen to carry two independently selected source UV sets and \texttt{COLOR\_0}.
+Missing normals, UVs, and colours receive stable defaults.
 
 The downstream upload switch also recognizes stride~16 for a typed
 \texttt{VertexPositionColor} path used by non-glTF raw content. That makes the upload switch an
-eight-case protocol, but stride~16 is not an eighth layout emitted by the current glTF
+eleven-case protocol, but stride~16 is not an eleventh layout emitted by the current glTF
 selection expression. Keeping those two counts separate avoids a recurring documentation
 contradiction.
 
@@ -56,10 +60,10 @@ The current bridge is explicit:
 \begin{itemize}
   \item strides 16, 20, 24, and 32 are reconstructed field-by-field as real typed vertex
         objects before typed \texttt{SetData};
-  \item strides 48, 52, 56, and 68 use \texttt{SetDataRaw}, preserving the packed bytes; and
-  \item the glTF extractor emits only those seven layouts, but a hand-written Model CNJ can name
-        another positive stride: the current upload helper then returns a buffer without uploading
-        the bytes instead of rejecting the descriptor. This is a CNJ validation gap, not another
+  \item strides 48, 52, 56, 60, 68, 76, and 80 use \texttt{SetDataRaw}, preserving the packed
+        bytes; and
+  \item the glTF extractor emits the ten layouts above. A hand-written Model CNJ naming any other
+        stride is outside this inferred-layout contract and must not be described as another
         supported layout.
 \end{itemize}
 
@@ -105,19 +109,15 @@ meet that type's alignment; any typed access through it would have undefined beh
 into aligned typed storage or adding a byte-oriented upload would remove that avoidable contract
 hazard without changing the GPU bytes.
 
-\section{Topology is narrower than the file format}
+\section{All seven topology modes have an explicit route}
 
-glTF defines seven primitive modes. CNA classifies all seven by their real numeric value and
-name, accepts \texttt{TRIANGLES} only, and rejects points, lines, strips, and fans before
-producing an index list. That is the remediated half of defect D5: unsupported modes are no
-longer silently reinterpreted as triangles.
-
-The remaining half is architectural. Every model loader computes
-\texttt{primitiveCount = numIndices / 3}, \cnaclass{ModelMeshPart} has no topology field, and
-\cnaclass{ModelMesh::Draw} hardcodes \cnaclass{PrimitiveType::TriangleList}. Adding another
-glTF mode therefore requires an end-to-end runtime change, not merely relaxing the importer
-check. A count that truncates a non-triangle index list would be wrong even if a renderer knew
-how to draw the intended mode.
+D5 is fixed end to end. Points, line lists, and line strips retain their topology; a line loop is
+closed and becomes a line strip; triangle strips and fans are expanded into winding-correct
+triangle lists; triangle lists remain lists. \cnaclass{ModelMeshPart}'s CNAEXT
+\texttt{PrimitiveType} property travels through the direct and CNJ routes, and primitive counts
+use the selected topology rather than universally dividing by three. An incomplete final
+primitive/run is dropped with a counted diagnostic. Conversion is therefore visible in the
+source-vs-output topology fields, not a silent reinterpretation.
 
 \section{Tangents and winding}
 
@@ -128,23 +128,24 @@ Gram--Schmidt-orthogonalized. This is intentionally not a bit-exact MikkTSpace i
 corners are not welded across matching position/normal seams.
 
 No coordinate-system conversion is required, but one winding case remains: a node with a
-negative-determinant transform changes front-face orientation. CNA does not flip that
-primitive's winding, so culling can hide geometry mirrored by a negative scale. This is an
-open limitation separate from tangent handedness.
+negative-determinant transform changes front-face orientation. CNA carries and reports the
+per-placement mirror fact, but does not change draw-time cull state; flipping a shared index
+buffer would break an unmirrored instance of the same mesh. Default culling can therefore hide
+that placement. This is an open application/state boundary separate from tangent handedness.
 
 \section{Hard limits carried by the bytes}
 
 The ABI makes several limits concrete rather than advisory:
 
 \begin{itemize}
-  \item only one UV stream reaches the effect, even when maps select different glTF UV sets;
+  \item at most two distinct source UV sets reach PBR effects; a third requested set is reported;
   \item only \texttt{JOINTS\_0}/\texttt{WEIGHTS\_0} are imported: four influences per vertex;
   \item joint indices are four unsigned bytes, so at most 256 palette addresses are encodable;
   \item \cnaclass{SkinnedEffect} and \cnaclass{SkinnedPbrEffect} cap actual palettes at 72
         bones; and
-  \item morph targets are CPU-blended into the base byte array and re-uploaded. Normal deltas
-        are currently written only for strides 32, 52, and 56, so PBR strides 48 and 68 receive
-        position-only morphing without a diagnostic.
+  \item morph targets are CPU-blended into the base byte array and re-uploaded. Position, normal,
+        and tangent offsets are resolved from the canonical layout table; absent or illegal target
+        streams are reported rather than inferred from an old stride subset.
 \end{itemize}
 
 These are different layers of limit. Raising the shader palette above~72 does not widen an

@@ -7,6 +7,26 @@
 2026-08-12. It is not a source of CNA behavior. The pinned repositories and retained evidence
 remain authoritative.
 
+## Alpha.1 edition addendum (2026-08-20)
+
+This file remains the history and closure record of the 2026-08-12 editorial pass; its baseline
+pin, counts, contradiction map, page renders, and sealed-artifact facts are not rewritten as if
+they had occurred at alpha.1. The new technical edition is bounded instead by
+[`audit/alpha1-delta.md`](audit/alpha1-delta.md), with CNA
+`v0.1.0-alpha.1` @ `1bb2145d99ed572dd4eb15009c34e2e5f410fcf0` as authority.
+
+The alpha.1 pass preserves the prose and layout standards closed below while superseding dated
+technical conclusions: 50 identities / 46 families, runtime multi-renderer selection, independent
+platform/audio axes, bounded compiled Effect bytecode, the experimental native C API, and the
+current glTF L1--L7 evidence. The C API treatment now records that its broad source/header surface
+is nevertheless compile-blocked in the exact tag by a stale renderer map; editorial preservation
+does not soften that negative build evidence. The resulting candidate is 584 A4 pages, with 79
+chapters, nine appendices, 179,457 prose tokens, 192 listings, 25 figures and 109 tables. The full
+semantic/PDF verifier passes. All 264 materially changed pages were rendered and read; full-size
+review found a Chapter 21 mid-word title break and a platform-table collision, both corrected and
+re-rendered cleanly. The prior sealed fingerprint remains historical until repository release
+policy permits a clean committed fixed-date reproduction.
+
 ## 1. Repository and evidence baseline
 
 ### 1.1 Instructions, handoffs, and validation inspected

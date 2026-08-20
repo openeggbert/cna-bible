@@ -30,17 +30,22 @@ is pinned to the source root after cases failed to find \texttt{tests/assets} wh
 them from the runtime-output directory.  Both details explain why a source-only count and a
 \texttt{ctest -N} count answer different questions.
 
-\section{One configure, one renderer}
+\section{One configure, one renderer set}
 
-Renderer selection enters only the chosen renderer family.  Metal and Glide contribute
-portable policy suites unconditionally, but their native implementation is still gated.  Thus
-no build registers all renderer tests, and a result whose renderer identity is omitted cannot
-be interpreted safely.
+The ordinary configuration enters one chosen renderer family.  Alpha.1 also accepts a compatible
+semicolon-separated \texttt{CNA\_GRAPHICS\_RENDERERS} set; the selected singular identity remains
+the default.  Renderer-local source filtering tests membership in
+\texttt{CNA\_RENDERER\_IDENTITIES}, so a multi-renderer \texttt{CnaTests} build retains the suites
+for every compiled family rather than only the default.  Metal and Glide still contribute some
+portable policy suites even when their native implementation is gated.  No supported tuple
+therefore implies ``all renderers,'' and a result that omits both the compiled set and the active
+runtime identity cannot be interpreted safely.
 
 There are three layers of renderer gating:
 
 \begin{enumerate}
-  \item source filtering decides which renderer GoogleTests enter \texttt{CnaTests};
+  \item source filtering decides which compiled renderer families' GoogleTests enter
+        \texttt{CnaTests};
   \item CMake conditions decide which standalone executables and CTests are registered;
   \item runtime pre-flight may return the project-wide skip code~77 when no display is usable.
 \end{enumerate}

@@ -3,17 +3,19 @@
 \label{ch:ci-reality}
 
 A repository can contain excellent tests without running them automatically.  CNA's tree is a
-sharp example: thousands of assertions, hundreds of renderer programs, 56 verification scripts,
-and eight workflow files coexist with dead configuration legs, manual-only GPU jobs, and host
+sharp example: thousands of assertions, hundreds of renderer programs, structural scripts,
+and 21 workflow files coexist with dead configuration legs, manual-only GPU jobs, and host
 boundaries no hosted runner has crossed.  This chapter describes the automation at the pinned
 revision, not the intended future matrix.
 
-\section{Eight workflows, six automatic triggers}
+\section{Twenty-one workflows, nineteen automatic triggers}
 
-Six workflows react to a push or pull request: general Linux tests, the Input matrix, Devices,
-HTML-DOM, Metal on macOS, and 32-bit arithmetic.  Direct3D and GDI workflows are
-\texttt{workflow\_dispatch}-only.  A workflow file's presence therefore proves neither that it
-runs for the current branch nor that its most expensive leg runs routinely.
+Nineteen workflows react to a push or pull request, often under narrow path filters.  Direct3D
+and GDI remain \texttt{workflow\_dispatch}-only.  The expanded automatic set adds Apple,
+glTF stride and sanitizer, platform, TinyGL, NanoVG, native and Emscripten multi-renderer, and
+five C API workflows to the older general, Input, Devices, HTML-DOM, Metal and 32-bit jobs.  A
+workflow file's presence therefore proves neither that its trigger matched this tag nor that an
+individual job ran successfully.
 
 The general Linux job configures Debug with tests and examples, builds the default target, then
 runs unfiltered CTest with a known-failure classifier.  The Input matrix builds only
@@ -30,6 +32,29 @@ browser verdicts, and compositor samples.  Metal selects the native renderer on 
 Metal validation variables, and runs Metal-named plus renderer-definition tests.  The 32-bit job
 builds three small arithmetic programs with \texttt{-m32}; it is a narrow integer-overflow gate,
 not a 32-bit CNA build.
+
+\section{New architecture gates}
+
+The native multi-renderer workflow configures \texttt{HEADLESS;SOFTWARE;STUB}, builds the
+generated descriptor/registry gate, selects each compiled identity through the public demo, tests
+the environment-variable route, and retains a singular-build control.  A separate Emscripten
+workflow composes \texttt{WEBGL2;CANVAS;HTML\_DOM;SVG\_DOM}.  These are compile and runtime-choice
+evidence for two compatible sets, not proof that arbitrary families may be combined.
+
+The platform workflow names the graphics, platform and audio values independently.  Its matrix
+exercises SDL3, SDL2 and headless tuples, cross-implementation event oracles, SDL2-native helper
+executables and a 2D integration demo.  Terminal remains covered by source/tests outside a
+Windows build; the matrix does not turn its POSIX-only contract into a cross-platform claim.
+
+Five C API workflows check generated surface coverage, pure-C header/toolchain compatibility,
+the ABI baseline, limitation records and the release decision record.  They are substantial
+structural gates, but their repository snapshots do not prove that the alpha.1 tag's workflow
+runs succeeded.  Running the tag's source-only release-record checker reports all ten criteria
+met and ``READY to publish the experimental release.''  An exact-tag library build nevertheless
+fails because the C renderer map has 49 identities while the canonical enumeration has 50. The
+checker proves that gate definitions exist and records agree; it does not execute the installed
+consumer or final library build and therefore produces a false artifact-readiness verdict. Its
+heading also mislabels ABI 0.7.0 as 0.1.0.
 
 \section{A live configuration defect changes the matrix}
 

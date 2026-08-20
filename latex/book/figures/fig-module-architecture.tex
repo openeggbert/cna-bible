@@ -1,26 +1,31 @@
 \begin{figure}[tbp]
 \centering
-\begin{figurealt}{Layered module ownership diagram. Sharp-runtime supplies selected System-shaped facilities. CNA core and math support runtime and framework modules. Content and service modules sit beside graphics and optional extension modules. One selected renderer family sits below the renderer-independent graphics surface. The CNA umbrella and application sit above.}
+\begin{figurealt}{Layered module ownership diagram. Sharp-runtime supplies selected System-shaped facilities. CNA core and math support the platform, runtime and framework modules. Content and service modules sit beside graphics and optional extension modules. One or more compiled renderer families sit below the renderer-independent graphics surface. The CNA umbrella, optional C API source module and application sit above; the alpha.1 C API target is compile-blocked.}
 \resizebox{0.95\textwidth}{!}{%
 \begin{tikzpicture}
-  \node[cna public, minimum width=75mm] (app) at (0,5.2) {application / selected CNA component targets};
+  \node[cna public, minimum width=75mm] (app) at (0,5.2) {C\texttt{++} application / selected CNA component targets};
   \node[cna internal, minimum width=75mm] (umbrella) at (0,4.0) {CNA umbrella and exported aliases};
+  \node[cna public] (capi) at (5.2,4.8) {optional C17 ABI source\\alpha.1 build blocked};
   \node[cna internal] (services) at (-5.0,2.5) {input, audio, media, storage,\\devices, gamer-services, net};
   \node[cna public, minimum width=38mm] (graphics) at (0,2.5) {graphics\\renderer-independent API};
   \node[cna internal] (content) at (5.0,2.5) {content, CNJ, XNB, glTF};
-  \node[cna internal] (runtime) at (-3.7,0.9) {runtime\\game lifecycle};
-  \node[cna internal, text width=39mm] (renderer) at (0,0.9) {one selected renderer family};
+  \node[cna internal] (runtime) at (-4.8,0.9) {runtime\\game lifecycle};
+  \node[cna internal] (platform) at (-2.3,0.9) {platform\\selected implementation};
+  \node[cna internal, text width=39mm] (renderer) at (0.4,0.9) {compiled renderer family set};
   \node[cna internal] (ext) at (3.7,0.9) {graphics-ext\\devices-ext};
   \node[cna internal] (core) at (-4.5,-0.7) {core};
   \node[cna internal] (math) at (-2.3,-0.7) {math};
   \node[cna internal, minimum width=34mm] (sharp) at (-3.4,-2.0) {sharp-runtime components};
   \draw[cna flow] (umbrella) -- (app);
+  \draw[cna flow] (umbrella) -- (capi);
   \draw[cna flow] (services) -- (umbrella);
   \draw[cna flow] (content) -- (umbrella);
   \draw[cna flow] (graphics) -- (umbrella);
   \draw[cna flow] (runtime.north) -- (-2.6,3.3) -- ($(umbrella.south)+(-25mm,0)$);
   \draw[cna flow] (ext.north) -- (2.6,3.3) -- ($(umbrella.south)+(25mm,0)$);
   \draw[cna flow] (renderer) -- (graphics);
+  \draw[cna flow] (platform) -- (runtime);
+  \draw[cna flow] (platform) -- (services);
   \draw[cna flow] (core) -- (runtime);
   \draw[cna flow] (math) -- (runtime);
   \draw[cna flow] (sharp) -- (core);
@@ -31,6 +36,6 @@
 \end{figurealt}
 \caption{Physical ownership layers in CNA's module tree. The arrows show the architectural
 direction of dependency, not every transitive CMake edge; each module's declared link interface
-remains authoritative.}
+remains authoritative. The C API node records source ownership, not a successful alpha.1 artifact.}
 \label{fig:module-architecture}
 \end{figure}

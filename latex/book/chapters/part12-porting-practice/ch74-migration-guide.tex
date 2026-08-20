@@ -43,9 +43,10 @@ table, shared resources, stock effects, graphics assets, models, and several aud
 are false.
 
 The boundary is still narrower than XNA's build pipeline.  CNA does not produce XNB files, the
-reader registry is explicit rather than reflective, several reader forms remain unsupported, LZ4
-is refused, and the general \texttt{EffectReader} rejects compiled platform shader bytecode by
-name.  Stock-effect XNB readers are distinct and do work.  Test every concrete asset against the
+reader registry is explicit rather than reflective, several reader forms remain unsupported, and
+LZ4 is refused. The general \texttt{EffectReader} accepts XNA/FNA D3D9 Effect Framework bytecode
+only when the active renderer reports \texttt{CompiledEffects}; the five stock-effect XNB readers
+remain separate. Test every concrete asset against the
 selected route rather than reasoning from its extension alone.
 
 Loose assets use CNJ envelopes, native image/audio/video formats, or direct glTF/GLB model loading.
@@ -55,12 +56,12 @@ every source asset to one of these routes, its expected reader, sidecars, and ve
 
 \section{Treat custom shaders as renderer contracts}
 
-\texttt{Effect(GraphicsDevice\&, byte[])} still throws for arbitrary compiled XNA effect bytecode,
-and the general XNB Effect reader is a named refusal.  This remains a major porting boundary.
-FNA3D's execution of six vendored XNA stock \texttt{.fxb} blobs through MojoShader is real but does
-not make the public arbitrary-effect constructor work.
+\texttt{Effect(GraphicsDevice\&, byte[])} and the general XNB Effect reader now accept bounded
+XNA/FNA D3D9 Effect Framework binaries on FNA3D. SDL\_GPU, EasyGL and Vulkan expose the same
+capability only behind their opt-in compiled-effects switches. Inventory the exact byte format and
+target configuration: \texttt{.fx}/HLSL source, DXBC and MonoGame MGFX remain different inputs.
 
-\texttt{ShaderEffect} is the user-facing source/program route, and accepted language varies by
+\texttt{ShaderEffect} is the separate source/program route, and accepted language varies by
 renderer: GLSL on several GL paths, HLSL on Direct3D paths, SPIR-V bytes on Vulkan, marker-gated
 SkSL on Skia, and explicit refusal or null on others.  Choose the target renderer before choosing
 a shader migration strategy.  A portable game may need renderer-specific programs or may need to

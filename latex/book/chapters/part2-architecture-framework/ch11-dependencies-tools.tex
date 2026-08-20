@@ -93,6 +93,13 @@ The consumption adapter detects the current component-target shape and links eac
 declared sharp-runtime component closure; it can also recognize the older monolithic target shape.
 For this edition, only the revisions in Appendix~\ref{ch:repo-map} are authoritative.
 
+CNA's alpha.1 release verification additionally records sharp-runtime
+\texttt{625476d5b5fff5fa89f392c3c9af8638\allowbreak ff237692}. That is release evidence, not a CMake-enforced
+dependency lock: \texttt{CNA\_SHARP\_RUNTIME\_ROOT} still accepts the caller's checkout and CNA
+does not compare its Git SHA. This Bible retains its deeper sharp-runtime technical pin
+\texttt{f827a6c5} for chapters auditing that sibling; Appendix~\ref{ch:repo-map} keeps the two
+roles explicit rather than arbitrarily repinning the sibling book scope.
+
 EasyGL's five public identities expect \texttt{../easy-gl}; easy-gl then expects
 \texttt{../meta-gl}.  CNA exposes no override for those two relative paths.  FREEDIRECT similarly
 expects the free-direct sibling checkout, which resolves free-api itself and reuses CNA's
@@ -121,13 +128,21 @@ Accordingly, “all renderer identities accepted by CMake” is not “all rende
 available on this host.”  Chapter~\ref{ch:renderer-selection-identity} separates identity,
 family, internal native sub-selector, and platform admission.
 
-\section{What CNA builds, and what it does not package}
+\section{Build-tree C++ consumption and the native C package}
 
-CNA provides build-tree targets.  At the pinned revision it has no install rules, exported package
-configuration, or supported \texttt{find\_package(CNA)} consumer flow.  A parent project normally
-adds the checkout as a subdirectory or follows a sibling template that does so.  Inventing an
-installation step produces an untested include/library layout and loses the sibling-resolution
-contract.
+The C++ framework remains primarily a build-tree/subdirectory product: a parent project adds the
+checkout or follows a sibling template, and the module targets compose into its final consumer.
+Alpha.1's optional native C API source defines a deliberately narrower install surface. Its CMake
+rules would install the shared \texttt{CNA::CApi} target, C headers, \texttt{CNAConfig.cmake}, and
+a package-version file; suitable Unix builds also define \texttt{CNA::CApiStatic}. The external
+\texttt{hello\_cna.c} gate is designed to configure through \texttt{find\_package(CNA CONFIG)},
+link the installed target, and run it. These are source-proven packaging routes, not a successful
+alpha.1 artifact: the exact tag cannot compile \texttt{cna\_c\_api} because its C renderer table
+omits NanoVG. Appendix~\ref{ch:native-c-api} records the reproduced failure.
+
+The intended package's version is the native C ABI version, not the CNA product SemVer. It does not turn
+all C++ module archives into a general installed C++ SDK, nor does it erase the sibling-resolution
+contract of source-tree builds.
 
 Likewise, \texttt{CNA} is a CMake target, while \texttt{CNA::Math} and other namespaced aliases are
 module targets.  Neither spelling implies a file named \texttt{libCNA.so}; most framework pieces are

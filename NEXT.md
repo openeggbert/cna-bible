@@ -1,7 +1,33 @@
-# Next session — editorial candidate handoff
+# Next session — CNA 0.1.0-alpha.1 edition handoff
 
-Read this section first, then `EDITORIAL-AUDIT.md` and `PLAN.md` §0. The remainder of this file is
-the preserved 709-page pre-editorial handoff; it is historical, not a current status report.
+Read this section first, then `audit/alpha1-delta.md`, `AUDIT.md`, `EDITORIAL-AUDIT.md` and
+`PLAN.md` §A1. The remainder beginning at “Editorial baseline” is historical.
+
+## Current alpha.1 state (2026-08-20)
+
+| | |
+|---|---|
+| CNA edition | `v0.1.0-alpha.1` @ `1bb2145d99ed572dd4eb15009c34e2e5f410fcf0` |
+| Owner delta | `ae0be4b5211957efaef60f2f23627ae5a9ddda23..v0.1.0-alpha.1`; ancestry verified |
+| Source method | detached immutable tag worktree; CNA/siblings read-only; post-tag sweep empty |
+| Structure | 12 Parts, 79 chapters, nine appendices; Appendix I documents the native C API |
+| Candidate PDF | **584 A4 pages**, 2,602,891 bytes, SHA-256 `79fb8b75416127bde94775647e0e8954a19dfb8a1cf2c91a0e875d858704b762` |
+| Editorial metrics | 179,457 prose tokens; 192 listings, 25 figures and 109 tables |
+| Verification | `tools/verify-book.sh` passes; 264 materially changed pages rendered and read, with two visual corrections re-rendered cleanly |
+| Canonical delta report | `audit/alpha1-delta.md` |
+| C API artifact | Source/header surface audited; exact-tag library build blocked by 49 C renderer identities versus 50 canonical identities; Net-off closure also fails |
+| Release artifact | sealed profile deliberately remains on the preceding committed release until clean-tree reproduction is authorized and completed |
+
+The alpha.1 pass preserves the editorial work of the 574-page baseline and produces a 584-page
+edition while updating release/versioning,
+50 renderer identities / 46 families, runtime renderer selection, platform/audio axes, compiled
+effects, the C API (including two reproduced build blockers), public API changes,
+builds/dependencies, tests/CI, bugs and roadmap. The final verifier passed every source, LaTeX,
+index, geometry, font, link, image, MuPDF and Ghostscript check. Visual review found and corrected
+one broken chapter-title wrap and one crowded platform-table cell; both pages were rebuilt,
+re-rendered and read at full resolution.
+
+## Editorial baseline (historical)
 
 ## Current state (2026-08-12)
 

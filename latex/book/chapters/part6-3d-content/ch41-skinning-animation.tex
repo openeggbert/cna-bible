@@ -122,11 +122,13 @@ therefore exact at every union time but generally only a piecewise linear/Slerp 
 between those stored times. Morph tracks below are different: they retain cubic tangents for lazy
 Hermite evaluation.
 
-Only channels whose target resolves through the skin's joint map enter a skeletal clip. In
-addition, both the runtime and offline front ends call skeletal clip extraction only for a
-group that has a skin. Rigid node TRS animation is thus dropped twice and without a warning.
-This is the open D6 defect. The existence of correct interpolation code must not be reported as
-general scene-animation support.
+Only channels whose target resolves through the skin's joint map enter a skeletal clip. Rigid
+node TRS animation is retained separately as scene-node-indexed clips. On an unskinned model,
+\texttt{Model.Tag} carries \cnaclass{ModelAnimationsEXT}; its tracks address the same flattened
+scene-node indices used by \cnaclass{ModelBone}. A mixed skinned model cannot put that second
+carrier into the already occupied legacy Tag slot, so rigid tracks outside the retained skin
+palettes are explicitly counted and reported as dropped. D6 is therefore fixed for the ordinary
+rigid-model route without pretending that one legacy pointer can hold two unrelated carriers.
 
 Morph-weight animation follows a different, skin-independent route. It locates a weights
 channel on the node instancing the mesh, preserves cubic in/out tangents unbaked, and evaluates
@@ -158,6 +160,7 @@ A frame using the ordinary path should perform these operations in order:
   \item call \texttt{Model::Draw} on the graphics thread.
 \end{enumerate}
 
-Do not concurrently draw models through \texttt{Model::Draw}: its bone-matrix scratch vector is
-process-wide and unsynchronized. This restriction is independent of which animation player
-produced the palette.
+The draw scratch vector is \texttt{thread\_local} at alpha.1, removing the earlier cross-thread
+scratch race. Graphics resources and the shared model graph are not thereby made generally
+thread-safe; keep sampling, palette installation, mutable model updates, and drawing under the
+application's graphics-thread ownership rule.

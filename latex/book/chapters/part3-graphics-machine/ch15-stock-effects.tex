@@ -10,17 +10,25 @@ Many histories below come from the project's original EasyGL/Vulkan/BGFX compari
 renderer families;
 closed defects are retained as mutation-tested evidence, not presented as present limitations.
 
-\section{Effect: the base, and why its bytecode constructor always throws}
+\section{Effect: stock and compiled modes}
 
-\cnaclass{Effect} inherits \cnaclass{GraphicsResource} and is not copyable. Its two
-constructors tell the whole story of Chapter~\ref{ch:shader-fx-gap} in miniature:
-\texttt{Effect(device)} is the ordinary path every stock effect uses, while
-\texttt{Effect(device, vector<bytecs> effectCode)} --- the constructor intended for compiled
-\texttt{.fx} bytecode such as XNA content-pipeline output ---
-\textbf{always throws \texttt{NotImplementedException}}. CNA has no equivalent of
-the general constructor-to-runtime parser/binding route, and Chapter~\ref{ch:shader-fx-gap}
-separates that gap from FNA3D's narrower execution of vendored stock \texttt{.fxb} blobs through
-MojoShader. \texttt{Clone()} is pure virtual and, as a
+\cnaclass{Effect} inherits \cnaclass{GraphicsResource} and is not copyable. The
+\texttt{Effect(device)} constructor creates the small stock-effect base graph. The byte-buffer
+constructor now accepts a bounded, structurally validated XNA/FNA Direct3D~9 Effect Framework
+binary --- the \texttt{.fxb}-shaped payload normally stored by XNA's general
+\texttt{EffectReader}. It rejects an empty or over-64-MiB buffer, malformed container graphs, and
+the distinct MonoGame \texttt{MGFX} container. It then requires
+\texttt{GraphicsCapability::CompiledEffects}; a renderer that did not opt in throws
+\texttt{NotSupportedException} before any draw.
+
+FNA3D supports this route in its normal build. SDL\_GPU, the EasyGL profiles, and Vulkan support it
+only when their respective \texttt{CNA\_*\_COMPILED\_EFFECTS} option is enabled; those options are
+off by default because they add MojoShader. Other renderers report the capability false. This is
+compiled Effect Framework support, not a compiler for \texttt{.fx} or HLSL source, not DXBC or
+MGFX ingestion, and not the renderer-specific \cnaclass{ShaderEffect} API. Chapter
+\ref{ch:shader-fx-gap} separates the formats and backends.
+
+\texttt{Clone()} is virtual and, as a
 \texttt{CNAEXT} deviation from FNA's garbage-collected reference semantics, returns an owning
 raw pointer rather than a managed reference --- there is no GC in C\texttt{++} to hand a
 shared reference back to. \texttt{Apply()} itself is \texttt{CNAEXT} --- real FNA has no
@@ -30,9 +38,10 @@ uses to hand its own parameters down to whichever renderer is active; the base i
 is a no-op, and every stock effect overrides it.
 
 \cnaclass{EffectParameter} carries a name, semantic, row/column counts, class/type enums, and a
-broad family of typed \texttt{GetValue*} / \texttt{SetValue*} accessors. That surface is
-deliberately not a general compiled-effect uniform API in CNA; its actual storage, stock-effect
-linkage, and sharp edges are made explicit in \S\ref{sec:stock-effect-parameter-boundary}. The
+broad family of typed \texttt{GetValue*} / \texttt{SetValue*} accessors. In a compiled effect,
+those records are reflected from the binary and mutable values synchronize to the renderer
+runtime before a pass is applied. In a stock effect, the collection remains the narrower manual
+shadow described in \S\ref{sec:stock-effect-parameter-boundary}. The
 parameter, pass, and technique collections all store elements behind \texttt{unique\_ptr} rather
 than by value, so a reference obtained earlier --- including a captured \texttt{CurrentTechnique}
 --- survives a later \texttt{Add()} reallocation. \cnaclass{EffectPass::Apply()} throws
@@ -41,14 +50,14 @@ selected technique, including when \texttt{CurrentTechnique} is null --- matchin
 ``Applied a pass not in the current technique!'' guard, mapped onto a defined C\texttt{++}
 exception rather than the null-reference crash the equivalent null case produces in C\#.
 
-\section{Parameters and techniques are structural compatibility, not general uniforms}
+\section{Stock parameters are not compiled-effect reflection}
 \label{sec:stock-effect-parameter-boundary}
 
-The XNA-looking \texttt{Parameters} property needs a careful reading in current CNA. FNA parses
-compiled bytecode into its real parameters, techniques, passes, annotations, arrays, and
-structures; those parameter values are what the compiled effect later applies. CNA's matching
-constructor always throws, so there is no parser or general parameter-to-renderer binding behind
-the public collection. A bare \cnaclass{Effect} starts with one manually created
+The XNA-looking \texttt{Parameters} property needs a mode-qualified reading. A compiled effect
+reflects parameters, techniques, passes, annotations, arrays and structures from its binary;
+current technique and mutable values are copied by \texttt{Clone()}, and pass application pushes
+the renderer's blend, depth/stencil, rasterizer, sampler, texture and shader state changes through
+the device. A bare stock-mode \cnaclass{Effect}, by contrast, starts with one manually created
 \texttt{Default} technique containing one \texttt{P0} pass and with \emph{zero} parameters.
 
 The five stock effects do not all even present the same structural approximation.

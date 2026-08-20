@@ -25,24 +25,19 @@ Both JSON \texttt{.gltf} and binary \texttt{.glb} enter through the same
 it to equal \texttt{"2.0"}; their explicit check is conditional, however, so a document with the
 field absent can pass this boundary if cgltf accepts the rest. \texttt{asset.minVersion} is not
 inspected. Buffers are then loaded relative to the source path. Embedded buffer views, base64 data
-URIs, and external percent-decoded file URIs are all supported. Images use the same three storage
-forms and are exposed as memory blocks; the runtime front end decodes those blocks without staging
-temporary files.
+URIs, and external percent-decoded file URIs are supported. Images use the same three storage forms
+and are exposed as memory blocks; the runtime front end decodes those blocks without staging
+temporary files. External paths pass through \texttt{ResolveExternalUriEXT}: URI schemes,
+drive-absolute and root-absolute names, lexical escapes, and symlink-resolved escapes outside the
+asset directory are refused.
 
-External URI support is not a containment guarantee. The default cgltf buffer loader combines the
-document directory with the decoded URI and opens that path; CNA's external-image branch likewise
-joins \texttt{gltfDir} and the decoded image URI. Neither canonicalizes the result and proves it
-remains below the document directory. An absolute URI or enough \texttt{..} components can
-therefore reach a readable file outside the asset tree. Do not load an untrusted glTF/GLB as
-though this path were sandboxed; stage and validate its complete dependency set first.
-
-This is not equivalent to full glTF validation. CNA never calls \texttt{cgltf\_validate}, and
-does not inspect \texttt{extensionsRequired} or \texttt{extensionsUsed}. A syntactically
-parseable file that declares an unsupported required extension can therefore continue until a
-later semantic limitation either rejects it or silently loses information. The importer's own
-named checks remain valuable---accessor shape, buffer span, index range, primitive mode, and
-version failures generally identify the offending value---but they are not a substitute for a
-validator in an asset-production pipeline.
+Alpha.1 performs a structural gate before semantic extraction. Metadata-only alignment and
+overflow-safe span checks run before \texttt{cgltf\_validate}, because the vendored validator can
+otherwise dereference misaligned index data while attempting to validate it. The importer then
+cross-checks authored accessor bounds, refuses undecoded \texttt{EXT\_meshopt\_compression},
+rejects every unsupported \texttt{extensionsRequired} entry, and records warnings for unsupported
+optional \texttt{extensionsUsed}. This is materially stronger than syntax parsing, although it
+does not make CNA's importer a replacement for Khronos's independently pinned validator.
 
 \paragraph{Practical rule.}
 Run the Khronos validator before shipping third-party content. A successful CNA load proves
@@ -85,12 +80,12 @@ result as a fully authored scene.
 node, mesh, flattened scene-node index, composed world transform, and whether the instance is
 skinned. This division is the unit that later becomes one model output.
 
-The offline converter writes every group. A file containing static scenery and two characters
-can therefore produce three CNJ models, with stable suffixes for the static group and named
-skins. The runtime \texttt{Load<Model>} path deliberately returns only
-\texttt{groups.front()}. It does not return a scene object and does not warn that later groups
-were discarded. Multi-character or mixed static/skinned files should be converted offline or
-split at authoring time.
+The offline converter writes every group as a separate CNJ model, with stable suffixes for the
+static group and named skins. The runtime path instead assembles all groups into one
+\cnaclass{Model}. \texttt{Model::SkinsEXT} maps each independent skin to the meshes using its
+palette, while \texttt{Model.Tag} remains a compatibility alias for the first skin. This avoids
+both the old \texttt{groups.front()} data loss and the equally incorrect alternative of posing all
+meshes with one palette.
 
 The two front ends also differ in scale control. The core's \texttt{unitScale} multiplies
 translations---including vertices, bind translations, animation translations and tangents,
@@ -106,28 +101,36 @@ joint indices and weights; validates every index; synthesises a sequential index
 non-indexed primitive; and computes tangents when required by a normal-mapped material. Sparse
 attributes and sparse indices, including an accessor with no base buffer view, are handled.
 
-Materials are less complete. PBR effects are selected only when a normal or
-metallic--roughness \emph{map} is present. Metallic, roughness, and emissive factors survive
-only after that selection; \texttt{baseColorFactor}, alpha mode/cutoff, double-sidedness,
-sampler state, and colour-space intent are not represented. A factor-only metallic--roughness
-material therefore becomes a white \cnaclass{BasicEffect}. This is the open D7 defect, not a
-supported approximation.
+The factor-only material failure recorded as D7 is fixed. The extracted material record retains
+base colour, metallic, roughness, emissive, IOR/specular factors, alpha mode/cutoff,
+double-sidedness, seven texture slots, independent UV-set selectors, per-map transforms,
+samplers, and colour-space intent. Rigid and skinned PBR effects receive the same shared parameter
+convention. This is a broad transport contract, not proof that every renderer implements every
+optional extension texture.
 
-Exactly four extension families have production handling:
+The source-controlled extension registry is the acceptance authority. Representative outcomes
+include:
 
 \begin{itemize}
-  \item \texttt{KHR\_texture\_transform}, for the base-colour texture, baked into the one UV
-        stream;
-  \item \texttt{KHR\_materials\_emissive\_strength}, on the PBR path;
+  \item \texttt{KHR\_texture\_transform}, independent per map rather than baked into one stream;
+  \item \texttt{KHR\_materials\_unlit}, variants, IOR, emissive strength, and core material
+        factors;
+  \item \texttt{KHR\_materials\_specular}, whose factors are implemented but whose optional
+        texture bindings retain renderer-specific gaps;
+  \item \texttt{KHR\_materials\_transmission} and archived specular--glossiness, accepted only as
+        named approximations and therefore not claimed when required;
   \item \texttt{KHR\_lights\_punctual}, reduced to at most three directional-light
-        approximations; and
+        approximations with lost range/cone/intensity facts reported; and
   \item \texttt{KHR\_draco\_mesh\_compression}, only when CNA was compiled with libdraco.
 \end{itemize}
 
-Transmission, variants, cameras, glTF sampler choices, and negative-determinant winding repair
-are absent. A PBR map that selects a second UV set is detected through
-\texttt{pbrUv2Mismatch}; the CLI warns, while the runtime currently computes and then hides the
-flag. Keep ``parsed'', ``represented'', and ``drawn'' as three separate claims.
+PNG/JPEG fallbacks can rescue a texture that also advertises KTX2/BasisU or WebP; without a
+fallback those formats remain unsupported. Clearcoat, sheen, and volume are parsed but ignored;
+meshopt compression and GPU instancing are refused or reported at their actual loss boundary.
+Cameras and material variants are preserved through CNAEXT \cnaclass{Model} properties.
+\cnaclass{GltfImportReportEXT} carries scene counts and ordered diagnostics for every dropped or
+approximated feature on both direct and CNJ routes. Keep ``parsed'', ``represented'',
+``reported'', and ``drawn by this renderer'' as separate claims.
 
 \section{Failure and lifetime boundaries}
 

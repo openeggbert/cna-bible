@@ -1,24 +1,27 @@
 \begin{figure}[tbp]
 \centering
-\begin{figurealt}{Cross-platform evidence progresses from a source path through CMake admission, compilation and linking, execution under a native host or translation, renderer or service engagement, and an oracle. Native Linux may travel directly. Windows uses a PE cross-build and Wine. Web uses Emscripten and a browser. Android uses the NDK and an emulator or device. macOS and Metal require an Apple toolchain and host. Each route can stop at a different evidence state.}
-\resizebox{0.95\textwidth}{!}{%
+\begin{figurealt}{Five independent inputs compose a CNA application: target OS and toolchain, one platform implementation, a compiled renderer set with one runtime-active renderer, one audio implementation, and the XNA-shaped framework API. Configuration gates validate the combination. Execution and oracle evidence then apply only to that exact combination.}
+\resizebox{0.96\textwidth}{!}{%
 \begin{tikzpicture}
-  \node[cna public, text width=25mm] (source) at (-5.5,2.2) {pinned source};
-  \node[cna internal, text width=39mm] (gate) at (-1.7,2.2) {CMake platform +\\renderer admission};
-  \node[cna internal, text width=36mm] (artifact) at (2.6,2.2) {compiled and linked\\artifact};
-  \node[cna internal, text width=64mm] (routes) at (1.2,0) {observed routes at or before the pin\\Linux native; MinGW/Wine; browser; Android AVD};
-  \node[cna evidence, text width=31mm] (engage) at (6.4,0) {host + route\\engaged};
-  \node[cna evidence, text width=38mm] (oracle) at (6.4,-2.0) {behavior / pixel\\oracle, where retained};
-  \node[cna warning, text width=57mm] (apple) at (-3.8,-2.0) {not executed after adaptation\\macOS/Metal; iOS and tvOS unreached};
-  \draw[cna flow] (source) -- (gate);
-  \draw[cna flow] (gate) -- (artifact);
-  \draw[cna flow] (artifact) -- (routes);
-  \draw[cna flow] (routes) -- (engage);
-  \draw[cna flow] (engage) -- (oracle);
-  \draw[cna optional] (gate.west) |- (apple.north);
+  \node[cna public, text width=27mm] (target) at (-6.0,2.2) {target OS /\\toolchain};
+  \node[cna public, text width=29mm] (platform) at (-3.0,2.2) {\texttt{CNA\_PLATFORM}\\window, event, input};
+  \node[cna public, text width=34mm] (graphics) at (0.4,2.2) {renderer set + default\\runtime-active family};
+  \node[cna public, text width=34mm] (audio) at (4.1,2.2) {\texttt{CNA\_AUDIO\_PLATFORM}\\playback / capture};
+  \node[cna internal, text width=48mm] (compose) at (-1.0,0) {CMake admission + generated registries\\and capability contracts};
+  \node[cna public, text width=39mm] (framework) at (4.3,0) {XNA-shaped framework /\\optional CNAEXT or C ABI};
+  \node[cna evidence, text width=44mm] (execution) at (-1.0,-2.0) {named artifact, host, platform and\\renderer/service engagement};
+  \node[cna evidence, text width=39mm] (oracle) at (4.3,-2.0) {behavior / pixel oracle,\\where retained};
+  \draw[cna flow] (target) -- (compose);
+  \draw[cna flow] (platform) -- (compose);
+  \draw[cna flow] (graphics) -- (compose);
+  \draw[cna flow] (audio) -- (compose);
+  \draw[cna flow] (compose) -- (framework);
+  \draw[cna flow] (compose) -- (execution);
+  \draw[cna flow] (framework) -- (oracle);
+  \draw[cna flow] (execution) -- (oracle);
 \end{tikzpicture}}
 \end{figurealt}
-\caption{Cross-platform build and execution routes. An admitted source path is not automatically
-compile-proven, renderer-engaged, or oracle-compared.}
+\caption{Target, platform, graphics, audio and framework are separate axes. Verification belongs
+to the exact composed route; source or configuration admission alone is not execution evidence.}
 \label{fig:platform-routes}
 \end{figure}

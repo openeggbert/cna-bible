@@ -1,10 +1,11 @@
-\chapter{OpenGL I: The Independent Compatibility Ladder}
+\chapter[OpenGL I: The Independent Compatibility Ladder]{OpenGL I: The Independent\\Compatibility Ladder}
 \label{ch:opengl-fixed-profiles}
 
 CNA does not have one OpenGL renderer with a version switch.  It has several independent
 families that happen to speak related APIs.  This chapter follows the compatibility ladder:
 desktop OpenGL~1.x through \texttt{OPENGL1}, the GLSL~1.10 transition through
-\texttt{OPENGL2}, and mobile fixed function through \texttt{OPENGLES1}.  Chapter~\ref{ch:opengl-programmable}
+\texttt{OPENGL2}, mobile fixed function through \texttt{OPENGLES1}, and the CPU
+\texttt{TINYGL} family. Chapter~\ref{ch:opengl-programmable}
 then covers the five-profile EasyGL family, \texttt{OPENGL4}, and \texttt{PORTABLEGL}.
 
 That distinction matters operationally.  Selecting a newer identity does not mutate an older
@@ -12,7 +13,7 @@ implementation, and a fix in one family does not automatically reach another.  T
 contract is shared; context creation, resource ownership, draw submission, and evidence are
 not.
 
-\section{Three identities, three implementation families}
+\section{Four identities, four implementation families}
 
 \begin{longtable}{p{0.16\textwidth}p{0.18\textwidth}p{0.22\textwidth}p{0.31\textwidth}}
 \toprule
@@ -26,10 +27,11 @@ Identity & Pipeline & Shader delivery & Deliberate boundary \\
 \texttt{OPENGL1} & desktop fixed function & none & OpenGL~1.x concepts; optional FBO and query entry points are detected at runtime \\
 \texttt{OPENGL2} & programmable compatibility profile & GLSL~1.10 source compiled by the driver & compatibility-profile state plus shaders; MRT and queries depend on loaded functions \\
 \texttt{OPENGLES1} & mobile fixed function & none & OpenGL ES~1.1; no MRT and no occlusion-query contract \\
+\texttt{TINYGL} & CPU fixed function & none & one software framebuffer; no render targets, cube/volume textures, or queries \\
 \bottomrule
 \end{longtable}
 
-All three implement CNA directly.  None routes through EasyGL, and none is an alias for an
+All four implement CNA directly. None routes through EasyGL, and none is an alias for an
 EasyGL profile.  The apparently similar names therefore describe API eras, not modes of one
 code base.
 
@@ -122,6 +124,20 @@ Chapter~\ref{ch:renderer-contract}: supported fixed-function cases remain native
 still a crucial portability warning: successful submission does not prove that the requested
 effect model survived dispatch.
 
+\section{TINYGL: fixed function as a CPU rasterizer}
+
+\texttt{TINYGL} fetches the pinned C-Chads TinyGL revision and renders a fixed-function OpenGL
+1.x-style pipeline into its own CPU framebuffer. It owns ordinary and indexed extended draws,
+including colored, textured, colored-textured, normal-textured and skinned layouts. It reports
+only \texttt{ThreeD} and \texttt{WireFrame} among the graphics capabilities.
+
+The single-context framebuffer is also the hard boundary: there is no FBO model, so
+\cnaclass{RenderTarget2D}, cube targets and MRT are unavailable; texture cubes, volume textures,
+occlusion queries, programmable effects, instancing, multi-stream input, MSAA and anisotropic
+filtering are refused. This is a real CPU 3D renderer, not the SOFTWARE family and not a native
+OpenGL context. The tag contains fourteen TinyGL suites with 113 named checks and a dedicated
+workflow; this edition records their presence rather than claiming a fresh workflow run.
+
 \section{The same contract does not imply the same proof}
 
 The three families require different verification environments.
@@ -138,6 +154,7 @@ Identity & Strongest practical path & Remaining evidence boundary \\
 \texttt{OPENGL1} & native Linux or Windows system OpenGL, including extension-dependent cases & driver variation in FBO and query availability \\
 \texttt{OPENGL2} & compatibility-profile desktop OpenGL with real shader compilation & loaded-function and GLSL-driver variation \\
 \texttt{OPENGLES1} & custom Mesa build with GLES1 enabled & specialized environment is not the stock developer path \\
+\texttt{TINYGL} & native CPU execution with framebuffer readback & fixed-function subset and fetched dependency \\
 \bottomrule
 \end{longtable}
 
@@ -150,11 +167,12 @@ context, submits pixels through the family-specific path, and observes the resul
 Choose \texttt{OPENGL1} only when fixed-function desktop compatibility is itself a goal.
 Choose \texttt{OPENGL2} when GLSL~1.10 and compatibility contexts match the deployment target.
 Choose \texttt{OPENGLES1} when the ES~1.1 environment is intentional and its fixed-function
-ceiling is acceptable.  For a broader programmable profile set, continue with
-Chapter~\ref{ch:opengl-programmable}; a similar API surname does not erase the implementation
+ceiling is acceptable. For a broader programmable profile set, continue with
+Chapter~\ref{ch:opengl-programmable}. Choose \texttt{TINYGL} when a CPU-only fixed pipeline is
+the intended deployment; a similar API surname does not erase the implementation
 boundary.
 
-Before shipping on any of the three, verify four things on the target driver:
+Before shipping on any of the four, verify four things on the target implementation:
 
 \begin{enumerate}
   \item the selected identity reported at runtime is the one configured at build time;

@@ -9,16 +9,86 @@ triage upstream.
 |---|---|
 | Audited revision | CNA `develop` @ `7a64362efef4119bf880459ef1704fb2c52199e2` (2026-08-11) |
 | Sibling revisions | sharp-runtime `f827a6c5`, easy-gl `0b46d35`, meta-gl `571d3a6`, free-direct `934f72f`, free-api `53d7a31` |
-| Method | Static source reading, `git` history, and build-configuration analysis across ten parallel audit passes |
-| **Not done** | **No build, no test run, no execution of any kind.** Every finding below is derived from code, not reproduced at runtime. |
+| Original method | Static source reading, `git` history, and build-configuration analysis across ten parallel audit passes |
+| **Not done in the original audit** | **No build, no test run, no execution of any kind.** Findings 001--054 were initially derived from code, not reproduced at runtime. |
 
 Full evidence for each item is in `audit/*.md`; the curated matrix and the documentation-staleness
 log are in `AUDIT.md`.
+
+## Alpha.1 re-triage (2026-08-20)
+
+The original entries below remain a historical record of the `7a64362e` audit.  They were
+re-read against immutable tag `v0.1.0-alpha.1` @
+`1bb2145d99ed572dd4eb15009c34e2e5f410fcf0`.  “Fixed in source” does not mean runtime-reproduced;
+the alpha.1 audit configured the tag and compile-checked its version API, but did not execute a
+54-defect reproduction campaign. It did separately reproduce the two new C API build failures
+recorded as 059 and 060.
+
+| ID | Tag disposition | Current note |
+|---:|---|---|
+| 001 | open | Aliased inverse/transpose path remains. |
+| 002 | open | Frustum containment distance gap remains. |
+| 003 | open | Reverse containment implementation remains. |
+| 004 | open | Ray intersection main case remains unimplemented. |
+| 005 | **fixed in source** | Model scratch storage is now `thread_local`. |
+| 006 | open | SpriteEffect parameter initialization issue remains despite compiled-effect work. |
+| 007 | narrowed | Primitive topology support expanded; importer exception-type boundary remains. |
+| 008 | open | Generic `.cnj` resolution can still precede media-native extensions. |
+| 009 | **fixed in source** | Morph-normal handling now covers the emitted stride set. |
+| 010 | **fixed in source** | Runtime import reporting now carries the UV mismatch. |
+| 011 | open | WebGPU/bgfx custom-effect capability mismatch remains. |
+| 012 | open | Occlusion-query capability/factory mismatch remains. |
+| 013 | open | DIRECTX6/7/8 stencil capability reporting remains inconsistent. |
+| 014 | **fixed in source** | LLGL slope-scale bias is capability-qualified. |
+| 015 | **fixed in source** | Sokol Texture3D capability/resource contract is no longer the recorded false positive. |
+| 016 | open | CNJ JSON recursion remains unbounded. |
+| 017 | open | Whole-file XNB maximum remains unenforced. |
+| 018 | **fixed in source** | glTF validation and `extensionsRequired` handling were added. |
+| 019 | open | Repeated `Game::Dispose()` event behavior remains. |
+| 020 | open | Throwing-component disposal state remains vulnerable. |
+| 021 | open | `ContentManager::Unload()` disposal gap remains. |
+| 022 | open | Nonzero XNB reader versions remain blanket-refused. |
+| 023 | open | Existing-object deserialization flag remains unused. |
+| 024 | open | Exception-base divergence remains undocumented at the contract level. |
+| 025 | open | Plane-intersection documentation inversion remains. |
+| 026 | open | Exact-pi field-of-view boundary remains accepted. |
+| 027 | open | Clamp inverted-range behavior remains inconsistent. |
+| 028 | open | Curve tangent degeneracy epsilons remain inconsistent. |
+| 029 | open | Raw-address renderer resource tracking/copy escape remains. |
+| 030 | open | General and two Input workflow legs still use invalid selector `EASYGL`. |
+| 031 | open | Stale validation paths remain in affected gates. |
+| 032 | open | Link-closure gates remain suppressed under important project configurations. |
+| 033 | open | Direct2D release-gate script is still not an effective workflow gate. |
+| 034 | open | Wine helper still carries a developer-specific default. |
+| 035 | open | Devices selector/comment population mismatch remains. |
+| 036 | narrowed | Orchestrator checks improved, but it is still not a comprehensive automatic hard gate. |
+| 037 | open | Wicked's DX compiler runtime lookup remains working-directory-sensitive. |
+| 038 | open | bgfx shader generation still lacks a binding staleness/CI gate. |
+| 039 | open | Conditional built-in reader registration expectation remains platform-sensitive. |
+| 040 | **fixed in source** | The demo now follows the platform entrypoint policy. |
+| 041 | narrowed | TitleContainer gained C API consumers; the original ContentManager reachability gap remains. |
+| 042 | open | Math diagnostic helpers remain unused. |
+| 043 | architecture decision | The type is retained deliberately; not treated as a current defect. |
+| 044 | open | ResourceContentManager stream dispatch remains a stub. |
+| 045 | narrowed | Draco and NanoVG notices were added; cgltf/stb attribution remains incomplete. |
+| 046 | open | StorageContainer containment gap remains high risk. |
+| 047 | open | Glob matcher remains without direct tests. |
+| 048 | **fixed in source** | Sensors now acquire the selected platform sensor subsystem. |
+| 049 | open | Public `Dispose(bool)` visibility/lifetime trap remains. |
+| 050 | open | Dispatcher remains a no-op; synchronous-complete callers only narrow exposure. |
+| 051 | **fixed in source** | FFmpeg availability and native-Windows source selection are aligned. |
+| 052 | open | Advertised Song extensions still exceed the configured decoder set. |
+| 053 | open | Same capability issue as 011; retained as the later cross-area duplicate. |
+| 054 | narrowed | HEADLESS/SOFTWARE MRT and headless-query claims were corrected; remaining query/WebGPU mismatches stay open. |
+
+New tag-level documentation/build findings are CNA-BUG-055 through CNA-BUG-060 below.  The tag
+delta report contains the wider contradiction list.
 
 ## How to read this
 
 **Confidence** is about the *finding*, not about severity:
 
+- **REPRODUCED** — an exact-tag build or execution produced the stated failure.
 - **VERIFIED** — the code was read directly and the defect follows from it mechanically.
 - **STRONG** — the code was read; the consequence is inferred but hard to escape.
 - **PROBABLE** — one leg of the argument could not be checked without building.
@@ -440,7 +510,7 @@ devices workflow still uses hand-written `--gtest_filter` strings.
 **Severity: low · Confidence: VERIFIED · Area: scripts**
 
 The script presents itself as the cross-renderer smoke orchestrator but is **invoked from nowhere**
-in the repository. It also covers only 4 of 46 identities, ignores the build exit code
+in the repository. At alpha.1 it still covers only 4 of 50 identities, ignores the build exit code
 (`:47-51`), reports configure failures as SKIPPED rather than FAIL (`:41-43`), excludes both
 golden-image renderers, and uses `-j4`.
 
@@ -548,7 +618,7 @@ naming because they would actively mislead a reader or a future audit:
    `docs/README.md`, and CNA's own `AUDIT.md:104`.
 3. **`docs/graphics-renderer-feature-matrix.md:3` self-labels "Master, up-to-date"** while
    carrying rows refuted by the code (Tasks 871 and 872 marked open, both closed), omitting FNA3D
-   entirely, and covering 4 renderers where there are 42 families.
+   entirely, and covering 4 renderers where there are 46 families.
 
 A related structural issue: **the entire `audit/` tree (2,297 `.audit.md` files) is keyed on the
 pre-modularization layout** and lists at least one already-fixed HIGH finding as open
@@ -691,17 +761,83 @@ Full 42-family evidence: `audit/renderer-draw-path-matrix.md` §4.
 
 ---
 
+## 11. Alpha.1 release-document and generated-record defects
+
+### CNA-BUG-055 — Release documentation publishes two stale renderer counts
+**Severity: low · Confidence: VERIFIED · Area: release docs / renderer registry**
+
+`CHANGELOG.md` says the release contains 49 public renderer identities, and
+`docs/runtime-renderer-selection.md` refers to 45 factories.  The authoritative tag registries
+contain 50 identities and `modules/renderers` contains 46 implementation-family directories after
+excluding common infrastructure.  This is a documentation defect; the CMake/header registries and
+the book's pin-derived verifier agree on 50/46.
+
+### CNA-BUG-056 — The C API release-gate label names ABI 0.1.0 while the ABI is 0.7.0
+**Severity: medium · Confidence: VERIFIED · Area: native C API release records**
+
+The generated release-gate data carries a stale 0.1.0 ABI label.  The public
+`modules/c-api/include/CNA/C/abi.h`, ABI baseline and versioning document agree on **0.7.0**.
+Because product 0.1.0-alpha.1 and C ABI 0.7.0 are independently versioned, substituting the
+product's numeric core would misidentify compatibility.
+
+### CNA-BUG-057 — Effect documentation still describes the reader as always throwing
+**Severity: low · Confidence: VERIFIED · Area: Content / Effects documentation**
+
+The built-in XNB reader commentary still says EffectReader is an unconditional refusal.  At the
+tag, EffectReader passes the byte payload to the functional bounded XNA/FNA D3D9 Effect Framework
+constructor.  The opposite blanket claim would now mislead ports away from an implemented FNA3D
+route.  This does not imply `.fx` source, DXBC or MGFX support.
+
+### CNA-BUG-058 — C API limitations prose is stale against its generated inventory
+**Severity: low · Confidence: VERIFIED · Area: native C API generated documentation**
+
+The limitations prose reports 6,415 canonical declarations.  The checked-in generated inventory
+at the tag partitions **6,712**: 6,317 implemented, 15 partial, zero planned and 380 not
+applicable.  The generated data is the reproducible authority; the older prose total is not.
+
+### CNA-BUG-059 — The alpha.1 C API cannot compile after NanoVG became the 50th renderer identity
+**Severity: high · Confidence: REPRODUCED · Area: native C API / renderer registry**
+
+An exact-tag GNU 14.2 build with `CNA_BUILD_C_API=ON`, Net enabled and
+HEADLESS/HEADLESS/NULL reaches `modules/c-api/src/CnaCApiCoreExt.cpp:250` and fails its deliberate
+static assertion: `RendererIdentities.size()` is 49 while `CanonicalRendererCount()` is 50.
+`GraphicsRendererType.hpp` and the canonical registry contain `NanoVg`/`NANOVG`; the C public
+constants in `CNA/C/graphics.h` end at `CNA_GRAPHICS_RENDERER_PIXIJS`, and the mapping table has no
+NanoVG row. The same omission explains the stale 49-identity release prose.
+
+This is not a renderer-specific runtime limitation: the adapter translation unit is compiled for
+a HEADLESS build and the invariant intentionally covers the complete public identity vocabulary,
+so `cna_c_api` cannot be produced in the ordinary configuration. The five dedicated C API
+workflows validate generated records but do not build this final target; the source-only aggregate
+release checker consequently reports Ready despite the compile failure.
+
+### CNA-BUG-060 — C API plus disabled Net passes configuration and fails on absent GamerServices
+**Severity: medium · Confidence: REPRODUCED · Area: native C API / CMake composition**
+
+`modules/CMakeLists.txt` adds `gamer-services` and `net` only under `CNA_ENABLE_NET`. The C API is
+added independently, yet its target unconditionally links `CNA_Net` and `CNA_GamerServices`, and
+`CnaCApiDetail.hpp` unconditionally includes GamerServices exception headers. An exact-tag
+HEADLESS/HEADLESS/NULL configure with `CNA_BUILD_C_API=ON` and `CNA_ENABLE_NET=OFF` succeeds;
+compilation then stops because `GameUpdateRequiredException.hpp` is not on the target's include
+path. CMake should either require/force Net for this ABI surface or reject the incompatible tuple
+during configuration.
+
+---
+
 ## What this list does not cover
 
 Stated plainly so nothing here is over-read:
 
-- **Nothing was executed.** No build, no test, no renderer was run. Every finding is static.
+- **The original defects were not individually executed.** The alpha.1 tag was configured and its
+  version API was compile/run-smoked, but no 001--054 reproduction or renderer campaign was run.
+  Re-triage dispositions are source-derived. Findings 059 and 060 are the exceptions: both C API
+  failures were reproduced by exact-tag builds.
   Severity judgements in particular would benefit from reproduction.
 - **The draw-path matrix is static, not a 42-family runtime reproduction.**
   `audit/renderer-draw-path-matrix.md` exhaustively maps both ordinary `Draw*Ex` routes, RT2D, MRT
   and occlusion-query behavior from source. Native API/device-conditional rows remain labelled
   conditional; no renderer was executed as part of that matrix.
-- **Only five of 46 renderers were checked for oracle coverage.** Only `directx9`, `easygl`,
+- **Only five of 50 renderers have the named XNA-oracle binary routes.** Only `directx9`, `easygl`,
   `fna3d`, `opengles1` and `skia` build a `cna_oracle_render_*` binary, and only the D3D9 one is a
   hard gate; the others' pixel verification is entirely self-referential.
 - **Sibling repositories were audited only where CNA depends on them.** free-direct and free-api

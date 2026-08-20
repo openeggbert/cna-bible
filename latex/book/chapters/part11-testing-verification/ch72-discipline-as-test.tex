@@ -84,19 +84,21 @@ only an untested second program.
 
 \section{Automation is narrower than apparatus}
 
-The audited tree contains 56 files under \texttt{scripts}.  Thirty scripts are wired as CTest
-commands, but only seven are referenced by CI workflow files.  Five of those seven live in the
-dispatch-only Windows D3D workflow; routine push/PR automation directly exercises only the two
-HTML-DOM runner layers from that set.  CTest wiring still matters, but it exists only when the
-corresponding renderer configure is built and run.
+The tag's script layer is reached through CTest registrations, direct workflow commands and
+source-only generated-record checks.  CTest wiring still matters only when the corresponding
+configuration is built and run; a Python checker in a workflow is a different population from a
+renderer executable registered conditionally.
 
-The eight workflows tell a similarly uneven story.  Six trigger automatically and two are
-manual-only.  The Windows D3D workflow's unrestricted default build includes \texttt{CnaTests},
+The 21 workflows tell an uneven but broader story.  Nineteen have push or pull-request triggers
+and Direct3D/GDI are manual-only.  Multi-renderer, platform/audio, Apple, glTF, TinyGL, NanoVG and
+C API records now have dedicated routes.  The Windows D3D workflow's unrestricted default build includes \texttt{CnaTests},
 despite a stale header comment saying otherwise.  Its renderer-label selectors do not run the
 general discovered corpus, although the Direct2D leg does run the filtered
 \texttt{Direct2D\_Unit} entry through that binary.  The GDI workflow instead names 17 standalone
 targets and never builds \texttt{CnaTests}.  Metal has a macOS workflow, HTML-DOM has a browser
-workflow, and Devices has a UBSan path, while many manual scripts have no automated caller.
+workflow, and Devices has a UBSan path.  Conversely, the general job and two Input legs still use
+the invalid \texttt{EASYGL} value and never reach compilation; more files do not imply broader
+executed coverage.
 
 Automation records should therefore distinguish four states: script exists, script is a CTest,
 workflow references it, and workflow triggers for the change in question.  Collapsing them into

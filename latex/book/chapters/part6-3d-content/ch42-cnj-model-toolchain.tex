@@ -2,11 +2,11 @@
 \index{CNJ model toolchain}\index{gltf to cnj@gltf\_to\_cnj}
 \label{ch:cnj-model-toolchain}
 
-Direct runtime glTF loading is convenient, but it returns only the first mesh group and fixes
-unit scale at~1. The offline \texttt{cna\_tool\_gltf\_to\_cnj} path uses the same semantic
-import core and material packing, then writes every group as explicit CNJ and binary sidecars.
-It is the reproducible path for multi-skin files, controlled scaling, and inspectable build
-artifacts.
+Direct runtime glTF loading is convenient and now retains all scene groups in one
+\cnaclass{Model}, but fixes unit scale at~1. The offline
+\texttt{cna\_tool\_gltf\_to\_cnj} path uses the same semantic import core and material packing,
+then writes each group as explicit CNJ and binary sidecars. It is the reproducible path for
+controlled scaling, one-output-per-group packaging, and inspectable build artifacts.
 
 \section{A renderer-free build tool}
 
@@ -30,8 +30,9 @@ descriptor and sidecars:
   \item extracted base, occlusion, and other texture images with stable suffixes.
 \end{itemize}
 
-Multiple groups receive stable \texttt{\_static} or skin-name suffixes. Unlike runtime
-\texttt{groups.front()}, no later group is silently discarded.
+Multiple groups receive stable \texttt{\_static} or skin-name suffixes. Runtime and offline
+routes now preserve the same group set but package it differently: one multi-skin runtime model
+versus separately named converter outputs.
 
 \section{The Model envelope is version 2}
 
@@ -44,6 +45,11 @@ Version~2 adds a top-level \texttt{bones} array. Each record carries a name, par
 16-float local transform, and records are parent-before-child with an identity root at index~0.
 Each mesh also receives a \texttt{parentBone} index. These fields preserve the glTF scene
 hierarchy and rigid instancing placement that a flat list of pre-transformed meshes could not.
+
+The same version-2 envelope can also carry the alpha.1 import report, cameras, rigid clips,
+material-variant state, topology, multi-UV material metadata, and newer PBR fields. These are
+additive fields within the per-type version ceiling, not evidence that every CNJ type accepts a
+new global format version. The reader supplies empty/default carriers for older Model documents.
 
 Those last two shape rules are producer invariants, not fully validated schema rules. The reader
 always constructs entry~0 as its root and does not apply that entry's serialized transform or

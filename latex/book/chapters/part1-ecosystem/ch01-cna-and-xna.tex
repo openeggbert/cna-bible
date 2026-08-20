@@ -8,9 +8,10 @@
 CNA is a native C\texttt{++} reimplementation of the \emph{XNA 4.0} programming model, compiled
 with a C\texttt{++}23 toolchain floor but written in a disciplined C\texttt{++}17/20 idiom. It
 reimplements the game framework Microsoft shipped for the Xbox 360 and Windows from roughly 2006
-to 2013. CNA itself is built on SDL3, with rendering delegated to one of
-\RendererIdentityCount{} public identities chosen at build time and mapped to
-\RendererFamilyCount{} implementation families.
+to 2013. CNA's default platform and audio implementations use SDL3, but those are independent
+configuration axes. Rendering is delegated to one of \RendererIdentityCount{} public identities
+mapped to \RendererFamilyCount{} implementation families; an opt-in build may compile several
+families and select one at runtime.
 
 That description contains three separate engineering problems which organize the rest of the
 book:
@@ -57,7 +58,7 @@ a small, coherent \cnaclass{Game} / \cnaclass{GraphicsDevice} / \cnaclass{Sprite
 vocabulary that a whole generation of independent and student developers learned game
 programming on. Microsoft discontinued active XNA development years ago; the community
 response was \textbf{FNA}, a faithful open-source reimplementation of the XNA 4.0 API in
-C\#. The pinned local reference selects its SDL3 platform layer by default and retains SDL2 as
+C\#. The pinned local reference selects its SDL3 platform implementation by default and retains SDL2 as
 an explicit compatibility choice through \texttt{FNA\_PLATFORM\_BACKEND=SDL2}; describing FNA
 simply as an SDL2 runtime is therefore historical shorthand, not its current default.
 
@@ -77,8 +78,9 @@ returns to in this book's migration and case-study chapters, using the real port
 \emph{Speedy Blupi} and \emph{Planet Blupi} (via the \texttt{free-direct} sibling project)
 as worked examples.
 
-``Why now'' is not merely an argument from intent.  At the pin, CNA has fourteen physical
-framework modules, \RendererIdentityCount{} public renderer identities over
+``Why now'' is not merely an argument from intent. At the pin, CNA has fifteen physical
+framework modules, an optional native C API source module (whose alpha.1 final target is
+compile-blocked), \RendererIdentityCount{} public renderer identities over
 \RendererFamilyCount{} implementation families, an XNB
 reader stack, its own CNJ format, a shared runtime/offline glTF importer, and implemented Media
 types backed by file parsing, FFmpeg and SDL3\_mixer.  Those facts establish breadth; they do not
@@ -139,10 +141,12 @@ It is worth being precise about the negative space, because CNA's own documentat
         MGCB-style import/process/write toolchain and no automatic reader bootstrap. A game must
         register the built-in readers before loading XNB; CNJ, loose files, and glTF are separate
         routes. Chapters~\ref{ch:xnb-container}--\ref{ch:cnj-format} define those boundaries.
-  \item \textbf{Not universally compiled-shader compatible.} CNA has four distinct answers to
-        XNA's \texttt{.fx}: reimplement stock effects, recompile accepted Microsoft source,
-        execute FNA's \texttt{.fxb} path on FNA3D, or bypass it with \cnaclass{ShaderEffect}.
-        No one arbitrary bytecode route works identically on all \RendererFamilyCount{} families;
+  \item \textbf{Not universally compiled-shader compatible.} CNA has distinct answers to
+        XNA effects: renderer-owned stock effects; compiled XNA/FNA D3D9 Effect Framework bytecode
+        accepted by the public \cnaclass{Effect} constructor on qualified renderers; and
+        renderer-specific custom source or program forms through \cnaclass{ShaderEffect}.
+        \texttt{.fx} or HLSL source, DXBC and MGFX are not interchangeable with that compiled
+        Effect Framework format. No one route works identically on all \RendererFamilyCount{} families;
         Chapter~\ref{ch:shader-fx-gap}
         separates those contracts.
   \item \textbf{Not binary-compatible with real Xbox Live.} The \cnaclass{GamerServices}
@@ -218,22 +222,27 @@ mechanism (a CTest binary, a doc file, a task number) behind it --- and where th
 own documentation flags something as a dated snapshot, an estimate, or a known open gap, this
 book preserves that qualification rather than erasing it for a cleaner sentence.
 
-\section{A project built in numbered phases, not dated releases}
+\section{The first tagged release and the continuing phase workflow}
 
-CNA has no version-number releases in the conventional sense --- no \texttt{v1.0} tag, no
-semantic-versioning scheme. Its own commit history is the honest record: the first commit lands
-on 2025-02-22, and the pinned history contains 4{,}921 commits,
-spanning roughly a year and a half of continuous, incremental work with no gap long enough to
-call a hiatus. What the project uses instead of version numbers is a strictly incrementing
-\textbf{Phase} counter, tracked in \texttt{CHECKLIST.md} and the per-subsystem \texttt{plan\_*.md}
-files: each phase names a bounded unit of work (a renderer reaching a specific parity milestone,
-a namespace passing a specific audit), is broken into individually numbered \textbf{Tasks}, and
-is closed only once its own regression suite is re-run clean. One recorded BGFX phase moved the
-renderer from a narrower feature set to a broad 2D/3D pixel corpus; later work continued beyond
-that historical closure. Chapter~\ref{ch:project-practice} covers the Task/Phase discipline as a working
-methodology, not just a historical curiosity --- what a task actually looks like, how large ones
-get split, and why every task closes with a re-run regression count rather than a checked box
-alone.
+CNA developed continuously from 2025-02-22 without conventional releases while numbered phases
+and tasks carried engineering state. On 2026-08-20 the annotated
+\CnaEditionTag{} tag established the first Semantic Versioning release. The product version is
+assembled from CMake's numeric \texttt{0.1.0} project version and the separate
+\texttt{alpha.1} prerelease field. CMake prints the complete version during configuration,
+\texttt{cmake/Version.cmake} generates \path{CNA/Version.hpp}, Doxygen uses the same product
+version, and the changelog and release procedure name the tag spelling with its leading
+\texttt{v}.
+
+The leading zero and alpha qualifier matter. The release policy permits compatibility-breaking
+changes before 1.0 when the minor or prerelease version advances; alpha.1 should not be read as a
+stable 1.0-quality API promise. The native C ABI has its own experimental version, 0.7.0, described
+in Appendix~\ref{ch:native-c-api}; product and ABI versions answer different questions.
+
+SemVer did not replace the project's strictly incrementing \textbf{Phase} counter. Phases in
+\texttt{CHECKLIST.md} and the per-subsystem \texttt{plan\_*.md} files still name bounded work,
+split it into numbered tasks, and retain closure evidence. They are an engineering workflow;
+tags identify publishable source states. Chapter~\ref{ch:project-practice} covers how the two now
+coexist.
 
 This phase-based, task-tracked structure supplies valuable historical evidence, but a closing
 count remains a snapshot of one configuration.  This edition preserves such a number only with

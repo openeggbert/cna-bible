@@ -3,13 +3,12 @@
 \label{ch:shader-fx-gap}
 \index{shader}\index{.fx}
 
-There is no single CNA answer to XNA effects.  The current tree contains four different
+There is no single CNA answer to XNA effects. The current tree contains four different
 shader-delivery strategies: CNA-owned implementations of the stock semantics, recompilation
-of Microsoft's stock HLSL sources on D3D9, execution of Microsoft's compiled stock bytecode
-through FNA3D and MojoShader, and the public renderer-specific \cnaclass{ShaderEffect} route.
-This chapter separates those strategies before naming the narrower compatibility gap that
-remains: a game still cannot load an arbitrary user-authored compiled \texttt{.fx} effect and
-drive its reflected parameters through the common CNA renderer contract.
+of Microsoft's stock HLSL sources on D3D9, execution of compiled XNA/FNA Effect Framework
+bytecode through qualified renderer runtimes, and the renderer-specific \cnaclass{ShaderEffect}
+route. This chapter separates those strategies and, especially, formats that share a ``compiled
+shader'' description but are not interchangeable.
 
 \input{figures/fig-shader-routes.tex}
 
@@ -25,25 +24,27 @@ bytecode is interpreted directly; FNA instead ships MojoShader, a from-scratch b
 GLSL (or other target shading languages) at load time, which is exactly what lets FNA run
 historical XNA effect content without its original source.
 
-\section{The public custom-effect boundary}
+\section{The public compiled-effect boundary}
 
-Two public entry points state the boundary directly.  The \cnaclass{Effect} constructor taking
-a byte buffer ignores that buffer and always throws \texttt{NotImplementedException}
-(Chapter~\ref{ch:stock-effects}); the content registry recognizes the general XNA
-\texttt{EffectReader} but installs a known-unsupported reader that throws
-\texttt{ContentLoadException} with the reason ``compiled platform shader bytecode.''  Stock
-effect readers are registered separately and do work.
+Two public entry points now provide one bounded route. The \cnaclass{Effect} byte-buffer
+constructor validates an XNA/FNA Direct3D~9 Effect Framework container, asks the active renderer
+for \texttt{GraphicsCapability::CompiledEffects}, creates its compiled runtime, and builds the
+reflected object graph. The general XNB \texttt{EffectReader} reads a length-prefixed payload and
+calls that same constructor. It wraps constructor/backend failures in
+\texttt{ContentLoadException}; it is not a permanent refusal reader at this tag.
 
-The missing piece is larger than parsing bytecode.  CNA's common draw boundary is the closed
-\cnaclass{GpuDrawParams} aggregate: each built-in effect fills named C\texttt{++} fields and each
-renderer switch-selects one of its already known programs.  It has no reflected arbitrary
-parameter table, technique/pass state, or common parameter-to-uniform binding protocol.  A
-general parser would therefore still need a portable representation and binding path for the
-program it decoded.  The project's planning documents
-(\texttt{docs/shader-effect-vs-fx-bytecode.md} and \texttt{docs/fx-bytecode-support-plan.md})
-scope that broader work, but their historical dependency claims must not be mistaken for the
-current source tree: MojoShader is already present for the deliberately closed FNA3D stock path
-described below.
+The route reflects parameters, arrays, structures, annotations, techniques, passes, shader
+objects, sampler/texture bindings, and pass state. \cnaclass{EffectPass::Apply()} synchronizes
+mutable values, selects the technique/pass, applies native effect state, and makes the effect
+current for SpriteBatch or ordinary 3D draws on an implementing renderer. \texttt{Clone()}
+duplicates the native runtime, values and current-technique choice while keeping resources tied
+to the same graphics device.
+
+Admission is deliberately narrow. The buffer must be an Effect Framework container (including
+the XNA wrapper form), at most 64~MiB, with bounded reflection/object graphs. A file containing
+\texttt{.fx} source, HLSL text, raw DXBC, or MonoGame's \texttt{MGFX} container is a different
+input and is refused. The feature also needs both a parser and a renderer runtime; metadata
+parsing alone never promotes the capability.
 
 Do not attach a current sample count to that gap without retesting the samples.  The pinned
 \texttt{cna-samples} catalog contains 153 source-archive entries split among completed ports,
@@ -74,21 +75,38 @@ the recorded investigation attributes them to the compiler-47 versus XNA-era com
 difference after testing the available optimization flags.  This is unusually strong stock
 effect evidence, but it still does not compile a game's arbitrary \texttt{.fx} content.
 
-\section{Answer three: execute the stock bytecode through FNA3D}
+\section{Answer three: execute compiled Effect Framework bytecode}
 
-FNA3D is the important counterexample to any claim that CNA contains no bytecode compatibility.
+FNA3D is the always-enabled implementation in this release. It is also the provenance route for
+the repository's six stock fixtures.
 The repository commits six FNA-derived XNA~4.0 \texttt{.fxb} files: Sprite, Basic, AlphaTest,
 DualTexture, EnvironmentMap, and Skinned effects, 106~KB in total.  The build embeds those exact
 blobs; renderer initialization calls \texttt{FNA3D\_CreateEffect}, which runs them through the
 pinned MojoShader dependency and exposes their parameter metadata.  Draw dispatch selects the
 original program's shader variant and applies its named parameters.
 
-This route is intentionally closed.  FNA3D exposes no source-string compiler, CNA's FNA3D
-\texttt{CreateEffectRenderer()} returns null, and the renderer reports
-\texttt{GraphicsCapability::CustomEffects == false}.  The committed blobs are also runtime
-artifacts rather than in-repository build products because producing \texttt{.fxb} requires the
-old \texttt{fxc} toolchain.  FNA3D therefore proves that real XNA stock bytecode executes in CNA;
-it does not make the public arbitrary-effect constructor or general XNB reader work.
+FNA3D exposes no source-string compiler, CNA's FNA3D \texttt{CreateEffectRenderer()} returns null,
+and the renderer reports \texttt{GraphicsCapability::CustomEffects == false}. The committed
+blobs are runtime artifacts rather than in-repository build products because producing them
+requires the old effect toolchain. Nevertheless, the public constructor is no longer closed to
+those six files: other structurally valid game-authored Effect Framework binaries enter the same
+FNA3D runtime and reflection path.
+
+Three other families have opt-in implementations, all disabled by default because they add the
+MojoShader dependency:
+
+\begin{itemize}
+  \item \texttt{CNA\_SDL\_GPU\_COMPILED\_EFFECTS} uses MojoShader's SDL\_GPU adapter and SPIR-V;
+  \item \texttt{CNA\_EASYGL\_COMPILED\_EFFECTS} uses its OpenGL adapter for the selected EasyGL
+    profile; and
+  \item \texttt{CNA\_VULKAN\_COMPILED\_EFFECTS} uses CNA's Vulkan runtime over MojoShader's
+    portable SPIR-V profile.
+\end{itemize}
+
+With an option off, the same renderer reports \texttt{CompiledEffects} false and construction
+fails explicitly. The tag's shader-route document lists FNA3D, SDL\_GPU and EasyGL in its table but
+describes Vulkan only later in prose; the Vulkan CMake option, runtime, tests and capability are
+the current source authority.
 
 \section{Answer four: bypass \texttt{.fx} with ShaderEffect}
 
@@ -144,8 +162,8 @@ through its fixed CPU shading path, whereas Headless records compilation, bind, 
 2D-texture activity without producing shader pixels. These are useful contracts, but calling
 either one custom-shader support would be misleading.
 
-None of these \cnaclass{ShaderEffect} paths is bytecode compatibility. A game cannot reuse an existing compiled
-\texttt{.fx} blob: it must provide renderer-specific source for EasyGL, SDL GPU, and Direct3D,
+None of these \cnaclass{ShaderEffect} paths is the compiled Effect Framework route. A game using
+that API must provide renderer-specific source for EasyGL, SDL GPU, and Direct3D,
 or precompile the exact SPIR-V contract Vulkan expects. Even among the working implementations,
 the public setter names and supported draw shapes are not portable promises. The API is thus a
 real, pixel-verified alternative on a bounded set of paths, not a write-once shader format for
@@ -407,15 +425,15 @@ correct by coincidence.
 \section{The honest summary}
 
 If your porting target relies only on \cnaclass{SpriteBatch} and the five public stock effects
-from Chapter~\ref{ch:stock-effects}, it can use CNA's renderer-owned implementations; FNA3D even
-executes the six original stock blobs, including the internal sprite program.  If the port loads
-a game-authored compiled \texttt{.fx} shader, the public path still stops at the throwing
-constructor or known-unsupported content reader on every renderer.  What changes per renderer is
-whether a \cnaclass{ShaderEffect} rewrite is usable and which contract it must target: EasyGL
+from Chapter~\ref{ch:stock-effects}, it can use CNA's renderer-owned implementations. If it loads
+compiled XNA/FNA Effect Framework bytecode, the public constructor and XNB reader work on FNA3D
+and on opt-in SDL\_GPU, EasyGL and Vulkan configurations. They do not compile \texttt{.fx}/HLSL
+source and do not accept DXBC or MGFX. A separate \cnaclass{ShaderEffect} migration still depends
+on its renderer-specific contract: EasyGL
 takes GLSL and alone extends the effect to general 3D draws; SDL GPU takes GLSL through shaderc;
 Vulkan takes precompiled SPIR-V; D3D9/11/12 take HLSL for SpriteBatch; BGFX has no valid public
 path; and the non-programmable or not-yet-wired renderers reject, simulate, or only record the
-object.  The accurate statement is therefore neither ``CNA has no XNA bytecode support'' nor
-``effects are compatible.''  Stock semantics, stock source recompilation, closed stock-bytecode
-execution, and renderer-specific custom programs are real; arbitrary compiled effects plus
-general parameter plumbing remain the bounded gap.
+object. The accurate statement is therefore neither ``compiled effects are unsupported'' nor
+``all effect formats work everywhere.'' Stock semantics, D3D9 stock-source recompilation,
+renderer-qualified Effect Framework execution with reflection/state/cloning, and
+renderer-specific custom programs are separate, implemented contracts.

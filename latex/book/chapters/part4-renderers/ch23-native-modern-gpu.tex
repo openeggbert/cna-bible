@@ -2,7 +2,7 @@
 \label{ch:native-modern-gpu}
 \label{ch:vulkan-backend}
 
-Four public identities belong in this cluster, but they do not share one implementation.
+Five public identities belong in this cluster, but they do not share one implementation.
 They share an explicit-API design vocabulary: pipelines and resource transitions are visible,
 shader delivery is a first-class build concern, and a successful device creation says little
 about which CNA features the path actually proves.
@@ -20,6 +20,7 @@ Identity & Extended draw route & RT2D / MRT & Query & Shader boundary \\
 \texttt{SDL\_GPU} & native with bounded colored tail & yes / yes & no real query & API-specific precompiled bytecode \\
 \texttt{WEBGPU} & native with bounded colored tail & yes / one attachment only & no real query & WGSL and native WebGPU binding model \\
 \texttt{METAL} & native & yes / no & no & embedded MSL compiled at runtime \\
+\texttt{IGL} & native & yes / yes & explicit no & IGL shader stages on OpenGL or Vulkan \\
 \bottomrule
 \end{longtable}
 
@@ -532,13 +533,29 @@ Metal's policy demonstrates the safer integration pattern: enumerate the unsuppo
 throw at the boundary, and widen it only when a macOS-specific observable proves the new path.
 Callers get an early diagnostic instead of a later blank frame.
 
-\section{Comparing the four evidence tiers}
+\section{IGL: one CNA identity over two IGL backends}
+
+\texttt{IGL} integrates Meta's IGL~1.1.1 and can create an OpenGL or Vulkan device below the one
+CNA identity. Its renderer owns effect-aware 3D draws, sprite submission, real 2D/cube targets,
+two-to-four-target MRT, and volume-texture upload/sampling. It has no IGL occlusion-query API;
+CNA returns an immediately complete zero-sample object and reports the capability false, avoiding
+a spin or false GPU promise.
+
+The backend distinction remains evidence-relevant. OpenGL and Vulkan have separate context,
+coordinate and resource behavior even though \cnaclass{GetGraphicsRendererType()} says IGL. The
+release examples bring up both backends, but their existence is not a claim that this edition
+reran every IGL check. Volume upload and sampling are supported; volume readback is an explicit
+IGL~1.1.1 gap and raises rather than fabricating voxels.
+
+\section{Comparing the five evidence tiers}
 
 \texttt{VULKAN} has the broadest renderer-specific pixel history in this group.
 \texttt{SDL\_GPU} is exercised through its currently selected native driver, which is not
 proof of every driver SDL can choose.  \texttt{WEBGPU} has real application and pixel
-evidence but retains the MRT/query capability overclaims above.  \texttt{METAL} has a real
-macOS lifecycle gate while its 3D pixel surface remains explicitly unproven.
+evidence but retains the MRT/query capability overclaims above. \texttt{METAL} has a real
+macOS lifecycle gate while its 3D pixel surface remains explicitly unproven. \texttt{IGL} has
+backend-specific example evidence and explicit capability boundaries that must be named as
+OpenGL or Vulkan.
 
 For portability work, record both axes: which CNA identity ran and which native driver or
 device path served it.  An abstraction selecting Vulkan on one machine and Metal on another
